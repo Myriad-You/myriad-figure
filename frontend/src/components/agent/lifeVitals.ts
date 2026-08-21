@@ -1,6 +1,7 @@
 /** Per-addressee vitals already returned by GET /api/agent/persona. */
 
 export const ADDRESSEE_UPDATED_EVENT = 'arael-addressee-updated'
+export const FACE_UPDATED_EVENT = 'arael-face-updated'
 
 export type MoodBand = 'floor' | 'low' | 'normal' | 'high'
 export type ActivityKey = 'idle' | 'working' | 'thinking' | 'talking'
