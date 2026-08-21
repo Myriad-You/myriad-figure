@@ -18,6 +18,7 @@ import {
   RIG_IR_VERSION,
 } from './contract'
 import { inferOutfitProfileFromPartIds } from './outfit'
+import { buildAnime25DPlayback } from '../anime25drig/playback'
 
 export { ANIME25D_LAYER_DEPTH, type Anime25DLayerRole } from './anime25d'
 
@@ -167,6 +168,15 @@ export async function prepareAnime25DRigPsd(
   )
   const rigLayers = buildLayerSources(prepared, layerHandles)
   const partIds = prepared.map((layer) => `a25d-${layer.id}`)
+  const anime25dPlayback = buildAnime25DPlayback({
+    frameWidth: frame.width,
+    frameHeight: frame.height,
+    layers: prepared,
+    faceCenter: {
+      x: (faceCenter.x - frame.x) / frame.width,
+      y: (faceCenter.y - frame.y) / frame.width,
+    },
+  })
   const outfitProfile = inferOutfitProfileFromPartIds(partIds)
   const semanticBones: Record<string, string> = {
     root: 'root',
@@ -209,6 +219,7 @@ export async function prepareAnime25DRigPsd(
         chains: { torso: ['root', 'body', 'head'] },
         secondaryBoneIds,
       },
+      anime25dPlayback,
     },
   }
 }

@@ -1,6 +1,7 @@
 /**
- * Semantic layer depths adapted from Anime2.5DRig's `lib/rigger.js`.
+ * Semantic layer depths replicated from Anime2.5DRig's `lib/rigger.js`.
  * Anime2.5DRig is MIT licensed, Copyright (c) 2026 hakoniwa.
+ * https://github.com/852wa/Anime2.5DRig
  */
 export const ANIME25D_LAYER_DEPTH = {
   'back-hair': 0.55,

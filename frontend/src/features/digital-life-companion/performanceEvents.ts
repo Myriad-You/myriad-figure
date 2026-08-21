@@ -1,14 +1,9 @@
-import type { MotionCharacterState } from './rig/motion'
-import type { CompanionMotionPlan } from './rig/planner'
-import { motionPlanFromMessageMeta, planCompanionMotion } from './rig/planner'
-
 export const COMPANION_PERFORMANCE_EVENT = 'arael-companion-performance'
 
 export interface CompanionPerformanceEventDetail {
   text: string
-  source: CompanionMotionPlan['source']
+  source: 'reply' | 'proactive' | 'interaction' | 'preview'
   messageId?: string
-  motionPlan?: unknown
 }
 
 export function dispatchCompanionPerformance(
@@ -33,7 +28,7 @@ export function companionPerformanceEventDetail(
   const source = ['reply', 'proactive', 'interaction', 'preview'].includes(
     String(value.source),
   )
-    ? (value.source as CompanionMotionPlan['source'])
+    ? (value.source as CompanionPerformanceEventDetail['source'])
     : 'reply'
   return {
     text,
@@ -41,26 +36,7 @@ export function companionPerformanceEventDetail(
     ...(typeof value.messageId === 'string'
       ? { messageId: value.messageId.slice(0, 160) }
       : {}),
-    ...(value.motionPlan !== undefined ? { motionPlan: value.motionPlan } : {}),
   }
-}
-
-export function planCompanionPerformanceEvent(
-  detail: CompanionPerformanceEventDetail,
-  state: MotionCharacterState,
-): CompanionMotionPlan {
-  const suppliedPlan = motionPlanFromMessageMeta(
-    { motionPlan: detail.motionPlan },
-    detail.source,
-  )
-  return (
-    suppliedPlan ||
-    planCompanionMotion({
-      text: detail.text,
-      source: detail.source,
-      state,
-    })
-  )
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

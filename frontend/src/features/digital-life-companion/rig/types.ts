@@ -1,4 +1,8 @@
 import {
+  isAnime25DPlayback,
+  type Anime25DPlayback,
+} from '../anime25drig/types'
+import {
   CHARACTER_ASSET_CONTRACT_VERSION,
   MAX_RIG_BONES,
   MAX_RIG_CLIPS,
@@ -252,6 +256,7 @@ export interface CompanionRigImportSource {
   semanticAnchors?: Record<string, RigSemanticAnchor>
   semantics?: RigSemantics
   spatialProfile?: RigSpatialProfile
+  anime25dPlayback?: Anime25DPlayback
 }
 
 export interface CompanionRigManifest {
@@ -273,6 +278,7 @@ export interface CompanionRigManifest {
   semanticAnchors?: Record<string, RigSemanticAnchor>
   semantics?: RigSemantics
   spatialProfile?: RigSpatialProfile
+  anime25dPlayback?: Anime25DPlayback
 }
 
 export function isRigManifest(value: unknown): value is CompanionRigManifest {
@@ -346,6 +352,12 @@ export function isRigManifest(value: unknown): value is CompanionRigManifest {
   if (
     value.outfitProfile !== undefined &&
     !isOutfitProfile(value.outfitProfile, value.parts)
+  ) {
+    return false
+  }
+  if (
+    value.anime25dPlayback !== undefined &&
+    !isAnime25DPlayback(value.anime25dPlayback)
   ) {
     return false
   }

@@ -5,25 +5,13 @@ export type CompanionGender =
   | 'male'
   | 'nonbinary'
   | 'unspecified'
-export interface CompanionOutfitDesign {
-  id: string
-  titleZh: string
-  eraCueZh?: string
-  designZh: string
-  layersEn: string
-  heroAccessoryZh?: string
-  paletteHintZh?: string
-}
-
 export interface CompanionOnboarding {
   schemaVersion: number
   step: number
   completed: boolean
   selectedTags?: string[]
   gender?: CompanionGender
-  extraRequirements?: string
   displayName?: string
-  outfitDesign?: CompanionOutfitDesign | null
   reportSignalFingerprint?: string
 }
 
@@ -116,17 +104,6 @@ export interface CompanionMemory {
   importance: number
   createdAt: string
   lastAccessedAt: string | null
-}
-
-export interface CompanionOnboardingPatch {
-  step?: number
-  completed?: boolean
-  selectedTags?: string[]
-  gender?: CompanionGender
-  extraRequirements?: string
-  displayName?: string
-  outfitDesign?: CompanionOutfitDesign | null
-  reportSignalFingerprint?: string
 }
 
 export type CompanionPolicyPatch = Partial<CompanionPolicy>
