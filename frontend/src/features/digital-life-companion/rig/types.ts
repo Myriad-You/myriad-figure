@@ -5,9 +5,7 @@ import {
 import {
   CHARACTER_ASSET_CONTRACT_VERSION,
   MAX_RIG_BONES,
-  MAX_RIG_CLIPS,
   MAX_RIG_COLLISION_VOLUMES,
-  MAX_RIG_KEYFRAMES_PER_TRACK,
   MAX_RIG_PARTS,
   MAX_RIG_TEXTURES,
   MAX_RIG_TOTAL_VERTICES,
@@ -20,7 +18,7 @@ import {
   RIG_SEMANTIC_CHAIN_ROLES,
 } from './contract'
 
-export type RigQuality = 'portrait-fallback' | 'layered-2d'
+export type RigQuality = 'layered-2d'
 
 export interface RigPoint {
   x: number
@@ -114,54 +112,6 @@ export interface RigPart {
   indices: number[]
 }
 
-export interface RigTransform {
-  translation: RigPoint
-  rotation: number
-  scale: RigPoint
-}
-
-export interface RigKeyframe {
-  time: number
-  transform: RigTransform
-}
-
-export interface RigTrack {
-  boneId: string
-  keyframes: RigKeyframe[]
-}
-
-export type RigExpressionPresentation = 'neutral' | 'happy' | 'surprise' | 'sad'
-
-export interface RigPresentationKeyframe {
-  progress: number
-  expression?: RigExpressionPresentation
-}
-
-export interface RigClipPresentation {
-  expression?: RigExpressionPresentation
-  keyframes?: RigPresentationKeyframe[]
-}
-
-export interface RigClipEvent {
-  progress: number
-  kind: string
-  intensity: number
-}
-
-export interface RigClipGenerationProfile {
-  maxAmplitudeScale: number
-}
-
-export interface RigClip {
-  id: string
-  duration: number
-  looping: boolean
-  tracks: RigTrack[]
-  presentation?: RigClipPresentation
-  events?: RigClipEvent[]
-  generation?: RigClipGenerationProfile
-}
-
 export interface RigMotionProfile {
   seed: number
   breath: {
@@ -227,8 +177,6 @@ export interface CompanionRigCompileRequest {
   }>
   bones: RigBone[]
   layers: RigLayerSource[]
-  clips: RigClip[]
-  defaultClip: string
   motionProfile?: RigMotionProfile
   outfitProfile?: RigOutfitProfile
   semanticAnchors?: Record<string, RigSemanticAnchor>
@@ -249,8 +197,6 @@ export interface CompanionRigImportSource {
   }
   bones: RigBone[]
   layers: RigLayerSource[]
-  clips: RigClip[]
-  defaultClip: string
   motionProfile?: RigMotionProfile
   outfitProfile?: RigOutfitProfile
   semanticAnchors?: Record<string, RigSemanticAnchor>
@@ -270,9 +216,6 @@ export interface CompanionRigManifest {
   textures: RigTexture[]
   bones: RigBone[]
   parts: RigPart[]
-  clips: RigClip[]
-  defaultClip: string
-  standardClipLibraryVersion?: number
   motionProfile?: RigMotionProfile
   outfitProfile?: RigOutfitProfile
   semanticAnchors?: Record<string, RigSemanticAnchor>
@@ -281,35 +224,34 @@ export interface CompanionRigManifest {
   anime25dPlayback?: Anime25DPlayback
 }
 
+export function isLiveCompanionManifest(
+  value: unknown,
+): value is CompanionRigManifest {
+  return (
+    isRigManifest(value) &&
+    value.quality === 'layered-2d' &&
+    isAnime25DPlayback(value.anime25dPlayback)
+  )
+}
+
 export function isRigManifest(value: unknown): value is CompanionRigManifest {
   if (!isRecord(value)) return false
   if (
     value.schemaVersion !== RIG_SCHEMA_VERSION ||
-    (value.quality !== 'portrait-fallback' &&
-      value.quality !== 'layered-2d') ||
+    value.quality !== 'layered-2d' ||
     !isPositiveSize(value.canvas) ||
     !Array.isArray(value.textures) ||
     !Array.isArray(value.bones) ||
     !Array.isArray(value.parts) ||
-    !Array.isArray(value.clips) ||
-    typeof value.defaultClip !== 'string' ||
+    value.clips != null ||
+    value.defaultClip != null ||
+    value.standardClipLibraryVersion != null ||
     value.bones.length === 0 ||
     value.bones.length > MAX_RIG_BONES ||
     value.textures.length === 0 ||
     value.textures.length > MAX_RIG_TEXTURES ||
     value.parts.length === 0 ||
-    value.parts.length > MAX_RIG_PARTS ||
-    value.clips.length === 0 ||
-    value.clips.length > MAX_RIG_CLIPS
-  ) {
-    return false
-  }
-  if (
-    value.standardClipLibraryVersion !== undefined &&
-    (typeof value.standardClipLibraryVersion !== 'number' ||
-      !Number.isInteger(value.standardClipLibraryVersion) ||
-      value.standardClipLibraryVersion <= 0 ||
-      value.standardClipLibraryVersion > 65_535)
+    value.parts.length > MAX_RIG_PARTS
   ) {
     return false
   }
@@ -364,7 +306,6 @@ export function isRigManifest(value: unknown): value is CompanionRigManifest {
   const textures = value.textures
   const bones = value.bones
   const parts = value.parts
-  const clips = value.clips
   const textureIds = new Set<string>()
   for (const texture of textures) {
     if (
@@ -492,86 +433,7 @@ export function isRigManifest(value: unknown): value is CompanionRigManifest {
     )[slot]
     if (!variants.has(definition.fallback)) return false
   }
-  const clipIds = new Set<string>()
-  for (const clip of clips) {
-    if (
-      !isRecord(clip) ||
-      !addIdentifier(clipIds, clip.id) ||
-      !isPositiveNumber(clip.duration) ||
-      clip.duration > 120 ||
-      typeof clip.looping !== 'boolean' ||
-      !Array.isArray(clip.tracks) ||
-      clip.tracks.length === 0 ||
-      clip.tracks.length > bones.length ||
-      (clip.presentation !== undefined &&
-        !isClipPresentation(clip.presentation)) ||
-      (clip.events !== undefined && !isClipEvents(clip.events)) ||
-      (clip.generation !== undefined &&
-        (!isRecord(clip.generation) ||
-          !isNumberInRange(clip.generation.maxAmplitudeScale, 0.62, 1.24))) ||
-      !clip.tracks.every((track) =>
-        isTrack(track, boneIds, clip.duration as number),
-      ) ||
-      new Set(clip.tracks.filter(isRecord).map((track) => track.boneId))
-        .size !== clip.tracks.length
-    ) {
-      return false
-    }
-  }
-  return clipIds.has(value.defaultClip)
-}
-
-function isClipEvents(value: unknown): value is RigClipEvent[] {
-  if (!Array.isArray(value) || value.length > 16) return false
-  let previous = -1
-  for (const event of value) {
-    if (
-      !isRecord(event) ||
-      !isUnitNumber(event.progress) ||
-      event.progress < previous ||
-      typeof event.kind !== 'string' ||
-      !/^[a-z0-9-]{1,64}$/.test(event.kind) ||
-      !isNumberInRange(event.intensity, 0, 1.2)
-    ) {
-      return false
-    }
-    previous = event.progress
-  }
   return true
-}
-
-function isClipPresentation(value: unknown): value is RigClipPresentation {
-  if (!isRecord(value)) return false
-  const expression = ['neutral', 'happy', 'surprise', 'sad']
-  const keyframes = value.keyframes
-  if (
-    keyframes !== undefined &&
-    (!Array.isArray(keyframes) || keyframes.length < 2 || keyframes.length > 16)
-  ) {
-    return false
-  }
-  let previousProgress = -1
-  for (const keyframe of keyframes ?? []) {
-    if (
-      !isRecord(keyframe) ||
-      !isUnitNumber(keyframe.progress) ||
-      keyframe.progress <= previousProgress ||
-      keyframe.expression === undefined ||
-      typeof keyframe.expression !== 'string' ||
-      !expression.includes(keyframe.expression)
-    ) {
-      return false
-    }
-    previousProgress = keyframe.progress
-  }
-  return (
-    (value.expression !== undefined || (keyframes?.length ?? 0) > 0) &&
-    (value.expression === undefined ||
-      (typeof value.expression === 'string' &&
-        expression.includes(value.expression))) &&
-    (keyframes === undefined ||
-      (keyframes[0].progress === 0 && keyframes.at(-1)?.progress === 1))
-  )
 }
 
 function isMotionProfile(value: unknown): value is RigMotionProfile {
@@ -723,38 +585,6 @@ function isOutfitProfile(
   )
 }
 
-function isTrack(
-  value: unknown,
-  boneIds: Set<string>,
-  duration: number,
-): value is RigTrack {
-  if (
-    !isRecord(value) ||
-    typeof value.boneId !== 'string' ||
-    !boneIds.has(value.boneId) ||
-    !Array.isArray(value.keyframes) ||
-    value.keyframes.length === 0 ||
-    value.keyframes.length > MAX_RIG_KEYFRAMES_PER_TRACK
-  ) {
-    return false
-  }
-  let previous = -1
-  for (const keyframe of value.keyframes) {
-    if (
-      !isRecord(keyframe) ||
-      !isFiniteNumber(keyframe.time) ||
-      keyframe.time < 0 ||
-      keyframe.time > duration ||
-      keyframe.time <= previous ||
-      !isTransform(keyframe.transform)
-    ) {
-      return false
-    }
-    previous = keyframe.time
-  }
-  return true
-}
-
 function hasBoneCycle(bones: RigBone[]): boolean {
   const parents = new Map(bones.map((bone) => [bone.id, bone.parent]))
   const complete = new Set<string>()
@@ -793,17 +623,6 @@ function isVertex(value: unknown, boneCount: number): value is RigVertex {
   return (
     Math.abs(value.weights.reduce((sum, weight) => sum + weight, 0) - 1) <=
     0.002
-  )
-}
-
-function isTransform(value: unknown): value is RigTransform {
-  return (
-    isRecord(value) &&
-    isPoint(value.translation) &&
-    isPoint(value.scale) &&
-    value.scale.x > 0 &&
-    value.scale.y > 0 &&
-    isFiniteNumber(value.rotation)
   )
 }
 

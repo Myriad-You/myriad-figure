@@ -3,7 +3,6 @@ import contract from '../../../../../shared/digital_life_rig_contract.json'
 export const RIG_SCHEMA_VERSION = contract.schemaVersion
 export const RIG_IR_VERSION = contract.rigIrVersion
 export const MIN_SUPPORTED_RIG_IR_VERSION = contract.minSupportedRigIrVersion
-export const STANDARD_CLIP_LIBRARY_VERSION = contract.standardClipLibraryVersion
 export const CHARACTER_ASSET_CONTRACT_VERSION =
   contract.characterAsset.contractVersion
 export const PORTRAIT_ASPECT = contract.characterAsset.portrait.aspect
@@ -33,8 +32,6 @@ export const MAX_RIG_TEXTURES = contract.limits.maxTextures
 export const MAX_RIG_PARTS = contract.limits.maxParts
 export const MAX_RIG_VERTICES_PER_PART = contract.limits.maxVerticesPerPart
 export const MAX_RIG_TOTAL_VERTICES = contract.limits.maxTotalVertices
-export const MAX_RIG_CLIPS = contract.limits.maxClips
-export const MAX_RIG_KEYFRAMES_PER_TRACK = contract.limits.maxKeyframesPerTrack
 export const MAX_RIG_COLLISION_VOLUMES = contract.limits.maxCollisionVolumes
 export const RIG_SECONDARY_PART_PATTERNS = contract.secondaryPartPatterns
 export const RIG_PRESENTATION_SLOTS = contract.presentationSlots

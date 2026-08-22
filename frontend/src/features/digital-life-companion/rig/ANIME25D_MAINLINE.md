@@ -46,11 +46,8 @@ contact, wrist rotation, locomotion, or gesture constraints.
   splitting, synthetic close fallbacks, atlas packing, anchors, semantic depth,
   explicit interior grids, root/tip hair chains, chest weighting, and optional
   rigid left/right `handwear` fragments below one semantic parent.
-- `anime25dRuntime.ts` adds only the layered portrait behavior: upstream blink
-  phases, depth parallax, chest spring response, and ±15° handwear composition.
-  The existing companion clocks and secondary spring solver remain in charge.
-- `renderer.ts` couples eye-white/iris opacity to the open-lid crossfade and
-  uses the WebGL stencil buffer to keep moving irises inside the eye whites.
+- `../anime25drig` owns live playback: bind, deform, blink/mouth crossfade,
+  depth parallax, hair springs, chest follow, and ±15° handwear composition.
 - `diagnostics.ts` identifies the profile from `a25d-*` parts and excludes the
   explicitly abandoned articulated gates while retaining all layered-portrait
   quality gates.

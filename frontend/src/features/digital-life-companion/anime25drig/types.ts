@@ -24,6 +24,8 @@ export interface Anime25DStrand {
 export interface Anime25DPlaybackLayer {
   name: string
   role: string
+  /** Draw-order index from Anime2.5DRig (`L.z`). Hair spring phase uses this. */
+  z?: number
   depth: number
   group: Anime25DGroup
   phys: 'hair' | null
@@ -50,8 +52,10 @@ export interface Anime25DEyeAnchor {
 export interface Anime25DPlaybackAnchors {
   face: { x0: number; y0: number; x1: number; y1: number; cx: number; cy: number }
   neckPivot: { x: number; y: number }
+  neckTop: number
+  neckBottom: number
   bodyPivot: { x: number; y: number }
-  mouth: { cx: number; cy: number }
+  mouth: { x0: number; y0: number; x1: number; y1: number; cx: number; cy: number }
   faceScale: number
   eyeL?: Anime25DEyeAnchor
   eyeR?: Anime25DEyeAnchor

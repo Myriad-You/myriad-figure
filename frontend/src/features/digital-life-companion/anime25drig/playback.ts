@@ -1,7 +1,9 @@
 import { ANIME25D_LAYER_DEPTH, type Anime25DLayerRole } from '../rig/anime25d'
 import type {
+  Anime25DEyeAnchor,
   Anime25DFade,
   Anime25DPlayback,
+  Anime25DPlaybackAnchors,
   Anime25DPlaybackLayer,
 } from './types'
 import { anime25DPlaybackSource } from './types'
@@ -10,90 +12,123 @@ export interface Anime25DPlaybackBuildLayer {
   id: string
   role: string
   side: 'left' | 'right' | null
+  group: 'head' | 'body'
   bounds: { x: number; y: number; width: number; height: number }
   textureBounds: { x: number; y: number; width: number; height: number }
   strands: Array<{ x: number; rootY: number; tipY: number }>
+}
+
+/** Raw `rig.anchors` from Anime2.5DRig `buildRig`. */
+export interface Anime25DRiggerAnchors {
+  face: { cx: number; cy: number; x0: number; x1: number; y0: number; y1: number }
+  eyeL?: Anime25DEyeAnchor
+  eyeR?: Anime25DEyeAnchor
+  mouth: {
+    x0: number
+    x1: number
+    y0: number
+    y1: number
+    cx: number
+    cy: number
+  }
+  neckPivot: { cx: number; cy: number }
+  neckTop: number
+  neckBottom: number
+  bodyPivot: { cx: number; cy: number }
+  faceScale: number
 }
 
 export interface Anime25DPlaybackBuildInput {
   frameWidth: number
   frameHeight: number
   layers: Anime25DPlaybackBuildLayer[]
-  faceCenter: { x: number; y: number }
+  anchors: Anime25DPlaybackAnchors
 }
 
-const HEAD_ROLES = new Set([
-  'back-hair',
-  'front-hair',
-  'face',
-  'facedetail',
-  'ears',
-  'earwear',
-  'headwear',
-  'nose',
-  'eyebrow',
-  'eyewhite',
-  'irides',
-  'eyelash',
-  'eye-close',
-  'mouth-open',
-  'mouth-close',
-])
+/** Translate Anime2.5DRig document anchors into the 3:4 content frame. */
+export function remapRiggerAnchors(
+  anchors: Anime25DRiggerAnchors,
+  frame: { x: number; y: number; width: number; height: number },
+): Anime25DPlaybackAnchors {
+  const shiftX = (value: number) => value - frame.x
+  const shiftY = (value: number) => value - frame.y
+  const neckPivot = {
+    x: shiftX(anchors.neckPivot.cx),
+    y: shiftY(anchors.neckPivot.cy),
+  }
+  return {
+    face: {
+      x0: shiftX(anchors.face.x0),
+      y0: shiftY(anchors.face.y0),
+      x1: shiftX(anchors.face.x1),
+      y1: shiftY(anchors.face.y1),
+      cx: shiftX(anchors.face.cx),
+      cy: shiftY(anchors.face.cy),
+    },
+    neckPivot,
+    neckTop: shiftY(anchors.neckTop),
+    neckBottom: shiftY(anchors.neckBottom),
+    bodyPivot: { x: neckPivot.x, y: frame.height },
+    mouth: {
+      x0: shiftX(anchors.mouth.x0),
+      y0: shiftY(anchors.mouth.y0),
+      x1: shiftX(anchors.mouth.x1),
+      y1: shiftY(anchors.mouth.y1),
+      cx: shiftX(anchors.mouth.cx),
+      cy: shiftY(anchors.mouth.cy),
+    },
+    faceScale: anchors.faceScale,
+    eyeL: shiftEyeAnchor(anchors.eyeL, shiftX, shiftY),
+    eyeR: shiftEyeAnchor(anchors.eyeR, shiftX, shiftY),
+  }
+}
+
+function shiftEyeAnchor(
+  eye: Anime25DEyeAnchor | undefined,
+  shiftX: (value: number) => number,
+  shiftY: (value: number) => number,
+): Anime25DEyeAnchor | undefined {
+  if (!eye) return undefined
+  return {
+    x0: shiftX(eye.x0),
+    y0: shiftY(eye.y0),
+    x1: shiftX(eye.x1),
+    y1: shiftY(eye.y1),
+    icx: shiftX(eye.icx),
+    icy: shiftY(eye.icy),
+    closeY: shiftY(eye.closeY),
+  }
+}
 
 export function buildAnime25DPlayback(
   input: Anime25DPlaybackBuildInput,
 ): Anime25DPlayback {
   const width = Math.max(1, input.frameWidth)
   const height = Math.max(1, input.frameHeight)
-  const layers = input.layers.map((layer) => toPlaybackLayer(layer, width))
-  const face = requiredLayer(layers, 'face')
-  const faceBox = {
-    x0: face.x,
-    y0: face.y,
-    x1: face.x + face.w,
-    y1: face.y + face.h,
-    cx: input.faceCenter.x * width,
-    cy: input.faceCenter.y * width,
-  }
-  const neck = layers.find((layer) => layer.role === 'neck')
-  const topwear = layers.find((layer) => layer.role === 'topwear')
-  const neckPivot = neck
-    ? { x: neck.x + neck.w / 2, y: neck.y + neck.h * 0.85 }
-    : { x: faceBox.cx, y: faceBox.y1 + 20 }
-  const bodyPivot = topwear
-    ? { x: topwear.x + topwear.w / 2, y: topwear.y + topwear.h }
-    : { x: width / 2, y: height }
-  const mouthLayer =
-    layers.find((layer) => layer.role === 'mouth-open') ||
-    layers.find((layer) => layer.role === 'mouth-close')
+  const layers = input.layers.map((layer, index) =>
+    toPlaybackLayer(layer, width, index),
+  )
+  requiredLayer(layers, 'face')
   return {
     ...anime25DPlaybackSource(),
     pixelCanvas: { width, height },
     layers,
-    anchors: {
-      face: faceBox,
-      neckPivot,
-      bodyPivot,
-      mouth: mouthLayer
-        ? { cx: mouthLayer.x + mouthLayer.w / 2, cy: mouthLayer.y + mouthLayer.h / 2 }
-        : { cx: faceBox.cx, cy: faceBox.y0 + face.h * 0.72 },
-      faceScale: (faceBox.x1 - faceBox.x0) / 333,
-      eyeL: eyeAnchor(layers, 'L'),
-      eyeR: eyeAnchor(layers, 'R'),
-    },
+    anchors: input.anchors,
   }
 }
 
 function toPlaybackLayer(
   layer: Anime25DPlaybackBuildLayer,
   frameWidth: number,
+  z: number,
 ): Anime25DPlaybackLayer {
   const role = layer.role
   return {
     name: playbackName(layer),
     role,
+    z,
     depth: playbackDepth(role),
-    group: HEAD_ROLES.has(role) ? 'head' : 'body',
+    group: layer.group,
     phys: role === 'front-hair' || role === 'back-hair' ? 'hair' : null,
     fade: playbackFade(role),
     side: layer.side === 'left' ? 'L' : layer.side === 'right' ? 'R' : null,
@@ -142,24 +177,4 @@ function requiredLayer(
   const layer = layers.find((candidate) => candidate.role === role)
   if (!layer) throw new Error(`Anime2.5DRig playback missing ${role}`)
   return layer
-}
-
-function eyeAnchor(
-  layers: Anime25DPlaybackLayer[],
-  side: 'L' | 'R',
-): Anime25DPlayback['anchors']['eyeL'] {
-  const white = layers.find((layer) => layer.role === 'eyewhite' && layer.side === side)
-  const iris = layers.find((layer) => layer.role === 'irides' && layer.side === side)
-  const lash = layers.find((layer) => layer.role === 'eyelash' && layer.side === side)
-  const box = white || lash
-  if (!box) return undefined
-  return {
-    x0: box.x,
-    y0: box.y,
-    x1: box.x + box.w,
-    y1: box.y + box.h,
-    icx: iris ? iris.x + iris.w / 2 : box.x + box.w / 2,
-    icy: iris ? iris.y + iris.h / 2 : box.y + box.h / 2,
-    closeY: box.y + box.h * 0.62,
-  }
 }

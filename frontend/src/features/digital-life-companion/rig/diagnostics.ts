@@ -1,8 +1,5 @@
-import type { CompanionRigManifest, RigKeyframe } from './types'
-import {
-  presentationAssetCoverage,
-  presentationIntentCoverage,
-} from './presentation'
+import type { CompanionRigManifest } from './types'
+import { presentationAssetCoverage } from './presentation'
 import { resolveRigSemantics } from './semantics'
 
 export type RigDiagnosticSeverity = 'error' | 'warning' | 'info'
@@ -24,7 +21,6 @@ export interface RigDiagnosticReport {
     lipSync: boolean
     gaze: boolean
     secondaryMotion: boolean
-    layeredActions: boolean
     facialVariants: boolean
     deformableSkinning: boolean
     outfitAware: boolean
@@ -36,9 +32,7 @@ export interface RigDiagnosticReport {
 export type RigCapability = keyof RigDiagnosticReport['capabilities']
 
 const ANIME25D_ABANDONED_CAPABILITIES = new Set<RigCapability>([
-  'layeredActions',
   'collisionAware',
-  'presentationCoverage',
 ])
 
 export function anime25DAbandonsCapability(capability: RigCapability): boolean {
@@ -66,14 +60,11 @@ export function diagnoseRig(
 ): RigDiagnosticReport {
   const issues: RigDiagnostic[] = []
   const semantics = resolveRigSemantics(manifest)
-  const roleByBone = new Map(
-    Object.entries(semantics.bones).map(([role, boneId]) => [boneId, role]),
-  )
   const facial = Boolean(
     semantics.bones.face ||
-    semantics.bones['left-eye'] ||
-    semantics.bones['right-eye'] ||
-    semantics.bones.mouth,
+      semantics.bones['left-eye'] ||
+      semantics.bones['right-eye'] ||
+      semantics.bones.mouth,
   )
   const lipSync = Boolean(semantics.bones.mouth)
   const secondaryMotion = semantics.secondaryBoneIds.length > 0
@@ -88,9 +79,9 @@ export function diagnoseRig(
     (facialSlots.has('iris-left') && facialSlots.has('iris-right'))
   const gaze = Boolean(
     semantics.bones['left-eye'] &&
-    semantics.bones['right-eye'] &&
-    semantics.bones.head &&
-    splitEyeGaze,
+      semantics.bones['right-eye'] &&
+      semantics.bones.head &&
+      splitEyeGaze,
   )
   const mouthVariantCount = (manifest.parts || []).filter(
     (part) => part.slot === 'mouth',
@@ -109,19 +100,19 @@ export function diagnoseRig(
   )
   const outfitAware = Boolean(
     manifest.outfitProfile &&
-    ['forehead', 'chest', 'chin'].every(
-      (anchor) => manifest.semanticAnchors?.[anchor],
-    ),
+      ['forehead', 'chest', 'chin'].every(
+        (anchor) => manifest.semanticAnchors?.[anchor],
+      ),
   )
   const collisionAware = ['head', 'torso'].every((id) =>
     manifest.spatialProfile?.collisionVolumes.some(
       (volume) => volume.id === id,
     ),
   )
-  const clipChannels = new Set<string>()
-  const presentationCoverage = presentationIntentCoverage(manifest)
+  let presentationCoverage = true
   for (const coverage of presentationAssetCoverage(manifest)) {
     if (coverage.missingFallback) {
+      presentationCoverage = false
       issues.push(
         issue(
           'missing-presentation-fallback',
@@ -131,6 +122,7 @@ export function diagnoseRig(
       )
     }
     if (coverage.unknown.length > 0) {
+      presentationCoverage = false
       issues.push(
         issue(
           'unknown-presentation-variant',
@@ -139,19 +131,6 @@ export function diagnoseRig(
         ),
       )
     }
-  }
-  if (!anime25d && presentationCoverage.gaps.length > 0) {
-    const examples = presentationCoverage.gaps
-      .slice(0, 4)
-      .map((gap) => `${gap.clipId}:${gap.channel}=${gap.variant}`)
-      .join(', ')
-    issues.push(
-      issue(
-        'incomplete-presentation-coverage',
-        'warning',
-        `Character assets support ${presentationCoverage.supported}/${presentationCoverage.required} authored presentation intents; missing ${examples}`,
-      ),
-    )
   }
 
   if (!semantics.bones.head) {
@@ -221,65 +200,6 @@ export function diagnoseRig(
       ),
     )
   }
-  if (!manifest.clips.some((clip) => clip.id === 'idle')) {
-    issues.push(issue('missing-idle', 'warning', 'No explicit idle clip'))
-  }
-  if (!anime25d && !manifest.clips.some((clip) => clip.id === 'talking')) {
-    issues.push(
-      issue('missing-talking', 'info', 'No explicit talking base clip'),
-    )
-  }
-
-  for (const clip of manifest.clips) {
-    if (clip.tracks.length === 0) {
-      issues.push(
-        issue('empty-clip', 'error', 'Clip contains no tracks', clip.id),
-      )
-    }
-    const authoredTrack = clip.tracks.filter(
-      (track) => semanticChannel(track.boneId, roleByBone) !== 'face',
-    )
-    if (
-      !clip.looping &&
-      authoredTrack.length > 0 &&
-      Math.max(...authoredTrack.map((track) => track.keyframes.length)) <= 3
-    ) {
-      issues.push(
-        issue(
-          'pose-only-action',
-          'warning',
-          'Action has too few phases for natural anticipation and follow-through',
-          clip.id,
-        ),
-      )
-    }
-    for (const track of clip.tracks) {
-      const channel = semanticChannel(track.boneId, roleByBone)
-      clipChannels.add(channel)
-      for (let index = 1; index < track.keyframes.length; index += 1) {
-        const previous = track.keyframes[index - 1]
-        const current = track.keyframes[index]
-        const delta = Math.max(0.001, current.time - previous.time)
-        const discreteEyeSwap =
-          /eye/i.test(track.boneId) &&
-          (facialSlots.has('eye-left') ||
-            facialSlots.has('eye-right') ||
-            facialSlots.has('head-expression'))
-        if (!discreteEyeSwap && transformSpeed(previous, current) / delta > 8) {
-          issues.push(
-            issue(
-              'transform-spike',
-              'warning',
-              'Abrupt transform spike may cause visible popping',
-              clip.id,
-              track.boneId,
-            ),
-          )
-          break
-        }
-      }
-    }
-  }
 
   const penalty = issues.reduce(
     (sum, item) =>
@@ -296,12 +216,11 @@ export function diagnoseRig(
       lipSync,
       gaze,
       secondaryMotion,
-      layeredActions: clipChannels.size >= 3,
       facialVariants,
       deformableSkinning,
       outfitAware,
       collisionAware,
-      presentationCoverage: presentationCoverage.gaps.length === 0,
+      presentationCoverage,
     },
   }
 }
@@ -314,35 +233,4 @@ function issue(
   boneId?: string,
 ): RigDiagnostic {
   return { code, severity, message, clipId, boneId }
-}
-
-function semanticChannel(
-  id: string,
-  roleByBone: ReadonlyMap<string, string>,
-): string {
-  const role = roleByBone.get(id)
-  if (role === 'face' || role?.includes('eye') || role === 'mouth')
-    return 'face'
-  if (role === 'head') return 'head'
-  if (role === 'torso' || role === 'handwear') {
-    return 'upper'
-  }
-  if (role === 'root') return 'full'
-  const value = id.toLowerCase()
-  if (/eye|brow|mouth|lip|jaw|face/.test(value)) return 'face'
-  if (/head|hair|ear|ribbon/.test(value)) return 'head'
-  if (/handwear|body|chest/.test(value)) return 'upper'
-  return 'full'
-}
-
-function transformSpeed(previous: RigKeyframe, current: RigKeyframe): number {
-  return (
-    Math.hypot(
-      current.transform.translation.x - previous.transform.translation.x,
-      current.transform.translation.y - previous.transform.translation.y,
-    ) +
-    Math.abs(current.transform.rotation - previous.transform.rotation) +
-    Math.abs(current.transform.scale.x - previous.transform.scale.x) +
-    Math.abs(current.transform.scale.y - previous.transform.scale.y)
-  )
 }

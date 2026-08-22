@@ -1,4 +1,4 @@
-import type { Anime25DPlayback, Anime25DPlaybackLayer, Anime25DStrand } from './types'
+import type { Anime25DPlayback, Anime25DPlaybackLayer } from './types'
 
 const VERTEX_SHADER = `#version 300 es
 in vec2 a_pos;
@@ -15,41 +15,70 @@ const FRAGMENT_SHADER = `#version 300 es
 precision mediump float;
 in vec2 v_uv;
 uniform sampler2D u_texture;
+uniform float u_cut;
 uniform float u_opacity;
 out vec4 out_color;
 void main() {
   vec4 color = texture(u_texture, v_uv);
-  if (color.a < 0.004) discard;
-  float alpha = color.a * u_opacity;
-  out_color = vec4(color.rgb * alpha, alpha);
+  if (color.a < u_cut) discard;
+  out_color = color * u_opacity;
 }`
 
+/** Parameter block copied from Anime2.5DRig `P` / `auto` in index.html. */
 export interface Anime25DDriver {
   angleX: number
   angleY: number
-  eyeL: number
-  eyeR: number
-  mouth: number
+  angleZ: number
+  eyeOpenL: number
+  eyeOpenR: number
+  eyeX: number
+  eyeY: number
+  brow: number
+  mouthOpen: number
+  mouthForm: number
+  mouthCY: number
+  body: number
+  physAmp: number
+  soft: number
+  browAngL: number
+  browAngR: number
+  browAngSym: number
+  bangL: number
+  bangC: number
+  bangR: number
   armY: number
   armPos: number
   bust: number
-  lean: number
-  talking: boolean
+  bustY: number
+  irisScale: number
+  mouthEase: number
+  eyeEase: number
+  fhAmp: number
+  fhSoft: number
+  eyeCY: number
+  eyeCAng: number
+  mouthCAng: number
+  eyeScaleL: number
+  eyeScaleR: number
+  mouthScale: number
+  idle: boolean
+  blink: boolean
+  rand: boolean
+  talk: boolean
+  mouse: boolean
+  phys: boolean
 }
 
 interface HairSpring {
   x: number
-  y: number
-  vx: number
-  vy: number
+  v: number
+  dx: number
 }
 
-interface StrandState {
-  layer: number
-  strand: Anime25DStrand
+interface HairStrandSpring {
   stiff: HairSpring
   soft: HairSpring
-  front: boolean
+  phase: number
 }
 
 interface GpuLayer {
@@ -64,19 +93,56 @@ interface GpuLayer {
   vertexBuffer: WebGLBuffer
   indexBuffer: WebGLBuffer
   indexCount: number
+  texture: WebGLTexture
+  frontHair: boolean
+  strandWeights: Float32Array | null
+  alongStrand: Float32Array | null
+  bangWeights: Float32Array | null
+  springs: HairStrandSpring[] | null
 }
 
 export const IDENTITY_DRIVER: Anime25DDriver = {
   angleX: 0,
   angleY: 0,
-  eyeL: 1,
-  eyeR: 1,
-  mouth: 0,
+  angleZ: 0,
+  eyeOpenL: 1,
+  eyeOpenR: 1,
+  eyeX: 0,
+  eyeY: 0,
+  brow: 0,
+  mouthOpen: 0,
+  mouthForm: 0,
+  mouthCY: 0,
+  body: 0,
+  physAmp: 2,
+  soft: 2,
+  browAngL: 0,
+  browAngR: 0,
+  browAngSym: 0,
+  bangL: 0,
+  bangC: 0,
+  bangR: 0,
   armY: 0,
   armPos: 0,
-  bust: 0,
-  lean: 0,
-  talking: false,
+  bust: 2.5,
+  bustY: 1,
+  irisScale: 1,
+  mouthEase: 0.45,
+  eyeEase: 0.3,
+  fhAmp: 2,
+  fhSoft: 0.4,
+  eyeCY: 0,
+  eyeCAng: 0,
+  mouthCAng: 0,
+  eyeScaleL: 1,
+  eyeScaleR: 1,
+  mouthScale: 1,
+  idle: true,
+  blink: true,
+  rand: true,
+  talk: true,
+  mouse: false,
+  phys: true,
 }
 
 export interface Anime25DDebugSnapshot {
@@ -97,17 +163,22 @@ export class Anime25DPlayer {
   private readonly program: WebGLProgram
   private readonly viewLocation: WebGLUniformLocation
   private readonly opacityLocation: WebGLUniformLocation
-  private texture: WebGLTexture | null = null
+  private readonly cutLocation: WebGLUniformLocation
   private layers: GpuLayer[] = []
-  private strands: StrandState[] = []
   private readonly current: Anime25DDriver = { ...IDENTITY_DRIVER }
   private readonly target: Anime25DDriver = { ...IDENTITY_DRIVER }
   private time = 0
-  private blinkAt = 1.8
-  private blinkElapsed = 1
-  private chest = 0
-  private chestVelocity = 0
-  private wind = 0
+  private blinkT = -1
+  private nextBlink = 1.8
+  private nextRnd = 0
+  private readonly rnd = { ax: 0, ay: 0, az: 0, bd: 0, ex: 0, ey: 0 }
+  private talkOn = false
+  private talkV = 0
+  private talkTgt = 0
+  private nextTalkState = 0
+  private nextSyl = 0
+  private readonly bounce = { x: 0, v: 0, dy: 0 }
+  private readonly mouse = { x: 0, y: 0, inside: false }
   private disposed = false
   private viewWidth = 1
   private viewHeight = 1
@@ -117,7 +188,7 @@ export class Anime25DPlayer {
       alpha: true,
       premultipliedAlpha: true,
       stencil: true,
-      antialias: false,
+      antialias: true,
     })
     if (!gl) throw new Error('WebGL2 is required for Anime2.5DRig playback')
     this.gl = gl
@@ -125,35 +196,18 @@ export class Anime25DPlayer {
     this.program = compileProgram(gl)
     this.viewLocation = requiredUniform(gl, this.program, 'u_view')
     this.opacityLocation = requiredUniform(gl, this.program, 'u_opacity')
+    this.cutLocation = requiredUniform(gl, this.program, 'u_cut')
     gl.useProgram(this.program)
     gl.uniform1i(requiredUniform(gl, this.program, 'u_texture'), 0)
     gl.enable(gl.BLEND)
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
-    gl.enable(gl.STENCIL_TEST)
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1)
   }
 
   async loadAtlas(url: string): Promise<void> {
     const image = await loadImage(url)
-    const { gl } = this
-    const texture = gl.createTexture()
-    if (!texture) throw new Error('Anime2.5DRig atlas texture failed')
-    gl.bindTexture(gl.TEXTURE_2D, texture)
-    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image)
-    this.texture = texture
-    this.layers = this.playback.layers.map((layer) => this.createLayer(layer))
-    this.strands = this.layers.flatMap((layer, index) =>
-      layer.source.strands.map((strand) => ({
-        layer: index,
-        strand,
-        stiff: { x: 0, y: 0, vx: 0, vy: 0 },
-        soft: { x: 0, y: 0, vx: 0, vy: 0 },
-        front: layer.source.role.includes('front'),
-      })),
+    this.layers = this.playback.layers.map((layer, index) =>
+      this.createLayer(layer, image, index),
     )
   }
 
@@ -174,8 +228,14 @@ export class Anime25DPlayer {
   }
 
   blinkNow(): void {
-    this.blinkElapsed = 0
-    this.blinkAt = 2.4 + Math.random() * 3.2
+    this.blinkT = 0
+    this.nextBlink = this.time + 1.6 + Math.random() * 3.8
+  }
+
+  setMouse(x: number, y: number, inside: boolean): void {
+    this.mouse.x = x
+    this.mouse.y = y
+    this.mouse.inside = inside
   }
 
   debugSnapshot(): Anime25DDebugSnapshot {
@@ -196,24 +256,30 @@ export class Anime25DPlayer {
 
   resize(cssWidth: number, cssHeight: number, devicePixelRatio: number): void {
     const dpr = Math.max(1, Math.min(2, devicePixelRatio))
-    const width = Math.max(1, Math.round(cssWidth * dpr))
-    const height = Math.max(1, Math.round(cssHeight * dpr))
+    const { width: pixelWidth, height: pixelHeight } = this.playback.pixelCanvas
     const canvas = this.gl.canvas
+    const bufferWidth = Math.max(1, Math.round(pixelWidth * dpr))
+    const bufferHeight = Math.max(1, Math.round(pixelHeight * dpr))
     if (canvas instanceof HTMLCanvasElement) {
-      canvas.width = width
-      canvas.height = height
+      canvas.width = bufferWidth
+      canvas.height = bufferHeight
+      const scale = Math.min(
+        Math.max(1, cssWidth) / pixelWidth,
+        Math.max(1, cssHeight) / pixelHeight,
+      )
+      canvas.style.width = `${pixelWidth * scale}px`
+      canvas.style.height = `${pixelHeight * scale}px`
     }
-    this.viewWidth = width
-    this.viewHeight = height
-    this.gl.viewport(0, 0, width, height)
+    this.viewWidth = pixelWidth
+    this.viewHeight = pixelHeight
+    this.gl.viewport(0, 0, bufferWidth, bufferHeight)
   }
 
   tick(deltaSeconds: number): void {
-    if (this.disposed || !this.texture) return
+    if (this.disposed || this.layers.length === 0) return
     const dt = Math.min(0.05, Math.max(0.001, deltaSeconds))
     this.time += dt
     this.smoothDriver(dt)
-    this.updateBlink(dt)
     this.updateSprings(dt)
     this.deform()
     this.draw()
@@ -231,119 +297,321 @@ export class Anime25DPlayer {
       gl.deleteBuffer(layer.vertexBuffer)
       gl.deleteBuffer(layer.indexBuffer)
       gl.deleteVertexArray(layer.vao)
+      gl.deleteTexture(layer.texture)
     }
-    if (this.texture) gl.deleteTexture(this.texture)
     gl.deleteProgram(this.program)
     this.layers = []
   }
 
   private smoothDriver(dt: number): void {
-    const rate = 1 - Math.exp(-dt * 14)
-    const keys = [
-      'angleX',
-      'angleY',
-      'eyeL',
-      'eyeR',
-      'mouth',
-      'armY',
-      'armPos',
-      'bust',
-      'lean',
-    ] as const
-    for (const key of keys) {
-      this.current[key] = lerp(this.current[key], this.target[key], rate)
+    const now = this.time * 1000
+    const t = this.time
+    const tgt: Anime25DDriver = { ...this.target }
+    if (this.target.mouse && this.mouse.inside) {
+      tgt.angleX = clamp(this.mouse.x * 0.9, -1, 1)
+      tgt.angleY = clamp(-this.mouse.y * 0.7, -1, 1)
+      tgt.eyeX = clamp(this.mouse.x * 1.2, -1, 1)
+      tgt.eyeY = clamp(-this.mouse.y * 0.8, -1, 1)
     }
-    this.current.talking = this.target.talking
-    if (this.current.talking) {
-      this.current.mouth = clamp(
-        this.current.mouth * 0.55 + (0.35 + 0.4 * Math.abs(Math.sin(this.time * 11))),
-        0,
-        1,
-      )
+    if (this.target.idle) {
+      tgt.angleX += 0.13 * Math.sin(t * 0.42) + 0.05 * Math.sin(t * 1.13)
+      tgt.angleY += 0.08 * Math.sin(t * 0.31 + 1.7)
+      tgt.angleZ += 0.07 * Math.sin(t * 0.23 + 0.5)
+      tgt.body += 0.1 * Math.sin(t * 0.19 + 2.1)
     }
-  }
-
-  private updateBlink(dt: number): void {
-    this.blinkElapsed += dt
-    if (this.blinkElapsed >= this.blinkAt) {
-      this.blinkElapsed = 0
-      this.blinkAt = 2.4 + Math.random() * 3.2
+    if (this.target.rand) {
+      if (this.time > this.nextRnd) {
+        this.nextRnd = this.time + 1.4 + Math.random() * 2.6
+        this.rnd.ax = (Math.random() * 2 - 1) * 0.55
+        this.rnd.ay = (Math.random() * 2 - 1) * 0.4
+        this.rnd.az = (Math.random() * 2 - 1) * 0.35
+        this.rnd.bd = (Math.random() * 2 - 1) * 0.3
+        this.rnd.ex = (Math.random() * 2 - 1) * 0.6
+        this.rnd.ey = (Math.random() * 2 - 1) * 0.35
+      }
+      tgt.angleX = clamp(tgt.angleX + this.rnd.ax, -1, 1)
+      tgt.angleY = clamp(tgt.angleY + this.rnd.ay, -1, 1)
+      tgt.angleZ = clamp(tgt.angleZ + this.rnd.az, -1, 1)
+      tgt.body = clamp(tgt.body + this.rnd.bd, -1, 1)
+      tgt.eyeX = clamp(tgt.eyeX + this.rnd.ex, -1, 1)
+      tgt.eyeY = clamp(tgt.eyeY + this.rnd.ey, -1, 1)
     }
-    const closure = blinkClosure(this.blinkElapsed)
-    if (this.target.eyeL >= 0.95) this.current.eyeL = 1 - closure
-    if (this.target.eyeR >= 0.95) this.current.eyeR = 1 - closure
+    if (this.target.talk) {
+      if (now > this.nextTalkState) {
+        this.talkOn = !this.talkOn
+        this.nextTalkState =
+          now + (this.talkOn ? 1200 + Math.random() * 2200 : 600 + Math.random() * 1800)
+      }
+      if (this.talkOn && now > this.nextSyl) {
+        this.nextSyl = now + 70 + Math.random() * 110
+        this.talkTgt = Math.random() < 0.25 ? 0.04 : 0.25 + Math.random() * 0.75
+      }
+      if (!this.talkOn) this.talkTgt = 0
+      this.talkV += (this.talkTgt - this.talkV) * Math.min(1, dt * 22)
+      tgt.mouthOpen = Math.max(tgt.mouthOpen, this.talkV)
+    }
+    if (this.target.blink) {
+      if (this.blinkT < 0 && this.time > this.nextBlink) {
+        this.blinkT = 0
+        this.nextBlink = this.time + 1.6 + Math.random() * 3.8
+        if (Math.random() < 0.18) this.nextBlink = this.time + 0.28
+      }
+      if (this.blinkT >= 0) {
+        this.blinkT += dt
+        const elapsed = this.blinkT
+        let open = 1
+        if (elapsed < 0.08) open = 1 - elapsed / 0.08
+        else if (elapsed < 0.42) open = 0
+        else if (elapsed < 0.58) open = (elapsed - 0.42) / 0.16
+        else {
+          open = 1
+          this.blinkT = -1
+        }
+        tgt.eyeOpenL = Math.min(tgt.eyeOpenL, open)
+        tgt.eyeOpenR = Math.min(tgt.eyeOpenR, open)
+      }
+    }
+    const rate = Math.min(1, dt * 14)
+    const flags = ['idle', 'blink', 'rand', 'talk', 'mouse', 'phys'] as const
+    for (const key of Object.keys(IDENTITY_DRIVER) as Array<keyof Anime25DDriver>) {
+      if (flags.includes(key as (typeof flags)[number])) {
+        this.current[key] = this.target[key] as never
+        continue
+      }
+      const from = this.current[key] as number
+      const to = tgt[key] as number
+      ;(this.current[key] as number) = from + (to - from) * rate
+    }
   }
 
   private updateSprings(dt: number): void {
+    const { anchors } = this.playback
+    const faceScale = anchors.faceScale
+    const e = this.current
     const breath = 0.5 + 0.5 * Math.sin((this.time * Math.PI * 2) / 3.4)
-    const targetChest = (breath - 0.5) * this.playback.anchors.faceScale * 1.4 + this.current.bust * 6
-    this.chestVelocity += (targetChest - this.chest) * 140 * dt - this.chestVelocity * 4.2 * dt
-    this.chest += this.chestVelocity * dt
-    this.wind = Math.sin(this.time * 1.3) * 0.45 + Math.sin(this.time * 0.37) * 0.25
-    const headX = this.current.angleX * 18
-    for (const strand of this.strands) {
-      integrateSpring(strand.stiff, headX * 0.55 + this.wind * 4, 0, 70, 9, 2.2, dt)
-      integrateSpring(strand.soft, strand.stiff.x * 1.15, strand.stiff.y, 16, 1.3, 3, dt)
+    const bustTgt = (breath * 3.0 - e.angleY * 6.0 + e.body * 4.0) * faceScale
+    const bounceAccel = -140 * (this.bounce.x - bustTgt) - 4.2 * this.bounce.v
+    this.bounce.v += bounceAccel * dt
+    this.bounce.x += this.bounce.v * dt
+    this.bounce.dy = -(this.bounce.x - bustTgt) * 3.0
+    if (!e.phys) return
+    const headDX =
+      (e.angleX * 14 + e.angleZ * 0.07 * (anchors.neckPivot.y - anchors.face.cy)) *
+      faceScale
+    const time = this.time
+    const windAmp = e.idle ? 1 : 0
+    for (const layer of this.layers) {
+      if (!layer.springs) continue
+      for (const spring of layer.springs) {
+        const wind =
+          windAmp *
+          (1.8 * Math.sin(time * 0.8 + spring.phase) +
+            1.0 * Math.sin(time * 1.9 + spring.phase * 2.3))
+        const target = headDX + wind * faceScale
+        stepHairSpring(spring.stiff, target, 70, 9, 2.2, dt)
+        stepHairSpring(spring.soft, target, 16, 1.3, 3, dt)
+      }
     }
   }
 
   private deform(): void {
-    const { anchors } = this.playback
-    const fs = anchors.faceScale
-    const fit = this.fit()
-    const breath = 0.5 + 0.5 * Math.sin((this.time * Math.PI * 2) / 3.4)
-    const bodyLift = (breath - 0.5) * 2 * fs * 2
-    const headLift = (breath - 0.5) * 2 * fs * 1.6
-    for (const [layerIndex, layer] of this.layers.entries()) {
+    const A = this.playback.anchors
+    const e = this.current
+    const fs = A.faceScale
+    const t = this.time
+    const breath = 0.5 + 0.5 * Math.sin((t * Math.PI * 2) / 3.4)
+    const breathHead = 0.5 + 0.5 * Math.sin((t * Math.PI * 2) / 3.4 - 0.6)
+    const npx = A.neckPivot.x
+    const npy = A.neckPivot.y
+    const bpx = A.bodyPivot.x
+    const bpy = A.bodyPivot.y
+    const az = e.angleZ * 0.07
+    const cz = Math.cos(az)
+    const sz = Math.sin(az)
+    const ab = e.body * 0.028
+    const cb = Math.cos(ab)
+    const sb = Math.sin(ab)
+    const chestCx = npx
+    const chestCy = A.neckBottom + (A.face.y1 - A.face.y0) * 0.6
+    const chestRx = (A.face.x1 - A.face.x0) * 0.6
+    const chestRy = (A.face.y1 - A.face.y0) * 0.45
+    const mHalfW = (A.mouth.x1 - A.mouth.x0) / 2
+    for (const layer of this.layers) {
       const rest = layer.rest
       const deformed = layer.deformed
-      for (let index = 0; index < rest.length; index += 2) {
+      const vertexCount = rest.length / 2
+      const source = layer.source
+      const bn = layerBaseName(source.role)
+      const eye = source.side === 'L' ? A.eyeL : source.side === 'R' ? A.eyeR : undefined
+      const vOpen = source.side === 'L' ? e.eyeOpenL : e.eyeOpenR
+      const bcx = source.x + source.w / 2
+      const bcy = source.y + source.h / 2
+      const isHead = source.group === 'head'
+      const nS = layer.springs?.length ?? 0
+      for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+        const index = vertex * 2
         let x = rest[index]
         let y = rest[index + 1]
-        const depth = layer.source.depth
-        const dd = depth - 1
-        if (layer.source.group === 'head') {
-          const aroundX = x - anchors.neckPivot.x
-          const aroundY = y - anchors.neckPivot.y
-          const lean = this.current.lean * 0.028
-          const rot = this.current.angleX * 0.18 + lean
-          const cos = Math.cos(rot)
-          const sin = Math.sin(rot)
-          x = anchors.neckPivot.x + aroundX * cos - aroundY * sin
-          y = anchors.neckPivot.y + aroundX * sin + aroundY * cos
-          x += this.current.angleX * (14 + 40 * dd) * (fs / 1.2)
-          y -= this.current.angleY * (9 + 30 * dd) * (fs / 1.2)
-          y += headLift
-        } else {
-          x += this.current.angleX * (14 + 40 * dd) * 0.16 * (fs / 1.2)
-          y -= this.current.angleY * (9 + 30 * dd) * 0.16 * (fs / 1.2)
-          y += bodyLift
-          if (layer.source.role === 'topwear' || layer.source.role === 'neck') {
-            const cx = anchors.neckPivot.x
-            const cy = anchors.neckPivot.y + (layer.source.h * 0.35)
-            const falloff = Math.exp(-(((x - cx) / Math.max(8, layer.source.w * 0.35)) ** 2))
-            y += this.chest * falloff
-            x += this.chest * 0.08 * falloff * this.current.angleX
-          }
-          if (layer.source.role === 'handwear') {
-            const side = layer.source.side === 'L' ? -1 : 1
-            y += this.current.armY * 30 * fs
-            x += this.current.armPos * 40 * fs * side
+        if (eye && bn === 'eye_close') {
+          const scale = source.side === 'L' ? e.eyeScaleL : e.eyeScaleR
+          if (scale !== 1) {
+            const cxE = (eye.x0 + eye.x1) / 2
+            const cyE = (eye.y0 + eye.y1) / 2
+            x = cxE + (x - cxE) * scale
+            y = cyE + (y - cyE) * scale
           }
         }
-        if (layer.source.phys === 'hair') {
-          const nearest = nearestStrand(this.strands, layerIndex, rest[index])
-          if (nearest) {
-            const span = Math.max(8, nearest.strand.tipY - nearest.strand.rootY)
-            const u = clamp((rest[index + 1] - nearest.strand.rootY) / span, 0, 1)
-            const mix = u ** 1.2
-            const travel = nearest.front ? u ** 1.8 : u ** 2.1
-            x += (nearest.stiff.x * (1 - mix) + nearest.soft.x * mix) * travel
-            y += (nearest.stiff.y * (1 - mix) + nearest.soft.y * mix) * travel * 0.35
+        if (bn === 'mouth_open' || bn === 'mouth_close') {
+          if (e.mouthScale !== 1) {
+            x = A.mouth.cx + (x - A.mouth.cx) * e.mouthScale
+            y = A.mouth.cy + (y - A.mouth.cy) * e.mouthScale
           }
         }
-        deformed[index] = x * fit.scale + fit.offsetX
-        deformed[index + 1] = y * fit.scale + fit.offsetY
+        if (source.fade === 'eyeOpen' && eye) {
+          if (bn === 'irides') {
+            x = eye.icx + (x - eye.icx) * e.irisScale
+            y = eye.icy + (y - eye.icy) * e.irisScale
+            x += e.eyeX * 11 * fs
+            y += e.eyeY * 6 * fs
+            const tl = smoothstep((0.32 - vOpen) / 0.32)
+            y = eye.closeY + (y - eye.closeY) * (1 - 0.8 * tl)
+          } else {
+            y = eye.closeY + (y - eye.closeY) * (1 - 0.85 * (1 - vOpen))
+          }
+        }
+        if (source.fade === 'eyeClose' && eye) {
+          y -= vOpen * 3
+          y += e.eyeCY * 14 * fs
+          const thE = e.eyeCAng * 0.3 * (source.side === 'L' ? 1 : -1)
+          if (thE) {
+            const ct = Math.cos(thE)
+            const st = Math.sin(thE)
+            const rx = x - bcx
+            const ry = y - bcy
+            x = bcx + rx * ct - ry * st
+            y = bcy + rx * st + ry * ct
+          }
+        }
+        if (bn === 'eyebrow') {
+          y += (-e.brow * 9 + (1 - vOpen) * 3.5) * fs
+          const th =
+            (source.side === 'L'
+              ? e.browAngL + e.browAngSym
+              : e.browAngR - e.browAngSym) * 0.3
+          if (th) {
+            const ct = Math.cos(th)
+            const st = Math.sin(th)
+            const rx = x - bcx
+            const ry = y - bcy
+            x = bcx + rx * ct - ry * st
+            y = bcy + rx * st + ry * ct
+          }
+        }
+        if (source.fade === 'mouthOpen') {
+          y = A.mouth.y0 + (y - A.mouth.y0) * (0.5 + 0.5 * e.mouthOpen)
+          const q = Math.abs(x - A.mouth.cx) / (mHalfW + 4)
+          y -= e.mouthForm * 6 * fs * (q ** 1.5 - 0.35)
+        }
+        if (source.fade === 'mouthClose') {
+          y += e.mouthCY * 14 * fs
+          const thM = e.mouthCAng * 0.35
+          if (thM) {
+            const ct = Math.cos(thM)
+            const st = Math.sin(thM)
+            const rx = x - A.mouth.cx
+            const ry = y - A.mouth.cy
+            x = A.mouth.cx + rx * ct - ry * st
+            y = A.mouth.cy + rx * st + ry * ct
+          }
+        }
+        if (bn === 'face' && y > A.mouth.cy) {
+          y +=
+            e.mouthOpen *
+            6 *
+            fs *
+            smoothstep((y - A.mouth.cy) / (A.face.y1 - A.mouth.cy))
+        }
+        let hw = isHead ? 1 : source.group === 'body' ? 0.16 : 0
+        if (bn === 'neck') {
+          hw =
+            0.55 *
+            smoothstep(
+              (A.neckBottom - y) / Math.max(1, A.neckBottom - A.neckTop),
+            )
+        }
+        if (hw > 0) {
+          const rx = x - npx
+          const ry = y - npy
+          const rx2 = rx * cz - ry * sz
+          const ry2 = rx * sz + ry * cz
+          x += (rx2 - rx) * hw
+          y += (ry2 - ry) * hw
+          const dd = source.depth
+          x +=
+            hw *
+            fs *
+            (e.angleX * (14 + 40 * (dd - 1)) + e.angleX * (npy - y) * 0.028)
+          y +=
+            hw *
+            fs *
+            (-e.angleY * (9 + 30 * (dd - 1)) -
+              e.angleY * (dd - 1) * (y - A.face.cy) * 0.05)
+        }
+        y -= (source.group === 'body' ? breath * 2.0 : breathHead * 1.6) * fs
+        if (bn === 'topwear' && y < chestCy) {
+          y -=
+            breath *
+            2.2 *
+            fs *
+            smoothstep((chestCy - y) / (chestRy * 2))
+        }
+        if (bn === 'topwear') x = npx + (x - npx) * (1 + breath * 0.003)
+        if (bn === 'topwear') {
+          const gx = (x - chestCx) / chestRx
+          const gy = (y - (chestCy + e.bustY * 70 * fs)) / chestRy
+          y += this.bounce.dy * e.bust * Math.exp(-(gx * gx + gy * gy))
+        }
+        if (bn === 'handwear') {
+          const w = smoothstep(((y - source.y) / source.h) * 1.15)
+          y -= e.armY * 30 * fs * w
+          y += e.armPos * 40 * fs
+          x += e.armY * 6 * fs * w * (x < npx ? 1 : -1)
+        }
+        if (layer.bangWeights && layer.alongStrand) {
+          const along = layer.alongStrand[vertex]
+          const m = along ** 1.4 * 22 * fs
+          x +=
+            (e.bangL * layer.bangWeights[vertex * 3] +
+              e.bangC * layer.bangWeights[vertex * 3 + 1] +
+              e.bangR * layer.bangWeights[vertex * 3 + 2]) *
+            m
+        }
+        if (nS && layer.springs && layer.strandWeights && layer.alongStrand && e.phys) {
+          const along = layer.alongStrand[vertex]
+          const front = layer.frontHair
+          const u = front ? Math.min(1, along * 1.6) : along
+          const amp = u ** (front ? 1.8 : 2.1) * (front ? e.fhAmp : e.physAmp)
+          const softMix = u ** 1.2 * (front ? e.fhSoft : e.soft)
+          let dx = 0
+          for (let strand = 0; strand < nS; strand += 1) {
+            const weight = layer.strandWeights[vertex * nS + strand]
+            if (weight < 0.001) continue
+            const spring = layer.springs[strand]
+            dx += weight * (spring.stiff.dx * (1 - softMix) + spring.soft.dx * softMix)
+          }
+          x += dx * amp
+          y += Math.abs(dx) * amp * 0.12
+        }
+        deformed[index] = x
+        deformed[index + 1] = y
+      }
+      if (Math.abs(ab) > 1e-4) {
+        for (let index = 0; index < deformed.length; index += 2) {
+          const rx = deformed[index] - bpx
+          const ry = deformed[index + 1] - bpy
+          deformed[index] = bpx + rx * cb - ry * sb
+          deformed[index + 1] = bpy + rx * sb + ry * cb
+        }
       }
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER, layer.vertexBuffer)
       this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, packVertices(deformed, layer.uvs))
@@ -357,43 +625,45 @@ export class Anime25DPlayer {
     gl.useProgram(this.program)
     gl.uniform2f(this.viewLocation, this.viewWidth, this.viewHeight)
     gl.activeTexture(gl.TEXTURE0)
-    gl.bindTexture(gl.TEXTURE_2D, this.texture)
     for (const layer of this.layers) {
       const opacity = fadeOpacity(layer.source, this.current)
       if (opacity < 0.004 && !layer.source.name.startsWith('eyewhite')) continue
       const eyewhite = layer.source.name.startsWith('eyewhite')
       const iris = layer.source.name.startsWith('irides')
-      if (eyewhite) {
-        gl.stencilFunc(gl.ALWAYS, 1, 0xff)
-        gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
-      } else if (iris) {
-        gl.stencilFunc(gl.EQUAL, 1, 0xff)
-        gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP)
-      } else {
-        gl.stencilFunc(gl.ALWAYS, 0, 0xff)
-        gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP)
-      }
+      gl.bindTexture(gl.TEXTURE_2D, layer.texture)
       gl.uniform1f(this.opacityLocation, opacity)
       gl.bindVertexArray(layer.vao)
-      gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
+      if (eyewhite) {
+        gl.enable(gl.STENCIL_TEST)
+        gl.stencilFunc(gl.ALWAYS, 1, 0xff)
+        gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
+        gl.uniform1f(this.cutLocation, 0.25)
+        gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
+        gl.disable(gl.STENCIL_TEST)
+        gl.uniform1f(this.cutLocation, 0)
+      } else if (iris) {
+        gl.enable(gl.STENCIL_TEST)
+        gl.stencilFunc(gl.EQUAL, 1, 0xff)
+        gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP)
+        gl.uniform1f(this.cutLocation, 0)
+        gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
+        gl.disable(gl.STENCIL_TEST)
+      } else {
+        gl.uniform1f(this.cutLocation, 0)
+        gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
+      }
     }
     gl.bindVertexArray(null)
   }
 
-  private fit(): { scale: number; offsetX: number; offsetY: number } {
-    const { width, height } = this.playback.pixelCanvas
-    const scale = Math.min(this.viewWidth / width, this.viewHeight / height)
-    return {
-      scale,
-      offsetX: (this.viewWidth - width * scale) / 2,
-      offsetY: this.viewHeight - height * scale,
-    }
-  }
-
-  private createLayer(source: Anime25DPlaybackLayer): GpuLayer {
+  private createLayer(
+    source: Anime25DPlaybackLayer,
+    atlasImage: HTMLImageElement,
+    layerIndex: number,
+  ): GpuLayer {
     const cell = (source.phys ? 30 : 42) * Math.max(0.6, this.playback.pixelCanvas.width / 768)
-    const cols = Math.max(1, Math.ceil(source.w / cell))
-    const rows = Math.max(1, Math.ceil(source.h / cell))
+    const cols = Math.max(2, Math.round(source.w / cell))
+    const rows = Math.max(2, Math.round(source.h / cell))
     const rest = new Float32Array((cols + 1) * (rows + 1) * 2)
     const uvs = new Float32Array(rest.length)
     let cursor = 0
@@ -403,8 +673,8 @@ export class Anime25DPlayer {
         const u = col / cols
         rest[cursor] = source.x + source.w * u
         rest[cursor + 1] = source.y + source.h * v
-        uvs[cursor] = source.atlas.x + source.atlas.w * u
-        uvs[cursor + 1] = source.atlas.y + source.atlas.h * v
+        uvs[cursor] = u
+        uvs[cursor + 1] = v
         cursor += 2
       }
     }
@@ -440,6 +710,14 @@ export class Anime25DPlayer {
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW)
     gl.bindVertexArray(null)
+    const vertexCount = (cols + 1) * (rows + 1)
+    const hair = attachHairPhysics(
+      source,
+      rest,
+      vertexCount,
+      this.playback.anchors.face,
+      Number.isFinite(source.z) ? source.z : layerIndex,
+    )
     return {
       source,
       rest,
@@ -452,61 +730,165 @@ export class Anime25DPlayer {
       vertexBuffer,
       indexBuffer,
       indexCount: indices.length,
+      texture: cropLayerTexture(gl, atlasImage, source),
+      ...hair,
     }
   }
 }
 
-export function blinkClosure(elapsedSeconds: number): number {
-  if (elapsedSeconds < 0.08) return smootherstep(elapsedSeconds / 0.08)
-  if (elapsedSeconds < 0.42) return 1
-  if (elapsedSeconds < 0.58) return 1 - smootherstep((elapsedSeconds - 0.42) / 0.16)
-  return 0
+function cropLayerTexture(
+  gl: WebGL2RenderingContext,
+  atlas: HTMLImageElement,
+  source: Anime25DPlaybackLayer,
+): WebGLTexture {
+  const sx = Math.max(0, Math.round(source.atlas.x * atlas.width))
+  const sy = Math.max(0, Math.round(source.atlas.y * atlas.height))
+  const sw = Math.max(1, Math.round(source.atlas.w * atlas.width))
+  const sh = Math.max(1, Math.round(source.atlas.h * atlas.height))
+  const crop = document.createElement('canvas')
+  crop.width = sw
+  crop.height = sh
+  const context = crop.getContext('2d')
+  if (!context) throw new Error('Anime2.5DRig layer crop failed')
+  context.drawImage(atlas, sx, sy, sw, sh, 0, 0, sw, sh)
+  const texture = gl.createTexture()
+  if (!texture) throw new Error('Anime2.5DRig layer texture failed')
+  gl.bindTexture(gl.TEXTURE_2D, texture)
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, crop)
+  return texture
+}
+
+function layerBaseName(role: string): string {
+  if (role === 'front-hair') return 'front hair'
+  if (role === 'back-hair') return 'back hair'
+  return role.replace(/-/g, '_')
 }
 
 function fadeOpacity(layer: Anime25DPlaybackLayer, driver: Anime25DDriver): number {
-  const open = layer.side === 'L' ? driver.eyeL : layer.side === 'R' ? driver.eyeR : 1
-  if (layer.fade === 'eyeOpen') return hermite(open, 0.1, 0.15)
-  if (layer.fade === 'eyeClose') return hermite(1 - open, 0.1, 0.15)
-  if (layer.fade === 'mouthOpen') return hermite(driver.mouth, 0.05, 0.12)
-  if (layer.fade === 'mouthClose') return hermite(1 - driver.mouth, 0.05, 0.12)
+  if (!layer.fade) return 1
+  if (layer.fade === 'eyeOpen' || layer.fade === 'eyeClose') {
+    const open = layer.side === 'L' ? driver.eyeOpenL : driver.eyeOpenR
+    const faded = smoothstep((open - (0.1 + driver.eyeEase * 0.45)) / 0.15)
+    return layer.fade === 'eyeOpen' ? faded : 1 - faded
+  }
+  if (layer.fade === 'mouthOpen' || layer.fade === 'mouthClose') {
+    const faded = smoothstep(
+      (driver.mouthOpen - (0.05 + driver.mouthEase * 0.35)) / 0.12,
+    )
+    return layer.fade === 'mouthOpen' ? faded : 1 - faded
+  }
   return 1
 }
 
-function hermite(value: number, start: number, width: number): number {
-  return smootherstep(clamp((value - start) / Math.max(0.0001, width), 0, 1))
+function attachHairPhysics(
+  source: Anime25DPlaybackLayer,
+  rest: Float32Array,
+  vertexCount: number,
+  face: Anime25DPlayback['anchors']['face'],
+  layerZ: number,
+): Pick<
+  GpuLayer,
+  'frontHair' | 'strandWeights' | 'alongStrand' | 'bangWeights' | 'springs'
+> {
+  const frontHair = source.role === 'front-hair'
+  const strands = source.strands
+  if (strands.length === 0) {
+    return {
+      frontHair,
+      strandWeights: null,
+      alongStrand: null,
+      bangWeights: null,
+      springs: null,
+    }
+  }
+  const strandCount = strands.length
+  let spacing = 120
+  if (strandCount > 1) {
+    const gaps = []
+    for (let index = 1; index < strandCount; index += 1) {
+      gaps.push(strands[index].x - strands[index - 1].x)
+    }
+    gaps.sort((left, right) => left - right)
+    spacing = gaps[gaps.length >> 1]
+  }
+  const sigma = spacing * 0.6
+  const strandWeights = new Float32Array(vertexCount * strandCount)
+  const alongStrand = new Float32Array(vertexCount)
+  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+    const x = rest[vertex * 2]
+    const y = rest[vertex * 2 + 1]
+    let total = 0
+    for (let strand = 0; strand < strandCount; strand += 1) {
+      const weight = Math.exp(-(((x - strands[strand].x) / sigma) ** 2))
+      strandWeights[vertex * strandCount + strand] = weight
+      total += weight
+    }
+    let rootY = 0
+    let tipY = 0
+    if (total > 1e-6) {
+      for (let strand = 0; strand < strandCount; strand += 1) {
+        const weight = strandWeights[vertex * strandCount + strand] / total
+        strandWeights[vertex * strandCount + strand] = weight
+        rootY += weight * strands[strand].rootY
+        tipY += weight * strands[strand].tipY
+      }
+    } else {
+      strandWeights[vertex * strandCount] = 1
+      rootY = strands[0].rootY
+      tipY = strands[0].tipY
+    }
+    alongStrand[vertex] = clamp((y - rootY) / Math.max(1, tipY - rootY), 0, 1)
+  }
+  let bangWeights: Float32Array | null = null
+  if (frontHair) {
+    const faceWidth = face.x1 - face.x0
+    const leftSplit = face.cx - faceWidth * 0.22
+    const rightSplit = face.cx + faceWidth * 0.22
+    bangWeights = new Float32Array(vertexCount * 3)
+    for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+      const x = rest[vertex * 2]
+      const left = smoothstep((x - leftSplit) / 36 + 0.5)
+      const right = smoothstep((x - rightSplit) / 36 + 0.5)
+      bangWeights[vertex * 3] = 1 - left
+      bangWeights[vertex * 3 + 1] = left * (1 - right)
+      bangWeights[vertex * 3 + 2] = right
+    }
+  }
+  return {
+    frontHair,
+    strandWeights,
+    alongStrand,
+    bangWeights,
+    springs: strands.map((_, index) => ({
+      stiff: { x: 0, v: 0, dx: 0 },
+      soft: { x: 0, v: 0, dx: 0 },
+      phase: index * 1.37 + layerZ,
+    })),
+  }
 }
 
-function integrateSpring(
+function stepHairSpring(
   spring: HairSpring,
-  targetX: number,
-  targetY: number,
+  target: number,
   stiffness: number,
   damping: number,
   pull: number,
   dt: number,
 ): void {
-  spring.vx += -(spring.x - targetX) * pull * dt * stiffness * 0.02 - spring.vx * damping * dt
-  spring.vy += -(spring.y - targetY) * pull * dt * stiffness * 0.02 - spring.vy * damping * dt
-  spring.x += spring.vx * dt
-  spring.y += spring.vy * dt
+  const acceleration = -stiffness * (spring.x - target) - damping * spring.v
+  spring.v += acceleration * dt
+  spring.x += spring.v * dt
+  spring.dx = -(spring.x - target) * pull
 }
 
-function nearestStrand(
-  strands: StrandState[],
-  layerIndex: number,
-  x: number,
-): StrandState | null {
-  let best: StrandState | null = null
-  let bestDistance = Number.POSITIVE_INFINITY
-  for (const strand of strands) {
-    if (strand.layer !== layerIndex) continue
-    const distance = Math.abs(strand.strand.x - x)
-    if (distance < bestDistance) {
-      best = strand
-      bestDistance = distance
-    }
-  }
-  return best
+function smoothstep(value: number): number {
+  const bounded = clamp(value, 0, 1)
+  return bounded * bounded * (3 - 2 * bounded)
 }
 
 function packVertices(positions: Float32Array, uvs: Float32Array): Float32Array {
@@ -572,13 +954,4 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value))
-}
-
-function lerp(from: number, to: number, amount: number): number {
-  return from + (to - from) * amount
-}
-
-function smootherstep(value: number): number {
-  const bounded = clamp(value, 0, 1)
-  return bounded * bounded * bounded * (bounded * (bounded * 6 - 15) + 10)
 }

@@ -2,7 +2,7 @@ import type { CompanionRigManifest } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { RIG_IR_VERSION } from './contract'
-import { isRigManifest } from './types'
+import { isLiveCompanionManifest, isRigManifest } from './types'
 
 const manifest: CompanionRigManifest = {
   schemaVersion: 1,
@@ -42,34 +42,65 @@ const manifest: CompanionRigManifest = {
       indices: [0, 1, 2],
     },
   ],
-  clips: [
-    {
-      id: 'idle',
-      duration: 1,
-      looping: true,
-      tracks: [
-        {
-          boneId: 'root',
-          keyframes: [
-            {
-              time: 0,
-              transform: {
-                translation: { x: 0, y: 0 },
-                rotation: 0,
-                scale: { x: 1, y: 1 },
-              },
-            },
-          ],
-        },
-      ],
-    },
-  ],
-  defaultClip: 'idle',
 }
 
 test('accepts bounded manifests with parent-after-child bones', () => {
   assert.equal(isRigManifest(manifest), true)
 })
+
+test('rejects leftover clip-stack fields', () => {
+  const leftover = structuredClone(manifest) as Record<string, unknown>
+  leftover.clips = []
+  assert.equal(isRigManifest(leftover), false)
+  delete leftover.clips
+  leftover.defaultClip = 'idle'
+  assert.equal(isRigManifest(leftover), false)
+  delete leftover.defaultClip
+  leftover.standardClipLibraryVersion = 2
+  assert.equal(isRigManifest(leftover), false)
+})
+
+test('only treats a layered Anime2.5D package as a live site face', () => {
+  assert.equal(isLiveCompanionManifest(manifest), false)
+  const live = structuredClone(manifest)
+  live.anime25dPlayback = {
+    kind: 'anime-2.5d-rig',
+    version: 1,
+    engine: 'Anime2.5DRig',
+    engineUrl: 'https://github.com/852wa/Anime2.5DRig',
+    license: 'MIT',
+    copyright: 'Copyright (c) 2026 hakoniwa',
+    pixelCanvas: { width: 1152, height: 1536 },
+    layers: [
+      {
+        name: 'face',
+        role: 'face',
+        depth: 0,
+        group: 'head',
+        phys: null,
+        fade: null,
+        side: null,
+        x: 0,
+        y: 0,
+        w: 1,
+        h: 1,
+        atlas: { x: 0, y: 0, w: 1, h: 1 },
+        strands: [],
+      },
+    ],
+    anchors: {
+      face: { x0: 0, y0: 0, x1: 1, y1: 1, cx: 0.5, cy: 0.3 },
+      neckPivot: { x: 0.5, y: 0.45 },
+      neckTop: 0.4,
+      neckBottom: 0.5,
+      bodyPivot: { x: 0.5, y: 0.7 },
+      mouth: { x0: 0.4, y0: 0.4, x1: 0.6, y1: 0.5, cx: 0.5, cy: 0.45 },
+      faceScale: 1,
+    },
+  }
+  assert.equal(isLiveCompanionManifest(live), true)
+})
+
 
 test('validates portrait generation provenance when present', () => {
   const generated = structuredClone(manifest)
@@ -179,61 +210,6 @@ test('rejects invalid character collision volumes', () => {
     ],
   }
   assert.equal(isRigManifest(spatial), false)
-})
-
-test('accepts a positive standard action library version and rejects zero', () => {
-  const versioned = structuredClone(manifest)
-  versioned.standardClipLibraryVersion = 2
-  assert.equal(isRigManifest(versioned), true)
-  versioned.standardClipLibraryVersion = 0
-  assert.equal(isRigManifest(versioned), false)
-})
-
-test('validates clip-owned expression presentation intent', () => {
-  const presented = structuredClone(manifest)
-  presented.clips[0].presentation = {
-    expression: 'happy',
-    keyframes: [
-      { progress: 0, expression: 'neutral' },
-      { progress: 0.25, expression: 'happy' },
-      { progress: 1, expression: 'neutral' },
-    ],
-  }
-  assert.equal(isRigManifest(presented), true)
-  presented.clips[0].presentation.keyframes![1].progress = 0
-  assert.equal(isRigManifest(presented), false)
-  presented.clips[0].presentation.keyframes![1].progress = 0.25
-  presented.clips[0].presentation.keyframes![1] = { progress: 0.25 }
-  assert.equal(isRigManifest(presented), false)
-  presented.clips[0].presentation = {}
-  assert.equal(isRigManifest(presented), false)
-  presented.clips[0].presentation = {
-    expression: 'invented' as 'happy',
-  }
-  assert.equal(isRigManifest(presented), false)
-})
-
-test('validates ordered normalized clip events', () => {
-  const eventful = structuredClone(manifest)
-  eventful.clips[0].events = [
-    { progress: 0.25, kind: 'contact-left', intensity: 0.6 },
-    { progress: 0.75, kind: 'contact-right', intensity: 0.7 },
-  ]
-  assert.equal(isRigManifest(eventful), true)
-  eventful.clips[0].events.reverse()
-  assert.equal(isRigManifest(eventful), false)
-  eventful.clips[0].events = [
-    { progress: 0.5, kind: 'Contact Unsafe', intensity: 0.6 },
-  ]
-  assert.equal(isRigManifest(eventful), false)
-})
-
-test('validates clip-owned generated amplitude safety', () => {
-  const generated = structuredClone(manifest)
-  generated.clips[0].generation = { maxAmplitudeScale: 1.02 }
-  assert.equal(isRigManifest(generated), true)
-  generated.clips[0].generation.maxAmplitudeScale = 1.4
-  assert.equal(isRigManifest(generated), false)
 })
 
 test('rejects cyclic bone hierarchies', () => {

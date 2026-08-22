@@ -13,7 +13,6 @@ test('replacement regression gate reports only lost current capabilities', () =>
     lipSync: true,
     gaze: true,
     secondaryMotion: true,
-    layeredActions: true,
     facialVariants: true,
     deformableSkinning: true,
     outfitAware: true,
@@ -40,7 +39,8 @@ test('replacement regression gate reports only lost current capabilities', () =>
 })
 
 test('Anime2.5DRig replacement preserves FaceRig capability gates', () => {
-  assert.equal(anime25DAbandonsCapability('presentationCoverage'), true)
+  assert.equal(anime25DAbandonsCapability('presentationCoverage'), false)
+  assert.equal(anime25DAbandonsCapability('collisionAware'), true)
   assert.equal(anime25DAbandonsCapability('gaze'), false)
   const current = {
     profile: 'face-rig' as const,
@@ -51,7 +51,6 @@ test('Anime2.5DRig replacement preserves FaceRig capability gates', () => {
       lipSync: true,
       gaze: true,
       secondaryMotion: true,
-      layeredActions: true,
       facialVariants: true,
       deformableSkinning: true,
       outfitAware: true,
@@ -65,20 +64,13 @@ test('Anime2.5DRig replacement preserves FaceRig capability gates', () => {
     capabilities: {
       ...current.capabilities,
       gaze: false,
-      layeredActions: false,
       collisionAware: false,
-      presentationCoverage: false,
     },
   }
   assert.deepEqual(rigCapabilityRegressions(current, candidate), ['gaze'])
 })
 
 test('Anime2.5DRig diagnostics do not score retired limb gates', () => {
-  const transform = {
-    translation: { x: 0, y: 0 },
-    rotation: 0,
-    scale: { x: 1, y: 1 },
-  }
   const report = diagnoseRig({
     bones: [
       { id: 'root', parent: null },
@@ -99,13 +91,6 @@ test('Anime2.5DRig diagnostics do not score retired limb gates', () => {
       { id: 'a25d-mouth-open', slot: 'mouth', variant: 'open' },
       { id: 'a25d-mouth-close', slot: 'mouth', variant: 'closed' },
     ],
-    clips: [
-      {
-        id: 'idle',
-        looping: true,
-        tracks: [{ boneId: 'body', keyframes: [{ time: 0, transform }] }],
-      },
-    ],
   } as unknown as CompanionRigManifest)
   assert.equal(report.profile, 'anime25d')
   assert.equal(report.capabilities.facialVariants, true)
@@ -113,7 +98,6 @@ test('Anime2.5DRig diagnostics do not score retired limb gates', () => {
     report.issues.some((item) =>
       [
         'missing-spatial-profile',
-        'missing-talking',
         'incomplete-presentation-coverage',
       ].includes(item.code),
     ),
@@ -132,14 +116,12 @@ test('reports semantic animation capabilities and missing production features', 
       { id: 'front-hair' },
     ],
     parts: [],
-    clips: [{ id: 'idle', tracks: [] }],
   } as CompanionRigManifest)
   assert.equal(report.capabilities.lipSync, true)
   assert.equal(report.capabilities.secondaryMotion, true)
   assert.equal(report.capabilities.facialVariants, false)
   assert.equal(report.capabilities.deformableSkinning, false)
   assert.equal(report.capabilities.collisionAware, false)
-  assert.ok(report.issues.some((item) => item.code === 'empty-clip'))
   assert.ok(
     report.issues.some((item) => item.code === 'missing-spatial-profile'),
   )
@@ -157,7 +139,6 @@ test('reports character-local head and torso volumes as collision-aware', () => 
       { id: 'head', parent: 'body' },
     ],
     parts: [],
-    clips: [{ id: 'idle', tracks: [] }],
     spatialProfile: {
       collisionVolumes: [
         { id: 'head', boneId: 'head' },
@@ -176,7 +157,6 @@ test('reports unsafe presentation slot assets before runtime rendering', () => {
   const missingFallback = diagnoseRig({
     bones: [],
     parts: [{ slot: 'mouth', variant: 'open' }],
-    clips: [],
   } as unknown as CompanionRigManifest)
   assert.ok(
     missingFallback.issues.some(
@@ -189,39 +169,13 @@ test('reports unsafe presentation slot assets before runtime rendering', () => {
       { slot: 'mouth', variant: 'closed' },
       { slot: 'mouth', variant: 'invented' },
     ],
-    clips: [],
   } as unknown as CompanionRigManifest)
   assert.ok(
     unknown.issues.some((item) => item.code === 'unknown-presentation-variant'),
   )
 })
 
-test('distinguishes safe fallback from complete action presentation support', () => {
-  const report = diagnoseRig({
-    bones: [],
-    parts: [{ slot: 'head-expression', variant: 'neutral' }],
-    clips: [
-      {
-        id: 'greet',
-        tracks: [],
-        presentation: { expression: 'happy' },
-      },
-    ],
-  } as unknown as CompanionRigManifest)
-  assert.equal(report.capabilities.presentationCoverage, false)
-  assert.ok(
-    report.issues.some(
-      (item) => item.code === 'incomplete-presentation-coverage',
-    ),
-  )
-})
-
-test('recognizes split facial textures and does not flag blink swaps as popping', () => {
-  const transform = (scaleY: number) => ({
-    translation: { x: 0, y: 0 },
-    rotation: 0,
-    scale: { x: 1, y: scaleY },
-  })
+test('recognizes split facial textures', () => {
   const report = diagnoseRig({
     bones: [
       { id: 'root' },
@@ -240,34 +194,8 @@ test('recognizes split facial textures and does not flag blink swaps as popping'
       { slot: 'mouth', variant: 'wide' },
       { slot: 'mouth', variant: 'round' },
     ],
-    clips: [
-      {
-        id: 'idle',
-        looping: true,
-        tracks: [
-          { boneId: 'body', keyframes: [{ time: 0, transform: transform(1) }] },
-        ],
-      },
-      {
-        id: 'blink',
-        looping: false,
-        tracks: [
-          {
-            boneId: 'left-eye',
-            keyframes: [
-              { time: 0, transform: transform(1) },
-              { time: 0.01, transform: transform(0) },
-            ],
-          },
-        ],
-      },
-    ],
   } as CompanionRigManifest)
   assert.equal(report.capabilities.facialVariants, true)
-  assert.equal(
-    report.issues.some((item) => item.code === 'transform-spike'),
-    false,
-  )
 })
 
 test('recognizes full-head expression frames while reporting absent split-eye gaze honestly', () => {
@@ -290,7 +218,6 @@ test('recognizes full-head expression frames while reporting absent split-eye ga
       { slot: 'mouth', variant: 'wide' },
       { slot: 'mouth', variant: 'round' },
     ],
-    clips: [{ id: 'idle', looping: true, tracks: [] }],
   } as CompanionRigManifest)
   assert.equal(report.capabilities.facialVariants, true)
   assert.equal(report.capabilities.gaze, false)
@@ -320,51 +247,10 @@ test('recognizes independently rendered iris layers as real visible gaze', () =>
       { slot: 'mouth', variant: 'wide' },
       { slot: 'mouth', variant: 'round' },
     ],
-    clips: [{ id: 'idle', looping: true, tracks: [] }],
   } as CompanionRigManifest)
   assert.equal(report.capabilities.gaze, true)
   assert.equal(
     report.issues.some((item) => item.code === 'missing-gaze'),
     false,
   )
-})
-
-test('detects discontinuous keyframes that are likely to pop', () => {
-  const report = diagnoseRig({
-    bones: [
-      { id: 'head' },
-      { id: 'body' },
-      { id: 'left-eye' },
-      { id: 'mouth' },
-    ],
-    clips: [
-      {
-        id: 'idle',
-        tracks: [
-          {
-            boneId: 'head',
-            keyframes: [
-              {
-                time: 0,
-                transform: {
-                  translation: { x: 0, y: 0 },
-                  rotation: 0,
-                  scale: { x: 1, y: 1 },
-                },
-              },
-              {
-                time: 0.01,
-                transform: {
-                  translation: { x: 0.2, y: 0 },
-                  rotation: 1,
-                  scale: { x: 1, y: 1 },
-                },
-              },
-            ],
-          },
-        ],
-      },
-    ],
-  } as CompanionRigManifest)
-  assert.ok(report.issues.some((item) => item.code === 'transform-spike'))
 })

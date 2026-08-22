@@ -18,12 +18,66 @@ import {
   RIG_IR_VERSION,
 } from './contract'
 import { inferOutfitProfileFromPartIds } from './outfit'
-import { buildAnime25DPlayback } from '../anime25drig/playback'
+import {
+  buildAnime25DPlayback,
+  remapRiggerAnchors,
+  type Anime25DRiggerAnchors,
+} from '../anime25drig/playback'
+import '../anime25drig/vendor/genericparts.js'
+import '../anime25drig/vendor/rigger.js'
+
+const Rigger = (
+  globalThis as unknown as {
+    Rigger: {
+      buildRig: (
+        psd: { width: number; height: number; children?: unknown[] },
+        opts?: { generic?: unknown },
+      ) => {
+        layers: Array<{
+          name: string
+          x: number
+          y: number
+          w: number
+          h: number
+          z: number
+          group: 'head' | 'body'
+          side: 'L' | 'R' | null
+          strands: Array<{ x: number; rootY: number; tipY: number }> | null
+          img: { width: number; height: number; data: Uint8ClampedArray }
+        }>
+        anchors: Anime25DRiggerAnchors
+      }
+      cleanPsdLayers: (psd: unknown) => unknown
+    }
+  }
+).Rigger
+
+const GenericParts = (
+  globalThis as unknown as {
+    GenericParts: {
+      get: (key: string) => {
+        width: number
+        height: number
+        data: Uint8ClampedArray
+      } | null
+    }
+  }
+).GenericParts
+
+function genericCloseParts() {
+  if (!GenericParts) return undefined
+  const eyeL = GenericParts.get('eyeL')
+  const eyeR = GenericParts.get('eyeR')
+  const mouth = GenericParts.get('mouth')
+  if (!eyeL && !mouth) return undefined
+  return { eyeL, eyeR, mouth }
+}
 
 export { ANIME25D_LAYER_DEPTH, type Anime25DLayerRole } from './anime25d'
 
-const ATLAS_SIZE = 2048
 const ATLAS_PADDING = 8
+const MAX_ATLAS_EDGE = 8192
+const MIN_ATLAS_EDGE = 256
 const ALPHA_COMPONENT_THRESHOLD = 16
 const MIN_COMPONENT_PIXELS = 40
 
@@ -35,6 +89,7 @@ interface RasterLayer {
   sourceName: string
   order: number
   side: EyeSide | null
+  group: 'head' | 'body'
   left: number
   top: number
   width: number
@@ -42,6 +97,7 @@ interface RasterLayer {
   data: Uint8ClampedArray
   slot?: 'eye-left' | 'eye-right' | 'mouth'
   variant?: 'open' | 'closed'
+  documentStrands?: HairStrand[]
 }
 
 interface PreparedLayer extends RasterLayer {
@@ -134,33 +190,33 @@ export async function prepareAnime25DRigPsd(
   onStage?: (stage: 'validated' | 'packing') => void,
   sourceGenerationFingerprint?: string,
 ): Promise<PreparedAnime25DRigImport> {
-  const sourceLayers = flattenVisibleLayers(psd.children || []).filter(
-    (layer) => validPixelData(layer.imageData),
-  )
-  const faceSource = sourceLayers.find(
-    (layer) =>
-      anime25DBaseRole(normalizeAnime25DLayerName(layer.name)) === 'face',
-  )
-  if (!faceSource || !validPixelData(faceSource.imageData)) {
+  if (!isAnime25DDocument(psd)) {
     throw new Error('Anime2.5DRig PSD 缺少必需的 face 图层')
   }
-  const cleanedFace = cleanedRaster(faceSource)
-  const faceVisible = rasterBounds(cleanedFace)
-  if (!faceVisible) throw new Error('face 图层没有可见像素')
-  const faceCenter = rasterCentroid(cleanedFace) || {
-    x: cleanedFace.left + cleanedFace.width / 2,
-    y: cleanedFace.top + cleanedFace.height / 2,
-  }
+  const working = flattenPsdForRigger(psd)
+  Rigger.cleanPsdLayers(working)
+  const rig = Rigger.buildRig(working, { generic: genericCloseParts() })
   onStage?.('validated')
-  const layers = buildRasterLayers(sourceLayers, faceCenter.x)
+  const usedIds = new Set<string>()
+  let layers = rig.layers.map((part) => rasterFromRiggerPart(part, usedIds))
+  layers = splitHandwearIfNeeded(layers, rig.anchors.face.cx)
   assignCrossfadeSlots(layers)
   validateCharacterAssetLayers(layers)
+  const faceCenter = {
+    x: rig.anchors.face.cx,
+    y: rig.anchors.face.cy,
+  }
   if (layers.length === 0 || layers.length > MAX_RIG_PARTS) {
     throw new Error(`Anime2.5DRig 部件数量必须为 1–${MAX_RIG_PARTS}`)
   }
   const frame = contentFrame(psd, layers)
   onStage?.('packing')
-  const { atlas, layers: prepared } = await packAtlas(frame, layers)
+  const {
+    atlas,
+    layers: prepared,
+    width: packedWidth,
+    height: packedHeight,
+  } = await packAtlas(frame, layers)
   const anchors = deriveAnchors(frame, prepared, faceCenter)
   const { bones, layerHandles, secondaryBoneIds } = buildBonesAndHandles(
     prepared,
@@ -172,10 +228,7 @@ export async function prepareAnime25DRigPsd(
     frameWidth: frame.width,
     frameHeight: frame.height,
     layers: prepared,
-    faceCenter: {
-      x: (faceCenter.x - frame.x) / frame.width,
-      y: (faceCenter.y - frame.y) / frame.width,
-    },
+    anchors: remapRiggerAnchors(rig.anchors, frame),
   })
   const outfitProfile = inferOutfitProfileFromPartIds(partIds)
   const semanticBones: Record<string, string> = {
@@ -205,13 +258,9 @@ export async function prepareAnime25DRigPsd(
         ? { sourceGenerationFingerprint }
         : {}),
       canvas: { ...PORTRAIT_CANVAS },
-      atlas: { id: 'atlas', width: ATLAS_SIZE, height: ATLAS_SIZE },
+      atlas: { id: 'atlas', width: packedWidth, height: packedHeight },
       bones,
       layers: rigLayers,
-      // The backend builds only the root/body/head library for this semantic
-      // skeleton. With no arm chains, gesture clips and contact IK cannot enter.
-      clips: [],
-      defaultClip: 'idle',
       outfitProfile,
       semanticAnchors: semanticAnchors(anchors),
       semantics: {
@@ -230,6 +279,105 @@ function flattenVisibleLayers(layers: Layer[]): Layer[] {
     if (layer.hidden) continue
     if (layer.children) output.push(...flattenVisibleLayers(layer.children))
     else output.push(layer)
+  }
+  return output
+}
+
+function toRiggerLayerName(value: string): string {
+  let kebab = normalizeAnime25DLayerName(value)
+  const numbered = kebab.match(/-(\d+)$/)
+  const number = numbered?.[1]
+  if (number) kebab = kebab.slice(0, -(number.length + 1))
+  kebab = kebab.replace(/-(?:l|r|left|right)$/, '')
+  const riggerName =
+    kebab === 'front-hair'
+      ? 'front hair'
+      : kebab === 'back-hair'
+        ? 'back hair'
+        : kebab.replace(/-/g, '_')
+  return number ? `${riggerName}_${number}` : riggerName
+}
+
+function flattenPsdForRigger(psd: Psd): Psd {
+  const children = flattenVisibleLayers(psd.children || [])
+    .filter((layer) => validPixelData(layer.imageData))
+    .filter(
+      (layer) =>
+        !UPPER_BODY_IGNORED_LAYERS.has(normalizeAnime25DLayerName(layer.name)),
+    )
+    .map((layer) => {
+      const pixels = layer.imageData
+      if (!validPixelData(pixels)) return layer
+      return {
+        ...layer,
+        name: toRiggerLayerName(layer.name),
+        imageData: {
+          width: pixels.width,
+          height: pixels.height,
+          data: new Uint8ClampedArray(pixels.data),
+        },
+      }
+    })
+  return { width: psd.width, height: psd.height, children }
+}
+
+function rasterFromRiggerPart(
+  part: {
+    name: string
+    x: number
+    y: number
+    w: number
+    h: number
+    group: 'head' | 'body'
+    side: 'L' | 'R' | null
+    strands: Array<{ x: number; rootY: number; tipY: number }> | null
+    img: { width: number; height: number; data: Uint8ClampedArray }
+  },
+  usedIds: Set<string>,
+): RasterLayer {
+  const kebab = part.name.replace(/_/g, '-').replace(/ /g, '-').toLowerCase()
+  const side: EyeSide | null =
+    part.side === 'L'
+      ? 'left'
+      : part.side === 'R'
+        ? 'right'
+        : anime25DLayerSide(kebab)
+  const role = anime25DBaseRole(kebab.replace(/-(?:l|r)$/, '')) || 'unknown'
+  const preferred = side ? `${role}-${side}` : kebab.replace(/-(?:l|r)$/, '')
+  return {
+    id: uniquePartId(preferred, usedIds),
+    role,
+    sourceName: kebab,
+    order: usedIds.size,
+    side,
+    group: part.group,
+    left: part.x,
+    top: part.y,
+    width: part.w,
+    height: part.h,
+    data: part.img.data,
+    documentStrands: part.strands || undefined,
+  }
+}
+
+function splitHandwearIfNeeded(
+  layers: RasterLayer[],
+  faceCenterX: number,
+): RasterLayer[] {
+  const output: RasterLayer[] = []
+  const usedIds = new Set(layers.map((layer) => layer.id))
+  for (const layer of layers) {
+    if (layer.role !== 'handwear' || layer.side) {
+      output.push(layer)
+      continue
+    }
+    for (const side of ['right', 'left'] as const) {
+      const split = splitRasterByComponents(layer, faceCenterX, side)
+      if (!rasterBounds(split)) continue
+      split.id = uniquePartId(`handwear-${side}`, usedIds)
+      split.side = side
+      output.push(trimRaster(split))
+    }
   }
   return output
 }
@@ -260,6 +408,7 @@ function cleanedRaster(layer: Layer): RasterLayer {
     sourceName: normalizeAnime25DLayerName(layer.name),
     order: 0,
     side: null,
+    group: 'body',
     left: layer.left || 0,
     top: layer.top || 0,
     width: pixels.width,
@@ -335,7 +484,7 @@ function splitRasterByComponents(
     if (components.sizes[component] < 20) continue
     const canvasX =
       source.left + components.sumX[component] / components.sizes[component]
-    const side: EyeSide = canvasX < faceCenterX ? 'right' : 'left'
+    const side: EyeSide = canvasX < faceCenterX ? 'left' : 'right'
     if (side === anatomicalSide) keep.add(component)
   }
   for (let pixel = 0; pixel < components.labels.length; pixel += 1) {
@@ -440,24 +589,49 @@ function contentFrame(psd: Psd, layers: readonly RasterLayer[]): RigCanvasFrame 
 async function packAtlas(
   frame: RigCanvasFrame,
   layers: RasterLayer[],
-): Promise<{ atlas: Blob; layers: PreparedLayer[] }> {
+): Promise<{
+  atlas: Blob
+  layers: PreparedLayer[]
+  width: number
+  height: number
+}> {
+  const places: Array<{ x: number; y: number }> = []
+  let cursorX = ATLAS_PADDING
+  let cursorY = ATLAS_PADDING
+  let rowHeight = 0
+  let packedWidth = ATLAS_PADDING
+  let packedHeight = ATLAS_PADDING
+  for (const layer of layers) {
+    const drawWidth = Math.max(1, layer.width)
+    const drawHeight = Math.max(1, layer.height)
+    if (drawWidth + ATLAS_PADDING * 2 > MAX_ATLAS_EDGE) {
+      throw new Error(`图层 ${layer.id} 宽度超过 ${MAX_ATLAS_EDGE}`)
+    }
+    if (cursorX + drawWidth + ATLAS_PADDING > MAX_ATLAS_EDGE) {
+      cursorX = ATLAS_PADDING
+      cursorY += rowHeight + ATLAS_PADDING
+      rowHeight = 0
+    }
+    if (cursorY + drawHeight + ATLAS_PADDING > MAX_ATLAS_EDGE) {
+      throw new Error(`图层原尺寸无法装入 ${MAX_ATLAS_EDGE} 画布`)
+    }
+    places.push({ x: cursorX, y: cursorY })
+    cursorX += drawWidth + ATLAS_PADDING
+    rowHeight = Math.max(rowHeight, drawHeight)
+    packedWidth = Math.max(packedWidth, cursorX)
+    packedHeight = Math.max(packedHeight, cursorY + drawHeight + ATLAS_PADDING)
+  }
+  packedWidth = Math.max(MIN_ATLAS_EDGE, packedWidth)
+  packedHeight = Math.max(MIN_ATLAS_EDGE, packedHeight)
   const atlas = document.createElement('canvas')
-  atlas.width = ATLAS_SIZE
-  atlas.height = ATLAS_SIZE
+  atlas.width = packedWidth
+  atlas.height = packedHeight
   const context = requiredContext(atlas)
   const layerCanvas = document.createElement('canvas')
-  const grid = Math.ceil(Math.sqrt(layers.length))
-  const cellSize = Math.floor(ATLAS_SIZE / grid)
   const prepared: PreparedLayer[] = []
   for (const [index, layer] of layers.entries()) {
-    const available = cellSize - ATLAS_PADDING * 2
-    const scale = Math.min(available / layer.width, available / layer.height, 1)
-    const drawWidth = Math.max(1, Math.round(layer.width * scale))
-    const drawHeight = Math.max(1, Math.round(layer.height * scale))
-    const cellX = (index % grid) * cellSize
-    const cellY = Math.floor(index / grid) * cellSize
-    const drawX = cellX + Math.floor((cellSize - drawWidth) / 2)
-    const drawY = cellY + Math.floor((cellSize - drawHeight) / 2)
+    const drawX = places[index].x
+    const drawY = places[index].y
     layerCanvas.width = layer.width
     layerCanvas.height = layer.height
     const imageBytes = new Uint8ClampedArray(layer.data.length)
@@ -467,7 +641,7 @@ async function packAtlas(
       0,
       0,
     )
-    context.drawImage(layerCanvas, drawX, drawY, drawWidth, drawHeight)
+    context.drawImage(layerCanvas, drawX, drawY)
     const bounds = {
       x: (layer.left - frame.x) / frame.width,
       y: (layer.top - frame.y) / frame.width,
@@ -478,14 +652,18 @@ async function packAtlas(
       ...layer,
       bounds,
       textureBounds: {
-        x: drawX / ATLAS_SIZE,
-        y: drawY / ATLAS_SIZE,
-        width: drawWidth / ATLAS_SIZE,
-        height: drawHeight / ATLAS_SIZE,
+        x: drawX / packedWidth,
+        y: drawY / packedHeight,
+        width: layer.width / packedWidth,
+        height: layer.height / packedHeight,
       },
       strands:
         layer.role === 'front-hair' || layer.role === 'back-hair'
-          ? detectHairStrands(layer, frame)
+          ? (layer.documentStrands || []).map((strand) => ({
+              x: (strand.x - frame.x) / frame.width,
+              rootY: (strand.rootY - frame.y) / frame.width,
+              tipY: (strand.tipY - frame.y) / frame.width,
+            }))
           : [],
     })
   }
@@ -496,7 +674,7 @@ async function packAtlas(
       'image/png',
     ),
   )
-  return { atlas: blob, layers: prepared }
+  return { atlas: blob, layers: prepared, width: packedWidth, height: packedHeight }
 }
 
 function deriveAnchors(
@@ -928,10 +1106,10 @@ function detectHairStrands(
   const numbered = /-\d+$/.test(layer.sourceName)
   const wanted = numbered
     ? clampInt(Math.round(layer.width / 110), 2, 6)
-    : Math.min(6, Math.max(2, Math.round(layer.width / 90)))
+    : 6
   const peaks = findProfilePeaks(
     smoothed,
-    Math.max(12, layer.width / (wanted * 1.8)),
+    Math.max(30, Math.round(layer.width / (wanted * 1.6))),
   )
   const xs = peaks.slice(0, wanted)
   while (xs.length < wanted) {
@@ -992,7 +1170,7 @@ function findProfilePeaks(values: Float32Array, minDistance: number): number[] {
       rightMin = Math.min(rightMin, values[right])
     }
     const prominence = values[index] - Math.max(leftMin, rightMin)
-    if (prominence >= 4) candidates.push({ x: index, prominence })
+    if (prominence >= 10) candidates.push({ x: index, prominence })
   }
   candidates.sort((left, right) => right.prominence - left.prominence)
   const selected: number[] = []

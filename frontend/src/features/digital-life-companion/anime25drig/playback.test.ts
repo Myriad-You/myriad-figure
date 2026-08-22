@@ -1,40 +1,75 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { blinkClosure } from './player'
-import { buildAnime25DPlayback } from './playback'
+import {
+  buildAnime25DPlayback,
+  remapRiggerAnchors,
+  type Anime25DPlaybackBuildLayer,
+} from './playback'
 import { isAnime25DPlayback } from './types'
 
-describe('Anime2.5DRig playback', () => {
-  it('matches upstream blink close/hold/open phases', () => {
-    assert.equal(blinkClosure(0), 0)
-    assert.ok(blinkClosure(0.04) > 0.4)
-    assert.equal(blinkClosure(0.2), 1)
-    assert.ok(blinkClosure(0.5) < 0.6)
-    assert.equal(blinkClosure(0.7), 0)
-  })
+function layer(
+  partial: Omit<Anime25DPlaybackBuildLayer, 'textureBounds' | 'strands' | 'group'> &
+    Partial<Pick<Anime25DPlaybackBuildLayer, 'textureBounds' | 'strands' | 'group'>>,
+): Anime25DPlaybackBuildLayer {
+  return {
+    group: 'head',
+    textureBounds: { x: 0, y: 0, width: 0.2, height: 0.2 },
+    strands: [],
+    ...partial,
+  }
+}
 
+function anchorsFor(width: number, height: number) {
+  return {
+    face: { x0: 230, y0: 92, x1: 538, y1: 368, cx: 384, cy: 246 },
+    neckPivot: { x: 384, y: 390 },
+    neckTop: 368,
+    neckBottom: 428,
+    bodyPivot: { x: 384, y: height },
+    mouth: { x0: 350, y0: 300, x1: 418, y1: 330, cx: 384, cy: 315 },
+    faceScale: 308 / 333,
+    eyeL: {
+      x0: 260,
+      y0: 140,
+      x1: 320,
+      y1: 180,
+      icx: 290,
+      icy: 160,
+      closeY: 168,
+    },
+    eyeR: {
+      x0: 448,
+      y0: 140,
+      x1: 508,
+      y1: 180,
+      icx: 478,
+      icy: 160,
+      closeY: 168,
+    },
+  }
+}
+
+describe('Anime2.5DRig playback', () => {
   it('builds a credited playback document from face-rig layers', () => {
     const playback = buildAnime25DPlayback({
       frameWidth: 768,
       frameHeight: 1024,
-      faceCenter: { x: 0.5, y: 0.32 },
+      anchors: anchorsFor(768, 1024),
       layers: [
-        {
+        layer({
           id: 'face',
           role: 'face',
           side: null,
           bounds: { x: 0.3, y: 0.12, width: 0.4, height: 0.36 },
-          textureBounds: { x: 0, y: 0, width: 0.2, height: 0.2 },
-          strands: [],
-        },
-        {
+        }),
+        layer({
           id: 'front-hair',
           role: 'front-hair',
           side: null,
           bounds: { x: 0.28, y: 0.08, width: 0.44, height: 0.3 },
           textureBounds: { x: 0.2, y: 0, width: 0.2, height: 0.2 },
           strands: [{ x: 0.4, rootY: 0.1, tipY: 0.28 }],
-        },
+        }),
       ],
     })
     assert.equal(isAnime25DPlayback(playback), true)
@@ -42,6 +77,95 @@ describe('Anime2.5DRig playback', () => {
     assert.equal(playback.engineUrl, 'https://github.com/852wa/Anime2.5DRig')
     assert.equal(playback.license, 'MIT')
     assert.equal(playback.layers[1]?.phys, 'hair')
+    assert.equal(playback.layers[1]?.strands.length, 1)
+    assert.equal(playback.layers[0]?.z, 0)
+    assert.equal(playback.layers[1]?.z, 1)
+    assert.equal(playback.anchors.eyeL?.closeY, 168)
+    assert.equal(playback.anchors.bodyPivot.y, 1024)
     assert.ok(playback.anchors.faceScale > 0)
+  })
+
+  it('keeps independent front and rear hair layers', () => {
+    const playback = buildAnime25DPlayback({
+      frameWidth: 768,
+      frameHeight: 1024,
+      anchors: anchorsFor(768, 1024),
+      layers: [
+        layer({
+          id: 'back-hair',
+          role: 'back-hair',
+          side: null,
+          group: 'head',
+          bounds: { x: 0.2, y: 0.06, width: 0.6, height: 0.5 },
+          textureBounds: { x: 0, y: 0.2, width: 0.2, height: 0.2 },
+          strands: [
+            { x: 0.3, rootY: 0.08, tipY: 0.5 },
+            { x: 0.5, rootY: 0.08, tipY: 0.48 },
+            { x: 0.7, rootY: 0.08, tipY: 0.52 },
+          ],
+        }),
+        layer({
+          id: 'face',
+          role: 'face',
+          side: null,
+          bounds: { x: 0.3, y: 0.12, width: 0.4, height: 0.36 },
+        }),
+        layer({
+          id: 'front-hair',
+          role: 'front-hair',
+          side: null,
+          bounds: { x: 0.28, y: 0.08, width: 0.44, height: 0.3 },
+          textureBounds: { x: 0.2, y: 0, width: 0.2, height: 0.2 },
+          strands: [
+            { x: 0.35, rootY: 0.1, tipY: 0.26 },
+            { x: 0.5, rootY: 0.09, tipY: 0.24 },
+            { x: 0.65, rootY: 0.1, tipY: 0.27 },
+          ],
+        }),
+      ],
+    })
+    const front = playback.layers.find((item) => item.role === 'front-hair')
+    const back = playback.layers.find((item) => item.role === 'back-hair')
+    assert.equal(front?.phys, 'hair')
+    assert.equal(back?.phys, 'hair')
+    assert.equal(front?.group, 'head')
+    assert.equal(back?.group, 'head')
+    assert.equal(front?.strands.length, 3)
+    assert.equal(back?.strands.length, 3)
+    assert.ok((front?.depth ?? 0) > (back?.depth ?? 1))
+    assert.equal(back?.z, 0)
+    assert.equal(front?.z, 2)
+  })
+
+  it('remaps rigger anchors into the 3:4 frame without rebuilding them', () => {
+    const remapped = remapRiggerAnchors(
+      {
+        face: { cx: 128, cy: 80, x0: 60, x1: 196, y0: 30, y1: 140 },
+        eyeL: {
+          x0: 80,
+          y0: 70,
+          x1: 110,
+          y1: 88,
+          icx: 95,
+          icy: 79,
+          closeY: 78,
+        },
+        mouth: { x0: 108, x1: 148, y0: 112, y1: 130, cx: 128, cy: 121 },
+        neckPivot: { cx: 130, cy: 160 },
+        neckTop: 140,
+        neckBottom: 180,
+        bodyPivot: { cx: 130, cy: 256 },
+        faceScale: 136 / 333,
+      },
+      { x: 16, y: -20, width: 240, height: 320 },
+    )
+    assert.equal(remapped.face.cx, 112)
+    assert.equal(remapped.face.y0, 50)
+    assert.equal(remapped.eyeL?.closeY, 98)
+    assert.equal(remapped.mouth.cy, 141)
+    assert.equal(remapped.neckPivot.x, 114)
+    assert.equal(remapped.neckPivot.y, 180)
+    assert.deepEqual(remapped.bodyPivot, { x: 114, y: 320 })
+    assert.equal(remapped.faceScale, 136 / 333)
   })
 })
