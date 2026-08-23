@@ -1,4 +1,13 @@
+import type { CompanionRigManifest } from '../rig/types'
+import type { ChestWeightField } from './chestPhysics'
 import type { Anime25DPlayback, Anime25DPlaybackLayer } from './types'
+import {
+  buildChestWeightField,
+  chestMotionTarget,
+  createChestSpringState,
+  sampleChestWeight,
+  stepChestSpring,
+} from './chestPhysics'
 import { frontHairUpperParallaxScale } from './hairPhysics'
 
 const VERTEX_SHADER = `#version 300 es
@@ -95,6 +104,7 @@ interface GpuLayer {
   indexBuffer: WebGLBuffer
   indexCount: number
   texture: WebGLTexture
+  chestWeights: Float32Array | null
   frontHair: boolean
   frontHairParallaxScale: Float32Array | null
   strandWeights: Float32Array | null
@@ -227,13 +237,19 @@ export class Anime25DPlayer {
   private talkTgt = 0
   private nextTalkState = 0
   private nextSyl = 0
-  private readonly bounce = { x: 0, v: 0, dy: 0 }
+  private readonly chest = createChestSpringState()
+  private readonly chestTarget = { x: 0, y: 0 }
+  private readonly chestWeightField: ChestWeightField | null
   private readonly mouse = { x: 0, y: 0, inside: false }
   private disposed = false
   private viewWidth = 1
   private viewHeight = 1
 
-  constructor(canvas: HTMLCanvasElement, playback: Anime25DPlayback) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    playback: Anime25DPlayback,
+    rigManifest?: CompanionRigManifest,
+  ) {
     const gl = canvas.getContext('webgl2', {
       alpha: true,
       premultipliedAlpha: true,
@@ -243,6 +259,7 @@ export class Anime25DPlayer {
     if (!gl) throw new Error('WebGL2 is required for Anime2.5DRig playback')
     this.gl = gl
     this.playback = playback
+    this.chestWeightField = buildChestWeightField(rigManifest)
     this.program = compileProgram(gl)
     this.viewLocation = requiredUniform(gl, this.program, 'u_view')
     this.opacityLocation = requiredUniform(gl, this.program, 'u_opacity')
@@ -438,12 +455,8 @@ export class Anime25DPlayer {
     const { anchors } = this.playback
     const faceScale = anchors.faceScale
     const e = this.current
-    const breath = 0.5 + 0.5 * Math.sin((this.time * Math.PI * 2) / 3.4)
-    const bustTgt = (breath * 3.0 - e.angleY * 6.0 + e.body * 4.0) * faceScale
-    const bounceAccel = -140 * (this.bounce.x - bustTgt) - 4.2 * this.bounce.v
-    this.bounce.v += bounceAccel * dt
-    this.bounce.x += this.bounce.v * dt
-    this.bounce.dy = -(this.bounce.x - bustTgt) * 3.0
+    const chestTarget = chestMotionTarget(e, faceScale, this.chestTarget)
+    stepChestSpring(this.chest, chestTarget.x, chestTarget.y, dt)
     if (!e.phys) return
     const headDX =
       (e.angleX * 14 + e.angleZ * 0.07 * (anchors.neckPivot.y - anchors.face.cy)) *
@@ -492,6 +505,12 @@ export class Anime25DPlayer {
       const vertexCount = rest.length / 2
       const source = layer.source
       const bn = layerBaseName(source.role)
+      const isTopwear = bn === 'topwear'
+      const chestCenterY = chestCy + e.bustY * 70 * fs
+      const chestOffsetX = this.chest.offsetX * e.bust
+      const chestOffsetY = this.chest.offsetY * e.bust
+      const inverseChestRx = 1 / chestRx
+      const inverseChestRy = 1 / chestRy
       const eye = source.side === 'L' ? A.eyeL : source.side === 'R' ? A.eyeR : undefined
       const vOpen = source.side === 'L' ? e.eyeOpenL : e.eyeOpenR
       const bcx = source.x + source.w / 2
@@ -610,18 +629,22 @@ export class Anime25DPlayer {
               e.angleY * depthOffset * (y - A.face.cy) * 0.05)
         }
         y -= (source.group === 'body' ? breath * 2.0 : breathHead * 1.6) * fs
-        if (bn === 'topwear' && y < chestCy) {
+        if (isTopwear && y < chestCy) {
           y -=
             breath *
             2.2 *
             fs *
             smoothstep((chestCy - y) / (chestRy * 2))
         }
-        if (bn === 'topwear') x = npx + (x - npx) * (1 + breath * 0.003)
-        if (bn === 'topwear') {
-          const gx = (x - chestCx) / chestRx
-          const gy = (y - (chestCy + e.bustY * 70 * fs)) / chestRy
-          y += this.bounce.dy * e.bust * Math.exp(-(gx * gx + gy * gy))
+        if (isTopwear) x = npx + (x - npx) * (1 + breath * 0.003)
+        if (isTopwear && (chestOffsetX !== 0 || chestOffsetY !== 0)) {
+          const gx = (x - chestCx) * inverseChestRx
+          const gy = (y - chestCenterY) * inverseChestRy
+          const skinWeight = layer.chestWeights?.[vertex] ?? 1
+          const chestWeight =
+            skinWeight * Math.exp(-(gx * gx + gy * gy))
+          x += chestOffsetX * chestWeight
+          y += chestOffsetY * chestWeight
         }
         if (bn === 'handwear') {
           const w = smoothstep(((y - source.y) / source.h) * 1.15)
@@ -772,6 +795,14 @@ export class Anime25DPlayer {
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW)
     gl.bindVertexArray(null)
     const vertexCount = (cols + 1) * (rows + 1)
+    const chestWeights =
+      source.role === 'topwear' && this.chestWeightField
+        ? samplePlaybackChestWeights(
+            this.chestWeightField,
+            rest,
+            this.playback.pixelCanvas.width,
+          )
+        : null
     const hair = attachHairPhysics(
       source,
       rest,
@@ -794,9 +825,27 @@ export class Anime25DPlayer {
       indexBuffer,
       indexCount: indices.length,
       texture: cropLayerTexture(gl, atlasImage, source),
+      chestWeights,
       ...hair,
     }
   }
+}
+
+function samplePlaybackChestWeights(
+  field: ChestWeightField,
+  rest: Float32Array,
+  frameWidth: number,
+): Float32Array {
+  const scale = Math.max(1, frameWidth)
+  const weights = new Float32Array(rest.length / 2)
+  for (let vertex = 0; vertex < weights.length; vertex += 1) {
+    weights[vertex] = sampleChestWeight(
+      field,
+      rest[vertex * 2] / scale,
+      rest[vertex * 2 + 1] / scale,
+    )
+  }
+  return weights
 }
 
 function cropLayerTexture(
