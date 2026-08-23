@@ -3,10 +3,68 @@ import test from 'node:test'
 import {
   buildChestWeightField,
   chestMotionTarget,
+  chestProfileUsesGeometryWeights,
   createChestSpringState,
+  resolveChestMotionScale,
   sampleChestWeight,
   stepChestSpring,
 } from './chestPhysics'
+
+test('uses one authoritative chest region instead of intersecting AI with geometry', () => {
+  assert.equal(
+    chestProfileUsesGeometryWeights({ enabled: true, source: 'ai-vision' }),
+    false,
+  )
+  assert.equal(
+    chestProfileUsesGeometryWeights({
+      enabled: true,
+      source: 'geometry-fallback',
+    }),
+    true,
+  )
+  assert.equal(
+    chestProfileUsesGeometryWeights({
+      enabled: false,
+      source: 'gender-policy',
+    }),
+    false,
+  )
+  assert.equal(chestProfileUsesGeometryWeights(undefined), true)
+})
+
+test('restrains small AI profiles with a smooth backward-compatible size cap', () => {
+  const resolve = (visibleScale: number, motionScale = 1.14) =>
+    resolveChestMotionScale({
+      enabled: true,
+      source: 'ai-vision',
+      visibleScale,
+      motionScale,
+    })
+
+  assert.ok(Math.abs(resolve(0.35, 0.958) - 0.4585) < 0.001)
+  assert.ok(resolve(0.2) < resolve(0.35))
+  assert.ok(resolve(0.35) < resolve(0.5))
+  assert.ok(resolve(0.5) < resolve(0.8))
+  assert.equal(resolve(0.35, 0.3), 0.3)
+  assert.equal(
+    resolveChestMotionScale({
+      enabled: true,
+      source: 'geometry-fallback',
+      visibleScale: 0.35,
+      motionScale: 1,
+    }),
+    1,
+  )
+  assert.equal(
+    resolveChestMotionScale({
+      enabled: false,
+      source: 'gender-policy',
+      visibleScale: 0,
+      motionScale: 0,
+    }),
+    0,
+  )
+})
 
 test('maps resolved horizontal and vertical pose travel to independent chest axes', () => {
   const reusableTarget = { x: 0, y: 0 }

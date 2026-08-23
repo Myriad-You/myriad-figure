@@ -6,7 +6,9 @@ import { AmbientMotionController } from './ambientMotion'
 import {
   buildChestWeightField,
   chestMotionTarget,
+  chestProfileUsesGeometryWeights,
   createChestSpringState,
+  resolveChestMotionScale,
   sampleChestWeight,
   stepChestSpring,
 } from './chestPhysics'
@@ -240,6 +242,7 @@ export class Anime25DPlayer {
   private nextSyl = 0
   private readonly chest = createChestSpringState()
   private readonly chestTarget = { x: 0, y: 0 }
+  private readonly chestMotionScale: number
   private readonly chestWeightField: ChestWeightField | null
   private readonly mouse = { x: 0, y: 0, inside: false }
   private disposed = false
@@ -260,7 +263,12 @@ export class Anime25DPlayer {
     if (!gl) throw new Error('WebGL2 is required for Anime2.5DRig playback')
     this.gl = gl
     this.playback = playback
-    this.chestWeightField = buildChestWeightField(rigManifest)
+    this.chestMotionScale = resolveChestMotionScale(playback.chestProfile)
+    this.chestWeightField = chestProfileUsesGeometryWeights(
+      playback.chestProfile,
+    )
+      ? buildChestWeightField(rigManifest)
+      : null
     this.program = compileProgram(gl)
     this.viewLocation = requiredUniform(gl, this.program, 'u_view')
     this.opacityLocation = requiredUniform(gl, this.program, 'u_opacity')
@@ -518,8 +526,7 @@ export class Anime25DPlayer {
     const chestCy = chestProfile?.centerY ?? legacyChestCy
     const chestRx = chestProfile?.radiusX ?? (A.face.x1 - A.face.x0) * 0.6
     const chestRy = chestProfile?.radiusY ?? (A.face.y1 - A.face.y0) * 0.45
-    const chestMotionScale =
-      chestProfile?.enabled === false ? 0 : (chestProfile?.motionScale ?? 1)
+    const chestMotionScale = this.chestMotionScale
     const mHalfW = (A.mouth.x1 - A.mouth.x0) / 2
     for (const layer of this.layers) {
       const rest = layer.rest

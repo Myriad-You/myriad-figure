@@ -1,9 +1,15 @@
+import type { Anime25DChestProfile } from './types'
+
 const CHEST_BONE_ID = 'a25d-chest'
 const TOPWEAR_PART_ID = 'a25d-topwear'
 const COORDINATE_EPSILON = 1e-5
 const MAX_SPRING_STEP_SECONDS = 1 / 120
 const HORIZONTAL_SPRING = { stiffness: 68, damping: 7.4 } as const
 const VERTICAL_SPRING = { stiffness: 82, damping: 8 } as const
+const MIN_AI_MOTION_SCALE = 0.22
+const MAX_AI_MOTION_SCALE = 1.14
+const AI_MOTION_RAMP_START = 0.1
+const AI_MOTION_RAMP_END = 0.85
 
 interface ChestMotionDriver {
   angleX: number
@@ -35,6 +41,48 @@ export interface ChestWeightField {
 export interface ChestMotionTarget {
   x: number
   y: number
+}
+
+type ChestWeightProfile = Pick<Anime25DChestProfile, 'enabled' | 'source'>
+type ChestMotionProfile = Pick<
+  Anime25DChestProfile,
+  'enabled' | 'source' | 'visibleScale' | 'motionScale'
+>
+
+/**
+ * AI vision already authors the complete two-dimensional deformation region.
+ * Intersecting it with the older vertical bone field can erase the AI-selected
+ * centre. Geometry fallback still needs that field to retain legacy behavior.
+ */
+export function chestProfileUsesGeometryWeights(
+  profile: ChestWeightProfile | null | undefined,
+): boolean {
+  return profile?.enabled !== false && profile?.source !== 'ai-vision'
+}
+
+/**
+ * Bound AI-authored displacement by apparent soft-tissue size. The eased ramp
+ * keeps small profiles restrained without introducing a hard size threshold;
+ * `min` also makes this backward-compatible with already-persisted profiles.
+ */
+export function resolveChestMotionScale(
+  profile: ChestMotionProfile | null | undefined,
+): number {
+  if (profile?.enabled === false) return 0
+  const authoredScale = clamp(profile?.motionScale ?? 1, 0, 1.25)
+  if (profile?.source !== 'ai-vision') return authoredScale
+  const visibleScale = clamp(profile.visibleScale, 0, 1)
+  const progress = clamp(
+    (visibleScale - AI_MOTION_RAMP_START) /
+      (AI_MOTION_RAMP_END - AI_MOTION_RAMP_START),
+    0,
+    1,
+  )
+  const eased = progress * progress * (3 - 2 * progress)
+  const sizeLimit =
+    MIN_AI_MOTION_SCALE +
+    (MAX_AI_MOTION_SCALE - MIN_AI_MOTION_SCALE) * eased
+  return Math.min(authoredScale, sizeLimit)
 }
 
 export interface ChestSpringState {
@@ -85,8 +133,12 @@ export function buildChestWeightField(
   const topwear = source.parts.find((part) => part.id === TOPWEAR_PART_ID)
   if (chestJoint < 0 || !topwear || topwear.vertices.length === 0) return null
 
-  const xs = uniqueCoordinates(topwear.vertices.map((vertex) => vertex.position.x))
-  const ys = uniqueCoordinates(topwear.vertices.map((vertex) => vertex.position.y))
+  const xs = uniqueCoordinates(
+    topwear.vertices.map((vertex) => vertex.position.x),
+  )
+  const ys = uniqueCoordinates(
+    topwear.vertices.map((vertex) => vertex.position.y),
+  )
   if (xs.length * ys.length !== topwear.vertices.length) return null
 
   const weights = new Float32Array(xs.length * ys.length)
@@ -169,7 +221,9 @@ export function stepChestSpring(
 }
 
 function uniqueCoordinates(values: number[]): number[] {
-  const sorted = values.filter(Number.isFinite).sort((left, right) => left - right)
+  const sorted = values
+    .filter(Number.isFinite)
+    .sort((left, right) => left - right)
   const unique: number[] = []
   for (const value of sorted) {
     if (
@@ -200,7 +254,10 @@ function interpolationSample(
   for (let upper = 1; upper < coordinates.length; upper += 1) {
     if (value > coordinates[upper]) continue
     const lower = upper - 1
-    const span = Math.max(COORDINATE_EPSILON, coordinates[upper] - coordinates[lower])
+    const span = Math.max(
+      COORDINATE_EPSILON,
+      coordinates[upper] - coordinates[lower],
+    )
     return {
       lower,
       upper,

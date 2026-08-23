@@ -129,6 +129,7 @@ interface AnimeAnchors {
 
 export interface PreparedAnime25DRigImport {
   atlas: Blob
+  analysisReference: Blob
   source: CompanionRigImportSource
   partCount: number
 }
@@ -222,6 +223,7 @@ export async function prepareAnime25DRigPsd(
   onStage?.('packing')
   const {
     atlas,
+    analysisReference,
     layers: prepared,
     width: packedWidth,
     height: packedHeight,
@@ -258,14 +260,13 @@ export async function prepareAnime25DRigPsd(
   }
   return {
     atlas,
+    analysisReference,
     partCount: prepared.length,
     source: {
       rigIrVersion: RIG_IR_VERSION,
       characterAssetContractVersion: CHARACTER_ASSET_CONTRACT_VERSION,
       sourceMasterAssetId,
-      ...(sourceGenerationFingerprint
-        ? { sourceGenerationFingerprint }
-        : {}),
+      ...(sourceGenerationFingerprint ? { sourceGenerationFingerprint } : {}),
       canvas: { ...PORTRAIT_CANVAS },
       atlas: { id: 'atlas', width: packedWidth, height: packedHeight },
       bones,
@@ -560,12 +561,16 @@ function validateCharacterAssetLayers(layers: readonly RasterLayer[]): void {
 }
 
 /** Removes model letterboxing, then pads (never stretches) into the canonical 3:4 stage. */
-function contentFrame(psd: Psd, layers: readonly RasterLayer[]): RigCanvasFrame {
+function contentFrame(
+  psd: Psd,
+  layers: readonly RasterLayer[],
+): RigCanvasFrame {
   const documentArea = psd.width * psd.height
   const framingLayers = layers.filter(
     (layer) =>
       layer.role !== 'bottomwear' &&
-      (layer.role !== 'unknown' || layer.width * layer.height < documentArea * 0.5),
+      (layer.role !== 'unknown' ||
+        layer.width * layer.height < documentArea * 0.5),
   )
   const candidates = framingLayers.length > 0 ? framingLayers : layers
   let left = psd.width
@@ -607,6 +612,7 @@ async function packAtlas(
   layers: RasterLayer[],
 ): Promise<{
   atlas: Blob
+  analysisReference: Blob
   layers: PreparedLayer[]
   width: number
   height: number
@@ -652,6 +658,12 @@ async function packAtlas(
   atlas.width = packedWidth
   atlas.height = packedHeight
   const context = requiredContext(atlas)
+  const analysisCanvas = document.createElement('canvas')
+  analysisCanvas.width = Math.max(1, Math.round(frame.width))
+  analysisCanvas.height = Math.max(1, Math.round(frame.height))
+  const analysisContext = requiredContext(analysisCanvas)
+  const analysisScaleX = analysisCanvas.width / Math.max(1, frame.width)
+  const analysisScaleY = analysisCanvas.height / Math.max(1, frame.height)
   const layerCanvas = document.createElement('canvas')
   const prepared: PreparedLayer[] = []
   for (const [index, layer] of layers.entries()) {
@@ -667,6 +679,15 @@ async function packAtlas(
       0,
     )
     context.drawImage(layerCanvas, drawX, drawY)
+    if (visibleInAnalysisReference(layer)) {
+      analysisContext.drawImage(
+        layerCanvas,
+        (layer.left - frame.x) * analysisScaleX,
+        (layer.top - frame.y) * analysisScaleY,
+        layer.width * analysisScaleX,
+        layer.height * analysisScaleY,
+      )
+    }
     const bounds = {
       x: (layer.left - frame.x) / frame.width,
       y: (layer.top - frame.y) / frame.width,
@@ -692,8 +713,32 @@ async function packAtlas(
           : [],
     })
   }
-  const blob = await new Promise<Blob>((resolve, reject) =>
-    atlas.toBlob(
+  const [blob, analysisReference] = await Promise.all([
+    canvasPng(atlas),
+    canvasPng(analysisCanvas),
+  ])
+  return {
+    atlas: blob,
+    analysisReference,
+    layers: prepared,
+    width: packedWidth,
+    height: packedHeight,
+  }
+}
+
+function visibleInAnalysisReference(layer: RasterLayer): boolean {
+  if (
+    (layer.slot === 'eye-left' || layer.slot === 'eye-right') &&
+    layer.variant === 'closed'
+  ) {
+    return false
+  }
+  return layer.slot !== 'mouth' || layer.variant !== 'open'
+}
+
+function canvasPng(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob(
       (value) =>
         value
           ? resolve(value)
@@ -701,7 +746,6 @@ async function packAtlas(
       'image/png',
     ),
   )
-  return { atlas: blob, layers: prepared, width: packedWidth, height: packedHeight }
 }
 
 function deriveAnchors(
@@ -1136,9 +1180,7 @@ function detectHairStrands(
   const smoothRadius = Math.min(20, Math.max(3, Math.floor(layer.width / 24)))
   const smoothed = smoothProfile(bottom, smoothRadius)
   const numbered = /-\d+$/.test(layer.sourceName)
-  const wanted = numbered
-    ? clampInt(Math.round(layer.width / 110), 2, 6)
-    : 6
+  const wanted = numbered ? clampInt(Math.round(layer.width / 110), 2, 6) : 6
   const peaks = findProfilePeaks(
     smoothed,
     Math.max(30, Math.round(layer.width / (wanted * 1.6))),
