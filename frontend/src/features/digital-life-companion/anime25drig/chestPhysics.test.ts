@@ -100,3 +100,20 @@ test('chest spring response stays stable across common render frame rates', () =
   assert.ok(Math.abs(at30Fps.offsetX - at60Fps.offsetX) < 0.02)
   assert.ok(Math.abs(at30Fps.offsetY - at60Fps.offsetY) < 0.02)
 })
+
+test('adaptive frequency changes timing while keeping the spring stable', () => {
+  const simulate = (frequencyScale: number) => {
+    const state = createChestSpringState()
+    stepChestSpring(state, 0, 0, 1 / 60, frequencyScale)
+    for (let frame = 0; frame < 6; frame += 1) {
+      stepChestSpring(state, 6, 0, 1 / 60, frequencyScale)
+    }
+    return state.offsetX
+  }
+
+  const slower = simulate(0.8)
+  const faster = simulate(1.2)
+  assert.ok(Math.abs(slower) > Math.abs(faster))
+  assert.ok(Number.isFinite(slower))
+  assert.ok(Number.isFinite(faster))
+})

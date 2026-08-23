@@ -1,6 +1,8 @@
 import type { CompanionRigManifest } from '../rig/types'
 import type { ChestWeightField } from './chestPhysics'
+import type { HairSpringState } from './hairPhysics'
 import type { Anime25DPlayback, Anime25DPlaybackLayer } from './types'
+import { AmbientMotionController } from './ambientMotion'
 import {
   buildChestWeightField,
   chestMotionTarget,
@@ -8,7 +10,11 @@ import {
   sampleChestWeight,
   stepChestSpring,
 } from './chestPhysics'
-import { frontHairUpperParallaxScale } from './hairPhysics'
+import {
+  frontHairUpperParallaxScale,
+  hairStrandDynamics,
+  stepHairSpring,
+} from './hairPhysics'
 
 const VERTEX_SHADER = `#version 300 es
 in vec2 a_pos;
@@ -79,16 +85,12 @@ export interface Anime25DDriver {
   phys: boolean
 }
 
-interface HairSpring {
-  x: number
-  v: number
-  dx: number
-}
-
 interface HairStrandSpring {
-  stiff: HairSpring
-  soft: HairSpring
+  stiff: HairSpringState
+  soft: HairSpringState
   phase: number
+  stiffnessScale: number
+  dampingScale: number
 }
 
 interface GpuLayer {
@@ -230,8 +232,7 @@ export class Anime25DPlayer {
   private time = 0
   private blinkT = -1
   private nextBlink = 1.8
-  private nextRnd = 0
-  private readonly rnd = { ax: 0, ay: 0, az: 0, bd: 0, ex: 0, ey: 0 }
+  private readonly ambientMotion = new AmbientMotionController()
   private talkOn = false
   private talkV = 0
   private talkTgt = 0
@@ -386,23 +387,17 @@ export class Anime25DPlayer {
       tgt.angleZ += 0.07 * Math.sin(t * 0.23 + 0.5)
       tgt.body += 0.1 * Math.sin(t * 0.19 + 2.1)
     }
-    if (this.target.rand) {
-      if (this.time > this.nextRnd) {
-        this.nextRnd = this.time + 1.4 + Math.random() * 2.6
-        this.rnd.ax = (Math.random() * 2 - 1) * 0.55
-        this.rnd.ay = (Math.random() * 2 - 1) * 0.4
-        this.rnd.az = (Math.random() * 2 - 1) * 0.35
-        this.rnd.bd = (Math.random() * 2 - 1) * 0.3
-        this.rnd.ex = (Math.random() * 2 - 1) * 0.6
-        this.rnd.ey = (Math.random() * 2 - 1) * 0.35
-      }
-      tgt.angleX = clamp(tgt.angleX + this.rnd.ax, -1, 1)
-      tgt.angleY = clamp(tgt.angleY + this.rnd.ay, -1, 1)
-      tgt.angleZ = clamp(tgt.angleZ + this.rnd.az, -1, 1)
-      tgt.body = clamp(tgt.body + this.rnd.bd, -1, 1)
-      tgt.eyeX = clamp(tgt.eyeX + this.rnd.ex, -1, 1)
-      tgt.eyeY = clamp(tgt.eyeY + this.rnd.ey, -1, 1)
-    }
+    const pointerDriven = this.target.mouse && this.mouse.inside
+    const ambient = this.ambientMotion.sample(
+      t,
+      this.target.rand && !pointerDriven,
+    )
+    tgt.angleX = clamp(tgt.angleX + ambient.angleX, -1, 1)
+    tgt.angleY = clamp(tgt.angleY + ambient.angleY, -1, 1)
+    tgt.angleZ = clamp(tgt.angleZ + ambient.angleZ, -1, 1)
+    tgt.body = clamp(tgt.body + ambient.body, -1, 1)
+    tgt.eyeX = clamp(tgt.eyeX + ambient.eyeX, -1, 1)
+    tgt.eyeY = clamp(tgt.eyeY + ambient.eyeY, -1, 1)
     if (this.target.talk) {
       if (now > this.nextTalkState) {
         this.talkOn = !this.talkOn
@@ -455,8 +450,17 @@ export class Anime25DPlayer {
     const { anchors } = this.playback
     const faceScale = anchors.faceScale
     const e = this.current
-    const chestTarget = chestMotionTarget(e, faceScale, this.chestTarget)
-    stepChestSpring(this.chest, chestTarget.x, chestTarget.y, dt)
+    const chestProfile = this.playback.chestProfile
+    if (chestProfile?.enabled !== false) {
+      const chestTarget = chestMotionTarget(e, faceScale, this.chestTarget)
+      stepChestSpring(
+        this.chest,
+        chestTarget.x,
+        chestTarget.y,
+        dt,
+        chestProfile?.frequencyScale ?? 1,
+      )
+    }
     if (!e.phys) return
     const headDX =
       (e.angleX * 14 + e.angleZ * 0.07 * (anchors.neckPivot.y - anchors.face.cy)) *
@@ -471,8 +475,22 @@ export class Anime25DPlayer {
           (1.8 * Math.sin(time * 0.8 + spring.phase) +
             1.0 * Math.sin(time * 1.9 + spring.phase * 2.3))
         const target = headDX + wind * faceScale
-        stepHairSpring(spring.stiff, target, 70, 9, 2.2, dt)
-        stepHairSpring(spring.soft, target, 16, 1.3, 3, dt)
+        stepHairSpring(
+          spring.stiff,
+          target,
+          70 * spring.stiffnessScale,
+          9 * spring.dampingScale,
+          2.2,
+          dt,
+        )
+        stepHairSpring(
+          spring.soft,
+          target,
+          16 * spring.stiffnessScale,
+          1.3 * spring.dampingScale,
+          3,
+          dt,
+        )
       }
     }
   }
@@ -494,10 +512,14 @@ export class Anime25DPlayer {
     const ab = e.body * 0.028
     const cb = Math.cos(ab)
     const sb = Math.sin(ab)
-    const chestCx = npx
-    const chestCy = A.neckBottom + (A.face.y1 - A.face.y0) * 0.6
-    const chestRx = (A.face.x1 - A.face.x0) * 0.6
-    const chestRy = (A.face.y1 - A.face.y0) * 0.45
+    const chestProfile = this.playback.chestProfile
+    const chestCx = chestProfile?.centerX ?? npx
+    const legacyChestCy = A.neckBottom + (A.face.y1 - A.face.y0) * 0.6
+    const chestCy = chestProfile?.centerY ?? legacyChestCy
+    const chestRx = chestProfile?.radiusX ?? (A.face.x1 - A.face.x0) * 0.6
+    const chestRy = chestProfile?.radiusY ?? (A.face.y1 - A.face.y0) * 0.45
+    const chestMotionScale =
+      chestProfile?.enabled === false ? 0 : (chestProfile?.motionScale ?? 1)
     const mHalfW = (A.mouth.x1 - A.mouth.x0) / 2
     for (const layer of this.layers) {
       const rest = layer.rest
@@ -506,9 +528,11 @@ export class Anime25DPlayer {
       const source = layer.source
       const bn = layerBaseName(source.role)
       const isTopwear = bn === 'topwear'
-      const chestCenterY = chestCy + e.bustY * 70 * fs
-      const chestOffsetX = this.chest.offsetX * e.bust
-      const chestOffsetY = this.chest.offsetY * e.bust
+      const chestCenterY = chestProfile
+        ? chestCy + (e.bustY - 1) * 70 * fs
+        : chestCy + e.bustY * 70 * fs
+      const chestOffsetX = this.chest.offsetX * e.bust * chestMotionScale
+      const chestOffsetY = this.chest.offsetY * e.bust * chestMotionScale
       const inverseChestRx = 1 / chestRx
       const inverseChestRy = 1 / chestRy
       const eye = source.side === 'L' ? A.eyeL : source.side === 'R' ? A.eyeR : undefined
@@ -935,6 +959,10 @@ function attachHairPhysics(
     spacing = gaps[gaps.length >> 1]
   }
   const sigma = spacing * 0.6
+  const referenceHeight = Math.max(1, face.y1 - face.y0)
+  const dynamics = strands.map((strand) =>
+    hairStrandDynamics(strand.rootY, strand.tipY, referenceHeight),
+  )
   const frontHairParallaxScale = frontHair
     ? new Float32Array(vertexCount)
     : null
@@ -961,12 +989,12 @@ function attachHairPhysics(
     if (total > 1e-6) {
       for (let strand = 0; strand < strandCount; strand += 1) {
         const weight = strandWeights[vertex * strandCount + strand] / total
-        strandWeights[vertex * strandCount + strand] = weight
+        strandWeights[vertex * strandCount + strand] = weight * dynamics[strand].amplitudeScale
         rootY += weight * strands[strand].rootY
         tipY += weight * strands[strand].tipY
       }
     } else {
-      strandWeights[vertex * strandCount] = 1
+      strandWeights[vertex * strandCount] = dynamics[0].amplitudeScale
       rootY = strands[0].rootY
       tipY = strands[0].tipY
     }
@@ -997,22 +1025,10 @@ function attachHairPhysics(
       stiff: { x: 0, v: 0, dx: 0 },
       soft: { x: 0, v: 0, dx: 0 },
       phase: index * 1.37 + layerZ,
+      stiffnessScale: dynamics[index].stiffnessScale,
+      dampingScale: dynamics[index].dampingScale,
     })),
   }
-}
-
-function stepHairSpring(
-  spring: HairSpring,
-  target: number,
-  stiffness: number,
-  damping: number,
-  pull: number,
-  dt: number,
-): void {
-  const acceleration = -stiffness * (spring.x - target) - damping * spring.v
-  spring.v += acceleration * dt
-  spring.x += spring.v * dt
-  spring.dx = -(spring.x - target) * pull
 }
 
 function smoothstep(value: number): number {

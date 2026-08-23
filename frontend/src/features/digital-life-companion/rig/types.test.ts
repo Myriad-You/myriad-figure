@@ -99,8 +99,29 @@ test('only treats a layered Anime2.5D package as a live site face', () => {
     },
   }
   assert.equal(isLiveCompanionManifest(live), true)
+  live.anime25dPlayback.chestProfile = {
+    version: 1,
+    enabled: true,
+    source: 'ai-vision',
+    centerX: 576,
+    centerY: 1120,
+    radiusX: 210,
+    radiusY: 180,
+    visibleScale: 0.7,
+    motionScale: 1.05,
+    frequencyScale: 0.96,
+    confidence: 0.9,
+  }
+  assert.equal(isLiveCompanionManifest(live), true)
+  live.anime25dPlayback.chestProfile.enabled = false
+  live.anime25dPlayback.chestProfile.source = 'gender-policy'
+  live.anime25dPlayback.chestProfile.visibleScale = 0
+  live.anime25dPlayback.chestProfile.motionScale = 0
+  live.anime25dPlayback.chestProfile.confidence = 1
+  assert.equal(isLiveCompanionManifest(live), true)
+  live.anime25dPlayback.chestProfile.radiusX = 900
+  assert.equal(isLiveCompanionManifest(live), false)
 })
-
 
 test('validates portrait generation provenance when present', () => {
   const generated = structuredClone(manifest)

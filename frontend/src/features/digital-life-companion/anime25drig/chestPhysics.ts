@@ -140,6 +140,7 @@ export function stepChestSpring(
   targetX: number,
   targetY: number,
   deltaSeconds: number,
+  frequencyScale = 1,
 ): void {
   if (!state.initialized) {
     state.x = targetX
@@ -147,15 +148,17 @@ export function stepChestSpring(
     state.initialized = true
   }
   const dt = clamp(deltaSeconds, 0.001, 0.05)
+  const frequency = clamp(frequencyScale, 0.75, 1.25)
+  const stiffnessScale = frequency * frequency
   const steps = Math.ceil(dt / MAX_SPRING_STEP_SECONDS)
   const stepSeconds = dt / steps
   for (let step = 0; step < steps; step += 1) {
     const accelX =
-      -HORIZONTAL_SPRING.stiffness * (state.x - targetX) -
-      HORIZONTAL_SPRING.damping * state.vx
+      -HORIZONTAL_SPRING.stiffness * stiffnessScale * (state.x - targetX) -
+      HORIZONTAL_SPRING.damping * frequency * state.vx
     const accelY =
-      -VERTICAL_SPRING.stiffness * (state.y - targetY) -
-      VERTICAL_SPRING.damping * state.vy
+      -VERTICAL_SPRING.stiffness * stiffnessScale * (state.y - targetY) -
+      VERTICAL_SPRING.damping * frequency * state.vy
     state.vx += accelX * stepSeconds
     state.vy += accelY * stepSeconds
     state.x += state.vx * stepSeconds

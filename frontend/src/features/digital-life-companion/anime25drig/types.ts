@@ -61,6 +61,24 @@ export interface Anime25DPlaybackAnchors {
   eyeR?: Anime25DEyeAnchor
 }
 
+export type Anime25DChestProfileSource =
+  'ai-vision' | 'geometry-fallback' | 'gender-policy'
+
+/** Import-time chest region. Runtime consumes this without further AI work. */
+export interface Anime25DChestProfile {
+  version: 1
+  enabled: boolean
+  source: Anime25DChestProfileSource
+  centerX: number
+  centerY: number
+  radiusX: number
+  radiusY: number
+  visibleScale: number
+  motionScale: number
+  frequencyScale: number
+  confidence: number
+}
+
 export interface Anime25DPlayback {
   kind: typeof ANIME25D_PLAYBACK_KIND
   version: number
@@ -71,6 +89,7 @@ export interface Anime25DPlayback {
   pixelCanvas: { width: number; height: number }
   layers: Anime25DPlaybackLayer[]
   anchors: Anime25DPlaybackAnchors
+  chestProfile?: Anime25DChestProfile
 }
 
 export function anime25DPlaybackSource(): Pick<
@@ -91,6 +110,7 @@ export function isAnime25DPlayback(value: unknown): value is Anime25DPlayback {
   if (!value || typeof value !== 'object') return false
   const record = value as Record<string, unknown>
   const canvas = record.pixelCanvas as Record<string, unknown> | undefined
+  const chestProfile = record.chestProfile
   return (
     record.kind === ANIME25D_PLAYBACK_KIND &&
     record.version === ANIME25D_PLAYBACK_VERSION &&
@@ -102,6 +122,49 @@ export function isAnime25DPlayback(value: unknown): value is Anime25DPlayback {
     canvas.width > 0 &&
     canvas.height > 0 &&
     Boolean(record.anchors) &&
-    typeof record.anchors === 'object'
+    typeof record.anchors === 'object' &&
+    (chestProfile === undefined ||
+      isAnime25DChestProfile(chestProfile, canvas.width, canvas.height))
+  )
+}
+
+function isAnime25DChestProfile(
+  value: unknown,
+  canvasWidth: number,
+  canvasHeight: number,
+): value is Anime25DChestProfile {
+  if (!value || typeof value !== 'object') return false
+  const profile = value as Record<string, unknown>
+  const sources: Anime25DChestProfileSource[] = [
+    'ai-vision',
+    'geometry-fallback',
+    'gender-policy',
+  ]
+  return (
+    profile.version === 1 &&
+    typeof profile.enabled === 'boolean' &&
+    typeof profile.source === 'string' &&
+    sources.includes(profile.source as Anime25DChestProfileSource) &&
+    numberInRange(profile.centerX, 0, canvasWidth) &&
+    numberInRange(profile.centerY, 0, canvasHeight) &&
+    numberInRange(profile.radiusX, 1, canvasWidth / 2) &&
+    numberInRange(profile.radiusY, 1, canvasHeight / 2) &&
+    numberInRange(profile.visibleScale, 0, 1) &&
+    numberInRange(profile.motionScale, 0, 1.25) &&
+    numberInRange(profile.frequencyScale, 0.75, 1.25) &&
+    numberInRange(profile.confidence, 0, 1)
+  )
+}
+
+function numberInRange(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+): boolean {
+  return (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value >= minimum &&
+    value <= maximum
   )
 }
