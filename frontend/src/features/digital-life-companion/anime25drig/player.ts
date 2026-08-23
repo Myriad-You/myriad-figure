@@ -1,5 +1,5 @@
 import type { Anime25DPlayback, Anime25DPlaybackLayer } from './types'
-import { frontHairUpperMotionScale } from './hairPhysics'
+import { frontHairUpperParallaxScale } from './hairPhysics'
 
 const VERTEX_SHADER = `#version 300 es
 in vec2 a_pos;
@@ -96,7 +96,7 @@ interface GpuLayer {
   indexCount: number
   texture: WebGLTexture
   frontHair: boolean
-  frontHairMotionScale: Float32Array | null
+  frontHairParallaxScale: Float32Array | null
   strandWeights: Float32Array | null
   alongStrand: Float32Array | null
   bangWeights: Float32Array | null
@@ -596,16 +596,18 @@ export class Anime25DPlayer {
           const ry2 = rx * sz + ry * cz
           x += (rx2 - rx) * hw
           y += (ry2 - ry) * hw
-          const dd = source.depth
+          const depthOffset =
+            (source.depth - 1) * (layer.frontHairParallaxScale?.[vertex] ?? 1)
           x +=
             hw *
             fs *
-            (e.angleX * (14 + 40 * (dd - 1)) + e.angleX * (npy - y) * 0.028)
+            (e.angleX * (14 + 40 * depthOffset) +
+              e.angleX * (npy - y) * 0.028)
           y +=
             hw *
             fs *
-            (-e.angleY * (9 + 30 * (dd - 1)) -
-              e.angleY * (dd - 1) * (y - A.face.cy) * 0.05)
+            (-e.angleY * (9 + 30 * depthOffset) -
+              e.angleY * depthOffset * (y - A.face.cy) * 0.05)
         }
         y -= (source.group === 'body' ? breath * 2.0 : breathHead * 1.6) * fs
         if (bn === 'topwear' && y < chestCy) {
@@ -657,7 +659,7 @@ export class Anime25DPlayer {
               weight *
               (spring.stiff.dx * (1 - softMix) + spring.soft.dx * softMix)
           }
-          const offset = dx * amp * (layer.frontHairMotionScale?.[vertex] ?? 1)
+          const offset = dx * amp
           x += offset
           y += Math.abs(offset) * 0.12
         }
@@ -855,7 +857,7 @@ function attachHairPhysics(
 ): Pick<
   GpuLayer,
   | 'frontHair'
-  | 'frontHairMotionScale'
+  | 'frontHairParallaxScale'
   | 'strandWeights'
   | 'alongStrand'
   | 'bangWeights'
@@ -866,7 +868,7 @@ function attachHairPhysics(
   if (strands.length === 0) {
     return {
       frontHair,
-      frontHairMotionScale: null,
+      frontHairParallaxScale: null,
       strandWeights: null,
       alongStrand: null,
       bangWeights: null,
@@ -884,14 +886,20 @@ function attachHairPhysics(
     spacing = gaps[gaps.length >> 1]
   }
   const sigma = spacing * 0.6
-  const frontHairMotionScale = frontHair ? new Float32Array(vertexCount) : null
+  const frontHairParallaxScale = frontHair
+    ? new Float32Array(vertexCount)
+    : null
   const strandWeights = new Float32Array(vertexCount * strandCount)
   const alongStrand = new Float32Array(vertexCount)
   for (let vertex = 0; vertex < vertexCount; vertex += 1) {
     const x = rest[vertex * 2]
     const y = rest[vertex * 2 + 1]
-    if (frontHairMotionScale) {
-      frontHairMotionScale[vertex] = frontHairUpperMotionScale(y, source, face)
+    if (frontHairParallaxScale) {
+      frontHairParallaxScale[vertex] = frontHairUpperParallaxScale(
+        y,
+        source,
+        face,
+      )
     }
     let total = 0
     for (let strand = 0; strand < strandCount; strand += 1) {
@@ -932,7 +940,7 @@ function attachHairPhysics(
   }
   return {
     frontHair,
-    frontHairMotionScale,
+    frontHairParallaxScale,
     strandWeights,
     alongStrand,
     bangWeights,

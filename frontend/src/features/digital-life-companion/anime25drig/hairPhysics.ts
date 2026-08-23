@@ -1,6 +1,6 @@
 const COMPOSITE_TAIL_START = 0.2
 const COMPOSITE_TAIL_END = 0.45
-const FRONT_HAIR_UPPER_MOTION_FLOOR = 0.25
+const FRONT_HAIR_UPPER_PARALLAX_FLOOR = 0.2
 const FRONT_HAIR_UPPER_RELEASE_START = 0.45
 const FRONT_HAIR_UPPER_RELEASE_END = 0.75
 
@@ -15,11 +15,11 @@ interface FaceVerticalBounds {
 }
 
 /**
- * Reduce only the upper physical offset of a composite front-hair layer.
- * The floor remains non-zero, then smoothly releases to the authored motion
- * before the long locks reach the lower quarter of the layer.
+ * Reduce only the upper excess-depth parallax of a composite front-hair layer.
+ * The face-plane head motion remains intact; the retained depth motion then
+ * smoothly returns to the authored amount above the long-lock tips.
  */
-export function frontHairUpperMotionScale(
+export function frontHairUpperParallaxScale(
   vertexY: number,
   layer: LayerVerticalBounds,
   face: FaceVerticalBounds,
@@ -30,8 +30,8 @@ export function frontHairUpperMotionScale(
       (FRONT_HAIR_UPPER_RELEASE_END - FRONT_HAIR_UPPER_RELEASE_START),
   )
   const compositeScale =
-    FRONT_HAIR_UPPER_MOTION_FLOOR +
-    (1 - FRONT_HAIR_UPPER_MOTION_FLOOR) * lowerRelease
+    FRONT_HAIR_UPPER_PARALLAX_FLOOR +
+    (1 - FRONT_HAIR_UPPER_PARALLAX_FLOOR) * lowerRelease
   const compositeMix = compositeHairMix(layer, face)
   return 1 - compositeMix * (1 - compositeScale)
 }
