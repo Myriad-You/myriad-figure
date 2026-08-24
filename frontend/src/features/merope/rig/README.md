@@ -58,8 +58,15 @@ active layered package
   -> Anime25DCharacter / Anime2.5DRig player
 ```
 
-Without a live Anime2.5D package, the overlay draws the master portrait as a
-still image. Manifests do not carry clip stacks.
+Agent reply speech enters through `speechEvents.ts`. The lifecycle controller
+handles streamed chunks, complete replies, interruption, and proactive lines,
+then drives the mounted `RigCharacter`. Real audio energy or phoneme events own
+the mouth when present; otherwise the bounded local auto-prosody controller is
+used. The bridge keeps one timer and adds no allocation to the render loop.
+
+Without a live Anime2.5D package, `RigCharacter` draws the master portrait as a
+still image. Manifests do not carry clip stacks. There is no separate global
+face overlay.
 
 ## Module ownership
 

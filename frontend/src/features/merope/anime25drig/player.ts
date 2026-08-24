@@ -17,6 +17,9 @@ import {
   hairStrandDynamics,
   stepHairSpring,
 } from './hairPhysics'
+import { CoSpeechExpressionController } from './speechExpression'
+import { AutoSpeechController } from './speechMotion'
+import { stepMouthForm, stepMouthOpen } from './speechResponse'
 
 const VERTEX_SHADER = `#version 300 es
 in vec2 a_pos;
@@ -235,11 +238,9 @@ export class Anime25DPlayer {
   private blinkT = -1
   private nextBlink = 1.8
   private readonly ambientMotion = new AmbientMotionController()
-  private talkOn = false
-  private talkV = 0
-  private talkTgt = 0
-  private nextTalkState = 0
-  private nextSyl = 0
+  private readonly speechMotion = new AutoSpeechController()
+  private readonly speechExpression = new CoSpeechExpressionController()
+  private speechActive = false
   private readonly chest = createChestSpringState()
   private readonly chestTarget = { x: 0, y: 0 }
   private readonly chestMotionScale: number
@@ -314,6 +315,10 @@ export class Anime25DPlayer {
     this.mouse.inside = inside
   }
 
+  setSpeechActive(active: boolean): void {
+    this.speechActive = active
+  }
+
   debugSnapshot(): Anime25DDebugSnapshot {
     const layers = this.playback.layers
     return {
@@ -380,7 +385,6 @@ export class Anime25DPlayer {
   }
 
   private smoothDriver(dt: number): void {
-    const now = this.time * 1000
     const t = this.time
     const tgt: Anime25DDriver = { ...this.target }
     if (this.target.mouse && this.mouse.inside) {
@@ -406,20 +410,28 @@ export class Anime25DPlayer {
     tgt.body = clamp(tgt.body + ambient.body, -1, 1)
     tgt.eyeX = clamp(tgt.eyeX + ambient.eyeX, -1, 1)
     tgt.eyeY = clamp(tgt.eyeY + ambient.eyeY, -1, 1)
-    if (this.target.talk) {
-      if (now > this.nextTalkState) {
-        this.talkOn = !this.talkOn
-        this.nextTalkState =
-          now + (this.talkOn ? 1200 + Math.random() * 2200 : 600 + Math.random() * 1800)
-      }
-      if (this.talkOn && now > this.nextSyl) {
-        this.nextSyl = now + 70 + Math.random() * 110
-        this.talkTgt = Math.random() < 0.25 ? 0.04 : 0.25 + Math.random() * 0.75
-      }
-      if (!this.talkOn) this.talkTgt = 0
-      this.talkV += (this.talkTgt - this.talkV) * Math.min(1, dt * 22)
-      tgt.mouthOpen = Math.max(tgt.mouthOpen, this.talkV)
+    const speech = this.speechMotion.sample(t, this.target.talk)
+    if (speech.mouthOpen > 0) {
+      tgt.mouthOpen = Math.max(tgt.mouthOpen, speech.mouthOpen)
+      const formInfluence = smoothstep((speech.mouthOpen - 0.08) / 0.32)
+      tgt.mouthForm = clamp(
+        tgt.mouthForm + speech.mouthForm * formInfluence,
+        -1,
+        1,
+      )
     }
+    const speechExpression = this.speechExpression.sample(
+      t,
+      this.speechActive || this.target.talk,
+      this.speechActive && !this.target.talk ? tgt.mouthOpen : null,
+      speech.phraseActivity,
+      speech.browAccent,
+      speech.headAccent,
+    )
+    tgt.brow = clamp(tgt.brow + speechExpression.brow, -1, 1)
+    tgt.eyeOpenL = clamp(tgt.eyeOpenL + speechExpression.eyeOpen, 0, 1)
+    tgt.eyeOpenR = clamp(tgt.eyeOpenR + speechExpression.eyeOpen, 0, 1)
+    tgt.angleY = clamp(tgt.angleY + speechExpression.angleY, -1, 1)
     if (this.target.blink) {
       if (this.blinkT < 0 && this.time > this.nextBlink) {
         this.blinkT = 0
@@ -430,10 +442,13 @@ export class Anime25DPlayer {
         this.blinkT += dt
         const elapsed = this.blinkT
         let open = 1
-        if (elapsed < 0.08) open = 1 - elapsed / 0.08
-        else if (elapsed < 0.42) open = 0
-        else if (elapsed < 0.58) open = (elapsed - 0.42) / 0.16
-        else {
+        if (elapsed < 0.08) {
+          open = 1 - elapsed / 0.08
+        } else if (elapsed < 0.42) {
+          open = 0
+        } else if (elapsed < 0.58) {
+          open = (elapsed - 0.42) / 0.16
+        } else {
           open = 1
           this.blinkT = -1
         }
@@ -450,6 +465,14 @@ export class Anime25DPlayer {
       }
       const from = this.current[key] as number
       const to = tgt[key] as number
+      if (key === 'mouthOpen') {
+        this.current.mouthOpen = stepMouthOpen(from, to, dt)
+        continue
+      }
+      if (key === 'mouthForm') {
+        this.current.mouthForm = stepMouthForm(from, to, dt)
+        continue
+      }
       ;(this.current[key] as number) = from + (to - from) * rate
     }
   }
@@ -750,7 +773,7 @@ export class Anime25DPlayer {
       gl.bindVertexArray(layer.vao)
       if (eyewhite) {
         gl.enable(gl.STENCIL_TEST)
-        gl.stencilFunc(gl.ALWAYS, 1, 0xff)
+        gl.stencilFunc(gl.ALWAYS, 1, 0xFF)
         gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
         gl.uniform1f(this.cutLocation, 0.25)
         gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
@@ -758,7 +781,7 @@ export class Anime25DPlayer {
         gl.uniform1f(this.cutLocation, 0)
       } else if (iris) {
         gl.enable(gl.STENCIL_TEST)
-        gl.stencilFunc(gl.EQUAL, 1, 0xff)
+        gl.stencilFunc(gl.EQUAL, 1, 0xFF)
         gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP)
         gl.uniform1f(this.cutLocation, 0)
         gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
