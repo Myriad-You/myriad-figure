@@ -1,4 +1,4 @@
-import type { CompanionRigManifest, RigBone } from './types'
+import type { MeropeRigManifest, RigBone } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
@@ -45,7 +45,7 @@ test('runtime consumes custom torso and whole-handwear mappings', () => {
       chains: { torso: ['hips-x', 'spine-x', 'skull-x'] },
       secondaryBoneIds: ['fabric-17'],
     },
-  } as CompanionRigManifest
+  } as MeropeRigManifest
   assert.equal(semanticBoneId(manifest, 'torso'), 'spine-x')
   assert.equal(semanticBoneId(manifest, 'handwear'), 'painted-hands-x')
   assert.deepEqual(semanticChain(manifest, 'torso'), [

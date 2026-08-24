@@ -1,10 +1,10 @@
-import type { CompanionRigManifest } from './types'
+import type { MeropeRigManifest } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { RIG_IR_VERSION } from './contract'
-import { isLiveCompanionManifest, isRigManifest } from './types'
+import { isLiveMeropeManifest, isRigManifest } from './types'
 
-const manifest: CompanionRigManifest = {
+const manifest: MeropeRigManifest = {
   schemaVersion: 1,
   quality: 'layered-2d',
   canvas: { width: 1, height: 1 },
@@ -61,7 +61,7 @@ test('rejects leftover clip-stack fields', () => {
 })
 
 test('only treats a layered Anime2.5D package as a live site face', () => {
-  assert.equal(isLiveCompanionManifest(manifest), false)
+  assert.equal(isLiveMeropeManifest(manifest), false)
   const live = structuredClone(manifest)
   live.anime25dPlayback = {
     kind: 'anime-2.5d-rig',
@@ -98,7 +98,7 @@ test('only treats a layered Anime2.5D package as a live site face', () => {
       faceScale: 1,
     },
   }
-  assert.equal(isLiveCompanionManifest(live), true)
+  assert.equal(isLiveMeropeManifest(live), true)
   live.anime25dPlayback.chestProfile = {
     version: 1,
     enabled: true,
@@ -112,15 +112,15 @@ test('only treats a layered Anime2.5D package as a live site face', () => {
     frequencyScale: 0.96,
     confidence: 0.9,
   }
-  assert.equal(isLiveCompanionManifest(live), true)
+  assert.equal(isLiveMeropeManifest(live), true)
   live.anime25dPlayback.chestProfile.enabled = false
   live.anime25dPlayback.chestProfile.source = 'gender-policy'
   live.anime25dPlayback.chestProfile.visibleScale = 0
   live.anime25dPlayback.chestProfile.motionScale = 0
   live.anime25dPlayback.chestProfile.confidence = 1
-  assert.equal(isLiveCompanionManifest(live), true)
+  assert.equal(isLiveMeropeManifest(live), true)
   live.anime25dPlayback.chestProfile.radiusX = 900
-  assert.equal(isLiveCompanionManifest(live), false)
+  assert.equal(isLiveMeropeManifest(live), false)
 })
 
 test('validates portrait generation provenance when present', () => {

@@ -1,4 +1,4 @@
-import type { CompanionRigManifest } from './types'
+import type { MeropeRigManifest } from './types'
 import { RIG_PRESENTATION_SLOTS } from './contract'
 
 type PresentationSlotDefinition = {
@@ -15,7 +15,7 @@ function presentationSlotDefinition(
 }
 
 export function presentationAssetCoverage(
-  manifest: CompanionRigManifest,
+  manifest: MeropeRigManifest,
 ): Array<{ slot: string; missingFallback: string | null; unknown: string[] }> {
   const variantsBySlot = new Map<string, Set<string>>()
   for (const part of manifest.parts ?? []) {

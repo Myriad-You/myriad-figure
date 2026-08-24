@@ -1,5 +1,5 @@
 import type {
-  CompanionRigManifest,
+  MeropeRigManifest,
   RigBone,
   RigSemanticBoneRole,
   RigSemanticChainRole,
@@ -25,7 +25,7 @@ const CHAIN_ROLES: Readonly<
   torso: ['root', 'torso', 'head'],
 }
 
-const resolvedCache = new WeakMap<CompanionRigManifest, RigSemantics>()
+const resolvedCache = new WeakMap<MeropeRigManifest, RigSemantics>()
 
 /** Produces the semantic IR at import/migration time, while names are known. */
 export function buildRigSemantics(
@@ -72,7 +72,7 @@ export function buildRigSemantics(
 
 /** Resolves legacy manifests through canonical fallback without mutating them. */
 export function resolveRigSemantics(
-  manifest: CompanionRigManifest,
+  manifest: MeropeRigManifest,
 ): RigSemantics {
   const cached = resolvedCache.get(manifest)
   if (cached) return cached
@@ -127,14 +127,14 @@ function supportedChainMappings(
 }
 
 export function semanticBoneId(
-  manifest: CompanionRigManifest,
+  manifest: MeropeRigManifest,
   role: RigSemanticBoneRole,
 ): string | undefined {
   return resolveRigSemantics(manifest).bones[role]
 }
 
 export function semanticBoneIndex(
-  manifest: CompanionRigManifest,
+  manifest: MeropeRigManifest,
   role: RigSemanticBoneRole,
 ): number | undefined {
   const id = semanticBoneId(manifest, role)
@@ -142,7 +142,7 @@ export function semanticBoneIndex(
 }
 
 export function semanticChain(
-  manifest: CompanionRigManifest,
+  manifest: MeropeRigManifest,
   role: RigSemanticChainRole,
 ): readonly string[] {
   return resolveRigSemantics(manifest).chains[role] ?? []

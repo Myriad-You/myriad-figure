@@ -1,4 +1,4 @@
-import type { CompanionRigManifest } from './types'
+import type { MeropeRigManifest } from './types'
 import { presentationAssetCoverage } from './presentation'
 import { resolveRigSemantics } from './semantics'
 
@@ -56,7 +56,7 @@ export function rigCapabilityRegressions(
 }
 
 export function diagnoseRig(
-  manifest: CompanionRigManifest,
+  manifest: MeropeRigManifest,
 ): RigDiagnosticReport {
   const issues: RigDiagnostic[] = []
   const semantics = resolveRigSemantics(manifest)

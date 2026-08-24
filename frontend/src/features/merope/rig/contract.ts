@@ -1,4 +1,4 @@
-import contract from '../../../../../shared/digital_life_rig_contract.json'
+import contract from '../../../../../shared/merope_rig_contract.json'
 
 export const RIG_SCHEMA_VERSION = contract.schemaVersion
 export const RIG_IR_VERSION = contract.rigIrVersion

@@ -1,4 +1,4 @@
-# Digital Life 2.5D motion system
+# Merope 2.5D motion system
 
 This directory owns the site-wide upper-body character compile path. Live
 playback is Anime2.5DRig in `../anime25drig`. There is no clip-stack driver.
@@ -18,7 +18,7 @@ hand drawings. They may lag or swing within ±15 degrees but never deform into
 an articulated limb.
 
 This boundary is shared by
-`shared/digital_life_rig_contract.json`, the Rust compiler, TypeScript
+`shared/merope_rig_contract.json`, the Rust compiler, TypeScript
 validation, the PSD importer, and diagnostics. Do not add a frontend-only
 semantic role.
 
@@ -42,7 +42,7 @@ portrait to `24yearsold/see-through-demo`; the browser never receives the
 token or an upstream download URL. The returned PSD is ephemeral and enters
 the exact same preflight as a manually selected file. No candidate is
 activated directly. See
-[`docs/design/digital-life-25d-pipeline.md`](../../../../../docs/design/digital-life-25d-pipeline.md)
+[`docs/design/merope-25d-pipeline.md`](../../../../../docs/design/merope-25d-pipeline.md)
 for the asset-builder boundary and third-party integration policy.
 
 `anime25dImporter.ts` maps both Anime2.5DRig names and native See-through tags
@@ -65,7 +65,7 @@ still image. Manifests do not carry clip stacks.
 
 | Area | Owner |
 | --- | --- |
-| Shared limits and semantic IR | `contract.ts`, `types.ts`, `semantics.ts`, `shared/digital_life_rig_contract.json` |
+| Shared limits and semantic IR | `contract.ts`, `types.ts`, `semantics.ts`, `shared/merope_rig_contract.json` |
 | PSD normalization and compilation source | `psdImporter.ts`, `anime25dImporter.ts`, `outfit.ts` |
 | Asset transaction | `../assets/pipeline.ts`, `../assets/compiler.ts` |
 | Live playback | `../anime25drig` |
@@ -75,8 +75,8 @@ still image. Manifests do not carry clip stacks.
 
 ```sh
 cd frontend
-pnpm exec tsx --test "src/features/digital-life-companion/**/*.test.ts"
-pnpm exec eslint src/features/digital-life-companion
+pnpm exec tsx --test "src/features/merope/**/*.test.ts"
+pnpm exec eslint src/features/merope
 pnpm typecheck
 ```
 

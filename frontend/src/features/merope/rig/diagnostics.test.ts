@@ -1,4 +1,4 @@
-import type { CompanionRigManifest } from './types'
+import type { MeropeRigManifest } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
@@ -91,7 +91,7 @@ test('Anime2.5DRig diagnostics do not score retired limb gates', () => {
       { id: 'a25d-mouth-open', slot: 'mouth', variant: 'open' },
       { id: 'a25d-mouth-close', slot: 'mouth', variant: 'closed' },
     ],
-  } as unknown as CompanionRigManifest)
+  } as unknown as MeropeRigManifest)
   assert.equal(report.profile, 'anime25d')
   assert.equal(report.capabilities.facialVariants, true)
   assert.equal(
@@ -116,7 +116,7 @@ test('reports semantic animation capabilities and missing production features', 
       { id: 'front-hair' },
     ],
     parts: [],
-  } as CompanionRigManifest)
+  } as MeropeRigManifest)
   assert.equal(report.capabilities.lipSync, true)
   assert.equal(report.capabilities.secondaryMotion, true)
   assert.equal(report.capabilities.facialVariants, false)
@@ -145,7 +145,7 @@ test('reports character-local head and torso volumes as collision-aware', () => 
         { id: 'torso', boneId: 'body' },
       ],
     },
-  } as CompanionRigManifest)
+  } as MeropeRigManifest)
   assert.equal(report.capabilities.collisionAware, true)
   assert.equal(
     report.issues.some((item) => item.code === 'missing-spatial-profile'),
@@ -157,7 +157,7 @@ test('reports unsafe presentation slot assets before runtime rendering', () => {
   const missingFallback = diagnoseRig({
     bones: [],
     parts: [{ slot: 'mouth', variant: 'open' }],
-  } as unknown as CompanionRigManifest)
+  } as unknown as MeropeRigManifest)
   assert.ok(
     missingFallback.issues.some(
       (item) => item.code === 'missing-presentation-fallback',
@@ -169,7 +169,7 @@ test('reports unsafe presentation slot assets before runtime rendering', () => {
       { slot: 'mouth', variant: 'closed' },
       { slot: 'mouth', variant: 'invented' },
     ],
-  } as unknown as CompanionRigManifest)
+  } as unknown as MeropeRigManifest)
   assert.ok(
     unknown.issues.some((item) => item.code === 'unknown-presentation-variant'),
   )
@@ -194,7 +194,7 @@ test('recognizes split facial textures', () => {
       { slot: 'mouth', variant: 'wide' },
       { slot: 'mouth', variant: 'round' },
     ],
-  } as CompanionRigManifest)
+  } as MeropeRigManifest)
   assert.equal(report.capabilities.facialVariants, true)
 })
 
@@ -218,7 +218,7 @@ test('recognizes full-head expression frames while reporting absent split-eye ga
       { slot: 'mouth', variant: 'wide' },
       { slot: 'mouth', variant: 'round' },
     ],
-  } as CompanionRigManifest)
+  } as MeropeRigManifest)
   assert.equal(report.capabilities.facialVariants, true)
   assert.equal(report.capabilities.gaze, false)
 })
@@ -247,7 +247,7 @@ test('recognizes independently rendered iris layers as real visible gaze', () =>
       { slot: 'mouth', variant: 'wide' },
       { slot: 'mouth', variant: 'round' },
     ],
-  } as CompanionRigManifest)
+  } as MeropeRigManifest)
   assert.equal(report.capabilities.gaze, true)
   assert.equal(
     report.issues.some((item) => item.code === 'missing-gaze'),

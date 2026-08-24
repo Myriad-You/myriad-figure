@@ -22,9 +22,9 @@ export async function prepareRigPsdImport(
   onStage?: (stage: 'validated' | 'packing') => void,
   sourceGenerationFingerprint?: string,
 ): Promise<PreparedRigPsdImport> {
-  if (!sourceMasterAssetId) throw new Error(currentCopy().companion.psdNeedAsset)
+  if (!sourceMasterAssetId) throw new Error(currentCopy().merope.psdNeedAsset)
   if (file.size <= 0 || file.size > MAX_PSD_BYTES) {
-    throw new Error(currentCopy().companion.psdTooLarge)
+    throw new Error(currentCopy().merope.psdTooLarge)
   }
   const { readPsd } = await import('ag-psd')
   const psd = readPsd(await file.arrayBuffer(), {
@@ -45,7 +45,7 @@ export async function prepareRigPsdImport(
 
 export async function compositePsdToPng(file: File): Promise<File> {
   if (file.size <= 0 || file.size > MAX_PSD_BYTES) {
-    throw new Error(currentCopy().companion.psdTooLarge)
+    throw new Error(currentCopy().merope.psdTooLarge)
   }
   const { readPsd } = await import('ag-psd')
   const psd = readPsd(await file.arrayBuffer(), {
@@ -60,14 +60,14 @@ export async function compositePsdToPng(file: File): Promise<File> {
   canvas.width = psd.width
   canvas.height = psd.height
   const context = canvas.getContext('2d')
-  if (!context) throw new Error(currentCopy().companion.psdPreviewFailed)
+  if (!context) throw new Error(currentCopy().merope.psdPreviewFailed)
   paintPsdLayers(context, psd.children || [])
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
       (next) =>
         next
           ? resolve(next)
-          : reject(new Error(currentCopy().companion.psdPreviewFailed)),
+          : reject(new Error(currentCopy().merope.psdPreviewFailed)),
       'image/png',
     )
   })
@@ -108,11 +108,11 @@ function validateFaceRigDocument(psd: Psd): void {
     psd.height > MAX_DOCUMENT_EDGE ||
     (psd.bitsPerChannel ?? 8) !== 8
   ) {
-    throw new Error(currentCopy().companion.psdSpecInvalid)
+    throw new Error(currentCopy().merope.psdSpecInvalid)
   }
   const layerCount = countVisiblePixelLayers(psd.children || [])
   if (layerCount === 0 || layerCount > MAX_LAYER_COUNT) {
-    throw new Error(currentCopy().companion.psdLayerCountInvalid)
+    throw new Error(currentCopy().merope.psdLayerCountInvalid)
   }
 }
 

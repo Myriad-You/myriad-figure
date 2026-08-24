@@ -163,7 +163,7 @@ export interface RigLayerSource {
   boneHandles: RigBoneHandle[]
 }
 
-export interface CompanionRigCompileRequest {
+export interface MeropeRigCompileRequest {
   rigIrVersion?: number
   characterAssetContractVersion: number
   sourceMasterAssetId: string
@@ -184,7 +184,7 @@ export interface CompanionRigCompileRequest {
   spatialProfile?: RigSpatialProfile
 }
 
-export interface CompanionRigImportSource {
+export interface MeropeRigImportSource {
   rigIrVersion?: number
   characterAssetContractVersion: number
   sourceMasterAssetId: string
@@ -205,7 +205,7 @@ export interface CompanionRigImportSource {
   anime25dPlayback?: Anime25DPlayback
 }
 
-export interface CompanionRigManifest {
+export interface MeropeRigManifest {
   schemaVersion: number
   rigIrVersion?: number
   characterAssetContractVersion?: number
@@ -224,9 +224,9 @@ export interface CompanionRigManifest {
   anime25dPlayback?: Anime25DPlayback
 }
 
-export function isLiveCompanionManifest(
+export function isLiveMeropeManifest(
   value: unknown,
-): value is CompanionRigManifest {
+): value is MeropeRigManifest {
   return (
     isRigManifest(value) &&
     value.quality === 'layered-2d' &&
@@ -234,7 +234,7 @@ export function isLiveCompanionManifest(
   )
 }
 
-export function isRigManifest(value: unknown): value is CompanionRigManifest {
+export function isRigManifest(value: unknown): value is MeropeRigManifest {
   if (!isRecord(value)) return false
   if (
     value.schemaVersion !== RIG_SCHEMA_VERSION ||

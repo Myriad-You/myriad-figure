@@ -5,37 +5,37 @@ import type {
   PerformanceDirective,
 } from '../../services/agent/types'
 
-export const COMPANION_PERFORMANCE_EVENT = 'arael-companion-performance'
-export const COMPANION_LIFE_STATE_EVENT = 'arael-companion-life-state'
+export const MEROPE_PERFORMANCE_EVENT = 'arael-merope-performance'
+export const MEROPE_STATE_EVENT = 'arael-merope-state'
 
-export interface CompanionPerformanceEventDetail {
+export interface MeropePerformanceEventDetail {
   text: string
   source: 'reply' | 'proactive' | 'interaction' | 'preview'
   messageId?: string
   performance?: PerformanceDirective
 }
 
-export interface CompanionLifeStateEventDetail {
+export interface MeropeStateEventDetail {
   mood: MoodTransition
   activity: string
 }
 
-export function dispatchCompanionPerformance(
+export function dispatchMeropePerformance(
   detail: unknown,
 ): void {
-  const sanitized = companionPerformanceEventDetail(detail)
+  const sanitized = meropePerformanceEventDetail(detail)
   if (!sanitized || typeof window === 'undefined') return
   window.dispatchEvent(
-    new CustomEvent<CompanionPerformanceEventDetail>(
-      COMPANION_PERFORMANCE_EVENT,
+    new CustomEvent<MeropePerformanceEventDetail>(
+      MEROPE_PERFORMANCE_EVENT,
       { detail: sanitized },
     ),
   )
 }
 
-export function companionPerformanceEventDetail(
+export function meropePerformanceEventDetail(
   value: unknown,
-): CompanionPerformanceEventDetail | null {
+): MeropePerformanceEventDetail | null {
   if (!isRecord(value)) return null
   const text = typeof value.text === 'string' ? value.text.trim().slice(0, 2_000) : ''
   const performance = sanitizePerformanceDirective(value.performance)
@@ -43,7 +43,7 @@ export function companionPerformanceEventDetail(
   const source = ['reply', 'proactive', 'interaction', 'preview'].includes(
     String(value.source),
   )
-    ? (value.source as CompanionPerformanceEventDetail['source'])
+    ? (value.source as MeropePerformanceEventDetail['source'])
     : 'reply'
   return {
     text,
@@ -55,19 +55,19 @@ export function companionPerformanceEventDetail(
   }
 }
 
-export function dispatchCompanionLifeState(value: unknown): void {
-  const detail = companionLifeStateEventDetail(value)
+export function dispatchMeropeState(value: unknown): void {
+  const detail = meropeStateEventDetail(value)
   if (!detail || typeof window === 'undefined') return
   window.dispatchEvent(
-    new CustomEvent<CompanionLifeStateEventDetail>(COMPANION_LIFE_STATE_EVENT, {
+    new CustomEvent<MeropeStateEventDetail>(MEROPE_STATE_EVENT, {
       detail,
     }),
   )
 }
 
-export function companionLifeStateEventDetail(
+export function meropeStateEventDetail(
   value: unknown,
-): CompanionLifeStateEventDetail | null {
+): MeropeStateEventDetail | null {
   if (!isRecord(value) || !isRecord(value.mood)) return null
   const mood = value.mood
   const bands = ['floor', 'low', 'normal', 'high'] as const

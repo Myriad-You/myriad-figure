@@ -1,4 +1,4 @@
-import type { CompanionRigManifest } from '../rig/types'
+import type { MeropeRigManifest } from '../rig/types'
 import type { ChestWeightField } from './chestPhysics'
 import type { HairSpringState } from './hairPhysics'
 import type { Anime25DPlayback, Anime25DPlaybackLayer } from './types'
@@ -252,7 +252,7 @@ export class Anime25DPlayer {
   constructor(
     canvas: HTMLCanvasElement,
     playback: Anime25DPlayback,
-    rigManifest?: CompanionRigManifest,
+    rigManifest?: MeropeRigManifest,
   ) {
     const gl = canvas.getContext('webgl2', {
       alpha: true,

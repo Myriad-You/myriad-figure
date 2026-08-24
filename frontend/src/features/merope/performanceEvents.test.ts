@@ -1,21 +1,21 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  companionLifeStateEventDetail,
-  companionPerformanceEventDetail,
+  meropeStateEventDetail,
+  meropePerformanceEventDetail,
   sanitizePerformanceDirective,
 } from './performanceEvents'
 
 test('bounds production performance events and defaults their source', () => {
   assert.deepEqual(
-    companionPerformanceEventDetail({
+    meropePerformanceEventDetail({
       text: '  太好了！  ',
       source: 'unknown',
     }),
     { text: '太好了！', source: 'reply' },
   )
-  assert.equal(companionPerformanceEventDetail({ text: '   ' }), null)
-  assert.equal(companionPerformanceEventDetail(null), null)
+  assert.equal(meropePerformanceEventDetail({ text: '   ' }), null)
+  assert.equal(meropePerformanceEventDetail(null), null)
 })
 
 test('bounds strict-Lite semantic plans and rejects raw intents', () => {
@@ -36,8 +36,8 @@ test('bounds strict-Lite semantic plans and rejects raw intents', () => {
   assert.equal(performance?.plan.cues[0]?.atMs, 5000)
 })
 
-test('accepts persisted life transitions for immediate face sync', () => {
-  const detail = companionLifeStateEventDetail({
+test('accepts persisted Merope state transitions for immediate face sync', () => {
+  const detail = meropeStateEventDetail({
     mood: { before: 70, after: 74, bandBefore: 'normal', bandAfter: 'normal', delta: 4, cause: 'user_praise', revision: 10 },
     activity: 'talking',
   })

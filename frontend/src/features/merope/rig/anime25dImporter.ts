@@ -2,7 +2,7 @@ import type { Layer, PixelData, Psd } from 'ag-psd'
 import type { Anime25DRiggerAnchors } from '../anime25drig/playback'
 import type { Anime25DLayerRole } from './anime25d'
 import type {
-  CompanionRigImportSource,
+  MeropeRigImportSource,
   RigBone,
   RigBoneHandle,
   RigLayerMeshSource,
@@ -130,7 +130,7 @@ interface AnimeAnchors {
 export interface PreparedAnime25DRigImport {
   atlas: Blob
   analysisReference: Blob
-  source: CompanionRigImportSource
+  source: MeropeRigImportSource
   partCount: number
 }
 
@@ -195,7 +195,7 @@ export async function prepareAnime25DRigPsd(
   sourceGenerationFingerprint?: string,
 ): Promise<PreparedAnime25DRigImport> {
   if (!isAnime25DDocument(psd)) {
-    throw new Error(currentCopy().companion.anime25dMissingFace)
+    throw new Error(currentCopy().merope.anime25dMissingFace)
   }
   const working = flattenPsdForRigger(psd)
   Rigger.cleanPsdLayers(working)
@@ -213,7 +213,7 @@ export async function prepareAnime25DRigPsd(
   }
   if (layers.length === 0 || layers.length > MAX_RIG_PARTS) {
     throw new Error(
-      currentCopy().companion.anime25dPartCount.replace(
+      currentCopy().merope.anime25dPartCount.replace(
         '{max}',
         String(MAX_RIG_PARTS),
       ),
@@ -406,7 +406,7 @@ function validPixelData(value: PixelData | undefined): value is PixelData {
 function cleanedRaster(layer: Layer): RasterLayer {
   const pixels = layer.imageData
   if (!validPixelData(pixels)) {
-    throw new Error(currentCopy().companion.anime25dInvalidPixels)
+    throw new Error(currentCopy().merope.anime25dInvalidPixels)
   }
   const data = new Uint8ClampedArray(pixels.data)
   const opacity = clamp(layer.opacity ?? 1, 0, 1)
@@ -552,7 +552,7 @@ function validateCharacterAssetLayers(layers: readonly RasterLayer[]): void {
   }
   if (missing.length > 0) {
     throw new Error(
-      currentCopy().companion.anime25dContractMissing.replace(
+      currentCopy().merope.anime25dContractMissing.replace(
         '{missing}',
         missing.join(', '),
       ),
@@ -629,7 +629,7 @@ async function packAtlas(
     if (drawWidth + ATLAS_PADDING * 2 > MAX_ATLAS_EDGE) {
       throw new Error(
         currentCopy()
-          .companion.anime25dLayerTooWide.replace('{id}', layer.id)
+          .merope.anime25dLayerTooWide.replace('{id}', layer.id)
           .replace('{max}', String(MAX_ATLAS_EDGE)),
       )
     }
@@ -640,7 +640,7 @@ async function packAtlas(
     }
     if (cursorY + drawHeight + ATLAS_PADDING > MAX_ATLAS_EDGE) {
       throw new Error(
-        currentCopy().companion.anime25dAtlasOverflow.replace(
+        currentCopy().merope.anime25dAtlasOverflow.replace(
           '{max}',
           String(MAX_ATLAS_EDGE),
         ),
@@ -742,7 +742,7 @@ function canvasPng(canvas: HTMLCanvasElement): Promise<Blob> {
       (value) =>
         value
           ? resolve(value)
-          : reject(new Error(currentCopy().companion.rigAtlasFailed)),
+          : reject(new Error(currentCopy().merope.rigAtlasFailed)),
       'image/png',
     ),
   )
@@ -941,7 +941,7 @@ function buildBonesAndHandles(
   }
   if (bones.length > MAX_RIG_BONES) {
     throw new Error(
-      currentCopy().companion.anime25dBoneLimit.replace(
+      currentCopy().merope.anime25dBoneLimit.replace(
         '{max}',
         String(MAX_RIG_BONES),
       ),
@@ -1128,7 +1128,7 @@ export function gridMesh(
 
 function semanticAnchors(
   anchors: AnimeAnchors,
-): CompanionRigImportSource['semanticAnchors'] {
+): MeropeRigImportSource['semanticAnchors'] {
   const relative = (boneId: string, pivot: RigPoint, point: RigPoint) => ({
     boneId,
     offset: { x: point.x - pivot.x, y: point.y - pivot.y },
@@ -1401,7 +1401,7 @@ function requiredLayer(
   const layer = layers.find((candidate) => candidate.role === role)
   if (!layer) {
     throw new Error(
-      currentCopy().companion.anime25dMissingLayer.replace('{role}', role),
+      currentCopy().merope.anime25dMissingLayer.replace('{role}', role),
     )
   }
   return layer
@@ -1409,7 +1409,7 @@ function requiredLayer(
 
 function unionLayerBounds(layers: PreparedLayer[]): RigRect {
   if (layers.length === 0) {
-    throw new Error(currentCopy().companion.anime25dMissingHandwear)
+    throw new Error(currentCopy().merope.anime25dMissingHandwear)
   }
   const left = Math.min(...layers.map((layer) => layer.bounds.x))
   const top = Math.min(...layers.map((layer) => layer.bounds.y))
@@ -1424,7 +1424,7 @@ function unionLayerBounds(layers: PreparedLayer[]): RigRect {
 
 function requiredContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
   const context = canvas.getContext('2d', { willReadFrequently: true })
-  if (!context) throw new Error(currentCopy().companion.canvasUnsupported)
+  if (!context) throw new Error(currentCopy().merope.canvasUnsupported)
   return context
 }
 
