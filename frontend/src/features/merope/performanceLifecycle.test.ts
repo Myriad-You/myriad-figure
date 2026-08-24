@@ -1,0 +1,147 @@
+import type { PerformanceLifecycleTarget } from './performanceLifecycle'
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { PerformanceLifecycleController } from './performanceLifecycle'
+
+const performance = {
+  phase: 'delivery' as const,
+  moodRevision: 8,
+  plan: {
+    baseline: {
+      expression: 'warm' as const,
+      posture: 'open' as const,
+      motionEnergy: 1,
+      attention: 1,
+    },
+    cues: [],
+  },
+}
+
+test('forwards only semantic performance data and leaves event text speech-owned', () => {
+  const played: typeof performance[] = []
+  let stopped = 0
+  const target: PerformanceLifecycleTarget = {
+    playMotionPlan: (value) => {
+      played.push(value as typeof performance)
+      return true
+    },
+    stopMotionPlan: () => {
+      stopped += 1
+    },
+  }
+  const controller = new PerformanceLifecycleController(target)
+
+  controller.handle({ text: 'plain speech', source: 'reply' })
+  assert.deepEqual(played, [])
+  controller.handle({
+    text: 'warm reply',
+    source: 'reply',
+    performance,
+  })
+  assert.deepEqual(played, [performance])
+  assert.equal(stopped, 0)
+})
+
+test('stops the mounted rig when the lifecycle owner is disposed', () => {
+  let stopped = 0
+  const controller = new PerformanceLifecycleController({
+    playMotionPlan: () => true,
+    stopMotionPlan: () => {
+      stopped += 1
+    },
+  })
+  controller.dispose()
+  assert.equal(stopped, 1)
+})
+
+test('cancels only the transient plan owned by the interrupted message', () => {
+  const played: typeof performance[] = []
+  let stopped = 0
+  const controller = new PerformanceLifecycleController({
+    playMotionPlan: (value) => {
+      played.push(value as typeof performance)
+      return true
+    },
+    stopMotionPlan: () => {
+      stopped += 1
+    },
+  })
+  controller.handle({
+    text: 'reply',
+    source: 'reply',
+    messageId: 'message-1',
+    performance,
+  })
+  controller.handleSpeech({
+    phase: 'cancel',
+    source: 'reply',
+    messageId: 'message-2',
+  })
+  assert.equal(stopped, 0)
+  controller.handleSpeech({
+    phase: 'cancel',
+    source: 'reply',
+    messageId: 'message-1',
+  })
+  assert.equal(stopped, 1)
+  assert.deepEqual(played, [performance])
+})
+
+test('drops a performance plan that arrives after its message was cancelled', () => {
+  const played: typeof performance[] = []
+  const controller = new PerformanceLifecycleController({
+    playMotionPlan: (value) => {
+      played.push(value as typeof performance)
+      return true
+    },
+    stopMotionPlan: () => undefined,
+  })
+  controller.handleSpeech({
+    phase: 'cancel',
+    source: 'reply',
+    messageId: 'message-late',
+  })
+  controller.handle({
+    text: 'late reply',
+    source: 'reply',
+    messageId: 'message-late',
+    performance,
+  })
+  assert.deepEqual(played, [])
+})
+
+test('does not transfer cancellation ownership to a plan rejected by the rig', () => {
+  let stopped = 0
+  let accepted = true
+  const controller = new PerformanceLifecycleController({
+    playMotionPlan: () => accepted,
+    stopMotionPlan: () => {
+      stopped += 1
+    },
+  })
+  controller.handle({
+    text: 'current',
+    source: 'reply',
+    messageId: 'message-current',
+    performance,
+  })
+  accepted = false
+  controller.handle({
+    text: 'stale',
+    source: 'reply',
+    messageId: 'message-stale',
+    performance,
+  })
+  controller.handleSpeech({
+    phase: 'cancel',
+    source: 'reply',
+    messageId: 'message-stale',
+  })
+  assert.equal(stopped, 0)
+  controller.handleSpeech({
+    phase: 'cancel',
+    source: 'reply',
+    messageId: 'message-current',
+  })
+  assert.equal(stopped, 1)
+})

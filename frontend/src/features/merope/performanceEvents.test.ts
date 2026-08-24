@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  meropeStateEventDetail,
   meropePerformanceEventDetail,
+  meropeStateEventDetail,
   sanitizePerformanceDirective,
 } from './performanceEvents'
 
@@ -11,8 +11,9 @@ test('bounds production performance events and defaults their source', () => {
     meropePerformanceEventDetail({
       text: '  太好了！  ',
       source: 'unknown',
+      messageId: ' message-1 ',
     }),
-    { text: '太好了！', source: 'reply' },
+    { text: '太好了！', source: 'reply', messageId: 'message-1' },
   )
   assert.equal(meropePerformanceEventDetail({ text: '   ' }), null)
   assert.equal(meropePerformanceEventDetail(null), null)
@@ -26,14 +27,18 @@ test('bounds strict-Lite semantic plans and rejects raw intents', () => {
       baseline: { expression: 'warm', posture: 'open', motionEnergy: 99, attention: -1 },
       cues: [
         { intent: 'delight', atMs: 9000, intensity: 9, tempo: 0.1, fadeInMs: 1, fadeOutMs: 9, interrupt: 'replace' },
+        { intent: 'think', atMs: 80, intensity: 0.9, tempo: 0.8, fadeInMs: 140, fadeOutMs: 300, interrupt: 'queue' },
+        { intent: 'dizzy', atMs: 100, intensity: 1, tempo: 1, fadeInMs: 120, fadeOutMs: 260, interrupt: 'if-lower' },
         { intent: 'execute-code', atMs: 0, intensity: 1, tempo: 1, fadeInMs: 100, fadeOutMs: 100, interrupt: 'queue' },
       ],
     },
   })
   assert.equal(performance?.moodRevision, 123)
   assert.equal(performance?.plan.baseline?.motionEnergy, 1.4)
-  assert.equal(performance?.plan.cues.length, 1)
+  assert.equal(performance?.plan.cues.length, 3)
   assert.equal(performance?.plan.cues[0]?.atMs, 5000)
+  assert.equal(performance?.plan.cues[1]?.intent, 'think')
+  assert.equal(performance?.plan.cues[2]?.intent, 'dizzy')
 })
 
 test('accepts persisted Merope state transitions for immediate face sync', () => {

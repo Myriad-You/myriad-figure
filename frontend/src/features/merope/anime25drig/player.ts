@@ -1,7 +1,10 @@
+import type { PerformanceDirective } from '../../../services/agent/types'
 import type { MeropeRigManifest } from '../rig/types'
 import type { ChestWeightField } from './chestPhysics'
 import type { HairSpringState } from './hairPhysics'
 import type { Anime25DPlayback, Anime25DPlaybackLayer } from './types'
+import { dizzyEyeDisplayScale } from '../rig/dizzyEye'
+import { squeezeEyeDisplayScale } from '../rig/squeezeEye'
 import { AmbientMotionController } from './ambientMotion'
 import {
   buildChestWeightField,
@@ -12,14 +15,23 @@ import {
   sampleChestWeight,
   stepChestSpring,
 } from './chestPhysics'
+import { applyExpressiveMotionEnvelope } from './expressiveMotionEnvelope'
 import {
   frontHairUpperParallaxScale,
   hairStrandDynamics,
   stepHairSpring,
 } from './hairPhysics'
+import {
+  applyPerformanceExpressionOffset,
+  mixBoundedExpressionChannel,
+  mixEyeOpen,
+  PerformanceExpressionController,
+} from './performanceExpression'
+import { applyRandomActionFrame, RandomActionController } from './randomAction'
 import { CoSpeechExpressionController } from './speechExpression'
 import { AutoSpeechController } from './speechMotion'
 import { stepMouthForm, stepMouthOpen } from './speechResponse'
+import { ThinkingMotionController } from './thinkingMotion'
 
 const VERTEX_SHADER = `#version 300 es
 in vec2 a_pos;
@@ -52,6 +64,8 @@ export interface Anime25DDriver {
   angleZ: number
   eyeOpenL: number
   eyeOpenR: number
+  eyeDizzy: number
+  eyeSqueeze: number
   eyeX: number
   eyeY: number
   brow: number
@@ -85,6 +99,7 @@ export interface Anime25DDriver {
   idle: boolean
   blink: boolean
   rand: boolean
+  thinking: boolean
   talk: boolean
   mouse: boolean
   phys: boolean
@@ -96,6 +111,13 @@ interface HairStrandSpring {
   phase: number
   stiffnessScale: number
   dampingScale: number
+}
+
+interface SecondaryMotionPose {
+  angleX: number
+  angleY: number
+  angleZ: number
+  body: number
 }
 
 interface GpuLayer {
@@ -129,6 +151,8 @@ export const IDENTITY_DRIVER: Anime25DDriver = {
   angleZ: 0,
   eyeOpenL: 1,
   eyeOpenR: 1,
+  eyeDizzy: 0,
+  eyeSqueeze: 0,
   eyeX: 0,
   eyeY: 0,
   brow: 0,
@@ -162,6 +186,7 @@ export const IDENTITY_DRIVER: Anime25DDriver = {
   idle: true,
   blink: true,
   rand: true,
+  thinking: false,
   talk: true,
   mouse: false,
   phys: true,
@@ -178,17 +203,46 @@ export const WORKBENCH_DRIVER: Anime25DDriver = {
   phys: true,
 }
 
-const DRIVER_LIMITS: Partial<Record<keyof Anime25DDriver, readonly [number, number]>> = {
-  angleX: [-1, 1], angleY: [-1, 1], angleZ: [-1, 1],
-  eyeOpenL: [0, 1], eyeOpenR: [0, 1], eyeX: [-1, 1], eyeY: [-1, 1],
-  brow: [-1, 1], mouthOpen: [0, 1], mouthForm: [-1, 1], mouthCY: [-1, 1],
-  body: [-1, 1], physAmp: [0, 3], soft: [0, 3],
-  browAngL: [-1, 1], browAngR: [-1, 1], browAngSym: [-1, 1],
-  bangL: [-1, 1], bangC: [-1, 1], bangR: [-1, 1], armY: [-1, 1], armPos: [-1, 1],
-  bust: [0, 4], bustY: [-3, 3], irisScale: [0.5, 1.3],
-  mouthEase: [0, 1], eyeEase: [0, 1], fhAmp: [0, 3], fhSoft: [0, 2],
-  eyeCY: [-1, 1], eyeCAng: [-1, 1], mouthCAng: [-1, 1],
-  eyeScaleL: [0.5, 1.5], eyeScaleR: [0.5, 1.5], mouthScale: [0.5, 1.5],
+const DRIVER_LIMITS: Partial<
+  Record<keyof Anime25DDriver, readonly [number, number]>
+> = {
+  angleX: [-1, 1],
+  angleY: [-1, 1],
+  angleZ: [-1, 1],
+  eyeOpenL: [0, 1],
+  eyeOpenR: [0, 1],
+  eyeDizzy: [0, 1],
+  eyeSqueeze: [0, 1],
+  eyeX: [-1, 1],
+  eyeY: [-1, 1],
+  brow: [-1, 1],
+  mouthOpen: [0, 1],
+  mouthForm: [-1, 1],
+  mouthCY: [-1, 1],
+  body: [-1, 1],
+  physAmp: [0, 3],
+  soft: [0, 3],
+  browAngL: [-1, 1],
+  browAngR: [-1, 1],
+  browAngSym: [-1, 1],
+  bangL: [-1, 1],
+  bangC: [-1, 1],
+  bangR: [-1, 1],
+  armY: [-1, 1],
+  armPos: [-1, 1],
+  bust: [0, 4],
+  bustY: [-3, 3],
+  irisScale: [0.5, 1.3],
+  mouthEase: [0, 1],
+  eyeEase: [0, 1],
+  fhAmp: [0, 3],
+  fhSoft: [0, 2],
+  eyeCY: [-1, 1],
+  eyeCAng: [-1, 1],
+  mouthCAng: [-1, 1],
+  eyeScaleL: [0.5, 1.5],
+  eyeScaleR: [0.5, 1.5],
+  mouthScale: [0.5, 1.5],
 }
 
 export function sanitizeDriverPatch(
@@ -218,6 +272,8 @@ export interface Anime25DDebugSnapshot {
   strandCount: number
   eyeOpenLayers: number
   eyeCloseLayers: number
+  eyeDizzyLayers: number
+  eyeSqueezeLayers: number
   mouthOpenLayers: number
   mouthCloseLayers: number
   canvas: { width: number; height: number }
@@ -234,10 +290,27 @@ export class Anime25DPlayer {
   private layers: GpuLayer[] = []
   private readonly current: Anime25DDriver = { ...IDENTITY_DRIVER }
   private readonly target: Anime25DDriver = { ...IDENTITY_DRIVER }
+  private readonly secondaryCurrent: SecondaryMotionPose = {
+    angleX: 0,
+    angleY: 0,
+    angleZ: 0,
+    body: 0,
+  }
+
+  private readonly secondaryTarget: SecondaryMotionPose = {
+    angleX: 0,
+    angleY: 0,
+    angleZ: 0,
+    body: 0,
+  }
+
   private time = 0
   private blinkT = -1
   private nextBlink = 1.8
   private readonly ambientMotion = new AmbientMotionController()
+  private readonly randomAction = new RandomActionController()
+  private readonly thinkingMotion = new ThinkingMotionController()
+  private readonly performanceExpression = new PerformanceExpressionController()
   private readonly speechMotion = new AutoSpeechController()
   private readonly speechExpression = new CoSpeechExpressionController()
   private speechActive = false
@@ -319,6 +392,22 @@ export class Anime25DPlayer {
     this.speechActive = active
   }
 
+  playPerformance(
+    directive: PerformanceDirective,
+    cueOriginSeconds?: number,
+  ): boolean {
+    const now = this.performanceClockSeconds()
+    return this.performanceExpression.play(
+      directive,
+      now,
+      cueOriginSeconds ?? now,
+    )
+  }
+
+  stopPerformance(): void {
+    this.performanceExpression.stop(this.performanceClockSeconds())
+  }
+
   debugSnapshot(): Anime25DDebugSnapshot {
     const layers = this.playback.layers
     return {
@@ -326,8 +415,14 @@ export class Anime25DPlayer {
       hairLayerCount: layers.filter((layer) => layer.phys === 'hair').length,
       strandCount: layers.reduce((sum, layer) => sum + layer.strands.length, 0),
       eyeOpenLayers: layers.filter((layer) => layer.fade === 'eyeOpen').length,
-      eyeCloseLayers: layers.filter((layer) => layer.fade === 'eyeClose').length,
-      mouthOpenLayers: layers.filter((layer) => layer.fade === 'mouthOpen').length,
+      eyeCloseLayers: layers.filter((layer) => layer.fade === 'eyeClose')
+        .length,
+      eyeDizzyLayers: layers.filter((layer) => layer.fade === 'eyeDizzy')
+        .length,
+      eyeSqueezeLayers: layers.filter((layer) => layer.fade === 'eyeSqueeze')
+        .length,
+      mouthOpenLayers: layers.filter((layer) => layer.fade === 'mouthOpen')
+        .length,
       mouthCloseLayers: layers.filter((layer) => layer.fade === 'mouthClose')
         .length,
       canvas: { ...this.playback.pixelCanvas },
@@ -368,7 +463,9 @@ export class Anime25DPlayer {
 
   captureFrame(): string | null {
     const canvas = this.gl.canvas
-    return canvas instanceof HTMLCanvasElement ? canvas.toDataURL('image/png') : null
+    return canvas instanceof HTMLCanvasElement
+      ? canvas.toDataURL('image/png')
+      : null
   }
 
   dispose(): void {
@@ -399,39 +496,124 @@ export class Anime25DPlayer {
       tgt.angleZ += 0.07 * Math.sin(t * 0.23 + 0.5)
       tgt.body += 0.1 * Math.sin(t * 0.19 + 2.1)
     }
+    const semanticExpression = this.performanceExpression.sample(
+      this.performanceClockSeconds(),
+    )
+    const performanceMotionScale =
+      this.performanceExpression.getAmbientMotionScale()
     const pointerDriven = this.target.mouse && this.mouse.inside
+    const speech = this.speechMotion.sample(t, this.target.talk)
+    const speaking = this.speechActive || this.target.talk
+    // `talk` is a workbench preview generator, not ownership by real speech.
+    // Only authored speech suppresses autonomous idle actions.
+    const actionBlocked = this.speechActive
+    const randomAction = this.randomAction.sample(
+      t,
+      this.target.rand && !pointerDriven,
+      actionBlocked,
+    )
     const ambient = this.ambientMotion.sample(
       t,
       this.target.rand && !pointerDriven,
     )
-    tgt.angleX = clamp(tgt.angleX + ambient.angleX, -1, 1)
-    tgt.angleY = clamp(tgt.angleY + ambient.angleY, -1, 1)
-    tgt.angleZ = clamp(tgt.angleZ + ambient.angleZ, -1, 1)
-    tgt.body = clamp(tgt.body + ambient.body, -1, 1)
-    tgt.eyeX = clamp(tgt.eyeX + ambient.eyeX, -1, 1)
-    tgt.eyeY = clamp(tgt.eyeY + ambient.eyeY, -1, 1)
-    const speech = this.speechMotion.sample(t, this.target.talk)
+    const thinking = this.thinkingMotion.sample(
+      t,
+      this.target.thinking && !pointerDriven && !speaking,
+    )
+    const ambientScale = performanceMotionScale * randomAction.ambientScale
+    tgt.angleX = clamp(tgt.angleX + ambient.angleX * ambientScale, -1, 1)
+    tgt.angleY = clamp(tgt.angleY + ambient.angleY * ambientScale, -1, 1)
+    tgt.angleZ = clamp(tgt.angleZ + ambient.angleZ * ambientScale, -1, 1)
+    tgt.body = clamp(tgt.body + ambient.body * ambientScale, -1, 1)
+    tgt.eyeX = clamp(tgt.eyeX + ambient.eyeX * ambientScale, -1, 1)
+    tgt.eyeY = clamp(tgt.eyeY + ambient.eyeY * ambientScale, -1, 1)
+    applyRandomActionFrame(tgt, randomAction, performanceMotionScale)
+    tgt.angleX = mixBoundedExpressionChannel(
+      tgt.angleX,
+      thinking.angleX,
+      -1,
+      1,
+      0,
+    )
+    tgt.angleY = mixBoundedExpressionChannel(
+      tgt.angleY,
+      thinking.angleY,
+      -1,
+      1,
+      0,
+    )
+    tgt.angleZ = mixBoundedExpressionChannel(
+      tgt.angleZ,
+      thinking.angleZ,
+      -1,
+      1,
+      0,
+    )
+    tgt.eyeX = mixBoundedExpressionChannel(tgt.eyeX, thinking.eyeX, -1, 1, 0)
+    tgt.eyeY = mixBoundedExpressionChannel(tgt.eyeY, thinking.eyeY, -1, 1, 0)
+    tgt.brow = mixBoundedExpressionChannel(tgt.brow, thinking.brow, -1, 1, 0)
+    tgt.mouthCY = mixBoundedExpressionChannel(
+      tgt.mouthCY,
+      thinking.mouthCY,
+      -1,
+      1,
+      0,
+    )
+    tgt.mouthCAng = mixBoundedExpressionChannel(
+      tgt.mouthCAng,
+      thinking.mouthCAng,
+      -1,
+      1,
+      0,
+    )
+    tgt.mouthScale = mixBoundedExpressionChannel(
+      tgt.mouthScale,
+      thinking.mouthScale,
+      0.5,
+      1.5,
+      1,
+    )
+    applyPerformanceExpressionOffset(tgt, semanticExpression)
     if (speech.mouthOpen > 0) {
       tgt.mouthOpen = Math.max(tgt.mouthOpen, speech.mouthOpen)
       const formInfluence = smoothstep((speech.mouthOpen - 0.08) / 0.32)
-      tgt.mouthForm = clamp(
-        tgt.mouthForm + speech.mouthForm * formInfluence,
+      tgt.mouthForm = mixBoundedExpressionChannel(
+        tgt.mouthForm,
+        speech.mouthForm * formInfluence,
         -1,
         1,
+        0,
       )
     }
     const speechExpression = this.speechExpression.sample(
       t,
-      this.speechActive || this.target.talk,
+      speaking,
       this.speechActive && !this.target.talk ? tgt.mouthOpen : null,
       speech.phraseActivity,
       speech.browAccent,
       speech.headAccent,
     )
-    tgt.brow = clamp(tgt.brow + speechExpression.brow, -1, 1)
-    tgt.eyeOpenL = clamp(tgt.eyeOpenL + speechExpression.eyeOpen, 0, 1)
-    tgt.eyeOpenR = clamp(tgt.eyeOpenR + speechExpression.eyeOpen, 0, 1)
-    tgt.angleY = clamp(tgt.angleY + speechExpression.angleY, -1, 1)
+    tgt.brow = mixBoundedExpressionChannel(
+      tgt.brow,
+      speechExpression.brow,
+      -1,
+      1,
+      0,
+    )
+    tgt.eyeOpenL = mixEyeOpen(tgt.eyeOpenL, speechExpression.eyeOpen)
+    tgt.eyeOpenR = mixEyeOpen(tgt.eyeOpenR, speechExpression.eyeOpen)
+    tgt.angleY = mixBoundedExpressionChannel(
+      tgt.angleY,
+      speechExpression.angleY,
+      -1,
+      1,
+      0,
+    )
+    this.secondaryTarget.angleX = tgt.angleX
+    this.secondaryTarget.angleY = tgt.angleY
+    this.secondaryTarget.angleZ = tgt.angleZ
+    this.secondaryTarget.body = tgt.body
+    applyExpressiveMotionEnvelope(tgt, semanticExpression, speechExpression)
     if (this.target.blink) {
       if (this.blinkT < 0 && this.time > this.nextBlink) {
         this.blinkT = 0
@@ -457,8 +639,18 @@ export class Anime25DPlayer {
       }
     }
     const rate = Math.min(1, dt * 14)
-    const flags = ['idle', 'blink', 'rand', 'talk', 'mouse', 'phys'] as const
-    for (const key of Object.keys(IDENTITY_DRIVER) as Array<keyof Anime25DDriver>) {
+    const flags = [
+      'idle',
+      'blink',
+      'rand',
+      'thinking',
+      'talk',
+      'mouse',
+      'phys',
+    ] as const
+    for (const key of Object.keys(IDENTITY_DRIVER) as Array<
+      keyof Anime25DDriver
+    >) {
       if (flags.includes(key as (typeof flags)[number])) {
         this.current[key] = this.target[key] as never
         continue
@@ -475,15 +667,32 @@ export class Anime25DPlayer {
       }
       ;(this.current[key] as number) = from + (to - from) * rate
     }
+    this.secondaryCurrent.angleX +=
+      (this.secondaryTarget.angleX - this.secondaryCurrent.angleX) * rate
+    this.secondaryCurrent.angleY +=
+      (this.secondaryTarget.angleY - this.secondaryCurrent.angleY) * rate
+    this.secondaryCurrent.angleZ +=
+      (this.secondaryTarget.angleZ - this.secondaryCurrent.angleZ) * rate
+    this.secondaryCurrent.body +=
+      (this.secondaryTarget.body - this.secondaryCurrent.body) * rate
+  }
+
+  private performanceClockSeconds(): number {
+    return performance.now() / 1_000
   }
 
   private updateSprings(dt: number): void {
     const { anchors } = this.playback
     const faceScale = anchors.faceScale
     const e = this.current
+    const secondary = this.secondaryCurrent
     const chestProfile = this.playback.chestProfile
     if (chestProfile?.enabled !== false) {
-      const chestTarget = chestMotionTarget(e, faceScale, this.chestTarget)
+      const chestTarget = chestMotionTarget(
+        secondary,
+        faceScale,
+        this.chestTarget,
+      )
       stepChestSpring(
         this.chest,
         chestTarget.x,
@@ -494,7 +703,8 @@ export class Anime25DPlayer {
     }
     if (!e.phys) return
     const headDX =
-      (e.angleX * 14 + e.angleZ * 0.07 * (anchors.neckPivot.y - anchors.face.cy)) *
+      (secondary.angleX * 14 +
+        secondary.angleZ * 0.07 * (anchors.neckPivot.y - anchors.face.cy)) *
       faceScale
     const time = this.time
     const windAmp = e.idle ? 1 : 0
@@ -565,7 +775,8 @@ export class Anime25DPlayer {
       const chestOffsetY = this.chest.offsetY * e.bust * chestMotionScale
       const inverseChestRx = 1 / chestRx
       const inverseChestRy = 1 / chestRy
-      const eye = source.side === 'L' ? A.eyeL : source.side === 'R' ? A.eyeR : undefined
+      const eye =
+        source.side === 'L' ? A.eyeL : source.side === 'R' ? A.eyeR : undefined
       const vOpen = source.side === 'L' ? e.eyeOpenL : e.eyeOpenR
       const bcx = source.x + source.w / 2
       const bcy = source.y + source.h / 2
@@ -582,6 +793,20 @@ export class Anime25DPlayer {
             const cyE = (eye.y0 + eye.y1) / 2
             x = cxE + (x - cxE) * scale
             y = cyE + (y - cyE) * scale
+          }
+        }
+        if (eye && (bn === 'eye_dizzy' || source.fade === 'eyeDizzy')) {
+          const scale = dizzyEyeDisplayScale(source.w, source.h, eye)
+          if (scale !== 1) {
+            x = eye.icx + (x - eye.icx) * scale
+            y = eye.icy + (y - eye.icy) * scale
+          }
+        }
+        if (eye && (bn === 'eye_squeeze' || source.fade === 'eyeSqueeze')) {
+          const scale = squeezeEyeDisplayScale(source.w, eye)
+          if (scale !== 1) {
+            x = bcx + (x - bcx) * scale
+            y = bcy + (y - bcy) * scale
           }
         }
         if (bn === 'mouth_open' || bn === 'mouth_close') {
@@ -674,8 +899,7 @@ export class Anime25DPlayer {
           x +=
             hw *
             fs *
-            (e.angleX * (14 + 40 * depthOffset) +
-              e.angleX * (npy - y) * 0.028)
+            (e.angleX * (14 + 40 * depthOffset) + e.angleX * (npy - y) * 0.028)
           y +=
             hw *
             fs *
@@ -684,19 +908,14 @@ export class Anime25DPlayer {
         }
         y -= (source.group === 'body' ? breath * 2.0 : breathHead * 1.6) * fs
         if (isTopwear && y < chestCy) {
-          y -=
-            breath *
-            2.2 *
-            fs *
-            smoothstep((chestCy - y) / (chestRy * 2))
+          y -= breath * 2.2 * fs * smoothstep((chestCy - y) / (chestRy * 2))
         }
         if (isTopwear) x = npx + (x - npx) * (1 + breath * 0.003)
         if (isTopwear && (chestOffsetX !== 0 || chestOffsetY !== 0)) {
           const gx = (x - chestCx) * inverseChestRx
           const gy = (y - chestCenterY) * inverseChestRy
           const skinWeight = layer.chestWeights?.[vertex] ?? 1
-          const chestWeight =
-            skinWeight * Math.exp(-(gx * gx + gy * gy))
+          const chestWeight = skinWeight * Math.exp(-(gx * gx + gy * gy))
           x += chestOffsetX * chestWeight
           y += chestOffsetY * chestWeight
         }
@@ -752,7 +971,11 @@ export class Anime25DPlayer {
         }
       }
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER, layer.vertexBuffer)
-      this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, packVertices(deformed, layer.uvs))
+      this.gl.bufferSubData(
+        this.gl.ARRAY_BUFFER,
+        0,
+        packVertices(deformed, layer.uvs),
+      )
     }
   }
 
@@ -799,7 +1022,9 @@ export class Anime25DPlayer {
     atlasImage: HTMLImageElement,
     layerIndex: number,
   ): GpuLayer {
-    const cell = (source.phys ? 30 : 42) * Math.max(0.6, this.playback.pixelCanvas.width / 768)
+    const cell =
+      (source.phys ? 30 : 42) *
+      Math.max(0.6, this.playback.pixelCanvas.width / 768)
     const cols = Math.max(2, Math.round(source.w / cell))
     const rows = Math.max(2, Math.round(source.h / cell))
     const rest = new Float32Array((cols + 1) * (rows + 1) * 2)
@@ -824,7 +1049,10 @@ export class Anime25DPlayer {
         const topRight = topLeft + 1
         const bottomLeft = topLeft + cols + 1
         const bottomRight = bottomLeft + 1
-        indices.set([topLeft, topRight, bottomLeft, topRight, bottomRight, bottomLeft], write)
+        indices.set(
+          [topLeft, topRight, bottomLeft, topRight, bottomRight, bottomLeft],
+          write,
+        )
         write += 6
       }
     }
@@ -935,12 +1163,23 @@ function layerBaseName(role: string): string {
   return role.replace(/-/g, '_')
 }
 
-function fadeOpacity(layer: Anime25DPlaybackLayer, driver: Anime25DDriver): number {
+export function fadeOpacity(
+  layer: Anime25DPlaybackLayer,
+  driver: Anime25DDriver,
+): number {
   if (!layer.fade) return 1
+  const dizzy = smoothstep(driver.eyeDizzy)
+  const squeeze = smoothstep(driver.eyeSqueeze)
+  if (layer.fade === 'eyeDizzy') return dizzy
+  if (layer.fade === 'eyeSqueeze') return squeeze * (1 - dizzy)
   if (layer.fade === 'eyeOpen' || layer.fade === 'eyeClose') {
     const open = layer.side === 'L' ? driver.eyeOpenL : driver.eyeOpenR
     const faded = smoothstep((open - (0.1 + driver.eyeEase * 0.45)) / 0.15)
-    return layer.fade === 'eyeOpen' ? faded : 1 - faded
+    return (
+      (layer.fade === 'eyeOpen' ? faded : 1 - faded) *
+      (1 - dizzy) *
+      (1 - squeeze)
+    )
   }
   if (layer.fade === 'mouthOpen' || layer.fade === 'mouthClose') {
     const faded = smoothstep(
@@ -1019,7 +1258,8 @@ function attachHairPhysics(
     if (total > 1e-6) {
       for (let strand = 0; strand < strandCount; strand += 1) {
         const weight = strandWeights[vertex * strandCount + strand] / total
-        strandWeights[vertex * strandCount + strand] = weight * dynamics[strand].amplitudeScale
+        strandWeights[vertex * strandCount + strand] =
+          weight * dynamics[strand].amplitudeScale
         rootY += weight * strands[strand].rootY
         tipY += weight * strands[strand].tipY
       }
@@ -1066,7 +1306,10 @@ function smoothstep(value: number): number {
   return bounded * bounded * (3 - 2 * bounded)
 }
 
-function packVertices(positions: Float32Array, uvs: Float32Array): Float32Array {
+function packVertices(
+  positions: Float32Array,
+  uvs: Float32Array,
+): Float32Array {
   const packed = new Float32Array(positions.length * 2)
   for (let index = 0; index < positions.length; index += 2) {
     const write = index * 2
@@ -1094,13 +1337,18 @@ function compileProgram(gl: WebGL2RenderingContext): WebGLProgram {
   return program
 }
 
-function compileShader(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
+function compileShader(
+  gl: WebGL2RenderingContext,
+  type: number,
+  source: string,
+): WebGLShader {
   const shader = gl.createShader(type)
   if (!shader) throw new Error('Anime2.5DRig shader failed')
   gl.shaderSource(shader, source)
   gl.compileShader(shader)
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    const log = gl.getShaderInfoLog(shader) || 'Anime2.5DRig shader compile failed'
+    const log =
+      gl.getShaderInfoLog(shader) || 'Anime2.5DRig shader compile failed'
     gl.deleteShader(shader)
     throw new Error(log)
   }

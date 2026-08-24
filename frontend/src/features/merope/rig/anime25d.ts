@@ -22,6 +22,8 @@ export const ANIME25D_LAYER_DEPTH = {
   irides: 1.08,
   eyelash: 1.12,
   'eye-close': 1.12,
+  'eye-dizzy': 1.12,
+  'eye-squeeze': 1.12,
   'front-hair': 1.28,
 } as const
 

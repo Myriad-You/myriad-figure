@@ -1,15 +1,21 @@
+import type { Anime25DPlaybackBuildLayer } from './playback'
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+
   buildAnime25DPlayback,
   remapRiggerAnchors,
-  type Anime25DPlaybackBuildLayer,
 } from './playback'
 import { isAnime25DPlayback } from './types'
 
 function layer(
-  partial: Omit<Anime25DPlaybackBuildLayer, 'textureBounds' | 'strands' | 'group'> &
-    Partial<Pick<Anime25DPlaybackBuildLayer, 'textureBounds' | 'strands' | 'group'>>,
+  partial: Omit<
+    Anime25DPlaybackBuildLayer,
+    'textureBounds' | 'strands' | 'group'
+  > &
+    Partial<
+      Pick<Anime25DPlaybackBuildLayer, 'textureBounds' | 'strands' | 'group'>
+    >,
 ): Anime25DPlaybackBuildLayer {
   return {
     group: 'head',
@@ -135,6 +141,58 @@ describe('Anime2.5DRig playback', () => {
     assert.ok((front?.depth ?? 0) > (back?.depth ?? 1))
     assert.equal(back?.z, 0)
     assert.equal(front?.z, 2)
+  })
+
+  it('maps a dedicated per-eye dizzy layer without treating it as a blink', () => {
+    const playback = buildAnime25DPlayback({
+      frameWidth: 768,
+      frameHeight: 1024,
+      anchors: anchorsFor(768, 1024),
+      layers: [
+        layer({
+          id: 'face',
+          role: 'face',
+          side: null,
+          bounds: { x: 0.3, y: 0.12, width: 0.4, height: 0.36 },
+        }),
+        layer({
+          id: 'eye-dizzy-left',
+          role: 'eye-dizzy',
+          side: 'left',
+          bounds: { x: 0.36, y: 0.16, width: 0.06, height: 0.06 },
+        }),
+      ],
+    })
+    const dizzy = playback.layers.find((item) => item.role === 'eye-dizzy')
+    assert.equal(dizzy?.side, 'L')
+    assert.equal(dizzy?.fade, 'eyeDizzy')
+  })
+
+  it('maps a dedicated per-eye squeeze layer without treating it as a blink', () => {
+    const playback = buildAnime25DPlayback({
+      frameWidth: 768,
+      frameHeight: 1024,
+      anchors: anchorsFor(768, 1024),
+      layers: [
+        layer({
+          id: 'face',
+          role: 'face',
+          side: null,
+          bounds: { x: 0.3, y: 0.12, width: 0.4, height: 0.36 },
+        }),
+        layer({
+          id: 'eye-squeeze-left',
+          role: 'eye-squeeze',
+          side: 'left',
+          bounds: { x: 0.36, y: 0.16, width: 0.06, height: 0.04 },
+        }),
+      ],
+    })
+    const squeeze = playback.layers.find(
+      (item) => item.role === 'eye-squeeze',
+    )
+    assert.equal(squeeze?.side, 'L')
+    assert.equal(squeeze?.fade, 'eyeSqueeze')
   })
 
   it('remaps rigger anchors into the 3:4 frame without rebuilding them', () => {

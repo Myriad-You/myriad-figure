@@ -1,4 +1,4 @@
-import { ANIME25D_LAYER_DEPTH, type Anime25DLayerRole } from '../rig/anime25d'
+import type { Anime25DLayerRole } from '../rig/anime25d'
 import type {
   Anime25DEyeAnchor,
   Anime25DFade,
@@ -6,6 +6,7 @@ import type {
   Anime25DPlaybackAnchors,
   Anime25DPlaybackLayer,
 } from './types'
+import { ANIME25D_LAYER_DEPTH } from '../rig/anime25d'
 import { anime25DPlaybackSource } from './types'
 
 export interface Anime25DPlaybackBuildLayer {
@@ -20,7 +21,14 @@ export interface Anime25DPlaybackBuildLayer {
 
 /** Raw `rig.anchors` from Anime2.5DRig `buildRig`. */
 export interface Anime25DRiggerAnchors {
-  face: { cx: number; cy: number; x0: number; x1: number; y0: number; y1: number }
+  face: {
+    cx: number
+    cy: number
+    x0: number
+    x1: number
+    y0: number
+    y1: number
+  }
   eyeL?: Anime25DEyeAnchor
   eyeR?: Anime25DEyeAnchor
   mouth: {
@@ -163,8 +171,11 @@ function playbackDepth(role: string): number {
 }
 
 function playbackFade(role: string): Anime25DFade | null {
-  if (role === 'eyewhite' || role === 'irides' || role === 'eyelash') return 'eyeOpen'
+  if (role === 'eyewhite' || role === 'irides' || role === 'eyelash')
+    return 'eyeOpen'
   if (role === 'eye-close') return 'eyeClose'
+  if (role === 'eye-dizzy') return 'eyeDizzy'
+  if (role === 'eye-squeeze') return 'eyeSqueeze'
   if (role === 'mouth-open') return 'mouthOpen'
   if (role === 'mouth-close') return 'mouthClose'
   return null

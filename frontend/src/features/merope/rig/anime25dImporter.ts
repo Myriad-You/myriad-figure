@@ -24,7 +24,16 @@ import {
   PORTRAIT_CANVAS,
   RIG_IR_VERSION,
 } from './contract'
+import {
+  createDizzyEyeBitmap,
+  dizzyEyeGeneratedSize,
+  sampleDizzyEyeTint,
+} from './dizzyEye'
 import { inferOutfitProfileFromPartIds } from './outfit'
+import {
+  createSqueezeEyeBitmap,
+  squeezeEyeGeneratedSize,
+} from './squeezeEye'
 import '../anime25drig/vendor/genericparts.js'
 import '../anime25drig/vendor/rigger.js'
 
@@ -99,7 +108,7 @@ interface RasterLayer {
   height: number
   data: Uint8ClampedArray
   slot?: 'eye-left' | 'eye-right' | 'mouth'
-  variant?: 'open' | 'closed'
+  variant?: 'open' | 'closed' | 'dizzy' | 'squeeze'
   documentStrands?: HairStrand[]
 }
 
@@ -205,6 +214,21 @@ export async function prepareAnime25DRigPsd(
   const usedIds = new Set<string>()
   let layers = rig.layers.map((part) => rasterFromRiggerPart(part, usedIds))
   layers = splitHandwearIfNeeded(layers, rig.anchors.face.cx)
+  layers = splitVariantEyesIfNeeded(
+    layers,
+    rig.anchors.face.cx,
+    'eye-dizzy',
+  )
+  layers = splitVariantEyesIfNeeded(
+    layers,
+    rig.anchors.face.cx,
+    'eye-squeeze',
+  )
+  layers = synthesizeMissingDizzyEyes(layers, rig.anchors)
+  layers = synthesizeMissingSqueezeEyes(layers, rig.anchors)
+  layers.forEach((layer, index) => {
+    layer.order = index
+  })
   assignCrossfadeSlots(layers)
   validateCharacterAssetLayers(layers)
   const faceCenter = {
@@ -392,6 +416,136 @@ function splitHandwearIfNeeded(
   return output
 }
 
+function splitVariantEyesIfNeeded(
+  layers: RasterLayer[],
+  faceCenterX: number,
+  role: 'eye-dizzy' | 'eye-squeeze',
+): RasterLayer[] {
+  const output: RasterLayer[] = []
+  const usedIds = new Set(layers.map((layer) => layer.id))
+  for (const layer of layers) {
+    if (layer.role !== role || layer.side) {
+      output.push(layer)
+      continue
+    }
+    for (const side of ['left', 'right'] as const) {
+      const split = splitRasterByComponents(layer, faceCenterX, side)
+      if (!rasterBounds(split)) continue
+      split.id = uniquePartId(`${role}-${side}`, usedIds)
+      split.side = side
+      output.push(trimRaster(split))
+    }
+  }
+  return output
+}
+
+function synthesizeMissingDizzyEyes(
+  layers: RasterLayer[],
+  anchors: Anime25DRiggerAnchors,
+): RasterLayer[] {
+  const generated: RasterLayer[] = []
+  const usedIds = new Set(layers.map((layer) => layer.id))
+  for (const side of ['left', 'right'] as const) {
+    if (
+      layers.some((layer) => layer.role === 'eye-dizzy' && layer.side === side)
+    ) {
+      continue
+    }
+    const eye = side === 'left' ? anchors.eyeL : anchors.eyeR
+    if (!eye) continue
+    const eyelash = layers.find(
+      (layer) => layer.role === 'eyelash' && layer.side === side,
+    )
+    const size = dizzyEyeGeneratedSize(eye)
+    const bitmap = createDizzyEyeBitmap(
+      size,
+      sampleDizzyEyeTint(eyelash?.data),
+      side,
+    )
+    generated.push({
+      id: uniquePartId(`eye-dizzy-${side}`, usedIds),
+      role: 'eye-dizzy',
+      sourceName: `eye-dizzy-${side}`,
+      order: 0,
+      side,
+      group: 'head',
+      left: Math.round(eye.icx - bitmap.width / 2),
+      top: Math.round(eye.icy - bitmap.height / 2),
+      width: bitmap.width,
+      height: bitmap.height,
+      data: bitmap.data,
+    })
+  }
+  if (generated.length === 0) return layers
+  const output = [...layers]
+  let insertAt = -1
+  for (let index = 0; index < output.length; index += 1) {
+    if (
+      output[index].role === 'eye-close' ||
+      output[index].role === 'eyelash'
+    ) {
+      insertAt = index
+    }
+  }
+  output.splice(insertAt + 1, 0, ...generated)
+  return output
+}
+
+function synthesizeMissingSqueezeEyes(
+  layers: RasterLayer[],
+  anchors: Anime25DRiggerAnchors,
+): RasterLayer[] {
+  const generated: RasterLayer[] = []
+  const usedIds = new Set(layers.map((layer) => layer.id))
+  for (const side of ['left', 'right'] as const) {
+    if (
+      layers.some(
+        (layer) => layer.role === 'eye-squeeze' && layer.side === side,
+      )
+    ) {
+      continue
+    }
+    const eye = side === 'left' ? anchors.eyeL : anchors.eyeR
+    if (!eye) continue
+    const eyelash = layers.find(
+      (layer) => layer.role === 'eyelash' && layer.side === side,
+    )
+    const bitmap = createSqueezeEyeBitmap(
+      squeezeEyeGeneratedSize(eye),
+      sampleDizzyEyeTint(eyelash?.data),
+      side,
+    )
+    const centerY = eye.icy + (eye.closeY - eye.icy) * 0.45
+    generated.push({
+      id: uniquePartId(`eye-squeeze-${side}`, usedIds),
+      role: 'eye-squeeze',
+      sourceName: `eye-squeeze-${side}`,
+      order: 0,
+      side,
+      group: 'head',
+      left: Math.round(eye.icx - bitmap.width / 2),
+      top: Math.round(centerY - bitmap.height / 2),
+      width: bitmap.width,
+      height: bitmap.height,
+      data: bitmap.data,
+    })
+  }
+  if (generated.length === 0) return layers
+  const output = [...layers]
+  let insertAt = -1
+  for (let index = 0; index < output.length; index += 1) {
+    if (
+      output[index].role === 'eye-close' ||
+      output[index].role === 'eye-dizzy' ||
+      output[index].role === 'eyelash'
+    ) {
+      insertAt = index
+    }
+  }
+  output.splice(insertAt + 1, 0, ...generated)
+  return output
+}
+
 function validPixelData(value: PixelData | undefined): value is PixelData {
   return Boolean(
     value &&
@@ -475,6 +629,8 @@ function splitRole(role: Anime25DLayerRole): boolean {
     'irides',
     'eyelash',
     'eye-close',
+    'eye-dizzy',
+    'eye-squeeze',
     'eyebrow',
     'handwear',
   ].includes(role)
@@ -513,11 +669,29 @@ function assignCrossfadeSlots(layers: RasterLayer[]): void {
     const closed = layers.find(
       (layer) => layer.role === 'eye-close' && layer.side === side,
     )
-    if (!open || !closed) continue
-    open.slot = side === 'left' ? 'eye-left' : 'eye-right'
-    open.variant = 'open'
-    closed.slot = open.slot
-    closed.variant = 'closed'
+    const dizzy = layers.find(
+      (layer) => layer.role === 'eye-dizzy' && layer.side === side,
+    )
+    const squeeze = layers.find(
+      (layer) => layer.role === 'eye-squeeze' && layer.side === side,
+    )
+    const slot = side === 'left' ? 'eye-left' : 'eye-right'
+    if (open) {
+      open.slot = slot
+      open.variant = 'open'
+    }
+    if (closed) {
+      closed.slot = slot
+      closed.variant = 'closed'
+    }
+    if (dizzy) {
+      dizzy.slot = slot
+      dizzy.variant = 'dizzy'
+    }
+    if (squeeze) {
+      squeeze.slot = slot
+      squeeze.variant = 'squeeze'
+    }
   }
   const mouthOpen = layers.find((layer) => layer.role === 'mouth-open')
   const mouthClose = layers.find((layer) => layer.role === 'mouth-close')
@@ -541,8 +715,13 @@ function validateCharacterAssetLayers(layers: readonly RasterLayer[]): void {
   if (!hasRole('front-hair')) missing.push('front-hair')
   if (!hasRole('back-hair')) missing.push('back-hair')
   if (!hasRole('topwear')) missing.push('topwear')
-  if (!hasSides('eyelash') || !hasSides('eye-close')) {
-    missing.push('independent open/closed eyes')
+  if (
+    !hasSides('eyelash') ||
+    !hasSides('eye-close') ||
+    !hasSides('eye-dizzy') ||
+    !hasSides('eye-squeeze')
+  ) {
+    missing.push('independent open/closed/dizzy/squeeze eyes')
   }
   if (!hasRole('mouth-open') || !hasRole('mouth-close')) {
     missing.push('open/closed mouth')
@@ -729,7 +908,7 @@ async function packAtlas(
 function visibleInAnalysisReference(layer: RasterLayer): boolean {
   if (
     (layer.slot === 'eye-left' || layer.slot === 'eye-right') &&
-    layer.variant === 'closed'
+    layer.variant !== 'open'
   ) {
     return false
   }
@@ -972,7 +1151,10 @@ function handlesForLayer(
   }
   if (
     side &&
-    (layer.role === 'eyelash' || layer.role === 'eye-close') &&
+    (layer.role === 'eyelash' ||
+      layer.role === 'eye-close' ||
+      layer.role === 'eye-dizzy' ||
+      layer.role === 'eye-squeeze') &&
     has(`a25d-eyelash-${side}`)
   ) {
     return [fullLayerHandle(layer, `a25d-eyelash-${side}`)]

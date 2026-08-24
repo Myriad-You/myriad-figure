@@ -10,6 +10,8 @@ import {
 export type Anime25DFade =
   | 'eyeOpen'
   | 'eyeClose'
+  | 'eyeDizzy'
+  | 'eyeSqueeze'
   | 'mouthOpen'
   | 'mouthClose'
 
@@ -50,12 +52,26 @@ export interface Anime25DEyeAnchor {
 }
 
 export interface Anime25DPlaybackAnchors {
-  face: { x0: number; y0: number; x1: number; y1: number; cx: number; cy: number }
+  face: {
+    x0: number
+    y0: number
+    x1: number
+    y1: number
+    cx: number
+    cy: number
+  }
   neckPivot: { x: number; y: number }
   neckTop: number
   neckBottom: number
   bodyPivot: { x: number; y: number }
-  mouth: { x0: number; y0: number; x1: number; y1: number; cx: number; cy: number }
+  mouth: {
+    x0: number
+    y0: number
+    x1: number
+    y1: number
+    cx: number
+    cy: number
+  }
   faceScale: number
   eyeL?: Anime25DEyeAnchor
   eyeR?: Anime25DEyeAnchor

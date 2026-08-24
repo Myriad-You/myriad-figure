@@ -44,6 +44,18 @@ export function speechArticulationDriverPatch(
   }
 }
 
+/** Keeps authored articulation anchored to a base pose edited mid-utterance. */
+export function updatedSpeechMouthFormBaseline(
+  current: number,
+  speechActive: boolean,
+  next: number | undefined,
+): number {
+  if (!speechActive || next === undefined || !Number.isFinite(next)) {
+    return finiteOrZero(current)
+  }
+  return next
+}
+
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, finiteOrZero(value)))
 }

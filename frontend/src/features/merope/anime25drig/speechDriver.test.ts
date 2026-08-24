@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   speechArticulationDriverPatch,
   speechEnergyDriverPatch,
+  updatedSpeechMouthFormBaseline,
 } from './speechDriver'
 
 test('keeps authored energy separate from preview speech', () => {
@@ -48,4 +49,11 @@ test('maps authored visemes without enabling random speech', () => {
     }),
     { mouthOpen: 0.34, mouthForm: -0.2, talk: false },
   )
+})
+
+test('tracks a manual mouth-form edit during authored speech', () => {
+  assert.equal(updatedSpeechMouthFormBaseline(0.1, true, -0.35), -0.35)
+  assert.equal(updatedSpeechMouthFormBaseline(0.1, false, -0.35), 0.1)
+  assert.equal(updatedSpeechMouthFormBaseline(0.1, true, Number.NaN), 0.1)
+  assert.equal(updatedSpeechMouthFormBaseline(0.1, true, undefined), 0.1)
 })

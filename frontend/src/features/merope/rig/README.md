@@ -50,6 +50,12 @@ such as `hairf`, `hairb`, `eyer`, and side-suffixed eye layers into stable
 roles. Unknown decorative layers stay renderable but do not create new
 semantic bones.
 
+Myriad extends the upstream eye-diff path with `eye_dizzy` and `eye_squeeze`
+layers. Artist artwork is split per eye like `eye_close`; when it is absent,
+import generates character-tinted spiral or inward-chevron eyes from the
+independent eye anchors. Both presentation variants are compiled into the
+atlas and are never emulated by warping the open eye.
+
 ## Runtime flow
 
 ```text
@@ -70,13 +76,13 @@ face overlay.
 
 ## Module ownership
 
-| Area | Owner |
-| --- | --- |
-| Shared limits and semantic IR | `contract.ts`, `types.ts`, `semantics.ts`, `shared/merope_rig_contract.json` |
-| PSD normalization and compilation source | `psdImporter.ts`, `anime25dImporter.ts`, `outfit.ts` |
-| Asset transaction | `../assets/pipeline.ts`, `../assets/compiler.ts` |
-| Live playback | `../anime25drig` |
-| Quality gates | `diagnostics.ts`, `presentation.ts` |
+| Area                                     | Owner                                                                        |
+| ---------------------------------------- | ---------------------------------------------------------------------------- |
+| Shared limits and semantic IR            | `contract.ts`, `types.ts`, `semantics.ts`, `shared/merope_rig_contract.json` |
+| PSD normalization and compilation source | `psdImporter.ts`, `anime25dImporter.ts`, `outfit.ts`                         |
+| Asset transaction                        | `../assets/pipeline.ts`, `../assets/compiler.ts`                             |
+| Live playback                            | `../anime25drig`                                                             |
+| Quality gates                            | `diagnostics.ts`, `presentation.ts`                                          |
 
 ## Verification
 

@@ -45,12 +45,14 @@ export function meropePerformanceEventDetail(
   )
     ? (value.source as MeropePerformanceEventDetail['source'])
     : 'reply'
+  const messageId =
+    typeof value.messageId === 'string'
+      ? value.messageId.trim().slice(0, 160)
+      : ''
   return {
     text,
     source,
-    ...(typeof value.messageId === 'string'
-      ? { messageId: value.messageId.slice(0, 160) }
-      : {}),
+    ...(messageId ? { messageId } : {}),
     ...(performance ? { performance } : {}),
   }
 }
@@ -123,7 +125,9 @@ function sanitizeBaseline(value: unknown): PerformanceBaseline | null {
     !Number.isFinite(value.motionEnergy) ||
     typeof value.attention !== 'number' ||
     !Number.isFinite(value.attention)
-  ) return null
+  ) {
+    return null
+  }
   return {
     expression: value.expression as PerformanceBaseline['expression'],
     posture: value.posture as PerformanceBaseline['posture'],
@@ -134,12 +138,14 @@ function sanitizeBaseline(value: unknown): PerformanceBaseline | null {
 
 function sanitizeCue(value: unknown): PerformanceCue | null {
   if (!isRecord(value)) return null
-  const intents = ['greet', 'respond', 'question', 'delight', 'emphasize', 'listen', 'notify'] as const
+  const intents = ['greet', 'respond', 'question', 'delight', 'emphasize', 'listen', 'notify', 'think', 'dizzy'] as const
   const interrupts = ['replace', 'queue', 'if-lower'] as const
   if (
     !intents.includes(value.intent as (typeof intents)[number]) ||
     !interrupts.includes(value.interrupt as (typeof interrupts)[number])
-  ) return null
+  ) {
+    return null
+  }
   const numericKeys = ['atMs', 'intensity', 'tempo', 'fadeInMs', 'fadeOutMs'] as const
   if (!numericKeys.every((key) => typeof value[key] === 'number' && Number.isFinite(value[key]))) return null
   return {

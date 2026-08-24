@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   DEFAULT_FRONT_HAIR_SWAY,
   DEFAULT_REAR_HAIR_SWAY,
+  fadeOpacity,
   IDENTITY_DRIVER,
   sanitizeDriverPatch,
 } from './player'
@@ -27,4 +28,29 @@ test('clamps all external driver writes at the runtime boundary', () => {
   assert.equal(patch.armPos, 1)
   assert.equal(patch.bust, undefined)
   assert.equal(patch.talk, true)
+})
+
+test('symbol artwork replaces both open and closed eyes without stacking', () => {
+  const layer = (
+    fade: 'eyeOpen' | 'eyeClose' | 'eyeDizzy' | 'eyeSqueeze',
+  ) =>
+    ({ fade, side: 'L' }) as never
+  const half = { ...IDENTITY_DRIVER, eyeDizzy: 0.5 }
+  assert.ok(Math.abs(fadeOpacity(layer('eyeDizzy'), half) - 0.5) < 1e-12)
+  assert.ok(Math.abs(fadeOpacity(layer('eyeOpen'), half) - 0.5) < 1e-12)
+  assert.equal(fadeOpacity(layer('eyeClose'), half), 0)
+
+  const dizzy = { ...IDENTITY_DRIVER, eyeDizzy: 1 }
+  assert.equal(fadeOpacity(layer('eyeDizzy'), dizzy), 1)
+  assert.equal(fadeOpacity(layer('eyeOpen'), dizzy), 0)
+  assert.equal(fadeOpacity(layer('eyeClose'), dizzy), 0)
+
+  const squeeze = { ...IDENTITY_DRIVER, eyeSqueeze: 1 }
+  assert.equal(fadeOpacity(layer('eyeSqueeze'), squeeze), 1)
+  assert.equal(fadeOpacity(layer('eyeOpen'), squeeze), 0)
+  assert.equal(fadeOpacity(layer('eyeClose'), squeeze), 0)
+
+  const both = { ...IDENTITY_DRIVER, eyeDizzy: 1, eyeSqueeze: 1 }
+  assert.equal(fadeOpacity(layer('eyeDizzy'), both), 1)
+  assert.equal(fadeOpacity(layer('eyeSqueeze'), both), 0)
 })

@@ -1,0 +1,62 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import {
+  activityExpressionDriverPatch,
+  DIZZY_EXPRESSION_PRESET,
+  SQUEEZE_EXPRESSION_PRESET,
+  THINKING_ACTIVITY_EXPRESSION,
+  THINKING_EXPRESSION_PRESET,
+} from './expressionPresets'
+
+test('thinking activity owns face and gaze without taking speech channels', () => {
+  const thinking = activityExpressionDriverPatch(true)
+  assert.equal(thinking, THINKING_ACTIVITY_EXPRESSION)
+  assert.equal(thinking.eyeOpenL, 1)
+  assert.equal(thinking.eyeOpenR, 1)
+  assert.equal(thinking.irisScale, 1)
+  assert.ok(Math.abs(thinking.eyeX) > 0.5)
+  assert.ok(thinking.eyeY < -0.35)
+  assert.ok(Math.abs(thinking.angleZ) > 0.15)
+  assert.ok(thinking.brow > 0.15)
+  assert.equal('mouthOpen' in thinking, false)
+  assert.equal('mouthForm' in thinking, false)
+  assert.equal('talk' in thinking, false)
+})
+
+test('leaving thinking resets every activity-owned expression channel', () => {
+  const neutral = activityExpressionDriverPatch(false)
+  assert.deepEqual(
+    Object.keys(neutral).sort(),
+    Object.keys(THINKING_ACTIVITY_EXPRESSION).sort(),
+  )
+  assert.equal(neutral.eyeOpenL, 1)
+  assert.equal(neutral.eyeOpenR, 1)
+  assert.equal(neutral.eyeDizzy, 0)
+  assert.equal(neutral.eyeSqueeze, 0)
+  assert.equal(neutral.irisScale, 1)
+  for (const key of [
+    'angleX',
+    'angleY',
+    'angleZ',
+    'eyeX',
+    'eyeY',
+    'brow',
+    'browAngL',
+    'browAngR',
+    'browAngSym',
+  ] as const) {
+    assert.equal(neutral[key], 0)
+  }
+})
+
+test('dizzy preview owns only the dedicated artwork replacement channel', () => {
+  assert.deepEqual(DIZZY_EXPRESSION_PRESET, { eyeDizzy: 1 })
+})
+
+test('squeeze preview owns only the inward chevron artwork channel', () => {
+  assert.deepEqual(SQUEEZE_EXPRESSION_PRESET, { eyeSqueeze: 1 })
+})
+
+test('thinking preview enables the dedicated motion loop', () => {
+  assert.equal(THINKING_EXPRESSION_PRESET.thinking, true)
+})

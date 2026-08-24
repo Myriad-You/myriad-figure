@@ -1,6 +1,7 @@
 import type { MeropeRigManifest } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { ANIME25D_PLAYBACK_VERSION } from '../anime25drig/credit'
 import { RIG_IR_VERSION } from './contract'
 import { isLiveMeropeManifest, isRigManifest } from './types'
 
@@ -65,7 +66,7 @@ test('only treats a layered Anime2.5D package as a live site face', () => {
   const live = structuredClone(manifest)
   live.anime25dPlayback = {
     kind: 'anime-2.5d-rig',
-    version: 1,
+    version: ANIME25D_PLAYBACK_VERSION,
     engine: 'Anime2.5DRig',
     engineUrl: 'https://github.com/852wa/Anime2.5DRig',
     license: 'MIT',
