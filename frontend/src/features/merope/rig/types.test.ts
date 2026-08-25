@@ -2,6 +2,7 @@ import type { MeropeRigManifest } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ANIME25D_PLAYBACK_VERSION } from '../anime25drig/credit'
+import { fallbackAnime25DMouthProfile } from '../anime25drig/mouthProfile'
 import { RIG_IR_VERSION } from './contract'
 import { isLiveMeropeManifest, isRigManifest } from './types'
 
@@ -64,6 +65,14 @@ test('rejects leftover clip-stack fields', () => {
 test('only treats a layered Anime2.5D package as a live site face', () => {
   assert.equal(isLiveMeropeManifest(manifest), false)
   const live = structuredClone(manifest)
+  const mouth = {
+    x0: 0.4,
+    y0: 0.4,
+    x1: 0.6,
+    y1: 0.5,
+    cx: 0.5,
+    cy: 0.45,
+  }
   live.anime25dPlayback = {
     kind: 'anime-2.5d-rig',
     version: ANIME25D_PLAYBACK_VERSION,
@@ -95,9 +104,10 @@ test('only treats a layered Anime2.5D package as a live site face', () => {
       neckTop: 0.4,
       neckBottom: 0.5,
       bodyPivot: { x: 0.5, y: 0.7 },
-      mouth: { x0: 0.4, y0: 0.4, x1: 0.6, y1: 0.5, cx: 0.5, cy: 0.45 },
+      mouth,
       faceScale: 1,
     },
+    mouthProfile: fallbackAnime25DMouthProfile(mouth),
   }
   assert.equal(isLiveMeropeManifest(live), true)
   live.anime25dPlayback.chestProfile = {

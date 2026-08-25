@@ -2,11 +2,13 @@ import type { Anime25DLayerRole } from '../rig/anime25d'
 import type {
   Anime25DEyeAnchor,
   Anime25DFade,
+  Anime25DMouthProfile,
   Anime25DPlayback,
   Anime25DPlaybackAnchors,
   Anime25DPlaybackLayer,
 } from './types'
 import { ANIME25D_LAYER_DEPTH } from '../rig/anime25d'
+import { fallbackAnime25DMouthProfile } from './mouthProfile'
 import { anime25DPlaybackSource } from './types'
 
 export interface Anime25DPlaybackBuildLayer {
@@ -51,6 +53,7 @@ export interface Anime25DPlaybackBuildInput {
   frameHeight: number
   layers: Anime25DPlaybackBuildLayer[]
   anchors: Anime25DPlaybackAnchors
+  mouthProfile?: Anime25DMouthProfile
 }
 
 /** Translate Anime2.5DRig document anchors into the 3:4 content frame. */
@@ -122,6 +125,8 @@ export function buildAnime25DPlayback(
     pixelCanvas: { width, height },
     layers,
     anchors: input.anchors,
+    mouthProfile:
+      input.mouthProfile ?? fallbackAnime25DMouthProfile(input.anchors.mouth),
   }
 }
 

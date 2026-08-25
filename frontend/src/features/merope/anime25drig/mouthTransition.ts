@@ -1,9 +1,10 @@
-export type SpeechMouthMaterial =
-  | 'mouthClose'
-  | 'mouthOpen'
-  | 'mouthWide'
-  | 'mouthRound'
-  | 'mouthNarrow'
+import type { Anime25DMouthMaterial, Anime25DMouthProfile } from './types'
+import {
+  ANIME25D_MOUTH_MATERIALS,
+  baseMouthBridgeProfile,
+} from './mouthProfile'
+
+export type SpeechMouthMaterial = Anime25DMouthMaterial
 
 export interface MouthTransitionInput {
   mouthOpen: number
@@ -22,29 +23,11 @@ export interface MouthTransitionSample {
   widthScale: number
   heightScale: number
   shapeNeutralization: number
+  centerOffsetX: number
+  centerOffsetY: number
 }
 
-const MATERIALS: readonly SpeechMouthMaterial[] = [
-  'mouthClose',
-  'mouthOpen',
-  'mouthWide',
-  'mouthRound',
-  'mouthNarrow',
-]
-
-interface BridgeProfile {
-  width: number
-  height: number
-  neutralization: number
-  switchMargin: number
-}
-
-const DEFAULT_BRIDGE: BridgeProfile = {
-  width: 0.98,
-  height: 0.94,
-  neutralization: 0.3,
-  switchMargin: 0.08,
-}
+const MATERIALS = ANIME25D_MOUTH_MATERIALS
 
 /**
  * Chooses one visible raster mouth while preserving a continuous shared mesh.
@@ -53,6 +36,11 @@ const DEFAULT_BRIDGE: BridgeProfile = {
  */
 export class MouthTransitionController {
   private readonly scores = new Float32Array(MATERIALS.length)
+  private readonly widthScales = new Float32Array(MATERIALS.length ** 2)
+  private readonly heightScales = new Float32Array(MATERIALS.length ** 2)
+  private readonly neutralizations = new Float32Array(MATERIALS.length ** 2)
+  private readonly centerOffsetsX = new Float32Array(MATERIALS.length ** 2)
+  private readonly centerOffsetsY = new Float32Array(MATERIALS.length ** 2)
   private readonly output: MouthTransitionSample = {
     material: 'mouthClose',
     from: 'mouthClose',
@@ -61,8 +49,45 @@ export class MouthTransitionController {
     widthScale: 1,
     heightScale: 1,
     shapeNeutralization: 0,
+    centerOffsetX: 0,
+    centerOffsetY: 0,
   }
   private activeIndex = 0
+
+  constructor(profile?: Readonly<Anime25DMouthProfile>) {
+    for (let first = 0; first < MATERIALS.length; first += 1) {
+      for (let second = 0; second < MATERIALS.length; second += 1) {
+        const index = pairIndex(first, second)
+        if (first === second) {
+          this.widthScales[index] = 1
+          this.heightScales[index] = 1
+          continue
+        }
+        const fallback = baseMouthBridgeProfile(
+          MATERIALS[first],
+          MATERIALS[second],
+        )
+        this.widthScales[index] = fallback.widthScale
+        this.heightScales[index] = fallback.heightScale
+        this.neutralizations[index] = fallback.neutralization
+      }
+    }
+    for (const bridge of profile?.bridges ?? []) {
+      const first = MATERIALS.indexOf(bridge.first)
+      const second = MATERIALS.indexOf(bridge.second)
+      if (first < 0 || second < 0 || first === second) continue
+      for (const index of [
+        pairIndex(first, second),
+        pairIndex(second, first),
+      ]) {
+        this.widthScales[index] = bridge.widthScale
+        this.heightScales[index] = bridge.heightScale
+        this.neutralizations[index] = bridge.neutralization
+        this.centerOffsetsX[index] = bridge.centerOffsetX
+        this.centerOffsetsY[index] = bridge.centerOffsetY
+      }
+    }
+  }
 
   sample(input: MouthTransitionInput): Readonly<MouthTransitionSample> {
     resolveMouthMaterialScores(input, this.scores)
@@ -81,15 +106,12 @@ export class MouthTransitionController {
       }
     }
 
-    const profile = bridgeProfile(MATERIALS[strongest], MATERIALS[runnerUp])
-    const switchProfile = bridgeProfile(
-      MATERIALS[strongest],
-      MATERIALS[this.activeIndex],
-    )
+    const profileIndex = pairIndex(strongest, runnerUp)
     if (
       strongest !== this.activeIndex &&
       this.scores[strongest] >
-        this.scores[this.activeIndex] + switchProfile.switchMargin
+        this.scores[this.activeIndex] +
+          switchMargin(MATERIALS[strongest], MATERIALS[this.activeIndex])
     ) {
       this.activeIndex = strongest
     }
@@ -107,9 +129,12 @@ export class MouthTransitionController {
     this.output.from = MATERIALS[runnerUp]
     this.output.to = MATERIALS[strongest]
     this.output.bridge = bridge
-    this.output.widthScale = 1 - (1 - profile.width) * bridge
-    this.output.heightScale = 1 - (1 - profile.height) * bridge
-    this.output.shapeNeutralization = profile.neutralization * bridge
+    this.output.widthScale = 1 - (1 - this.widthScales[profileIndex]) * bridge
+    this.output.heightScale = 1 - (1 - this.heightScales[profileIndex]) * bridge
+    this.output.shapeNeutralization =
+      this.neutralizations[profileIndex] * bridge
+    this.output.centerOffsetX = this.centerOffsetsX[profileIndex] * bridge
+    this.output.centerOffsetY = this.centerOffsetsY[profileIndex] * bridge
     return this.output
   }
 }
@@ -155,46 +180,22 @@ function mouthMaterialPresence(input: MouthTransitionInput): number {
   )
 }
 
-function bridgeProfile(
+function switchMargin(
   first: SpeechMouthMaterial,
   second: SpeechMouthMaterial,
-): BridgeProfile {
-  if (first === 'mouthClose' || second === 'mouthClose') {
-    return {
-      width: 0.97,
-      height: 0.82,
-      neutralization: 0.5,
-      switchMargin: 0.04,
-    }
-  }
+): number {
+  if (first === 'mouthClose' || second === 'mouthClose') return 0.04
   const wideRound =
     (first === 'mouthWide' && second === 'mouthRound') ||
     (first === 'mouthRound' && second === 'mouthWide')
-  if (wideRound) {
-    return {
-      width: 0.9,
-      height: 0.88,
-      neutralization: 0.72,
-      switchMargin: 0.08,
-    }
-  }
-  if (first === 'mouthRound' || second === 'mouthRound') {
-    return {
-      width: 0.93,
-      height: 0.9,
-      neutralization: 0.58,
-      switchMargin: 0.08,
-    }
-  }
-  if (first === 'mouthNarrow' || second === 'mouthNarrow') {
-    return {
-      width: 0.95,
-      height: 0.9,
-      neutralization: 0.44,
-      switchMargin: 0.07,
-    }
-  }
-  return DEFAULT_BRIDGE
+  if (wideRound || first === 'mouthRound' || second === 'mouthRound')
+    return 0.08
+  if (first === 'mouthNarrow' || second === 'mouthNarrow') return 0.07
+  return 0.08
+}
+
+function pairIndex(first: number, second: number): number {
+  return first * MATERIALS.length + second
 }
 
 function smootherstep(value: number): number {

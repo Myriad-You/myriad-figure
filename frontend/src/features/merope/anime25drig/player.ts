@@ -28,6 +28,12 @@ import {
   stepHairSpring,
 } from './hairPhysics'
 import {
+  createJawMotionState,
+  jawMotionTarget,
+  jawTravelPixels,
+  stepJawMotion,
+} from './jawMotion'
+import {
   applyPerformanceExpressionOffset,
   mixBoundedExpressionChannel,
   mixEyeOpen,
@@ -451,7 +457,7 @@ export class Anime25DPlayer {
     round: 0,
     narrow: 0,
   }
-  private readonly mouthTransition = new MouthTransitionController()
+  private readonly mouthTransition: MouthTransitionController
   private activeMouthMaterial: SpeechMouthMaterial = 'mouthClose'
 
   private time = 0
@@ -475,6 +481,9 @@ export class Anime25DPlayer {
   private readonly chestTarget = { x: 0, y: 0 }
   private readonly chestMotionScale: number
   private readonly chestWeightField: ChestWeightField | null
+  private readonly jaw = createJawMotionState()
+  private readonly jawTravel: number
+  private jawEmphasis = 0
   private readonly mouse = { x: 0, y: 0, inside: false }
   private disposed = false
   private viewWidth = 1
@@ -494,6 +503,8 @@ export class Anime25DPlayer {
     if (!gl) throw new Error('WebGL2 is required for Anime2.5DRig playback')
     this.gl = gl
     this.playback = playback
+    this.mouthTransition = new MouthTransitionController(playback.mouthProfile)
+    this.jawTravel = jawTravelPixels(playback)
     this.chestMotionScale = resolveChestMotionScale(playback.chestProfile)
     this.chestWeightField = chestProfileUsesGeometryWeights(
       playback.chestProfile,
@@ -679,6 +690,7 @@ export class Anime25DPlayer {
       this.performanceExpression.getAmbientMotionScale()
     const pointerDriven = this.target.mouse && this.mouse.inside
     const speech = this.speechMotion.sample(t, this.target.talk)
+    this.jawEmphasis = speech.browAccent
     const speaking = this.speechActive || this.target.talk
     // `talk` is a workbench preview generator, not ownership by real speech.
     // Only authored speech suppresses autonomous idle actions.
@@ -912,6 +924,7 @@ export class Anime25DPlayer {
     const { anchors } = this.playback
     const faceScale = anchors.faceScale
     const e = this.current
+    stepJawMotion(this.jaw, jawMotionTarget(e, this.jawEmphasis), dt)
     const secondary = this.secondaryCurrent
     const chestProfile = this.playback.chestProfile
     if (chestProfile?.enabled !== false) {
@@ -987,6 +1000,8 @@ export class Anime25DPlayer {
     const chestRx = chestProfile?.radiusX ?? (A.face.x1 - A.face.x0) * 0.6
     const chestRy = chestProfile?.radiusY ?? (A.face.y1 - A.face.y0) * 0.45
     const chestMotionScale = this.chestMotionScale
+    const jawDrop = this.jaw.value * this.jawTravel
+    const jawOpen = Math.max(0, this.jaw.value)
     const mHalfW = (A.mouth.x1 - A.mouth.x0) / 2
     const mouthTransition = this.mouthTransition.sample(e)
     this.activeMouthMaterial = mouthTransition.material
@@ -1076,17 +1091,11 @@ export class Anime25DPlayer {
           const yMagnitude = Math.min(1, Math.abs(localY))
           const ovalPinch =
             1 -
-            mouthMorph.round *
-              0.13 *
-              (0.28 + yMagnitude ** 1.35) +
+            mouthMorph.round * 0.13 * (0.28 + yMagnitude ** 1.35) +
             mouthMorph.wide * 0.035 * (1 - yMagnitude)
-          x =
-            mouthMorph.centerX +
-            localX * (mouthMorph.width / 2) * ovalPinch
+          x = mouthMorph.centerX + localX * (mouthMorph.width / 2) * ovalPinch
           const cornerCurve =
-            (0.075 +
-              mouthMorph.round * 0.14 -
-              mouthMorph.wide * 0.025) *
+            (0.075 + mouthMorph.round * 0.14 - mouthMorph.wide * 0.025) *
             xMagnitude ** 1.65
           const cupidBow =
             mouthMorph.openMix *
@@ -1111,10 +1120,8 @@ export class Anime25DPlayer {
           const upperAnchoredProgress =
             verticalProgress ** (1 + mouthMorph.openMix * 0.12)
           const trackedY =
-            upperRail +
-            (lowerRail - upperRail) * upperAnchoredProgress
-          const restingY =
-            mouthMorph.centerY + localY * (mouthMorph.height / 2)
+            upperRail + (lowerRail - upperRail) * upperAnchoredProgress
+          const restingY = mouthMorph.centerY + localY * (mouthMorph.height / 2)
           const railInfluence = smoothstep(mouthMorph.openMix)
           y = restingY + (trackedY - restingY) * railInfluence
         }
@@ -1124,6 +1131,16 @@ export class Anime25DPlayer {
         ) {
           x = A.mouth.cx + (x - A.mouth.cx) * e.mouthScale
           y = A.mouth.cy + (y - A.mouth.cy) * e.mouthScale
+        }
+        if (morphingMouth || source.fade === 'mouthCry') {
+          const localJawY = clamp(
+            (rest[index + 1] - source.y) / Math.max(1, source.h),
+            0,
+            1,
+          )
+          const lipJawWeight =
+            0.08 + smoothstep((localJawY - 0.18) / 0.82) * 0.72
+          y += jawDrop * lipJawWeight
         }
         if (source.fade === 'eyeOpen' && eye) {
           if (bn === 'irides') {
@@ -1203,12 +1220,13 @@ export class Anime25DPlayer {
             y = A.mouth.cy + rx * st + ry * ct
           }
         }
-        if (bn === 'face' && y > A.mouth.cy) {
-          y +=
-            e.mouthOpen *
-            6 *
-            fs *
-            smoothstep((y - A.mouth.cy) / (A.face.y1 - A.mouth.cy))
+        if (bn === 'face') {
+          const jawStartY = A.mouth.cy - (A.face.y1 - A.face.y0) * 0.025
+          const jawWeight = smoothstep(
+            (rest[index + 1] - jawStartY) / Math.max(1, A.face.y1 - jawStartY),
+          )
+          y += jawDrop * jawWeight
+          x += (A.face.cx - x) * jawOpen * 0.006 * jawWeight * jawWeight
         }
         let hw = isHead ? 1 : source.group === 'body' ? 0.16 : 0
         if (bn === 'neck') {
@@ -1370,10 +1388,7 @@ export class Anime25DPlayer {
       source.fade === 'mouthRound' ||
       source.fade === 'mouthNarrow' ||
       source.fade === 'mouthClose'
-    const cols = Math.max(
-      morphingMouth ? 6 : 2,
-      Math.round(source.w / cell),
-    )
+    const cols = Math.max(morphingMouth ? 6 : 2, Math.round(source.w / cell))
     const rows = Math.max(
       morphingMouth ? 4 : source.role === 'eye-cry' ? 3 : 2,
       Math.round(source.h / cell),
@@ -1550,10 +1565,8 @@ function resolveMouthMorph(
     else if (layer.source.fade === 'mouthNarrow') narrowLayer ??= layer.source
   }
   if (closed) total += addMouthMorphSource(output, closed, 1 - openMix)
-  if (ordinary)
-    total += addMouthMorphSource(output, ordinary, openMix * open)
-  if (wideLayer)
-    total += addMouthMorphSource(output, wideLayer, openMix * wide)
+  if (ordinary) total += addMouthMorphSource(output, ordinary, openMix * open)
+  if (wideLayer) total += addMouthMorphSource(output, wideLayer, openMix * wide)
   if (roundLayer)
     total += addMouthMorphSource(output, roundLayer, openMix * round)
   if (narrowLayer)
@@ -1614,6 +1627,8 @@ function applyMouthTransitionBridge(
 ): void {
   output.width = Math.max(1, output.width * transition.widthScale)
   output.height = Math.max(1, output.height * transition.heightScale)
+  output.centerX += transition.centerOffsetX
+  output.centerY += transition.centerOffsetY
   const retainedShape = 1 - transition.shapeNeutralization
   output.wide *= retainedShape
   output.round *= retainedShape

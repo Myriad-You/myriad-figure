@@ -66,8 +66,14 @@ envelope. A lip-seal channel preserves short bilabial closures independently
 from the slower jaw response. The two strongest visemes form a shared
 dominance bridge, while a stateful selector draws exactly one ordinary mouth
 texture at a time; crying replaces that mouth stack.
-Character asset contract v8 requires these independent variants, so older
-packages must be reimported rather than falling back at runtime.
+Import also records the five alpha silhouettes and their ten pairwise bridge
+profiles. Jaw travel is then driven on a separate bounded spring: open and
+round visemes use more mandible motion, wide and narrow visemes rely more on
+the lip mesh, and short lip seals do not snap the jaw shut. Only the mouth
+meshes and the face region below the mouth receive that motion.
+Character asset contract v9 requires the independent variants and mouth
+profile, so older packages must be reimported rather than falling back at
+runtime.
 
 ## Runtime flow
 
@@ -81,7 +87,8 @@ Agent reply speech enters through `speechEvents.ts`. The lifecycle controller
 handles streamed chunks, complete replies, interruption, and proactive lines,
 then drives the mounted `RigCharacter`. Real audio energy or phoneme events own
 the mouth when present; otherwise the bounded local auto-prosody controller is
-used. The bridge keeps one timer and adds no allocation to the render loop.
+used. The bridge reuses fixed typed arrays, and the jaw path adds only two
+scalar state values and constant-time spring arithmetic to the render loop.
 
 Without a live Anime2.5D package, `RigCharacter` draws the master portrait as a
 still image. Manifests do not carry clip stacks. There is no separate global

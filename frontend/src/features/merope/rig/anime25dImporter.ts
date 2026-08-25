@@ -15,6 +15,7 @@ import {
   buildAnime25DPlayback,
   remapRiggerAnchors,
 } from '../anime25drig/playback'
+import { analyzeAnime25DMouthProfile } from '../anime25drig/mouthProfile'
 import { ANIME25D_LAYER_DEPTH } from './anime25d'
 import { compensateSyntheticClosedEyeAngles } from './closedEyeCompensation'
 import {
@@ -272,11 +273,18 @@ export async function prepareAnime25DRigPsd(
   )
   const rigLayers = buildLayerSources(prepared, layerHandles)
   const partIds = prepared.map((layer) => `a25d-${layer.id}`)
+  const playbackAnchors = remapRiggerAnchors(rig.anchors, frame)
+  const mouthProfile = analyzeAnime25DMouthProfile(
+    prepared,
+    frame,
+    playbackAnchors.mouth,
+  )
   const anime25dPlayback = buildAnime25DPlayback({
     frameWidth: frame.width,
     frameHeight: frame.height,
     layers: prepared,
-    anchors: remapRiggerAnchors(rig.anchors, frame),
+    anchors: playbackAnchors,
+    mouthProfile,
   })
   const outfitProfile = inferOutfitProfileFromPartIds(partIds)
   const semanticBones: Record<string, string> = {
