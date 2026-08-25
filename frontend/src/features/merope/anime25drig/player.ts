@@ -33,10 +33,21 @@ import {
   mixEyeOpen,
   PerformanceExpressionController,
 } from './performanceExpression'
+import {
+  dominantMouthMaterial,
+  MouthTransitionController,
+  type MouthTransitionSample,
+  type SpeechMouthMaterial,
+} from './mouthTransition'
 import { applyRandomActionFrame, RandomActionController } from './randomAction'
 import { CoSpeechExpressionController } from './speechExpression'
 import { AutoSpeechController } from './speechMotion'
-import { stepMouthForm, stepMouthOpen } from './speechResponse'
+import {
+  stepMouthForm,
+  stepMouthOpen,
+  stepMouthSeal,
+  stepMouthShape,
+} from './speechResponse'
 import { ThinkingMotionController } from './thinkingMotion'
 
 const VERTEX_SHADER = `#version 300 es
@@ -164,6 +175,10 @@ export interface Anime25DDriver {
   eyeY: number
   brow: number
   mouthOpen: number
+  mouthWide: number
+  mouthRound: number
+  mouthNarrow: number
+  mouthSeal: number
   mouthForm: number
   mouthCY: number
   body: number
@@ -214,6 +229,17 @@ interface SecondaryMotionPose {
   body: number
 }
 
+interface MouthMorphState {
+  centerX: number
+  centerY: number
+  width: number
+  height: number
+  openMix: number
+  wide: number
+  round: number
+  narrow: number
+}
+
 interface GpuLayer {
   source: Anime25DPlaybackLayer
   rest: Float32Array
@@ -252,6 +278,10 @@ export const IDENTITY_DRIVER: Anime25DDriver = {
   eyeY: 0,
   brow: 0,
   mouthOpen: 0,
+  mouthWide: 0,
+  mouthRound: 0,
+  mouthNarrow: 0,
+  mouthSeal: 0,
   mouthForm: 0,
   mouthCY: 0,
   body: 0,
@@ -313,6 +343,10 @@ const DRIVER_LIMITS: Partial<
   eyeY: [-1, 1],
   brow: [-1, 1],
   mouthOpen: [0, 1],
+  mouthWide: [0, 1],
+  mouthRound: [0, 1],
+  mouthNarrow: [0, 1],
+  mouthSeal: [0, 1],
   mouthForm: [-1, 1],
   mouthCY: [-1, 1],
   body: [-1, 1],
@@ -372,6 +406,9 @@ export interface Anime25DDebugSnapshot {
   eyeSqueezeLayers: number
   eyeCryLayers: number
   mouthOpenLayers: number
+  mouthWideLayers: number
+  mouthRoundLayers: number
+  mouthNarrowLayers: number
   mouthCloseLayers: number
   mouthCryLayers: number
   canvas: { width: number; height: number }
@@ -403,6 +440,19 @@ export class Anime25DPlayer {
     angleZ: 0,
     body: 0,
   }
+
+  private readonly mouthMorph: MouthMorphState = {
+    centerX: 0,
+    centerY: 0,
+    width: 1,
+    height: 1,
+    openMix: 0,
+    wide: 0,
+    round: 0,
+    narrow: 0,
+  }
+  private readonly mouthTransition = new MouthTransitionController()
+  private activeMouthMaterial: SpeechMouthMaterial = 'mouthClose'
 
   private time = 0
   private blinkT = -1
@@ -501,6 +551,14 @@ export class Anime25DPlayer {
     this.speechActive = active
   }
 
+  enqueueSpeechText(text: string, locale?: string): void {
+    this.speechMotion.enqueueText(text, locale)
+  }
+
+  clearSpeechText(): void {
+    this.speechMotion.clear(this.time)
+  }
+
   playPerformance(
     directive: PerformanceDirective,
     cueOriginSeconds?: number,
@@ -532,6 +590,12 @@ export class Anime25DPlayer {
         .length,
       eyeCryLayers: layers.filter((layer) => layer.fade === 'eyeCry').length,
       mouthOpenLayers: layers.filter((layer) => layer.fade === 'mouthOpen')
+        .length,
+      mouthWideLayers: layers.filter((layer) => layer.fade === 'mouthWide')
+        .length,
+      mouthRoundLayers: layers.filter((layer) => layer.fade === 'mouthRound')
+        .length,
+      mouthNarrowLayers: layers.filter((layer) => layer.fade === 'mouthNarrow')
         .length,
       mouthCloseLayers: layers.filter((layer) => layer.fade === 'mouthClose')
         .length,
@@ -717,16 +781,18 @@ export class Anime25DPlayer {
       1.5,
       1,
     )
-    if (speech.mouthOpen > 0) {
+    if (
+      speech.mouthOpen > 0 ||
+      speech.mouthWide > 0 ||
+      speech.mouthRound > 0 ||
+      speech.mouthNarrow > 0 ||
+      speech.mouthSeal > 0
+    ) {
       tgt.mouthOpen = Math.max(tgt.mouthOpen, speech.mouthOpen)
-      const formInfluence = smoothstep((speech.mouthOpen - 0.08) / 0.32)
-      tgt.mouthForm = mixBoundedExpressionChannel(
-        tgt.mouthForm,
-        speech.mouthForm * formInfluence,
-        -1,
-        1,
-        0,
-      )
+      tgt.mouthWide = Math.max(tgt.mouthWide, speech.mouthWide)
+      tgt.mouthRound = Math.max(tgt.mouthRound, speech.mouthRound)
+      tgt.mouthNarrow = Math.max(tgt.mouthNarrow, speech.mouthNarrow)
+      tgt.mouthSeal = Math.max(tgt.mouthSeal, speech.mouthSeal)
     }
     const speechExpression = this.speechExpression.sample(
       t,
@@ -806,6 +872,18 @@ export class Anime25DPlayer {
       }
       if (key === 'mouthForm') {
         this.current.mouthForm = stepMouthForm(from, to, dt)
+        continue
+      }
+      if (key === 'mouthSeal') {
+        this.current.mouthSeal = stepMouthSeal(from, to, dt)
+        continue
+      }
+      if (
+        key === 'mouthWide' ||
+        key === 'mouthRound' ||
+        key === 'mouthNarrow'
+      ) {
+        this.current[key] = stepMouthShape(from, to, dt)
         continue
       }
       if (key === 'eyeCry') {
@@ -910,6 +988,11 @@ export class Anime25DPlayer {
     const chestRy = chestProfile?.radiusY ?? (A.face.y1 - A.face.y0) * 0.45
     const chestMotionScale = this.chestMotionScale
     const mHalfW = (A.mouth.x1 - A.mouth.x0) / 2
+    const mouthTransition = this.mouthTransition.sample(e)
+    this.activeMouthMaterial = mouthTransition.material
+    resolveMouthMorph(this.layers, e, A.mouth, this.mouthMorph)
+    applyMouthTransitionBridge(this.mouthMorph, mouthTransition)
+    const mouthMorph = this.mouthMorph
     for (const layer of this.layers) {
       const rest = layer.rest
       const deformed = layer.deformed
@@ -938,6 +1021,12 @@ export class Anime25DPlayer {
         : 0
       const isHead = source.group === 'head'
       const nS = layer.springs?.length ?? 0
+      const morphingMouth =
+        source.fade === 'mouthOpen' ||
+        source.fade === 'mouthWide' ||
+        source.fade === 'mouthRound' ||
+        source.fade === 'mouthNarrow' ||
+        source.fade === 'mouthClose'
       for (let vertex = 0; vertex < vertexCount; vertex += 1) {
         const index = vertex * 2
         let x = rest[index]
@@ -976,11 +1065,65 @@ export class Anime25DPlayer {
           x += tearHorizontal * flowWeight
           y += tearVertical * flowWeight
         }
-        if (bn === 'mouth_open' || bn === 'mouth_close' || bn === 'mouth_cry') {
-          if (e.mouthScale !== 1) {
-            x = A.mouth.cx + (x - A.mouth.cx) * e.mouthScale
-            y = A.mouth.cy + (y - A.mouth.cy) * e.mouthScale
-          }
+        if (morphingMouth) {
+          const localX =
+            (rest[index] - (source.x + source.w / 2)) /
+            Math.max(1, source.w / 2)
+          const localY =
+            (rest[index + 1] - (source.y + source.h / 2)) /
+            Math.max(1, source.h / 2)
+          const xMagnitude = Math.min(1, Math.abs(localX))
+          const yMagnitude = Math.min(1, Math.abs(localY))
+          const ovalPinch =
+            1 -
+            mouthMorph.round *
+              0.13 *
+              (0.28 + yMagnitude ** 1.35) +
+            mouthMorph.wide * 0.035 * (1 - yMagnitude)
+          x =
+            mouthMorph.centerX +
+            localX * (mouthMorph.width / 2) * ovalPinch
+          const cornerCurve =
+            (0.075 +
+              mouthMorph.round * 0.14 -
+              mouthMorph.wide * 0.025) *
+            xMagnitude ** 1.65
+          const cupidBow =
+            mouthMorph.openMix *
+            mouthMorph.height *
+            0.034 *
+            (1 - xMagnitude) ** 2
+          const lowerFullness =
+            mouthMorph.height *
+            (0.018 + mouthMorph.openMix * 0.018) *
+            (1 - xMagnitude ** 1.7)
+          const upperRail =
+            mouthMorph.centerY -
+            mouthMorph.height / 2 +
+            mouthMorph.height * cornerCurve -
+            cupidBow
+          const lowerRail =
+            mouthMorph.centerY +
+            mouthMorph.height / 2 -
+            mouthMorph.height * cornerCurve * 0.82 +
+            lowerFullness
+          const verticalProgress = clamp((localY + 1) / 2, 0, 1)
+          const upperAnchoredProgress =
+            verticalProgress ** (1 + mouthMorph.openMix * 0.12)
+          const trackedY =
+            upperRail +
+            (lowerRail - upperRail) * upperAnchoredProgress
+          const restingY =
+            mouthMorph.centerY + localY * (mouthMorph.height / 2)
+          const railInfluence = smoothstep(mouthMorph.openMix)
+          y = restingY + (trackedY - restingY) * railInfluence
+        }
+        if (
+          (morphingMouth || source.fade === 'mouthCry') &&
+          e.mouthScale !== 1
+        ) {
+          x = A.mouth.cx + (x - A.mouth.cx) * e.mouthScale
+          y = A.mouth.cy + (y - A.mouth.cy) * e.mouthScale
         }
         if (source.fade === 'eyeOpen' && eye) {
           if (bn === 'irides') {
@@ -1022,10 +1165,20 @@ export class Anime25DPlayer {
             y = bcy + rx * st + ry * ct
           }
         }
-        if (source.fade === 'mouthOpen') {
-          y = A.mouth.y0 + (y - A.mouth.y0) * (0.5 + 0.5 * e.mouthOpen)
+        if (
+          source.fade === 'mouthOpen' ||
+          source.fade === 'mouthWide' ||
+          source.fade === 'mouthRound' ||
+          source.fade === 'mouthNarrow' ||
+          source.fade === 'mouthClose'
+        ) {
           const q = Math.abs(x - A.mouth.cx) / (mHalfW + 4)
-          y -= e.mouthForm * 6 * fs * (q ** 1.5 - 0.35)
+          let formScale = 1
+          if (source.fade === 'mouthRound') formScale = 0.35
+          else if (source.fade === 'mouthNarrow') formScale = 0.7
+          else if (source.fade === 'mouthOpen') formScale = 0.8
+          else if (source.fade === 'mouthClose') formScale = 0.65
+          y -= e.mouthForm * formScale * 6 * fs * (q ** 1.5 - 0.35)
         }
         if (source.fade === 'mouthCry') {
           const localX = Math.abs(rest[index] - A.mouth.cx) / (mHalfW + 4)
@@ -1166,7 +1319,11 @@ export class Anime25DPlayer {
     gl.uniform1f(this.cryTimeLocation, this.time)
     gl.activeTexture(gl.TEXTURE0)
     for (const layer of this.layers) {
-      const opacity = fadeOpacity(layer.source, this.current)
+      const opacity = fadeOpacity(
+        layer.source,
+        this.current,
+        this.activeMouthMaterial,
+      )
       if (opacity < 0.004 && !layer.source.name.startsWith('eyewhite')) continue
       const eyewhite = layer.source.name.startsWith('eyewhite')
       const iris = layer.source.name.startsWith('irides')
@@ -1207,9 +1364,18 @@ export class Anime25DPlayer {
     const cell =
       (source.phys ? 30 : 42) *
       Math.max(0.6, this.playback.pixelCanvas.width / 768)
-    const cols = Math.max(2, Math.round(source.w / cell))
+    const morphingMouth =
+      source.fade === 'mouthOpen' ||
+      source.fade === 'mouthWide' ||
+      source.fade === 'mouthRound' ||
+      source.fade === 'mouthNarrow' ||
+      source.fade === 'mouthClose'
+    const cols = Math.max(
+      morphingMouth ? 6 : 2,
+      Math.round(source.w / cell),
+    )
     const rows = Math.max(
-      source.role === 'eye-cry' ? 3 : 2,
+      morphingMouth ? 4 : source.role === 'eye-cry' ? 3 : 2,
       Math.round(source.h / cell),
     )
     const rest = new Float32Array((cols + 1) * (rows + 1) * 2)
@@ -1348,9 +1514,116 @@ function layerBaseName(role: string): string {
   return role.replace(/-/g, '_')
 }
 
+function resolveMouthMorph(
+  layers: readonly GpuLayer[],
+  driver: Anime25DDriver,
+  fallback: Anime25DPlayback['anchors']['mouth'],
+  output: MouthMorphState,
+): void {
+  const openMix = mouthOpenMix(driver)
+  const shapeScale = mouthShapeScale(driver)
+  const articulation = 1 - smoothstep(driver.mouthSeal)
+  const wide = driver.mouthWide * shapeScale * articulation
+  const round = driver.mouthRound * shapeScale * articulation
+  const narrow = driver.mouthNarrow * shapeScale * articulation
+  const open = Math.max(0, 1 - wide - round - narrow)
+  output.openMix = openMix
+  output.wide = wide
+  output.round = round
+  output.narrow = narrow
+
+  let total = 0
+  output.centerX = 0
+  output.centerY = 0
+  output.width = 0
+  output.height = 0
+  let closed: Anime25DPlaybackLayer | undefined
+  let ordinary: Anime25DPlaybackLayer | undefined
+  let wideLayer: Anime25DPlaybackLayer | undefined
+  let roundLayer: Anime25DPlaybackLayer | undefined
+  let narrowLayer: Anime25DPlaybackLayer | undefined
+  for (const layer of layers) {
+    if (layer.source.fade === 'mouthClose') closed ??= layer.source
+    else if (layer.source.fade === 'mouthOpen') ordinary ??= layer.source
+    else if (layer.source.fade === 'mouthWide') wideLayer ??= layer.source
+    else if (layer.source.fade === 'mouthRound') roundLayer ??= layer.source
+    else if (layer.source.fade === 'mouthNarrow') narrowLayer ??= layer.source
+  }
+  if (closed) total += addMouthMorphSource(output, closed, 1 - openMix)
+  if (ordinary)
+    total += addMouthMorphSource(output, ordinary, openMix * open)
+  if (wideLayer)
+    total += addMouthMorphSource(output, wideLayer, openMix * wide)
+  if (roundLayer)
+    total += addMouthMorphSource(output, roundLayer, openMix * round)
+  if (narrowLayer)
+    total += addMouthMorphSource(output, narrowLayer, openMix * narrow)
+  if (total <= 0) {
+    output.centerX = fallback.cx
+    output.centerY = fallback.cy
+    output.width = Math.max(1, fallback.x1 - fallback.x0)
+    output.height = Math.max(1, fallback.y1 - fallback.y0)
+    return
+  }
+  output.centerX /= total
+  output.centerY /= total
+  output.width = Math.max(1, output.width / total)
+  output.height = Math.max(1, output.height / total)
+  if (closed && openMix > 0) {
+    const blendedTop = output.centerY - output.height / 2
+    const blendedBottom = output.centerY + output.height / 2
+    const neutralTop = closed.y
+    const neutralBottom = closed.y + closed.h
+    const anchoredTop = neutralTop + (blendedTop - neutralTop) * 0.32
+    const releasedBottom =
+      neutralBottom + (blendedBottom - neutralBottom) * 0.88
+    output.centerY = (anchoredTop + releasedBottom) / 2
+    output.height = Math.max(1, releasedBottom - anchoredTop)
+  }
+}
+
+function addMouthMorphSource(
+  output: MouthMorphState,
+  source: Anime25DPlaybackLayer,
+  weight: number,
+): number {
+  if (weight <= 0) return 0
+  output.centerX += (source.x + source.w / 2) * weight
+  output.centerY += (source.y + source.h / 2) * weight
+  output.width += source.w * weight
+  output.height += source.h * weight
+  return weight
+}
+
+function mouthOpenMix(driver: Anime25DDriver): number {
+  const opening = smoothstep(
+    (driver.mouthOpen - (0.02 + driver.mouthEase * 0.08)) /
+      (0.53 + driver.mouthEase * 0.17),
+  )
+  return opening * (1 - smoothstep(driver.mouthSeal))
+}
+
+function mouthShapeScale(driver: Anime25DDriver): number {
+  const total = driver.mouthWide + driver.mouthRound + driver.mouthNarrow
+  return total > 1 ? 1 / total : 1
+}
+
+function applyMouthTransitionBridge(
+  output: MouthMorphState,
+  transition: Readonly<MouthTransitionSample>,
+): void {
+  output.width = Math.max(1, output.width * transition.widthScale)
+  output.height = Math.max(1, output.height * transition.heightScale)
+  const retainedShape = 1 - transition.shapeNeutralization
+  output.wide *= retainedShape
+  output.round *= retainedShape
+  output.narrow *= retainedShape
+}
+
 export function fadeOpacity(
   layer: Anime25DPlaybackLayer,
   driver: Anime25DDriver,
+  activeMouthMaterial?: SpeechMouthMaterial,
 ): number {
   if (!layer.fade) return 1
   const dizzy = smoothstep(driver.eyeDizzy)
@@ -1373,11 +1646,15 @@ export function fadeOpacity(
       (1 - cry)
     )
   }
-  if (layer.fade === 'mouthOpen' || layer.fade === 'mouthClose') {
-    const faded = smoothstep(
-      (driver.mouthOpen - (0.05 + driver.mouthEase * 0.35)) / 0.12,
-    )
-    return (layer.fade === 'mouthOpen' ? faded : 1 - faded) * (1 - mouthCry)
+  if (
+    layer.fade === 'mouthOpen' ||
+    layer.fade === 'mouthWide' ||
+    layer.fade === 'mouthRound' ||
+    layer.fade === 'mouthNarrow' ||
+    layer.fade === 'mouthClose'
+  ) {
+    const selected = activeMouthMaterial ?? dominantMouthMaterial(driver)
+    return (layer.fade === selected ? 1 : 0) * (1 - mouthCry)
   }
   return 1
 }

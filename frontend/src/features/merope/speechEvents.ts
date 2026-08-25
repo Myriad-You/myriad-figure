@@ -12,6 +12,7 @@ interface SpeechEventBase {
   messageId: string
   source: MeropeSpeechSource
   utteranceId: string
+  locale?: string
 }
 
 export type MeropeSpeechEventDetail =
@@ -32,6 +33,7 @@ interface SpeechUtteranceInput {
   source: MeropeSpeechSource
   text: string
   utteranceId: string
+  locale?: string
 }
 
 const SOURCES: readonly MeropeSpeechSource[] = [
@@ -69,6 +71,7 @@ export function dispatchMeropeSpeechUtterance(
     messageId: utterance.messageId,
     source: utterance.source,
     utteranceId: utterance.utteranceId,
+    ...(utterance.locale ? { locale: utterance.locale } : {}),
   }
   dispatchMeropeSpeech({ ...base, phase: 'start' })
   dispatchMeropeSpeech({ ...base, phase: 'chunk', text })
@@ -86,17 +89,24 @@ export function meropeSpeechEventDetail(
     ? (value.source as MeropeSpeechSource)
     : 'reply'
   const utteranceId = boundedId(value.utteranceId)
+  const locale = boundedLocale(value.locale)
 
   if (phase === 'cancel') {
     return {
       phase,
       messageId,
       source,
+      ...(locale ? { locale } : {}),
       ...(utteranceId ? { utteranceId } : {}),
     }
   }
   if (!utteranceId) return null
-  const base = { messageId, source, utteranceId }
+  const base = {
+    messageId,
+    source,
+    utteranceId,
+    ...(locale ? { locale } : {}),
+  }
   if (phase === 'start' || phase === 'end') return { ...base, phase }
   if (phase === 'chunk') {
     const text = boundedChunk(value.text)
@@ -147,6 +157,13 @@ function boundedChunk(value: unknown): string {
 
 function boundedId(value: unknown): string {
   return typeof value === 'string' ? value.trim().slice(0, 160) : ''
+}
+
+function boundedLocale(value: unknown): string {
+  return typeof value === 'string' &&
+    /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/.test(value)
+    ? value.slice(0, 24)
+    : ''
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

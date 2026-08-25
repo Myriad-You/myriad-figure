@@ -63,8 +63,12 @@ variants. These are Myriad extensions rather than upstream Anime2.5DRig
 features: authored `eye_dizzy` / `eye_squeeze` / `eye_cry` layers win,
 otherwise the importer generates independent character-tinted spiral,
 inward-chevron, or asymmetric chevron-and-tear artwork at the detected
-left/right eye anchors. Contract v7 also preserves a plain See-through `mouth`
-as the closed portrait drawing and generates separate flat `mouth_open` and
-`mouth_cry` variants from its bounds and dark-line palette. Crying therefore
-replaces the mouth artwork instead of deforming the speaking layer. These
+left/right eye anchors. Contract v8 also preserves a plain See-through `mouth`
+as the closed portrait drawing and generates separate flat `mouth_open`,
+`mouth_wide`, `mouth_round`, `mouth_narrow`, and `mouth_cry` variants from its
+bounds and dark-line palette. Runtime speech morphs every ordinary mouth mesh
+through one continuous width/open/roundness envelope. A hysteretic state
+machine keeps exactly one ordinary mouth texture visible and switches it only
+after the next shape is decisively dominant. Crying replaces the ordinary
+mouth stack. These
 variants have no old-rig runtime fallback; reimport is required.

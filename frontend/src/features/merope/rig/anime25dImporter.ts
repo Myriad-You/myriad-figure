@@ -32,6 +32,7 @@ import {
 } from './dizzyEye'
 import {
   createMouthExpressionBitmap,
+  type MouthExpressionKind,
   mouthExpressionGeneratedSizes,
   sampleMouthExpressionPalette,
 } from './mouthExpression'
@@ -111,7 +112,15 @@ interface RasterLayer {
   data: Uint8ClampedArray
   synthetic?: boolean
   slot?: 'eye-left' | 'eye-right' | 'mouth'
-  variant?: 'open' | 'closed' | 'dizzy' | 'squeeze' | 'cry'
+  variant?:
+    | 'open'
+    | 'closed'
+    | 'wide'
+    | 'round'
+    | 'narrow'
+    | 'dizzy'
+    | 'squeeze'
+    | 'cry'
   documentStrands?: HairStrand[]
 }
 
@@ -652,15 +661,30 @@ function synthesizeMissingMouthExpressions(
     layers.find((layer) => layer.role === 'mouth-close') ||
     layers.find((layer) => layer.role === 'mouth-open')
   if (!reference) return layers
-  const missingOpen = !layers.some((layer) => layer.role === 'mouth-open')
-  const missingCry = !layers.some((layer) => layer.role === 'mouth-cry')
-  if (!missingOpen && !missingCry) return layers
+  const expressions: ReadonlyArray<{
+    role:
+      'mouth-open' | 'mouth-wide' | 'mouth-round' | 'mouth-narrow' | 'mouth-cry'
+    kind: MouthExpressionKind
+  }> = [
+    { role: 'mouth-open', kind: 'open' },
+    { role: 'mouth-wide', kind: 'wide' },
+    { role: 'mouth-round', kind: 'round' },
+    { role: 'mouth-narrow', kind: 'narrow' },
+    { role: 'mouth-cry', kind: 'cry' },
+  ]
+  const missing = expressions.filter(
+    ({ role }) => !layers.some((layer) => layer.role === role),
+  )
+  if (missing.length === 0) return layers
 
   const sizes = mouthExpressionGeneratedSizes(reference)
   const palette = sampleMouthExpressionPalette(reference.data)
   const usedIds = new Set(layers.map((layer) => layer.id))
   const generated: RasterLayer[] = []
-  const add = (role: 'mouth-open' | 'mouth-cry', kind: 'open' | 'cry') => {
+  const add = (
+    role: (typeof expressions)[number]['role'],
+    kind: MouthExpressionKind,
+  ) => {
     const bitmap = createMouthExpressionBitmap(kind, sizes[kind], palette)
     generated.push({
       id: uniquePartId(role, usedIds),
@@ -679,15 +703,17 @@ function synthesizeMissingMouthExpressions(
       synthetic: true,
     })
   }
-  if (missingOpen) add('mouth-open', 'open')
-  if (missingCry) add('mouth-cry', 'cry')
+  for (const expression of missing) add(expression.role, expression.kind)
 
   const output = [...layers]
   let insertAt = -1
   for (let index = 0; index < output.length; index += 1) {
     if (
       output[index].role === 'mouth-open' ||
-      output[index].role === 'mouth-close'
+      output[index].role === 'mouth-close' ||
+      output[index].role === 'mouth-wide' ||
+      output[index].role === 'mouth-round' ||
+      output[index].role === 'mouth-narrow'
     ) {
       insertAt = index
     }
@@ -771,16 +797,20 @@ function assignCrossfadeSlots(layers: RasterLayer[]): void {
       cry.variant = 'cry'
     }
   }
-  const mouthOpen = layers.find((layer) => layer.role === 'mouth-open')
-  const mouthClose = layers.find((layer) => layer.role === 'mouth-close')
-  const mouthCry = layers.find((layer) => layer.role === 'mouth-cry')
-  if (mouthOpen && mouthClose && mouthCry) {
-    mouthOpen.slot = 'mouth'
-    mouthOpen.variant = 'open'
-    mouthClose.slot = 'mouth'
-    mouthClose.variant = 'closed'
-    mouthCry.slot = 'mouth'
-    mouthCry.variant = 'cry'
+  const mouthVariants = [
+    ['mouth-open', 'open'],
+    ['mouth-wide', 'wide'],
+    ['mouth-round', 'round'],
+    ['mouth-narrow', 'narrow'],
+    ['mouth-close', 'closed'],
+    ['mouth-cry', 'cry'],
+  ] as const
+  for (const [role, variant] of mouthVariants) {
+    const layer = layers.find((candidate) => candidate.role === role)
+    if (layer) {
+      layer.slot = 'mouth'
+      layer.variant = variant
+    }
   }
 }
 
@@ -807,10 +837,13 @@ function validateCharacterAssetLayers(layers: readonly RasterLayer[]): void {
   }
   if (
     !hasRole('mouth-open') ||
+    !hasRole('mouth-wide') ||
+    !hasRole('mouth-round') ||
+    !hasRole('mouth-narrow') ||
     !hasRole('mouth-close') ||
     !hasRole('mouth-cry')
   ) {
-    missing.push('open/closed/cry mouth')
+    missing.push('open/wide/round/narrow/closed/cry mouth')
   }
   if (!hasSides('handwear')) {
     missing.push('left/right sleeve-forearm-hand fragments')
@@ -1254,6 +1287,9 @@ function handlesForLayer(
   }
   if (
     (layer.role === 'mouth-open' ||
+      layer.role === 'mouth-wide' ||
+      layer.role === 'mouth-round' ||
+      layer.role === 'mouth-narrow' ||
       layer.role === 'mouth-close' ||
       layer.role === 'mouth-cry') &&
     has('mouth')

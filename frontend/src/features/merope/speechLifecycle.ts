@@ -6,6 +6,7 @@ export interface SpeechLifecycleTarget {
   setAutoSpeech: (active: boolean) => void
   setSpeechEnergy: (energy: number | null) => void
   setSpeechArticulation: (articulation: SpeechArticulation) => void
+  enqueueSpeechText: (text: string, locale?: string) => void
 }
 
 export interface SpeechLifecycleScheduler {
@@ -27,7 +28,7 @@ const defaultScheduler: SpeechLifecycleScheduler = {
 /**
  * Bridges reply lifecycle events to one rig without adding work to its frame loop.
  * Audio energy or phoneme articulation owns the mouth as soon as it arrives;
- * otherwise the existing lightweight auto-prosody controller is used.
+ * otherwise streamed text drives the bounded visual-viseme controller.
  */
 export class SpeechLifecycleController {
   private activeMessageId: string | null = null
@@ -66,6 +67,7 @@ export class SpeechLifecycleController {
     }
 
     if (event.phase === 'chunk') {
+      this.target.enqueueSpeechText(event.text, event.locale)
       this.bufferedText = `${this.bufferedText}${event.text}`.slice(
         0,
         MAX_BUFFERED_TEXT,

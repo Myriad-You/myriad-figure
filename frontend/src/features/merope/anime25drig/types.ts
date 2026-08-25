@@ -14,6 +14,9 @@ export type Anime25DFade =
   | 'eyeSqueeze'
   | 'eyeCry'
   | 'mouthOpen'
+  | 'mouthWide'
+  | 'mouthRound'
+  | 'mouthNarrow'
   | 'mouthClose'
   | 'mouthCry'
 

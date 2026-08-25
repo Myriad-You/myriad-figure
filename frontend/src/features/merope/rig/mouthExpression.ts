@@ -1,4 +1,4 @@
-export type MouthExpressionKind = 'open' | 'cry'
+export type MouthExpressionKind = 'open' | 'wide' | 'round' | 'narrow' | 'cry'
 
 export interface MouthExpressionSize {
   width: number
@@ -31,6 +31,9 @@ export function mouthExpressionGeneratedSizes(source: {
   const sourceWidth = Math.max(1, source.width - 4)
   const sourceHeight = Math.max(1, source.height - 4)
   const openWidth = clampInt(Math.round(sourceWidth * 0.96), 24, 128)
+  const wideWidth = clampInt(Math.round(sourceWidth * 1.24), 28, 152)
+  const roundWidth = clampInt(Math.round(sourceWidth * 0.76), 20, 112)
+  const narrowWidth = clampInt(Math.round(sourceWidth * 1.08), 24, 136)
   const cryWidth = clampInt(Math.round(sourceWidth * 1.3), 30, 160)
   return {
     open: {
@@ -39,6 +42,30 @@ export function mouthExpressionGeneratedSizes(source: {
         Math.round(Math.max(sourceHeight * 1.5, openWidth * 0.62)),
         16,
         96,
+      ),
+    },
+    wide: {
+      width: wideWidth,
+      height: clampInt(
+        Math.round(Math.max(sourceHeight * 1.08, wideWidth * 0.4)),
+        14,
+        72,
+      ),
+    },
+    round: {
+      width: roundWidth,
+      height: clampInt(
+        Math.round(Math.max(sourceHeight * 1.62, roundWidth * 0.94)),
+        18,
+        104,
+      ),
+    },
+    narrow: {
+      width: narrowWidth,
+      height: clampInt(
+        Math.round(Math.max(sourceHeight * 0.88, narrowWidth * 0.27)),
+        12,
+        52,
       ),
     },
     cry: {
@@ -115,12 +142,12 @@ export function createMouthExpressionBitmap(
   const width = clampInt(Math.round(requestedSize.width), 16, 160)
   const height = clampInt(Math.round(requestedSize.height), 12, 120)
   const data = new Uint8ClampedArray(width * height * 4)
-  const outer = kind === 'cry' ? cryOuterPath() : openOuterPath()
+  const outer = mouthOuterPath(kind)
   const inner = insetPath(
     outer,
-    kind === 'cry' ? 0.83 : 0.78,
-    kind === 'cry' ? 0.76 : 0.75,
-    kind === 'cry' ? 0.035 : 0.025,
+    kind === 'cry' ? 0.83 : kind === 'narrow' ? 0.8 : 0.78,
+    kind === 'cry' ? 0.76 : kind === 'narrow' ? 0.58 : 0.75,
+    kind === 'cry' ? 0.035 : kind === 'wide' ? 0.045 : 0.025,
   )
   const samples: readonly Point[] = [
     [0.25, 0.25],
@@ -139,7 +166,11 @@ export function createMouthExpressionBitmap(
         if (pointInPolygon(px, py, outer)) outerCoverage += 0.25
         if (pointInPolygon(px, py, inner)) {
           innerCoverage += 0.25
-          if (kind === 'open' && py > 0.24 - 0.16 * (1 - px * px)) {
+          if (
+            kind !== 'cry' &&
+            kind !== 'narrow' &&
+            py > tongueBoundary(kind, px)
+          ) {
             tongueCoverage += 0.25
           }
         }
@@ -163,6 +194,20 @@ export function createMouthExpressionBitmap(
   return { width, height, data }
 }
 
+function mouthOuterPath(kind: MouthExpressionKind): Point[] {
+  if (kind === 'wide') return wideOuterPath()
+  if (kind === 'round') return roundOuterPath()
+  if (kind === 'narrow') return narrowOuterPath()
+  if (kind === 'cry') return cryOuterPath()
+  return openOuterPath()
+}
+
+function tongueBoundary(kind: MouthExpressionKind, x: number): number {
+  if (kind === 'round') return 0.3 - 0.12 * (1 - x * x)
+  if (kind === 'wide') return 0.2 - 0.12 * (1 - x * x)
+  return 0.24 - 0.16 * (1 - x * x)
+}
+
 function openOuterPath(): Point[] {
   return [
     [-0.2, -0.82],
@@ -177,6 +222,60 @@ function openOuterPath(): Point[] {
     [-0.67, 0.19],
     [-0.68, -0.28],
     [-0.51, -0.63],
+  ]
+}
+
+/** Broad, slightly uneven anime vowel shape for E/I-family articulation. */
+function wideOuterPath(): Point[] {
+  return [
+    [-0.91, -0.2],
+    [-0.7, -0.45],
+    [-0.34, -0.57],
+    [0.08, -0.54],
+    [0.46, -0.49],
+    [0.82, -0.27],
+    [0.94, 0.02],
+    [0.78, 0.3],
+    [0.39, 0.48],
+    [-0.02, 0.5],
+    [-0.43, 0.43],
+    [-0.79, 0.23],
+    [-0.93, -0.02],
+  ]
+}
+
+/** Compact rounded O/U-family shape; intentionally not a perfect ellipse. */
+function roundOuterPath(): Point[] {
+  return [
+    [-0.4, -0.77],
+    [-0.08, -0.91],
+    [0.28, -0.79],
+    [0.53, -0.51],
+    [0.62, -0.08],
+    [0.55, 0.38],
+    [0.3, 0.72],
+    [-0.04, 0.86],
+    [-0.36, 0.72],
+    [-0.58, 0.39],
+    [-0.62, -0.06],
+    [-0.57, -0.46],
+  ]
+}
+
+/** Restrained consonant/in-between shape used instead of collapsing the open art. */
+function narrowOuterPath(): Point[] {
+  return [
+    [-0.91, -0.12],
+    [-0.62, -0.31],
+    [-0.21, -0.37],
+    [0.2, -0.34],
+    [0.61, -0.28],
+    [0.9, -0.08],
+    [0.79, 0.16],
+    [0.39, 0.28],
+    [-0.05, 0.31],
+    [-0.5, 0.25],
+    [-0.82, 0.12],
   ]
 }
 

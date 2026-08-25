@@ -90,7 +90,7 @@ export function diagnoseRig(
     (part) => part.slot === 'head-expression',
   ).length
   const facialVariants = anime25d
-    ? splitEyeGaze && mouthVariantCount >= 2
+    ? splitEyeGaze && mouthVariantCount >= 6
     : (splitEyeGaze && mouthVariantCount >= 4) ||
       (headExpressionCount >= 4 && mouthVariantCount >= 4)
   const deformableSkinning = (manifest.parts || []).some((part) =>

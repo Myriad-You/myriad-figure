@@ -1,5 +1,12 @@
+import type { SpeechViseme } from '../rig/articulation'
+import { compileTextVisemes, type TextVisemeCue } from './textVisemes'
+
 export interface AutoSpeechPose {
   mouthOpen: number
+  mouthWide: number
+  mouthRound: number
+  mouthNarrow: number
+  mouthSeal: number
   mouthForm: number
   phraseActivity: number
   browAccent: number
@@ -10,6 +17,10 @@ type RandomSource = () => number
 
 const ZERO_SPEECH: AutoSpeechPose = {
   mouthOpen: 0,
+  mouthWide: 0,
+  mouthRound: 0,
+  mouthNarrow: 0,
+  mouthSeal: 0,
   mouthForm: 0,
   phraseActivity: 0,
   browAccent: 0,
@@ -29,11 +40,11 @@ export function speechPhraseIntervalScale(progress: number): number {
 }
 
 /**
- * Text-free preview speech for the workbench.
+ * Text-driven speech with a text-free workbench fallback.
  *
- * Anime2.5DRig's original demo chooses an unrelated mouth target every
- * 70-180ms. This controller keeps the same lightweight, client-only role, but
- * groups syllables into words and phrases and interpolates adjacent shapes.
+ * Agent text uses a bounded viseme queue with adjacent-shape coarticulation.
+ * When no text was supplied, the workbench retains a lightweight grouped
+ * syllable preview instead of Anime2.5DRig's unrelated 70-180ms targets.
  * The returned object is reused so the animation loop does not allocate.
  */
 export class AutoSpeechController {
@@ -54,8 +65,53 @@ export class AutoSpeechController {
   private toOpen = 0
   private fromForm = 0
   private toForm = 0
+  private fromWide = 0
+  private toWide = 0
+  private fromRound = 0
+  private toRound = 0
+  private fromNarrow = 0
+  private toNarrow = 0
+  private textMode = false
+  private textCues: TextVisemeCue[] = []
+  private textCueIndex = 0
+  private textCueStartedAt = Number.NaN
+  private previousViseme: SpeechViseme = 'rest'
+  private activeTextAccentIndex = -1
+  private nextTextAccentAt = 0
+  private textCompilation: Promise<void> = Promise.resolve()
+  private textGeneration = 0
 
   constructor(private readonly random: RandomSource = Math.random) {}
+
+  clear(timeSeconds = 0): void {
+    const now = Number.isFinite(timeSeconds) ? Math.max(0, timeSeconds) : 0
+    this.initialized = true
+    this.enabled = false
+    this.reset(now)
+  }
+
+  enqueueText(text: string, locale?: string): void {
+    const generation = this.textGeneration
+    this.textMode = true
+    this.textCompilation = this.textCompilation.then(async () => {
+      const cues = await compileTextVisemes(text, locale)
+      if (generation !== this.textGeneration || cues.length === 0) return
+      this.appendTextCues(cues)
+    })
+  }
+
+  private appendTextCues(cues: readonly TextVisemeCue[]): void {
+    if (this.textCueIndex > 0) {
+      this.activeTextAccentIndex =
+        this.activeTextAccentIndex >= this.textCueIndex
+          ? this.activeTextAccentIndex - this.textCueIndex
+          : -1
+      this.textCues = this.textCues.slice(this.textCueIndex)
+      this.textCueIndex = 0
+    }
+    const available = Math.max(0, 256 - this.textCues.length)
+    this.textCues.push(...cues.slice(0, available))
+  }
 
   sample(timeSeconds: number, enabled: boolean): Readonly<AutoSpeechPose> {
     const now = Number.isFinite(timeSeconds) ? Math.max(0, timeSeconds) : 0
@@ -77,6 +133,8 @@ export class AutoSpeechController {
     }
 
     if (!this.enabled) return this.output
+
+    if (this.textMode) return this.sampleText(now)
 
     this.resolve(now)
     // Preserve time-based behavior after a throttled or dropped frame without
@@ -103,7 +161,7 @@ export class AutoSpeechController {
 
     if (now >= this.phraseEndsAt) {
       this.speaking = false
-      this.beginTransition(now, 0, 0, this.randomRange(0.16, 0.22))
+      this.beginTransition(now, 0, 0, 0, 0, 0, this.randomRange(0.16, 0.22))
       this.nextEventAt = now + this.randomRange(0.42, 0.92)
       return
     }
@@ -113,6 +171,9 @@ export class AutoSpeechController {
       this.beginTransition(
         now,
         this.randomRange(0.06, 0.12),
+        0,
+        0,
+        0,
         0,
         this.randomRange(0.14, 0.19),
       )
@@ -143,12 +204,18 @@ export class AutoSpeechController {
     // Keep enough contrast for articulation while preserving visual continuity.
     openness = clamp(openness, this.toOpen - 0.34, this.toOpen + 0.34)
     openness = clamp(openness, 0.22, 0.8)
-    let form = this.randomRange(-0.11, 0.11)
-    form = clamp(form, this.toForm - 0.12, this.toForm + 0.12)
+    const shape = this.randomUnit()
+    const wide = shape < 0.28 ? this.randomRange(0.72, 1) : 0
+    const round = shape >= 0.28 && shape < 0.5 ? this.randomRange(0.74, 1) : 0
+    const narrow =
+      shape >= 0.5 && shape < 0.72 ? this.randomRange(0.68, 0.94) : 0
     this.beginTransition(
       now,
       openness,
-      form,
+      0,
+      wide,
+      round,
+      narrow,
       Math.min(interval * 0.72, this.randomRange(0.08, 0.11)),
     )
     this.syllablesRemaining -= 1
@@ -159,13 +226,22 @@ export class AutoSpeechController {
     now: number,
     mouthOpen: number,
     mouthForm: number,
+    mouthWide: number,
+    mouthRound: number,
+    mouthNarrow: number,
     duration: number,
   ): void {
     this.resolve(now)
     this.fromOpen = this.output.mouthOpen
     this.fromForm = this.output.mouthForm
+    this.fromWide = this.output.mouthWide
+    this.fromRound = this.output.mouthRound
+    this.fromNarrow = this.output.mouthNarrow
     this.toOpen = mouthOpen
     this.toForm = mouthForm
+    this.toWide = mouthWide
+    this.toRound = mouthRound
+    this.toNarrow = mouthNarrow
     this.transitionStartedAt = now
     this.transitionDuration = Math.max(0.001, duration)
   }
@@ -176,6 +252,10 @@ export class AutoSpeechController {
     )
     this.output.mouthOpen = mix(this.fromOpen, this.toOpen, progress)
     this.output.mouthForm = mix(this.fromForm, this.toForm, progress)
+    this.output.mouthWide = mix(this.fromWide, this.toWide, progress)
+    this.output.mouthRound = mix(this.fromRound, this.toRound, progress)
+    this.output.mouthNarrow = mix(this.fromNarrow, this.toNarrow, progress)
+    this.output.mouthSeal = 0
     this.output.phraseActivity = this.resolvePhraseActivity(now)
     const emphasisElapsed = now - this.emphasisStartedAt
     // Brows anticipate the visual beat while the smaller nod lands after it.
@@ -187,6 +267,99 @@ export class AutoSpeechController {
       0.22,
     )
     return this.output
+  }
+
+  private sampleText(now: number): Readonly<AutoSpeechPose> {
+    if (!Number.isFinite(this.textCueStartedAt)) {
+      this.textCueStartedAt = now
+      this.maybeStartTextAccent(now)
+    }
+    for (let skipped = 0; skipped < 24; skipped += 1) {
+      const cue = this.textCues[this.textCueIndex]
+      if (!cue || now < this.textCueStartedAt + cue.duration) break
+      this.previousViseme = cue.viseme
+      this.textCueStartedAt += cue.duration
+      this.textCueIndex += 1
+      this.maybeStartTextAccent(this.textCueStartedAt)
+    }
+    const cue = this.textCues[this.textCueIndex]
+    if (!cue) {
+      this.output.mouthOpen = 0
+      this.output.mouthWide = 0
+      this.output.mouthRound = 0
+      this.output.mouthNarrow = 0
+      this.output.mouthSeal = 0
+      this.output.mouthForm = 0
+      this.output.phraseActivity = 0
+      this.output.browAccent = 0
+      this.output.headAccent = 0
+      this.textCueStartedAt = Number.NaN
+      this.textCues = []
+      this.textCueIndex = 0
+      this.previousViseme = 'rest'
+      this.activeTextAccentIndex = -1
+      return this.output
+    }
+    const next = this.textCues[this.textCueIndex + 1]?.viseme || 'rest'
+    const progress = clamp((now - this.textCueStartedAt) / cue.duration, 0, 1)
+    const onsetFraction = cue.viseme === 'closed' ? 0.12 : 0.24
+    const releaseFraction = next === 'round' ? 0.42 : 0.28
+    let from = cue.viseme
+    let to = cue.viseme
+    let blend = 1
+    if (progress < onsetFraction) {
+      from = this.previousViseme
+      blend = smootherstep(progress / onsetFraction)
+    } else if (progress > 1 - releaseFraction) {
+      to = next
+      blend = smootherstep((progress - (1 - releaseFraction)) / releaseFraction)
+    }
+    this.output.mouthOpen = mix(
+      visemeValue(from, 'open'),
+      visemeValue(to, 'open'),
+      blend,
+    )
+    this.output.mouthWide = mix(
+      visemeValue(from, 'wide'),
+      visemeValue(to, 'wide'),
+      blend,
+    )
+    this.output.mouthRound = mix(
+      visemeValue(from, 'round'),
+      visemeValue(to, 'round'),
+      blend,
+    )
+    this.output.mouthNarrow = mix(
+      visemeValue(from, 'narrow'),
+      visemeValue(to, 'narrow'),
+      blend,
+    )
+    this.output.mouthSeal = mix(
+      visemeValue(from, 'seal'),
+      visemeValue(to, 'seal'),
+      blend,
+    )
+    this.output.mouthForm = 0
+    const phraseOnset =
+      this.textCueIndex === 0
+        ? smootherstep((now - this.textCueStartedAt) / 0.14)
+        : 1
+    this.output.phraseActivity =
+      phraseOnset * (cue.viseme === 'rest' ? 0.25 : 1)
+    const accent =
+      this.activeTextAccentIndex === this.textCueIndex
+        ? attackReleasePulse(now - this.textCueStartedAt, 0, 0.055, 0.18)
+        : 0
+    this.output.browAccent = accent
+    this.output.headAccent = accent * smootherstep(progress)
+    return this.output
+  }
+
+  private maybeStartTextAccent(cueStartedAt: number): void {
+    const cue = this.textCues[this.textCueIndex]
+    if (!cue?.emphasis || cueStartedAt < this.nextTextAccentAt) return
+    this.activeTextAccentIndex = this.textCueIndex
+    this.nextTextAccentAt = cueStartedAt + 0.48
   }
 
   private resolvePhraseActivity(now: number): number {
@@ -211,7 +384,26 @@ export class AutoSpeechController {
     this.toOpen = 0
     this.fromForm = 0
     this.toForm = 0
+    this.fromWide = 0
+    this.toWide = 0
+    this.fromRound = 0
+    this.toRound = 0
+    this.fromNarrow = 0
+    this.toNarrow = 0
+    this.textMode = false
+    this.textCues = []
+    this.textCueIndex = 0
+    this.textCueStartedAt = Number.NaN
+    this.previousViseme = 'rest'
+    this.activeTextAccentIndex = -1
+    this.nextTextAccentAt = 0
+    this.textGeneration += 1
+    this.textCompilation = Promise.resolve()
     this.output.mouthOpen = 0
+    this.output.mouthWide = 0
+    this.output.mouthRound = 0
+    this.output.mouthNarrow = 0
+    this.output.mouthSeal = 0
     this.output.mouthForm = 0
     this.output.phraseActivity = 0
     this.output.browAccent = 0
@@ -230,6 +422,21 @@ export class AutoSpeechController {
     const value = this.random()
     return Number.isFinite(value) ? clamp(value, 0, 1) : 0.5
   }
+}
+
+function visemeValue(
+  viseme: SpeechViseme,
+  channel: 'open' | 'wide' | 'round' | 'narrow' | 'seal',
+): number {
+  if (channel === 'seal') return viseme === 'closed' ? 1 : 0
+  if (channel === 'open') {
+    if (viseme === 'open') return 0.78
+    if (viseme === 'wide') return 0.54
+    if (viseme === 'round') return 0.64
+    if (viseme === 'narrow') return 0.34
+    return 0
+  }
+  return viseme === channel ? 1 : 0
 }
 
 function smootherstep(value: number): number {

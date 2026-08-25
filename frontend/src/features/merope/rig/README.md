@@ -59,11 +59,15 @@ warping the open eye.
 
 See-through's plain `mouth` is treated as the static closed portrait drawing,
 not as a speaking phoneme. Import keeps that artwork and generates a small
-character-tinted cel-style `mouth_open` plus an independent `mouth_cry` glyph.
-The runtime crossfades all three variants instead of pulling the ordinary open
-mouth into a crying shape. Character asset contract v7 requires independent
-left/right crying eyes and the crying mouth, so older packages must be
-reimported rather than falling back at runtime.
+character-tinted cel-style `mouth_open`, `mouth_wide`, `mouth_round`, and
+`mouth_narrow` shapes plus an independent `mouth_cry` glyph.
+The runtime morphs the speaking meshes through one continuous articulation
+envelope. A lip-seal channel preserves short bilabial closures independently
+from the slower jaw response. The two strongest visemes form a shared
+dominance bridge, while a stateful selector draws exactly one ordinary mouth
+texture at a time; crying replaces that mouth stack.
+Character asset contract v8 requires these independent variants, so older
+packages must be reimported rather than falling back at runtime.
 
 ## Runtime flow
 

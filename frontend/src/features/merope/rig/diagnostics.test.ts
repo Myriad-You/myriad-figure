@@ -90,6 +90,10 @@ test('Anime2.5DRig diagnostics do not score retired limb gates', () => {
       { id: 'a25d-eye-right-closed', slot: 'eye-right', variant: 'closed' },
       { id: 'a25d-mouth-open', slot: 'mouth', variant: 'open' },
       { id: 'a25d-mouth-close', slot: 'mouth', variant: 'closed' },
+      { id: 'a25d-mouth-wide', slot: 'mouth', variant: 'wide' },
+      { id: 'a25d-mouth-round', slot: 'mouth', variant: 'round' },
+      { id: 'a25d-mouth-narrow', slot: 'mouth', variant: 'narrow' },
+      { id: 'a25d-mouth-cry', slot: 'mouth', variant: 'cry' },
     ],
   } as unknown as MeropeRigManifest)
   assert.equal(report.profile, 'anime25d')

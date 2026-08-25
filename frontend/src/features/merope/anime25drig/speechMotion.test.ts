@@ -37,6 +37,10 @@ test('starts neutral and builds the first syllable without a hard jump', () => {
     { ...speech.sample(0, true) },
     {
       mouthOpen: 0,
+      mouthWide: 0,
+      mouthRound: 0,
+      mouthNarrow: 0,
+      mouthSeal: 0,
       mouthForm: 0,
       phraseActivity: 0,
       browAccent: 0,
@@ -47,6 +51,10 @@ test('starts neutral and builds the first syllable without a hard jump', () => {
     { ...speech.sample(0.11, true) },
     {
       mouthOpen: 0,
+      mouthWide: 0,
+      mouthRound: 0,
+      mouthNarrow: 0,
+      mouthSeal: 0,
       mouthForm: 0,
       phraseActivity: 0,
       browAccent: 0,
@@ -96,6 +104,10 @@ test('stops contributing immediately when preview speech is disabled', () => {
     { ...speech.sample(0.3, false) },
     {
       mouthOpen: 0,
+      mouthWide: 0,
+      mouthRound: 0,
+      mouthNarrow: 0,
+      mouthSeal: 0,
       mouthForm: 0,
       phraseActivity: 0,
       browAccent: 0,
