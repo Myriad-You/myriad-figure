@@ -1,11 +1,7 @@
 import type { Anime25DPlaybackBuildLayer } from './playback'
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import {
-
-  buildAnime25DPlayback,
-  remapRiggerAnchors,
-} from './playback'
+import { buildAnime25DPlayback, remapRiggerAnchors } from './playback'
 import { isAnime25DPlayback } from './types'
 
 function layer(
@@ -188,11 +184,34 @@ describe('Anime2.5DRig playback', () => {
         }),
       ],
     })
-    const squeeze = playback.layers.find(
-      (item) => item.role === 'eye-squeeze',
-    )
+    const squeeze = playback.layers.find((item) => item.role === 'eye-squeeze')
     assert.equal(squeeze?.side, 'L')
     assert.equal(squeeze?.fade, 'eyeSqueeze')
+  })
+
+  it('maps a complete per-eye crying replacement independently', () => {
+    const playback = buildAnime25DPlayback({
+      frameWidth: 768,
+      frameHeight: 1024,
+      anchors: anchorsFor(768, 1024),
+      layers: [
+        layer({
+          id: 'face',
+          role: 'face',
+          side: null,
+          bounds: { x: 0.3, y: 0.12, width: 0.4, height: 0.36 },
+        }),
+        layer({
+          id: 'eye-cry-left',
+          role: 'eye-cry',
+          side: 'left',
+          bounds: { x: 0.36, y: 0.16, width: 0.07, height: 0.12 },
+        }),
+      ],
+    })
+    const cry = playback.layers.find((item) => item.role === 'eye-cry')
+    assert.equal(cry?.side, 'L')
+    assert.equal(cry?.fade, 'eyeCry')
   })
 
   it('remaps rigger anchors into the 3:4 frame without rebuilding them', () => {

@@ -111,6 +111,8 @@ test('maps cues to bounded deterministic patches and durations', () => {
   assert.deepEqual(cueDriverPatch(dizzy), {})
   const think = { ...cue, intent: 'think' as const }
   assert.deepEqual(cueDriverPatch(think), {})
+  const cry = { ...cue, intent: 'cry' as const }
+  assert.deepEqual(cueDriverPatch(cry), {})
 })
 
 test('does not replay expired body cues after a throttled timer', () => {

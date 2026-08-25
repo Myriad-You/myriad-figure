@@ -58,8 +58,13 @@ without creating shoulder, elbow, wrist, leg, foot, contact, or hand-pose chains
 acceptance still requires a generated-material preflight and rendered motion
 review; the synthetic fixture is only an architectural gate.
 
-Merope additionally compiles `dizzy` and `squeeze` per-eye presentation
+Merope additionally compiles `dizzy`, `squeeze`, and `cry` per-eye presentation
 variants. These are Myriad extensions rather than upstream Anime2.5DRig
-features: authored `eye_dizzy` / `eye_squeeze` layers win, otherwise the
-importer generates independent character-tinted spiral / inward-chevron
-artwork at the detected left/right eye anchors.
+features: authored `eye_dizzy` / `eye_squeeze` / `eye_cry` layers win,
+otherwise the importer generates independent character-tinted spiral,
+inward-chevron, or asymmetric chevron-and-tear artwork at the detected
+left/right eye anchors. Contract v7 also preserves a plain See-through `mouth`
+as the closed portrait drawing and generates separate flat `mouth_open` and
+`mouth_cry` variants from its bounds and dark-line palette. Crying therefore
+replaces the mouth artwork instead of deforming the speaking layer. These
+variants have no old-rig runtime fallback; reimport is required.

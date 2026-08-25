@@ -24,16 +24,19 @@ import {
   PORTRAIT_CANVAS,
   RIG_IR_VERSION,
 } from './contract'
+import { createCryEyeBitmap, cryEyeGeneratedSize } from './cryEye'
 import {
   createDizzyEyeBitmap,
   dizzyEyeGeneratedSize,
   sampleDizzyEyeTint,
 } from './dizzyEye'
-import { inferOutfitProfileFromPartIds } from './outfit'
 import {
-  createSqueezeEyeBitmap,
-  squeezeEyeGeneratedSize,
-} from './squeezeEye'
+  createMouthExpressionBitmap,
+  mouthExpressionGeneratedSizes,
+  sampleMouthExpressionPalette,
+} from './mouthExpression'
+import { inferOutfitProfileFromPartIds } from './outfit'
+import { createSqueezeEyeBitmap, squeezeEyeGeneratedSize } from './squeezeEye'
 import '../anime25drig/vendor/genericparts.js'
 import '../anime25drig/vendor/rigger.js'
 
@@ -91,7 +94,6 @@ const ATLAS_PADDING = 8
 const MAX_ATLAS_EDGE = 8192
 const MIN_ATLAS_EDGE = 256
 const ALPHA_COMPONENT_THRESHOLD = 16
-const MIN_COMPONENT_PIXELS = 40
 
 type EyeSide = 'left' | 'right'
 
@@ -107,8 +109,9 @@ interface RasterLayer {
   width: number
   height: number
   data: Uint8ClampedArray
+  synthetic?: boolean
   slot?: 'eye-left' | 'eye-right' | 'mouth'
-  variant?: 'open' | 'closed' | 'dizzy' | 'squeeze'
+  variant?: 'open' | 'closed' | 'dizzy' | 'squeeze' | 'cry'
   documentStrands?: HairStrand[]
 }
 
@@ -160,18 +163,22 @@ const SEE_THROUGH_LAYER_ALIASES: Readonly<Record<string, string>> = {
 const UPPER_BODY_IGNORED_LAYERS = new Set(['legwear', 'footwear'])
 
 export function normalizeAnime25DLayerName(value: string | undefined): string {
-  let name = (value || '')
+  let name = canonicalAnime25DLayerName(value)
+  if (name === 'eyelash-c') name = 'eye-close'
+  if (name === 'mouth-c') name = 'mouth-close'
+  if (name === 'mouth' || /^mouth-?\d+$/.test(name)) name = 'mouth-open'
+  if (name === 'レイヤー-1') name = 'facedetail'
+  return SEE_THROUGH_LAYER_ALIASES[name] || name
+}
+
+function canonicalAnime25DLayerName(value: string | undefined): string {
+  return (value || '')
     .normalize('NFKC')
     .trim()
     .toLowerCase()
     .replace(/\s*(?:のコピー|copy)(?:\s*\d+)?$/u, '')
     .replace(/[\s_]+/g, '-')
     .replace(/-+/g, '-')
-  if (name === 'eyelash-c') name = 'eye-close'
-  if (name === 'mouth-c') name = 'mouth-close'
-  if (name === 'mouth' || /^mouth-?\d+$/.test(name)) name = 'mouth-open'
-  if (name === 'レイヤー-1') name = 'facedetail'
-  return SEE_THROUGH_LAYER_ALIASES[name] || name
 }
 
 export function anime25DBaseRole(
@@ -206,6 +213,7 @@ export async function prepareAnime25DRigPsd(
   if (!isAnime25DDocument(psd)) {
     throw new Error(currentCopy().merope.anime25dMissingFace)
   }
+  const staticSeeThroughMouth = hasStaticSeeThroughMouth(psd)
   const working = flattenPsdForRigger(psd)
   Rigger.cleanPsdLayers(working)
   const rig = Rigger.buildRig(working, { generic: genericCloseParts() })
@@ -213,19 +221,15 @@ export async function prepareAnime25DRigPsd(
   onStage?.('validated')
   const usedIds = new Set<string>()
   let layers = rig.layers.map((part) => rasterFromRiggerPart(part, usedIds))
+  if (staticSeeThroughMouth) layers = preserveStaticMouthAsClosed(layers)
   layers = splitHandwearIfNeeded(layers, rig.anchors.face.cx)
-  layers = splitVariantEyesIfNeeded(
-    layers,
-    rig.anchors.face.cx,
-    'eye-dizzy',
-  )
-  layers = splitVariantEyesIfNeeded(
-    layers,
-    rig.anchors.face.cx,
-    'eye-squeeze',
-  )
+  layers = splitVariantEyesIfNeeded(layers, rig.anchors.face.cx, 'eye-dizzy')
+  layers = splitVariantEyesIfNeeded(layers, rig.anchors.face.cx, 'eye-squeeze')
+  layers = splitVariantEyesIfNeeded(layers, rig.anchors.face.cx, 'eye-cry')
   layers = synthesizeMissingDizzyEyes(layers, rig.anchors)
   layers = synthesizeMissingSqueezeEyes(layers, rig.anchors)
+  layers = synthesizeMissingCryEyes(layers, rig.anchors)
+  layers = synthesizeMissingMouthExpressions(layers, rig.anchors)
   layers.forEach((layer, index) => {
     layer.order = index
   })
@@ -317,6 +321,23 @@ function flattenVisibleLayers(layers: Layer[]): Layer[] {
   return output
 }
 
+/** See-through's plain `mouth` is the static portrait mouth, not an open phoneme. */
+function hasStaticSeeThroughMouth(psd: Psd): boolean {
+  const names = flattenVisibleLayers(psd.children || []).map((layer) =>
+    canonicalAnime25DLayerName(layer.name),
+  )
+  const hasPlainMouth = names.some(
+    (name) => name === 'mouth' || /^mouth-?\d+$/.test(name),
+  )
+  const hasAuthoredOpen = names.some(
+    (name) => name === 'mouth-open' || /^mouth-open-?\d+$/.test(name),
+  )
+  const hasAuthoredClose = names.some(
+    (name) => name === 'mouth-c' || name === 'mouth-close',
+  )
+  return hasPlainMouth && !hasAuthoredOpen && !hasAuthoredClose
+}
+
 function toRiggerLayerName(value: string | undefined): string {
   let kebab = normalizeAnime25DLayerName(value)
   const numbered = kebab.match(/-(\d+)$/)
@@ -365,6 +386,7 @@ function rasterFromRiggerPart(
     group: 'head' | 'body'
     side: 'L' | 'R' | null
     strands: Array<{ x: number; rootY: number; tipY: number }> | null
+    synthetic?: boolean
     img: { width: number; height: number; data: Uint8ClampedArray }
   },
   usedIds: Set<string>,
@@ -390,8 +412,30 @@ function rasterFromRiggerPart(
     width: part.w,
     height: part.h,
     data: part.img.data,
+    synthetic: part.synthetic,
     documentStrands: part.strands || undefined,
   }
+}
+
+function preserveStaticMouthAsClosed(layers: RasterLayer[]): RasterLayer[] {
+  const staticMouth = layers.find(
+    (layer) => layer.role === 'mouth-open' && !layer.synthetic,
+  )
+  if (!staticMouth) return layers
+  const output = layers.filter(
+    (layer) => layer !== staticMouth && layer.role !== 'mouth-close',
+  )
+  const usedIds = new Set(output.map((layer) => layer.id))
+  const closed = {
+    ...staticMouth,
+    id: uniquePartId('mouth-close', usedIds),
+    role: 'mouth-close' as const,
+    sourceName: 'mouth-close',
+    synthetic: false,
+  }
+  const insertAt = Math.max(0, layers.indexOf(staticMouth))
+  output.splice(Math.min(insertAt, output.length), 0, closed)
+  return output
 }
 
 function splitHandwearIfNeeded(
@@ -419,7 +463,7 @@ function splitHandwearIfNeeded(
 function splitVariantEyesIfNeeded(
   layers: RasterLayer[],
   faceCenterX: number,
-  role: 'eye-dizzy' | 'eye-squeeze',
+  role: 'eye-dizzy' | 'eye-squeeze' | 'eye-cry',
 ): RasterLayer[] {
   const output: RasterLayer[] = []
   const usedIds = new Set(layers.map((layer) => layer.id))
@@ -546,6 +590,112 @@ function synthesizeMissingSqueezeEyes(
   return output
 }
 
+function synthesizeMissingCryEyes(
+  layers: RasterLayer[],
+  anchors: Anime25DRiggerAnchors,
+): RasterLayer[] {
+  const generated: RasterLayer[] = []
+  const usedIds = new Set(layers.map((layer) => layer.id))
+  for (const side of ['left', 'right'] as const) {
+    if (
+      layers.some((layer) => layer.role === 'eye-cry' && layer.side === side)
+    ) {
+      continue
+    }
+    const eye = side === 'left' ? anchors.eyeL : anchors.eyeR
+    if (!eye) continue
+    const eyelash = layers.find(
+      (layer) => layer.role === 'eyelash' && layer.side === side,
+    )
+    const bitmap = createCryEyeBitmap(
+      cryEyeGeneratedSize(eye),
+      sampleDizzyEyeTint(eyelash?.data),
+      side,
+    )
+    const eyeMarkCenterY = eye.icy + (eye.closeY - eye.icy) * 0.45
+    generated.push({
+      id: uniquePartId(`eye-cry-${side}`, usedIds),
+      role: 'eye-cry',
+      sourceName: `eye-cry-${side}`,
+      order: 0,
+      side,
+      group: 'head',
+      left: Math.round(eye.icx - bitmap.width / 2),
+      top: Math.round(eyeMarkCenterY - bitmap.height * 0.23),
+      width: bitmap.width,
+      height: bitmap.height,
+      data: bitmap.data,
+    })
+  }
+  if (generated.length === 0) return layers
+  const output = [...layers]
+  let insertAt = -1
+  for (let index = 0; index < output.length; index += 1) {
+    if (
+      output[index].role === 'eye-close' ||
+      output[index].role === 'eye-dizzy' ||
+      output[index].role === 'eye-squeeze' ||
+      output[index].role === 'eyelash'
+    ) {
+      insertAt = index
+    }
+  }
+  output.splice(insertAt + 1, 0, ...generated)
+  return output
+}
+
+function synthesizeMissingMouthExpressions(
+  layers: RasterLayer[],
+  anchors: Anime25DRiggerAnchors,
+): RasterLayer[] {
+  const reference =
+    layers.find((layer) => layer.role === 'mouth-close') ||
+    layers.find((layer) => layer.role === 'mouth-open')
+  if (!reference) return layers
+  const missingOpen = !layers.some((layer) => layer.role === 'mouth-open')
+  const missingCry = !layers.some((layer) => layer.role === 'mouth-cry')
+  if (!missingOpen && !missingCry) return layers
+
+  const sizes = mouthExpressionGeneratedSizes(reference)
+  const palette = sampleMouthExpressionPalette(reference.data)
+  const usedIds = new Set(layers.map((layer) => layer.id))
+  const generated: RasterLayer[] = []
+  const add = (role: 'mouth-open' | 'mouth-cry', kind: 'open' | 'cry') => {
+    const bitmap = createMouthExpressionBitmap(kind, sizes[kind], palette)
+    generated.push({
+      id: uniquePartId(role, usedIds),
+      role,
+      sourceName: role,
+      order: 0,
+      side: null,
+      group: 'head',
+      left: Math.round(anchors.mouth.cx - bitmap.width / 2),
+      top: Math.round(
+        anchors.mouth.cy - bitmap.height * (kind === 'cry' ? 0.46 : 0.5),
+      ),
+      width: bitmap.width,
+      height: bitmap.height,
+      data: bitmap.data,
+      synthetic: true,
+    })
+  }
+  if (missingOpen) add('mouth-open', 'open')
+  if (missingCry) add('mouth-cry', 'cry')
+
+  const output = [...layers]
+  let insertAt = -1
+  for (let index = 0; index < output.length; index += 1) {
+    if (
+      output[index].role === 'mouth-open' ||
+      output[index].role === 'mouth-close'
+    ) {
+      insertAt = index
+    }
+  }
+  output.splice(insertAt + 1, 0, ...generated)
+  return output
+}
+
 function validPixelData(value: PixelData | undefined): value is PixelData {
   return Boolean(
     value &&
@@ -555,85 +705,6 @@ function validPixelData(value: PixelData | undefined): value is PixelData {
       value.data instanceof Uint8ClampedArray) &&
     value.data.length === value.width * value.height * 4,
   )
-}
-
-function cleanedRaster(layer: Layer): RasterLayer {
-  const pixels = layer.imageData
-  if (!validPixelData(pixels)) {
-    throw new Error(currentCopy().merope.anime25dInvalidPixels)
-  }
-  const data = new Uint8ClampedArray(pixels.data)
-  const opacity = clamp(layer.opacity ?? 1, 0, 1)
-  for (let index = 3; index < data.length; index += 4) {
-    data[index] = Math.round(data[index] * opacity)
-  }
-  cleanSmallComponents(data, pixels.width, pixels.height)
-  return {
-    id: '',
-    role: 'unknown',
-    sourceName: normalizeAnime25DLayerName(layer.name),
-    order: 0,
-    side: null,
-    group: 'body',
-    left: layer.left || 0,
-    top: layer.top || 0,
-    width: pixels.width,
-    height: pixels.height,
-    data,
-  }
-}
-
-function buildRasterLayers(
-  layers: Layer[],
-  faceCenterX: number,
-): RasterLayer[] {
-  const output: RasterLayer[] = []
-  const usedIds = new Set<string>()
-  layers.forEach((source, order) => {
-    const raster = cleanedRaster(source)
-    const normalized = raster.sourceName
-    if (UPPER_BODY_IGNORED_LAYERS.has(normalized)) return
-    const role = anime25DBaseRole(normalized)
-    raster.role = role || 'unknown'
-    raster.order = order
-    const explicitSide = anime25DLayerSide(normalized)
-    if (role && explicitSide) {
-      raster.side = explicitSide
-      raster.id = uniquePartId(`${role}-${explicitSide}`, usedIds)
-      if (rasterBounds(raster)) output.push(trimRaster(raster))
-      return
-    }
-    if (role && splitRole(role)) {
-      for (const side of ['right', 'left'] as const) {
-        const split = splitRasterByComponents(raster, faceCenterX, side)
-        if (!rasterBounds(split)) continue
-        split.id = uniquePartId(`${role}-${side}`, usedIds)
-        split.side = side
-        output.push(trimRaster(split))
-      }
-      return
-    }
-    if (!rasterBounds(raster)) return
-    const preferred = role
-      ? normalized
-      : `unknown-${safeId(normalized) || order + 1}`
-    raster.id = uniquePartId(preferred, usedIds)
-    output.push(trimRaster(raster))
-  })
-  return output
-}
-
-function splitRole(role: Anime25DLayerRole): boolean {
-  return [
-    'eyewhite',
-    'irides',
-    'eyelash',
-    'eye-close',
-    'eye-dizzy',
-    'eye-squeeze',
-    'eyebrow',
-    'handwear',
-  ].includes(role)
 }
 
 function splitRasterByComponents(
@@ -675,6 +746,9 @@ function assignCrossfadeSlots(layers: RasterLayer[]): void {
     const squeeze = layers.find(
       (layer) => layer.role === 'eye-squeeze' && layer.side === side,
     )
+    const cry = layers.find(
+      (layer) => layer.role === 'eye-cry' && layer.side === side,
+    )
     const slot = side === 'left' ? 'eye-left' : 'eye-right'
     if (open) {
       open.slot = slot
@@ -692,14 +766,21 @@ function assignCrossfadeSlots(layers: RasterLayer[]): void {
       squeeze.slot = slot
       squeeze.variant = 'squeeze'
     }
+    if (cry) {
+      cry.slot = slot
+      cry.variant = 'cry'
+    }
   }
   const mouthOpen = layers.find((layer) => layer.role === 'mouth-open')
   const mouthClose = layers.find((layer) => layer.role === 'mouth-close')
-  if (mouthOpen && mouthClose) {
+  const mouthCry = layers.find((layer) => layer.role === 'mouth-cry')
+  if (mouthOpen && mouthClose && mouthCry) {
     mouthOpen.slot = 'mouth'
     mouthOpen.variant = 'open'
     mouthClose.slot = 'mouth'
     mouthClose.variant = 'closed'
+    mouthCry.slot = 'mouth'
+    mouthCry.variant = 'cry'
   }
 }
 
@@ -719,12 +800,17 @@ function validateCharacterAssetLayers(layers: readonly RasterLayer[]): void {
     !hasSides('eyelash') ||
     !hasSides('eye-close') ||
     !hasSides('eye-dizzy') ||
-    !hasSides('eye-squeeze')
+    !hasSides('eye-squeeze') ||
+    !hasSides('eye-cry')
   ) {
-    missing.push('independent open/closed/dizzy/squeeze eyes')
+    missing.push('independent open/closed/dizzy/squeeze/cry eyes')
   }
-  if (!hasRole('mouth-open') || !hasRole('mouth-close')) {
-    missing.push('open/closed mouth')
+  if (
+    !hasRole('mouth-open') ||
+    !hasRole('mouth-close') ||
+    !hasRole('mouth-cry')
+  ) {
+    missing.push('open/closed/cry mouth')
   }
   if (!hasSides('handwear')) {
     missing.push('left/right sleeve-forearm-hand fragments')
@@ -912,7 +998,7 @@ function visibleInAnalysisReference(layer: RasterLayer): boolean {
   ) {
     return false
   }
-  return layer.slot !== 'mouth' || layer.variant !== 'open'
+  return layer.slot !== 'mouth' || layer.variant === 'closed'
 }
 
 function canvasPng(canvas: HTMLCanvasElement): Promise<Blob> {
@@ -1154,7 +1240,8 @@ function handlesForLayer(
     (layer.role === 'eyelash' ||
       layer.role === 'eye-close' ||
       layer.role === 'eye-dizzy' ||
-      layer.role === 'eye-squeeze') &&
+      layer.role === 'eye-squeeze' ||
+      layer.role === 'eye-cry') &&
     has(`a25d-eyelash-${side}`)
   ) {
     return [fullLayerHandle(layer, `a25d-eyelash-${side}`)]
@@ -1166,7 +1253,9 @@ function handlesForLayer(
     return [fullLayerHandle(layer, `a25d-eyebrow-${side}`)]
   }
   if (
-    (layer.role === 'mouth-open' || layer.role === 'mouth-close') &&
+    (layer.role === 'mouth-open' ||
+      layer.role === 'mouth-close' ||
+      layer.role === 'mouth-cry') &&
     has('mouth')
   ) {
     return [fullLayerHandle(layer, 'mouth')]
@@ -1335,129 +1424,6 @@ function semanticAnchors(
   }
 }
 
-function detectHairStrands(
-  layer: RasterLayer,
-  frame: RigCanvasFrame,
-): HairStrand[] {
-  const bottom = new Float32Array(layer.width)
-  const top = new Float32Array(layer.width)
-  let minX = layer.width
-  let maxX = -1
-  for (let x = 0; x < layer.width; x += 1) {
-    top[x] = -1
-    for (let y = 0; y < layer.height; y += 1) {
-      if (
-        layer.data[(y * layer.width + x) * 4 + 3] <= ALPHA_COMPONENT_THRESHOLD
-      )
-        continue
-      if (top[x] < 0) top[x] = y
-      bottom[x] = y
-    }
-    if (top[x] >= 0) {
-      minX = Math.min(minX, x)
-      maxX = Math.max(maxX, x)
-    }
-  }
-  if (maxX < minX) return []
-  const smoothRadius = Math.min(20, Math.max(3, Math.floor(layer.width / 24)))
-  const smoothed = smoothProfile(bottom, smoothRadius)
-  const numbered = /-\d+$/.test(layer.sourceName)
-  const wanted = numbered ? clampInt(Math.round(layer.width / 110), 2, 6) : 6
-  const peaks = findProfilePeaks(
-    smoothed,
-    Math.max(30, Math.round(layer.width / (wanted * 1.6))),
-  )
-  const xs = peaks.slice(0, wanted)
-  while (xs.length < wanted) {
-    let best = -1
-    let bestDistance = -1
-    for (let sample = 0; sample < 48; sample += 1) {
-      const x = Math.round(minX + ((maxX - minX) * sample) / 47)
-      if (top[x] < 0 || xs.includes(x)) continue
-      const distance =
-        xs.length === 0
-          ? Number.MAX_SAFE_INTEGER
-          : Math.min(...xs.map((value) => Math.abs(x - value)))
-      if (distance > bestDistance) {
-        best = x
-        bestDistance = distance
-      }
-    }
-    if (best < 0) break
-    xs.push(best)
-  }
-  return xs
-    .sort((left, right) => left - right)
-    .filter((x) => top[x] >= 0)
-    .map((x) => ({
-      x: (layer.left + x - frame.x) / frame.width,
-      rootY: (layer.top + top[x] - frame.y) / frame.width,
-      tipY: (layer.top + bottom[x] - frame.y) / frame.width,
-    }))
-}
-
-function smoothProfile(values: Float32Array, radius: number): Float32Array {
-  const prefix = new Float32Array(values.length + 1)
-  for (let index = 0; index < values.length; index += 1) {
-    prefix[index + 1] = prefix[index] + values[index]
-  }
-  const output = new Float32Array(values.length)
-  for (let index = 0; index < values.length; index += 1) {
-    const start = Math.max(0, index - radius)
-    const end = Math.min(values.length - 1, index + radius)
-    output[index] = (prefix[end + 1] - prefix[start]) / (end - start + 1)
-  }
-  return output
-}
-
-function findProfilePeaks(values: Float32Array, minDistance: number): number[] {
-  const candidates: Array<{ x: number; prominence: number }> = []
-  for (let index = 1; index < values.length - 1; index += 1) {
-    if (values[index] <= values[index - 1] || values[index] < values[index + 1])
-      continue
-    let leftMin = values[index]
-    let rightMin = values[index]
-    for (let left = index - 1; left >= 0; left -= 1) {
-      if (values[left] > values[index]) break
-      leftMin = Math.min(leftMin, values[left])
-    }
-    for (let right = index + 1; right < values.length; right += 1) {
-      if (values[right] > values[index]) break
-      rightMin = Math.min(rightMin, values[right])
-    }
-    const prominence = values[index] - Math.max(leftMin, rightMin)
-    if (prominence >= 10) candidates.push({ x: index, prominence })
-  }
-  candidates.sort((left, right) => right.prominence - left.prominence)
-  const selected: number[] = []
-  for (const candidate of candidates) {
-    if (
-      selected.every((value) => Math.abs(value - candidate.x) >= minDistance)
-    ) {
-      selected.push(candidate.x)
-    }
-  }
-  return selected
-}
-
-function cleanSmallComponents(
-  data: Uint8ClampedArray,
-  width: number,
-  height: number,
-): void {
-  const components = labelAlphaComponents(data, width, height)
-  if (components.count === 0) return
-  const hasLarge = components.sizes.some(
-    (size, index) => index > 0 && size >= MIN_COMPONENT_PIXELS,
-  )
-  if (!hasLarge) return
-  for (let pixel = 0; pixel < components.labels.length; pixel += 1) {
-    if (components.sizes[components.labels[pixel]] < MIN_COMPONENT_PIXELS) {
-      data[pixel * 4 + 3] = 0
-    }
-  }
-}
-
 function labelAlphaComponents(
   data: Uint8ClampedArray,
   width: number,
@@ -1527,22 +1493,6 @@ function rasterBounds(layer: RasterLayer): RigRect | null {
         width: maxX - minX + 1,
         height: maxY - minY + 1,
       }
-}
-
-function rasterCentroid(layer: RasterLayer): RigPoint | null {
-  let sumX = 0
-  let sumY = 0
-  let sum = 0
-  for (let y = 0; y < layer.height; y += 1) {
-    for (let x = 0; x < layer.width; x += 1) {
-      const alpha = layer.data[(y * layer.width + x) * 4 + 3]
-      if (alpha === 0) continue
-      sumX += (layer.left + x) * alpha
-      sumY += (layer.top + y) * alpha
-      sum += alpha
-    }
-  }
-  return sum > 0 ? { x: sumX / sum, y: sumY / sum } : null
 }
 
 function trimRaster(layer: RasterLayer): RasterLayer {
@@ -1616,10 +1566,6 @@ function uniquePartId(preferred: string, used: Set<string>): string {
   while (used.has(id)) id = `${preferred}-${suffix++}`
   used.add(id)
   return id
-}
-
-function safeId(value: string): string {
-  return value.replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '')
 }
 
 function rectCenter(rect: RigRect): RigPoint {

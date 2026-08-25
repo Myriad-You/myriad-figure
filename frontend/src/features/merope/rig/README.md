@@ -50,11 +50,20 @@ such as `hairf`, `hairb`, `eyer`, and side-suffixed eye layers into stable
 roles. Unknown decorative layers stay renderable but do not create new
 semantic bones.
 
-Myriad extends the upstream eye-diff path with `eye_dizzy` and `eye_squeeze`
-layers. Artist artwork is split per eye like `eye_close`; when it is absent,
-import generates character-tinted spiral or inward-chevron eyes from the
-independent eye anchors. Both presentation variants are compiled into the
-atlas and are never emulated by warping the open eye.
+Myriad extends the upstream eye-diff path with `eye_dizzy`, `eye_squeeze`, and
+`eye_cry` layers. Artist artwork is split per eye like `eye_close`; when it is
+absent, import generates character-tinted spiral, inward-chevron, or
+asymmetric chevron-and-tear eyes from the independent eye anchors. All three
+presentation variants are compiled into the atlas and are never emulated by
+warping the open eye.
+
+See-through's plain `mouth` is treated as the static closed portrait drawing,
+not as a speaking phoneme. Import keeps that artwork and generates a small
+character-tinted cel-style `mouth_open` plus an independent `mouth_cry` glyph.
+The runtime crossfades all three variants instead of pulling the ordinary open
+mouth into a crying shape. Character asset contract v7 requires independent
+left/right crying eyes and the crying mouth, so older packages must be
+reimported rather than falling back at runtime.
 
 ## Runtime flow
 

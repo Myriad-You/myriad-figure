@@ -92,6 +92,7 @@ export function cueDriverPatch(cue: PerformanceCue): Partial<Anime25DDriver> {
     notify: { body: 0.18 * amount },
     think: {},
     dizzy: {},
+    cry: {},
   }
   return patches[cue.intent]
 }
@@ -100,7 +101,8 @@ export function cuePriority(cue: PerformanceCue): number {
   if (
     cue.intent === 'delight' ||
     cue.intent === 'notify' ||
-    cue.intent === 'dizzy'
+    cue.intent === 'dizzy' ||
+    cue.intent === 'cry'
   ) {
     return 3
   }

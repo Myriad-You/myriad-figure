@@ -9,6 +9,7 @@ type ActivityExpressionDriver = Pick<
   | 'eyeOpenR'
   | 'eyeDizzy'
   | 'eyeSqueeze'
+  | 'eyeCry'
   | 'eyeX'
   | 'eyeY'
   | 'irisScale'
@@ -26,6 +27,7 @@ const NEUTRAL_ACTIVITY_EXPRESSION: Readonly<ActivityExpressionDriver> = {
   eyeOpenR: 1,
   eyeDizzy: 0,
   eyeSqueeze: 0,
+  eyeCry: 0,
   eyeX: 0,
   eyeY: 0,
   irisScale: 1,
@@ -45,6 +47,7 @@ export const THINKING_ACTIVITY_EXPRESSION: Readonly<ActivityExpressionDriver> =
     eyeOpenR: 1,
     eyeDizzy: 0,
     eyeSqueeze: 0,
+    eyeCry: 0,
     eyeX: 0.58,
     eyeY: -0.42,
     irisScale: 1,
@@ -62,6 +65,13 @@ export const DIZZY_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
 /** Dedicated inward-facing chevron eye artwork, independent of blink state. */
 export const SQUEEZE_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
   eyeSqueeze: 1,
+}
+
+/** Complete per-eye crying artwork; runtime adds restrained sobbing mouth motion. */
+export const CRY_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
+  eyeCry: 1,
+  brow: 0.28,
+  browAngSym: -0.34,
 }
 
 export const THINKING_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {

@@ -20,16 +20,13 @@ export interface MeropeStateEventDetail {
   activity: string
 }
 
-export function dispatchMeropePerformance(
-  detail: unknown,
-): void {
+export function dispatchMeropePerformance(detail: unknown): void {
   const sanitized = meropePerformanceEventDetail(detail)
   if (!sanitized || typeof window === 'undefined') return
   window.dispatchEvent(
-    new CustomEvent<MeropePerformanceEventDetail>(
-      MEROPE_PERFORMANCE_EVENT,
-      { detail: sanitized },
-    ),
+    new CustomEvent<MeropePerformanceEventDetail>(MEROPE_PERFORMANCE_EVENT, {
+      detail: sanitized,
+    }),
   )
 }
 
@@ -37,7 +34,8 @@ export function meropePerformanceEventDetail(
   value: unknown,
 ): MeropePerformanceEventDetail | null {
   if (!isRecord(value)) return null
-  const text = typeof value.text === 'string' ? value.text.trim().slice(0, 2_000) : ''
+  const text =
+    typeof value.text === 'string' ? value.text.trim().slice(0, 2_000) : ''
   const performance = sanitizePerformanceDirective(value.performance)
   if (!text && !performance) return null
   const source = ['reply', 'proactive', 'interaction', 'preview'].includes(
@@ -75,7 +73,9 @@ export function meropeStateEventDetail(
   const bands = ['floor', 'low', 'normal', 'high'] as const
   const numbers = [mood.before, mood.after, mood.delta, mood.revision]
   if (
-    !numbers.every((number) => typeof number === 'number' && Number.isFinite(number)) ||
+    !numbers.every(
+      (number) => typeof number === 'number' && Number.isFinite(number),
+    ) ||
     !bands.includes(mood.bandBefore as (typeof bands)[number]) ||
     !bands.includes(mood.bandAfter as (typeof bands)[number])
   ) {
@@ -88,10 +88,12 @@ export function meropeStateEventDetail(
       bandBefore: mood.bandBefore as MoodTransition['bandBefore'],
       bandAfter: mood.bandAfter as MoodTransition['bandAfter'],
       delta: clamp(mood.delta as number, -10, 10),
-      cause: typeof mood.cause === 'string' ? mood.cause.slice(0, 80) : 'unknown',
+      cause:
+        typeof mood.cause === 'string' ? mood.cause.slice(0, 80) : 'unknown',
       revision: Math.max(0, Math.trunc(mood.revision as number)),
     },
-    activity: typeof value.activity === 'string' ? value.activity.slice(0, 32) : 'idle',
+    activity:
+      typeof value.activity === 'string' ? value.activity.slice(0, 32) : 'idle',
   }
 }
 
@@ -99,12 +101,26 @@ export function sanitizePerformanceDirective(
   value: unknown,
 ): PerformanceDirective | null {
   if (!isRecord(value) || !isRecord(value.plan)) return null
-  const phases = ['reaction', 'delivery', 'outcome', 'proactive', 'mood'] as const
+  const phases = [
+    'reaction',
+    'delivery',
+    'outcome',
+    'proactive',
+    'mood',
+  ] as const
   if (!phases.includes(value.phase as (typeof phases)[number])) return null
-  if (typeof value.moodRevision !== 'number' || !Number.isFinite(value.moodRevision)) return null
+  if (
+    typeof value.moodRevision !== 'number' ||
+    !Number.isFinite(value.moodRevision)
+  ) {
+    return null
+  }
   const baseline = sanitizeBaseline(value.plan.baseline)
   const cues = Array.isArray(value.plan.cues)
-    ? value.plan.cues.slice(0, 3).map(sanitizeCue).filter((cue): cue is PerformanceCue => cue !== null)
+    ? value.plan.cues
+        .slice(0, 3)
+        .map(sanitizeCue)
+        .filter((cue): cue is PerformanceCue => cue !== null)
     : []
   if (!baseline && cues.length === 0) return null
   return {
@@ -138,7 +154,18 @@ function sanitizeBaseline(value: unknown): PerformanceBaseline | null {
 
 function sanitizeCue(value: unknown): PerformanceCue | null {
   if (!isRecord(value)) return null
-  const intents = ['greet', 'respond', 'question', 'delight', 'emphasize', 'listen', 'notify', 'think', 'dizzy'] as const
+  const intents = [
+    'greet',
+    'respond',
+    'question',
+    'delight',
+    'emphasize',
+    'listen',
+    'notify',
+    'think',
+    'dizzy',
+    'cry',
+  ] as const
   const interrupts = ['replace', 'queue', 'if-lower'] as const
   if (
     !intents.includes(value.intent as (typeof intents)[number]) ||
@@ -146,8 +173,20 @@ function sanitizeCue(value: unknown): PerformanceCue | null {
   ) {
     return null
   }
-  const numericKeys = ['atMs', 'intensity', 'tempo', 'fadeInMs', 'fadeOutMs'] as const
-  if (!numericKeys.every((key) => typeof value[key] === 'number' && Number.isFinite(value[key]))) return null
+  const numericKeys = [
+    'atMs',
+    'intensity',
+    'tempo',
+    'fadeInMs',
+    'fadeOutMs',
+  ] as const
+  if (
+    !numericKeys.every(
+      (key) => typeof value[key] === 'number' && Number.isFinite(value[key]),
+    )
+  ) {
+    return null
+  }
   return {
     intent: value.intent as PerformanceCue['intent'],
     atMs: Math.trunc(clamp(value.atMs as number, 0, 5_000)),

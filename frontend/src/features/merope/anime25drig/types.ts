@@ -12,8 +12,10 @@ export type Anime25DFade =
   | 'eyeClose'
   | 'eyeDizzy'
   | 'eyeSqueeze'
+  | 'eyeCry'
   | 'mouthOpen'
   | 'mouthClose'
+  | 'mouthCry'
 
 export type Anime25DGroup = 'head' | 'body'
 

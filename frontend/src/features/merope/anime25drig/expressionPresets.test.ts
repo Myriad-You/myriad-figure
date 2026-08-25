@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   activityExpressionDriverPatch,
+  CRY_EXPRESSION_PRESET,
   DIZZY_EXPRESSION_PRESET,
   SQUEEZE_EXPRESSION_PRESET,
   THINKING_ACTIVITY_EXPRESSION,
@@ -33,6 +34,7 @@ test('leaving thinking resets every activity-owned expression channel', () => {
   assert.equal(neutral.eyeOpenR, 1)
   assert.equal(neutral.eyeDizzy, 0)
   assert.equal(neutral.eyeSqueeze, 0)
+  assert.equal(neutral.eyeCry, 0)
   assert.equal(neutral.irisScale, 1)
   for (const key of [
     'angleX',
@@ -55,6 +57,13 @@ test('dizzy preview owns only the dedicated artwork replacement channel', () => 
 
 test('squeeze preview owns only the inward chevron artwork channel', () => {
   assert.deepEqual(SQUEEZE_EXPRESSION_PRESET, { eyeSqueeze: 1 })
+})
+
+test('cry preview combines its own artwork with sad symmetric brows', () => {
+  assert.equal(CRY_EXPRESSION_PRESET.eyeCry, 1)
+  assert.ok((CRY_EXPRESSION_PRESET.brow || 0) > 0.2)
+  assert.ok((CRY_EXPRESSION_PRESET.browAngSym || 0) < -0.3)
+  assert.equal(CRY_EXPRESSION_PRESET.eyeSqueeze, undefined)
 })
 
 test('thinking preview enables the dedicated motion loop', () => {

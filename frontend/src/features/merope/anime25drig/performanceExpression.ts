@@ -7,9 +7,11 @@ import type {
 
 export interface PerformanceExpressionOffset {
   brow: number
+  browAngSym: number
   eyeOpen: number
   eyeDizzy: number
   eyeSqueeze: number
+  eyeCry: number
   eyeX: number
   eyeY: number
   mouthForm: number
@@ -20,10 +22,12 @@ export interface PerformanceExpressionOffset {
 
 export interface PerformanceExpressionTarget {
   brow: number
+  browAngSym: number
   eyeOpenL: number
   eyeOpenR: number
   eyeDizzy: number
   eyeSqueeze: number
+  eyeCry: number
   eyeX: number
   eyeY: number
   mouthForm: number
@@ -45,9 +49,11 @@ interface ScheduledExpressionCue {
 
 const OFFSET_KEYS = [
   'brow',
+  'browAngSym',
   'eyeOpen',
   'eyeDizzy',
   'eyeSqueeze',
+  'eyeCry',
   'eyeX',
   'eyeY',
   'mouthForm',
@@ -58,9 +64,11 @@ const OFFSET_KEYS = [
 
 const ZERO_OFFSET: PerformanceExpressionOffset = {
   brow: 0,
+  browAngSym: 0,
   eyeOpen: 0,
   eyeDizzy: 0,
   eyeSqueeze: 0,
+  eyeCry: 0,
   eyeX: 0,
   eyeY: 0,
   mouthForm: 0,
@@ -355,6 +363,12 @@ export function expressionCueOffset(
     dizzy: {
       eyeDizzy: 1,
     },
+    cry: {
+      brow: 0.2 * amount,
+      browAngSym: -0.3 * amount,
+      eyeCry: 1,
+      mouthForm: -0.12 * amount,
+    },
   }
   Object.assign(output, patches[cue.intent])
   return output
@@ -366,6 +380,13 @@ export function applyPerformanceExpressionOffset(
   offset: Readonly<PerformanceExpressionOffset>,
 ): void {
   target.brow = mixBoundedExpressionChannel(target.brow, offset.brow, -1, 1, 0)
+  target.browAngSym = mixBoundedExpressionChannel(
+    target.browAngSym,
+    offset.browAngSym,
+    -1,
+    1,
+    0,
+  )
   target.eyeOpenL = mixEyeOpen(target.eyeOpenL, offset.eyeOpen)
   target.eyeOpenR = mixEyeOpen(target.eyeOpenR, offset.eyeOpen)
   target.eyeDizzy = mixBoundedExpressionChannel(
@@ -378,6 +399,13 @@ export function applyPerformanceExpressionOffset(
   target.eyeSqueeze = mixBoundedExpressionChannel(
     target.eyeSqueeze,
     offset.eyeSqueeze,
+    0,
+    1,
+    0,
+  )
+  target.eyeCry = mixBoundedExpressionChannel(
+    target.eyeCry,
+    offset.eyeCry,
     0,
     1,
     0,
@@ -499,7 +527,8 @@ function expressionCuePriority(cue: PerformanceCue): number {
   if (
     cue.intent === 'delight' ||
     cue.intent === 'notify' ||
-    cue.intent === 'dizzy'
+    cue.intent === 'dizzy' ||
+    cue.intent === 'cry'
   ) {
     return 3
   }

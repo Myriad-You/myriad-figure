@@ -3,6 +3,7 @@ import type { MeropeRigManifest } from '../rig/types'
 import type { ChestWeightField } from './chestPhysics'
 import type { HairSpringState } from './hairPhysics'
 import type { Anime25DPlayback, Anime25DPlaybackLayer } from './types'
+import { cryEyeDisplayScale } from '../rig/cryEye'
 import { dizzyEyeDisplayScale } from '../rig/dizzyEye'
 import { squeezeEyeDisplayScale } from '../rig/squeezeEye'
 import { AmbientMotionController } from './ambientMotion'
@@ -15,6 +16,11 @@ import {
   sampleChestWeight,
   stepChestSpring,
 } from './chestPhysics'
+import {
+  cryTearHorizontalOffset,
+  cryTearVerticalOffset,
+  sampleCryMouthMotion,
+} from './cryMotion'
 import { applyExpressiveMotionEnvelope } from './expressiveMotionEnvelope'
 import {
   frontHairUpperParallaxScale,
@@ -50,9 +56,96 @@ in vec2 v_uv;
 uniform sampler2D u_texture;
 uniform float u_cut;
 uniform float u_opacity;
+uniform float u_cry_time;
+uniform float u_cry;
 out vec4 out_color;
+
+float tear_water_mask(vec4 color, float y) {
+  vec3 straight = color.rgb / max(color.a, 0.001);
+  float blue_water = smoothstep(0.06, 0.18, straight.b - straight.r)
+    * smoothstep(0.04, 0.16, straight.g - straight.r);
+  float pale_highlight = smoothstep(0.72, 0.94, max(straight.r, straight.g))
+    * smoothstep(-0.02, 0.08, straight.b - straight.r);
+  return max(blue_water, pale_highlight)
+    * smoothstep(0.25, 0.36, y)
+    * smoothstep(0.01, 0.12, color.a);
+}
+
+float tear_center(float y, float side) {
+  if (side < 0.0) {
+    if (y < 0.43) return mix(0.27, 0.31, clamp((y - 0.31) / 0.12, 0.0, 1.0));
+    if (y < 0.59) return mix(0.31, 0.27, (y - 0.43) / 0.16);
+    if (y < 0.74) return mix(0.27, 0.33, (y - 0.59) / 0.15);
+    if (y < 0.88) return mix(0.33, 0.29, (y - 0.74) / 0.14);
+    return 0.29;
+  }
+  if (y < 0.47) return mix(0.74, 0.69, clamp((y - 0.32) / 0.15, 0.0, 1.0));
+  if (y < 0.62) return mix(0.69, 0.73, (y - 0.47) / 0.15);
+  if (y < 0.78) return mix(0.73, 0.67, (y - 0.62) / 0.16);
+  if (y < 0.90) return mix(0.67, 0.72, (y - 0.78) / 0.12);
+  return 0.72;
+}
+
 void main() {
   vec4 color = texture(u_texture, v_uv);
+  float cry_amount = abs(u_cry);
+  if (cry_amount > 0.001) {
+    float side = u_cry < 0.0 ? -1.0 : 1.0;
+    float root_y = 0.30;
+    float source_span = 0.66;
+    float side_phase = side < 0.0 ? 0.0 : 0.055;
+    float cycle = fract(u_cry_time * 0.62 + side_phase);
+    float grow = smoothstep(0.02, 0.29, cycle)
+      * (1.0 - smoothstep(0.34, 0.52, cycle));
+    float recoil = smoothstep(0.34, 0.58, cycle)
+      * (1.0 - smoothstep(0.78, 0.98, cycle));
+    float stretch = 0.775 + grow * 0.075 - recoil * 0.035;
+    float source_y = root_y + (v_uv.y - root_y) / stretch;
+    float stream_progress = clamp(
+      (v_uv.y - root_y) / (source_span * stretch),
+      0.0,
+      1.0
+    );
+    float tip_weight = smoothstep(0.62, 0.98, stream_progress);
+    float width_scale = 1.0 + tip_weight * (0.07 + grow * 0.13);
+    float source_center = tear_center(source_y, side);
+    float source_x = source_center + (v_uv.x - source_center) / width_scale;
+    vec4 attached_sample = texture(u_texture, vec2(source_x, source_y));
+    float base_water = tear_water_mask(color, v_uv.y);
+    float attached_water = tear_water_mask(attached_sample, source_y)
+      * step(root_y, v_uv.y)
+      * step(v_uv.y, root_y + source_span * stretch);
+
+    float drop_progress = clamp((cycle - 0.27) / 0.62, 0.0, 1.0);
+    float drop_visible = smoothstep(0.25, 0.34, cycle)
+      * (1.0 - smoothstep(0.84, 0.98, cycle));
+    float drop_source_y = 0.88;
+    float drop_source_x = tear_center(drop_source_y, side);
+    float drop_center_x = drop_source_x
+      + side * drop_progress * 0.012
+      + sin(drop_progress * 3.14159265) * side * 0.004;
+    float drop_center_y = 0.825
+      + drop_progress * 0.105
+      + drop_progress * drop_progress * 0.045;
+    float drop_radius_x = mix(0.042, 0.031, drop_progress);
+    float drop_radius_y = mix(0.052, 0.039, drop_progress);
+    vec2 drop_source_uv = vec2(
+      drop_source_x + (v_uv.x - drop_center_x) * (0.068 / drop_radius_x),
+      drop_source_y + (v_uv.y - drop_center_y) * (0.072 / drop_radius_y)
+    );
+    vec4 drop_sample = texture(u_texture, drop_source_uv);
+    float drop_water = tear_water_mask(drop_sample, drop_source_uv.y)
+      * step(0.805, drop_source_uv.y)
+      * step(drop_source_uv.y, 0.955)
+      * drop_visible;
+
+    vec4 dry_eye = color * (1.0 - base_water);
+    vec4 attached_tear = attached_sample * attached_water;
+    vec4 falling_drop = drop_sample * drop_water;
+    vec4 moving_water = attached_tear
+      + falling_drop * (1.0 - attached_tear.a);
+    color = dry_eye + moving_water * (1.0 - dry_eye.a);
+  }
   if (color.a < u_cut) discard;
   out_color = color * u_opacity;
 }`
@@ -66,6 +159,7 @@ export interface Anime25DDriver {
   eyeOpenR: number
   eyeDizzy: number
   eyeSqueeze: number
+  eyeCry: number
   eyeX: number
   eyeY: number
   brow: number
@@ -153,6 +247,7 @@ export const IDENTITY_DRIVER: Anime25DDriver = {
   eyeOpenR: 1,
   eyeDizzy: 0,
   eyeSqueeze: 0,
+  eyeCry: 0,
   eyeX: 0,
   eyeY: 0,
   brow: 0,
@@ -213,6 +308,7 @@ const DRIVER_LIMITS: Partial<
   eyeOpenR: [0, 1],
   eyeDizzy: [0, 1],
   eyeSqueeze: [0, 1],
+  eyeCry: [0, 1],
   eyeX: [-1, 1],
   eyeY: [-1, 1],
   brow: [-1, 1],
@@ -274,8 +370,10 @@ export interface Anime25DDebugSnapshot {
   eyeCloseLayers: number
   eyeDizzyLayers: number
   eyeSqueezeLayers: number
+  eyeCryLayers: number
   mouthOpenLayers: number
   mouthCloseLayers: number
+  mouthCryLayers: number
   canvas: { width: number; height: number }
   current: Anime25DDriver
 }
@@ -287,6 +385,8 @@ export class Anime25DPlayer {
   private readonly viewLocation: WebGLUniformLocation
   private readonly opacityLocation: WebGLUniformLocation
   private readonly cutLocation: WebGLUniformLocation
+  private readonly cryTimeLocation: WebGLUniformLocation
+  private readonly cryLocation: WebGLUniformLocation
   private layers: GpuLayer[] = []
   private readonly current: Anime25DDriver = { ...IDENTITY_DRIVER }
   private readonly target: Anime25DDriver = { ...IDENTITY_DRIVER }
@@ -313,6 +413,13 @@ export class Anime25DPlayer {
   private readonly performanceExpression = new PerformanceExpressionController()
   private readonly speechMotion = new AutoSpeechController()
   private readonly speechExpression = new CoSpeechExpressionController()
+  private readonly cryMouth = {
+    mouthOpen: 0,
+    mouthForm: 0,
+    mouthCY: 0,
+    mouthScale: 0,
+  }
+
   private speechActive = false
   private readonly chest = createChestSpringState()
   private readonly chestTarget = { x: 0, y: 0 }
@@ -347,6 +454,8 @@ export class Anime25DPlayer {
     this.viewLocation = requiredUniform(gl, this.program, 'u_view')
     this.opacityLocation = requiredUniform(gl, this.program, 'u_opacity')
     this.cutLocation = requiredUniform(gl, this.program, 'u_cut')
+    this.cryTimeLocation = requiredUniform(gl, this.program, 'u_cry_time')
+    this.cryLocation = requiredUniform(gl, this.program, 'u_cry')
     gl.useProgram(this.program)
     gl.uniform1i(requiredUniform(gl, this.program, 'u_texture'), 0)
     gl.enable(gl.BLEND)
@@ -421,9 +530,12 @@ export class Anime25DPlayer {
         .length,
       eyeSqueezeLayers: layers.filter((layer) => layer.fade === 'eyeSqueeze')
         .length,
+      eyeCryLayers: layers.filter((layer) => layer.fade === 'eyeCry').length,
       mouthOpenLayers: layers.filter((layer) => layer.fade === 'mouthOpen')
         .length,
       mouthCloseLayers: layers.filter((layer) => layer.fade === 'mouthClose')
+        .length,
+      mouthCryLayers: layers.filter((layer) => layer.fade === 'mouthCry')
         .length,
       canvas: { ...this.playback.pixelCanvas },
       current: this.getCurrent(),
@@ -574,6 +686,37 @@ export class Anime25DPlayer {
       1,
     )
     applyPerformanceExpressionOffset(tgt, semanticExpression)
+    const cryResponseRate = tgt.eyeCry > this.current.eyeCry ? 6 : 4.5
+    const cryAmount = clamp(
+      this.current.eyeCry +
+        (tgt.eyeCry - this.current.eyeCry) *
+          (1 - Math.exp(-cryResponseRate * dt)),
+      0,
+      1,
+    )
+    sampleCryMouthMotion(cryAmount, t, this.cryMouth)
+    tgt.mouthOpen = Math.max(tgt.mouthOpen, this.cryMouth.mouthOpen)
+    tgt.mouthForm = mixBoundedExpressionChannel(
+      tgt.mouthForm,
+      this.cryMouth.mouthForm,
+      -1,
+      1,
+      0,
+    )
+    tgt.mouthCY = mixBoundedExpressionChannel(
+      tgt.mouthCY,
+      this.cryMouth.mouthCY,
+      -1,
+      1,
+      0,
+    )
+    tgt.mouthScale = mixBoundedExpressionChannel(
+      tgt.mouthScale,
+      this.cryMouth.mouthScale,
+      0.5,
+      1.5,
+      1,
+    )
     if (speech.mouthOpen > 0) {
       tgt.mouthOpen = Math.max(tgt.mouthOpen, speech.mouthOpen)
       const formInfluence = smoothstep((speech.mouthOpen - 0.08) / 0.32)
@@ -663,6 +806,12 @@ export class Anime25DPlayer {
       }
       if (key === 'mouthForm') {
         this.current.mouthForm = stepMouthForm(from, to, dt)
+        continue
+      }
+      if (key === 'eyeCry') {
+        const response = to > from ? 6 : 4.5
+        this.current.eyeCry =
+          from + (to - from) * (1 - Math.exp(-response * dt))
         continue
       }
       ;(this.current[key] as number) = from + (to - from) * rate
@@ -780,6 +929,13 @@ export class Anime25DPlayer {
       const vOpen = source.side === 'L' ? e.eyeOpenL : e.eyeOpenR
       const bcx = source.x + source.w / 2
       const bcy = source.y + source.h / 2
+      const cryLayer = source.fade === 'eyeCry'
+      const tearVertical = cryLayer
+        ? cryTearVerticalOffset(t, source.side, e.eyeCry, fs)
+        : 0
+      const tearHorizontal = cryLayer
+        ? cryTearHorizontalOffset(t, source.side, e.eyeCry, fs)
+        : 0
       const isHead = source.group === 'head'
       const nS = layer.springs?.length ?? 0
       for (let vertex = 0; vertex < vertexCount; vertex += 1) {
@@ -809,7 +965,18 @@ export class Anime25DPlayer {
             y = bcy + (y - bcy) * scale
           }
         }
-        if (bn === 'mouth_open' || bn === 'mouth_close') {
+        if (eye && (bn === 'eye_cry' || source.fade === 'eyeCry')) {
+          const scale = cryEyeDisplayScale(source.w, eye)
+          if (scale !== 1) {
+            x = bcx + (x - bcx) * scale
+            y = bcy + (y - bcy) * scale
+          }
+          const localY = (rest[index + 1] - source.y) / Math.max(1, source.h)
+          const flowWeight = smoothstep((localY - 0.34) / 0.58)
+          x += tearHorizontal * flowWeight
+          y += tearVertical * flowWeight
+        }
+        if (bn === 'mouth_open' || bn === 'mouth_close' || bn === 'mouth_cry') {
           if (e.mouthScale !== 1) {
             x = A.mouth.cx + (x - A.mouth.cx) * e.mouthScale
             y = A.mouth.cy + (y - A.mouth.cy) * e.mouthScale
@@ -859,6 +1026,17 @@ export class Anime25DPlayer {
           y = A.mouth.y0 + (y - A.mouth.y0) * (0.5 + 0.5 * e.mouthOpen)
           const q = Math.abs(x - A.mouth.cx) / (mHalfW + 4)
           y -= e.mouthForm * 6 * fs * (q ** 1.5 - 0.35)
+        }
+        if (source.fade === 'mouthCry') {
+          const localX = Math.abs(rest[index] - A.mouth.cx) / (mHalfW + 4)
+          const sob = Math.sin(t * 2.55 + 0.35)
+          y += e.mouthCY * 14 * fs
+          y +=
+            smoothstep(e.eyeCry) *
+            sob *
+            0.42 *
+            fs *
+            (0.45 + 0.55 * (1 - Math.min(1, localX)))
         }
         if (source.fade === 'mouthClose') {
           y += e.mouthCY * 14 * fs
@@ -985,18 +1163,22 @@ export class Anime25DPlayer {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
     gl.useProgram(this.program)
     gl.uniform2f(this.viewLocation, this.viewWidth, this.viewHeight)
+    gl.uniform1f(this.cryTimeLocation, this.time)
     gl.activeTexture(gl.TEXTURE0)
     for (const layer of this.layers) {
       const opacity = fadeOpacity(layer.source, this.current)
       if (opacity < 0.004 && !layer.source.name.startsWith('eyewhite')) continue
       const eyewhite = layer.source.name.startsWith('eyewhite')
       const iris = layer.source.name.startsWith('irides')
+      const crying = layer.source.fade === 'eyeCry'
+      const crySide = layer.source.side === 'L' ? -1 : 1
       gl.bindTexture(gl.TEXTURE_2D, layer.texture)
       gl.uniform1f(this.opacityLocation, opacity)
+      gl.uniform1f(this.cryLocation, crying ? crySide * this.current.eyeCry : 0)
       gl.bindVertexArray(layer.vao)
       if (eyewhite) {
         gl.enable(gl.STENCIL_TEST)
-        gl.stencilFunc(gl.ALWAYS, 1, 0xFF)
+        gl.stencilFunc(gl.ALWAYS, 1, 255)
         gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
         gl.uniform1f(this.cutLocation, 0.25)
         gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
@@ -1004,7 +1186,7 @@ export class Anime25DPlayer {
         gl.uniform1f(this.cutLocation, 0)
       } else if (iris) {
         gl.enable(gl.STENCIL_TEST)
-        gl.stencilFunc(gl.EQUAL, 1, 0xFF)
+        gl.stencilFunc(gl.EQUAL, 1, 255)
         gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP)
         gl.uniform1f(this.cutLocation, 0)
         gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
@@ -1026,7 +1208,10 @@ export class Anime25DPlayer {
       (source.phys ? 30 : 42) *
       Math.max(0.6, this.playback.pixelCanvas.width / 768)
     const cols = Math.max(2, Math.round(source.w / cell))
-    const rows = Math.max(2, Math.round(source.h / cell))
+    const rows = Math.max(
+      source.role === 'eye-cry' ? 3 : 2,
+      Math.round(source.h / cell),
+    )
     const rest = new Float32Array((cols + 1) * (rows + 1) * 2)
     const uvs = new Float32Array(rest.length)
     let cursor = 0
@@ -1169,23 +1354,30 @@ export function fadeOpacity(
 ): number {
   if (!layer.fade) return 1
   const dizzy = smoothstep(driver.eyeDizzy)
+  const cry = smoothstep(driver.eyeCry)
+  const mouthCry = cry * (1 - dizzy)
   const squeeze = smoothstep(driver.eyeSqueeze)
   if (layer.fade === 'eyeDizzy') return dizzy
-  if (layer.fade === 'eyeSqueeze') return squeeze * (1 - dizzy)
+  if (layer.fade === 'eyeCry') return cry * (1 - dizzy)
+  if (layer.fade === 'mouthCry') return mouthCry
+  if (layer.fade === 'eyeSqueeze') {
+    return squeeze * (1 - dizzy) * (1 - cry)
+  }
   if (layer.fade === 'eyeOpen' || layer.fade === 'eyeClose') {
     const open = layer.side === 'L' ? driver.eyeOpenL : driver.eyeOpenR
     const faded = smoothstep((open - (0.1 + driver.eyeEase * 0.45)) / 0.15)
     return (
       (layer.fade === 'eyeOpen' ? faded : 1 - faded) *
       (1 - dizzy) *
-      (1 - squeeze)
+      (1 - squeeze) *
+      (1 - cry)
     )
   }
   if (layer.fade === 'mouthOpen' || layer.fade === 'mouthClose') {
     const faded = smoothstep(
       (driver.mouthOpen - (0.05 + driver.mouthEase * 0.35)) / 0.12,
     )
-    return layer.fade === 'mouthOpen' ? faded : 1 - faded
+    return (layer.fade === 'mouthOpen' ? faded : 1 - faded) * (1 - mouthCry)
   }
   return 1
 }

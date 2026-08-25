@@ -76,6 +76,10 @@ test('maps semantic baselines and cues to conservative expression offsets', () =
     ...cue('think'),
     intensity: 1.4,
   })
+  const cry = expressionCueOffset({
+    ...cue('cry'),
+    intensity: 1.2,
+  })
 
   assert.ok(warm.mouthForm > 0 && warm.mouthForm <= 0.12)
   assert.ok(withdrawn.eyeOpen < 0 && withdrawn.eyeOpen >= -0.08)
@@ -92,10 +96,15 @@ test('maps semantic baselines and cues to conservative expression offsets', () =
   assert.ok(think.eyeY < -0.3)
   assert.ok(think.angleZ < 0)
   assert.ok(think.brow > 0)
+  assert.equal(cry.eyeCry, 1)
+  assert.ok(cry.browAngSym < -0.3)
+  assert.ok(cry.mouthForm < 0)
   assert.deepEqual(Object.keys(warm).sort(), [
     'angleY',
     'angleZ',
     'brow',
+    'browAngSym',
+    'eyeCry',
     'eyeDizzy',
     'eyeOpen',
     'eyeSqueeze',
@@ -109,10 +118,12 @@ test('maps semantic baselines and cues to conservative expression offsets', () =
 test('adds to manual channels without flattening left-right eye differences', () => {
   const target = {
     brow: 0.3,
+    browAngSym: 0.1,
     eyeOpenL: 0.72,
     eyeOpenR: 0.91,
     eyeDizzy: 0,
     eyeSqueeze: 0,
+    eyeCry: 0,
     mouthForm: -0.2,
     irisScale: 1.1,
     angleX: 0.6,
@@ -124,9 +135,11 @@ test('adds to manual channels without flattening left-right eye differences', ()
   }
   applyPerformanceExpressionOffset(target, {
     brow: 0.05,
+    browAngSym: -0.04,
     eyeOpen: -0.04,
     eyeDizzy: 0,
     eyeSqueeze: 0,
+    eyeCry: 0,
     eyeX: 0,
     eyeY: 0,
     mouthForm: 0.12,
@@ -144,15 +157,18 @@ test('adds to manual channels without flattening left-right eye differences', ()
   assert.equal(target.body, -0.4)
   assert.equal(target.eyeX, 0.35)
   assert.equal(target.eyeY, -0.25)
+  assert.ok(Math.abs(target.browAngSym - 0.06) < 1e-12)
 })
 
 test('never reopens an authored closed eye or closed-eye smile', () => {
   const wink = {
     brow: 0.2,
+    browAngSym: 0,
     eyeOpenL: 0,
     eyeOpenR: 1,
     eyeDizzy: 0,
     eyeSqueeze: 0,
+    eyeCry: 0,
     eyeX: 0,
     eyeY: 0,
     mouthForm: 0.7,
@@ -162,9 +178,11 @@ test('never reopens an authored closed eye or closed-eye smile', () => {
   }
   applyPerformanceExpressionOffset(wink, {
     brow: 0.1,
+    browAngSym: 0,
     eyeOpen: 0.04,
     eyeDizzy: 0,
     eyeSqueeze: 0,
+    eyeCry: 0,
     eyeX: 0,
     eyeY: 0,
     mouthForm: 0.1,
@@ -212,9 +230,11 @@ test('eases baseline changes without a first-frame jump or frame allocation', ()
     { ...first },
     {
       brow: 0,
+      browAngSym: 0,
       eyeOpen: 0,
       eyeDizzy: 0,
       eyeSqueeze: 0,
+      eyeCry: 0,
       eyeX: 0,
       eyeY: 0,
       mouthForm: 0,
@@ -392,9 +412,11 @@ test('does not resume an older cue after a replacement finishes', () => {
     { ...expression.sample(1.5) },
     {
       brow: 0,
+      browAngSym: 0,
       eyeOpen: 0,
       eyeDizzy: 0,
       eyeSqueeze: 0,
+      eyeCry: 0,
       eyeX: 0,
       eyeY: 0,
       mouthForm: 0,
