@@ -6,7 +6,9 @@
 export const ANIME25D_LAYER_DEPTH = {
   'back-hair': 0.55,
   bottomwear: 0.88,
+  'collar-back': 0.94,
   neck: 0.95,
+  'collar-front': 0.955,
   topwear: 0.9,
   handwear: 0.86,
   earwear: 0.97,

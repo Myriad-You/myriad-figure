@@ -1,6 +1,9 @@
 import type { Layer, Psd } from 'ag-psd'
+import type {
+  Anime25DSourceReference,
+  PreparedAnime25DRigImport,
+} from './anime25dImporter'
 import { currentCopy } from '../../../i18n/localeCopy'
-import type { PreparedAnime25DRigImport } from './anime25dImporter'
 import {
   normalizeAnime25DLayerName,
   prepareAnime25DRigPsd,
@@ -35,12 +38,62 @@ export async function prepareRigPsdImport(
     totalMemoryLimit: 128 * 1024 * 1024,
   })
   validateFaceRigDocument(psd)
+  const sourceReference = await alignSourceMasterToSeeThroughDocument(
+    sourceMasterAssetId,
+    psd.width,
+    psd.height,
+  )
   return prepareAnime25DRigPsd(
     psd,
     sourceMasterAssetId,
     onStage,
     sourceGenerationFingerprint,
+    sourceReference,
   )
+}
+
+/**
+ * See-through centers a non-square input on a transparent square, then scales
+ * that square to the requested PSD resolution. Repeating that transform gives
+ * the importer a pixel-aligned copy of the original visible composition.
+ */
+async function alignSourceMasterToSeeThroughDocument(
+  sourceMasterAssetId: string,
+  width: number,
+  height: number,
+): Promise<Anime25DSourceReference | undefined> {
+  if (width !== height) return undefined
+  const response = await fetch(sourceMasterAssetId)
+  if (!response.ok) throw new Error(currentCopy().merope.psdPreviewFailed)
+  const bitmap = await createImageBitmap(await response.blob())
+  try {
+    const squareEdge = Math.max(bitmap.width, bitmap.height)
+    const paddingX = Math.floor((squareEdge - bitmap.width) / 2)
+    const paddingY = Math.floor((squareEdge - bitmap.height) / 2)
+    const scaleX = width / squareEdge
+    const scaleY = height / squareEdge
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error(currentCopy().merope.psdPreviewFailed)
+    context.imageSmoothingEnabled = true
+    context.imageSmoothingQuality = 'high'
+    context.drawImage(
+      bitmap,
+      paddingX * scaleX,
+      paddingY * scaleY,
+      bitmap.width * scaleX,
+      bitmap.height * scaleY,
+    )
+    return {
+      width,
+      height,
+      data: context.getImageData(0, 0, width, height).data,
+    }
+  } finally {
+    bitmap.close()
+  }
 }
 
 export async function compositePsdToPng(file: File): Promise<File> {

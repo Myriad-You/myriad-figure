@@ -111,7 +111,7 @@ test('only treats a layered Anime2.5D package as a live site face', () => {
   }
   assert.equal(isLiveMeropeManifest(live), true)
   live.anime25dPlayback.chestProfile = {
-    version: 1,
+    version: 2,
     enabled: true,
     source: 'ai-vision',
     centerX: 576,
@@ -121,13 +121,21 @@ test('only treats a layered Anime2.5D package as a live site face', () => {
     visibleScale: 0.7,
     motionScale: 1.05,
     frequencyScale: 0.96,
+    supportScale: 0.35,
+    garmentMotionScale: 0.8,
     confidence: 0.9,
   }
+  assert.equal(isLiveMeropeManifest(live), true)
+  live.anime25dPlayback.chestProfile.supportScale = 1.1
+  assert.equal(isLiveMeropeManifest(live), false)
+  live.anime25dPlayback.chestProfile.supportScale = 0.35
   assert.equal(isLiveMeropeManifest(live), true)
   live.anime25dPlayback.chestProfile.enabled = false
   live.anime25dPlayback.chestProfile.source = 'gender-policy'
   live.anime25dPlayback.chestProfile.visibleScale = 0
   live.anime25dPlayback.chestProfile.motionScale = 0
+  live.anime25dPlayback.chestProfile.supportScale = 1
+  live.anime25dPlayback.chestProfile.garmentMotionScale = 0
   live.anime25dPlayback.chestProfile.confidence = 1
   assert.equal(isLiveMeropeManifest(live), true)
   live.anime25dPlayback.chestProfile.radiusX = 900

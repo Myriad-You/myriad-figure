@@ -87,7 +87,7 @@ export type Anime25DChestProfileSource =
 
 /** Import-time chest region. Runtime consumes this without further AI work. */
 export interface Anime25DChestProfile {
-  version: 1
+  version: 2
   enabled: boolean
   source: Anime25DChestProfileSource
   centerX: number
@@ -97,6 +97,10 @@ export interface Anime25DChestProfile {
   visibleScale: number
   motionScale: number
   frequencyScale: number
+  /** 0 is freely moving; 1 is visually locked to structured support. */
+  supportScale: number
+  /** Fraction of local soft-tissue motion visible on the outer garment. */
+  garmentMotionScale: number
   confidence: number
 }
 
@@ -277,7 +281,7 @@ function isAnime25DChestProfile(
     'gender-policy',
   ]
   return (
-    profile.version === 1 &&
+    profile.version === 2 &&
     typeof profile.enabled === 'boolean' &&
     typeof profile.source === 'string' &&
     sources.includes(profile.source as Anime25DChestProfileSource) &&
@@ -288,6 +292,8 @@ function isAnime25DChestProfile(
     numberInRange(profile.visibleScale, 0, 1) &&
     numberInRange(profile.motionScale, 0, 1.25) &&
     numberInRange(profile.frequencyScale, 0.75, 1.25) &&
+    numberInRange(profile.supportScale, 0, 1) &&
+    numberInRange(profile.garmentMotionScale, 0, 1) &&
     numberInRange(profile.confidence, 0, 1)
   )
 }

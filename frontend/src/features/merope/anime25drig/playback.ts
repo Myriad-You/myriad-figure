@@ -7,6 +7,7 @@ import type {
   Anime25DPlaybackAnchors,
   Anime25DPlaybackLayer,
 } from './types'
+import { currentCopy } from '../../../i18n/localeCopy'
 import { ANIME25D_LAYER_DEPTH } from '../rig/anime25d'
 import { fallbackAnime25DMouthProfile } from './mouthProfile'
 import { anime25DPlaybackSource } from './types'
@@ -196,6 +197,10 @@ function requiredLayer(
   role: string,
 ): Anime25DPlaybackLayer {
   const layer = layers.find((candidate) => candidate.role === role)
-  if (!layer) throw new Error(`Anime2.5DRig playback missing ${role}`)
+  if (!layer) {
+    throw new Error(
+      currentCopy().merope.anime25dMissingLayer.replace('{role}', role),
+    )
+  }
   return layer
 }

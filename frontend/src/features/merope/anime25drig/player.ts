@@ -1,20 +1,32 @@
 import type { PerformanceDirective } from '../../../services/agent/types'
 import type { MeropeRigManifest } from '../rig/types'
-import type { ChestWeightField } from './chestPhysics'
+import type {
+  ChestDeformationRegion,
+  ChestDynamicsTuning,
+  ChestMotionGeometry,
+  ChestWeightField,
+} from './chestPhysics'
 import type { HairSpringState } from './hairPhysics'
+import type { MouthTransitionSample, SpeechMouthMaterial } from './mouthTransition'
 import type { Anime25DPlayback, Anime25DPlaybackLayer } from './types'
+import { currentCopy } from '../../../i18n/localeCopy'
 import { cryEyeDisplayScale } from '../rig/cryEye'
 import { dizzyEyeDisplayScale } from '../rig/dizzyEye'
 import { squeezeEyeDisplayScale } from '../rig/squeezeEye'
 import { AmbientMotionController } from './ambientMotion'
 import {
   buildChestWeightField,
+  chestDeformationWeight,
+  chestFollowMix,
   chestMotionTarget,
   chestProfileUsesGeometryWeights,
+  chestResponseMix,
   createChestSpringState,
-  resolveChestMotionScale,
+  resolveChestDeformationRegion,
+  resolveChestDynamics,
   sampleChestWeight,
   stepChestSpring,
+  topwearMotionAtChest,
 } from './chestPhysics'
 import {
   cryTearHorizontalOffset,
@@ -34,17 +46,16 @@ import {
   stepJawMotion,
 } from './jawMotion'
 import {
+  dominantMouthMaterial,
+  MouthTransitionController,
+
+} from './mouthTransition'
+import {
   applyPerformanceExpressionOffset,
   mixBoundedExpressionChannel,
   mixEyeOpen,
   PerformanceExpressionController,
 } from './performanceExpression'
-import {
-  dominantMouthMaterial,
-  MouthTransitionController,
-  type MouthTransitionSample,
-  type SpeechMouthMaterial,
-} from './mouthTransition'
 import { applyRandomActionFrame, RandomActionController } from './randomAction'
 import { CoSpeechExpressionController } from './speechExpression'
 import { AutoSpeechController } from './speechMotion'
@@ -55,6 +66,9 @@ import {
   stepMouthShape,
 } from './speechResponse'
 import { ThinkingMotionController } from './thinkingMotion'
+
+const BODY_HEAD_FOLLOW = 0.16
+const NECK_MESH_CELL = 28
 
 const VERTEX_SHADER = `#version 300 es
 in vec2 a_pos;
@@ -457,6 +471,7 @@ export class Anime25DPlayer {
     round: 0,
     narrow: 0,
   }
+
   private readonly mouthTransition: MouthTransitionController
   private activeMouthMaterial: SpeechMouthMaterial = 'mouthClose'
 
@@ -479,7 +494,10 @@ export class Anime25DPlayer {
   private speechActive = false
   private readonly chest = createChestSpringState()
   private readonly chestTarget = { x: 0, y: 0 }
-  private readonly chestMotionScale: number
+  private readonly chestParentTarget = { x: 0, y: 0 }
+  private readonly chestDynamics: ChestDynamicsTuning
+  private readonly chestGeometry: ChestMotionGeometry
+  private readonly chestRegion: ChestDeformationRegion
   private readonly chestWeightField: ChestWeightField | null
   private readonly jaw = createJawMotionState()
   private readonly jawTravel: number
@@ -500,12 +518,35 @@ export class Anime25DPlayer {
       stencil: true,
       antialias: true,
     })
-    if (!gl) throw new Error('WebGL2 is required for Anime2.5DRig playback')
+    if (!gl) throw new Error(currentCopy().merope.anime25dWebglFailed)
     this.gl = gl
     this.playback = playback
     this.mouthTransition = new MouthTransitionController(playback.mouthProfile)
     this.jawTravel = jawTravelPixels(playback)
-    this.chestMotionScale = resolveChestMotionScale(playback.chestProfile)
+    this.chestDynamics = resolveChestDynamics(playback.chestProfile)
+    const anchors = playback.anchors
+    const faceWidth = anchors.face.x1 - anchors.face.x0
+    const faceHeight = anchors.face.y1 - anchors.face.y0
+    const legacyChestY = anchors.neckBottom + faceHeight * 0.6
+    this.chestRegion = resolveChestDeformationRegion(playback.chestProfile, {
+      faceWidth,
+      faceHeight,
+      neckBottom: anchors.neckBottom,
+      fallbackCenterX: anchors.neckPivot.x,
+      fallbackCenterY: legacyChestY,
+      fallbackRadiusX: faceWidth * 0.6,
+      fallbackRadiusY: faceHeight * 0.45,
+    })
+    this.chestGeometry = {
+      faceScale: anchors.faceScale,
+      faceCenterY: anchors.face.cy,
+      neckX: anchors.neckPivot.x,
+      neckY: anchors.neckPivot.y,
+      centerX: this.chestRegion.centerX,
+      centerY: this.chestRegion.centerY,
+      depth:
+        playback.layers.find((layer) => layer.role === 'topwear')?.depth ?? 0.9,
+    }
     this.chestWeightField = chestProfileUsesGeometryWeights(
       playback.chestProfile,
     )
@@ -928,17 +969,15 @@ export class Anime25DPlayer {
     const secondary = this.secondaryCurrent
     const chestProfile = this.playback.chestProfile
     if (chestProfile?.enabled !== false) {
-      const chestTarget = chestMotionTarget(
-        secondary,
-        faceScale,
-        this.chestTarget,
-      )
+      const chestTarget = chestMotionTarget(e, faceScale, this.chestTarget)
+      topwearMotionAtChest(e, this.chestGeometry, this.chestParentTarget)
       stepChestSpring(
         this.chest,
         chestTarget.x,
         chestTarget.y,
         dt,
-        chestProfile?.frequencyScale ?? 1,
+        this.chestDynamics.frequencyScale,
+        this.chestDynamics.dampingScale,
       )
     }
     if (!e.phys) return
@@ -994,12 +1033,26 @@ export class Anime25DPlayer {
     const cb = Math.cos(ab)
     const sb = Math.sin(ab)
     const chestProfile = this.playback.chestProfile
-    const chestCx = chestProfile?.centerX ?? npx
-    const legacyChestCy = A.neckBottom + (A.face.y1 - A.face.y0) * 0.6
-    const chestCy = chestProfile?.centerY ?? legacyChestCy
-    const chestRx = chestProfile?.radiusX ?? (A.face.x1 - A.face.x0) * 0.6
-    const chestRy = chestProfile?.radiusY ?? (A.face.y1 - A.face.y0) * 0.45
-    const chestMotionScale = this.chestMotionScale
+    const chestCx = this.chestRegion.centerX
+    const chestCy = this.chestRegion.centerY
+    const chestRx = this.chestRegion.radiusX
+    const chestRy = this.chestRegion.radiusY
+    const chestMotionMix = chestResponseMix(
+      e.bust,
+      this.chestDynamics.responseScale,
+    )
+    const chestFollow = chestFollowMix(e.bust, this.chestDynamics.followScale)
+    const chestCenterY = chestProfile
+      ? chestCy + (e.bustY - 1) * 70 * fs
+      : chestCy + e.bustY * 70 * fs
+    const chestOffsetX =
+      (this.chestTarget.x - this.chestParentTarget.x) * chestFollow +
+      this.chest.offsetX * chestMotionMix
+    const chestOffsetY =
+      (this.chestTarget.y - this.chestParentTarget.y) * chestFollow +
+      this.chest.offsetY * chestMotionMix
+    const inverseChestRx = 1 / chestRx
+    const inverseChestRy = 1 / chestRy
     const jawDrop = this.jaw.value * this.jawTravel
     const jawOpen = Math.max(0, this.jaw.value)
     const mHalfW = (A.mouth.x1 - A.mouth.x0) / 2
@@ -1008,6 +1061,10 @@ export class Anime25DPlayer {
     resolveMouthMorph(this.layers, e, A.mouth, this.mouthMorph)
     applyMouthTransitionBridge(this.mouthMorph, mouthTransition)
     const mouthMorph = this.mouthMorph
+    const neckFollowTop = Math.max(A.neckTop, A.face.y1 - fs * 2)
+    const neckFollowSpan = Math.max(1, A.neckBottom - neckFollowTop)
+    const bodyBreathOffset = breath * 2.0
+    const headBreathOffset = breathHead * 1.6
     for (const layer of this.layers) {
       const rest = layer.rest
       const deformed = layer.deformed
@@ -1015,13 +1072,6 @@ export class Anime25DPlayer {
       const source = layer.source
       const bn = layerBaseName(source.role)
       const isTopwear = bn === 'topwear'
-      const chestCenterY = chestProfile
-        ? chestCy + (e.bustY - 1) * 70 * fs
-        : chestCy + e.bustY * 70 * fs
-      const chestOffsetX = this.chest.offsetX * e.bust * chestMotionScale
-      const chestOffsetY = this.chest.offsetY * e.bust * chestMotionScale
-      const inverseChestRx = 1 / chestRx
-      const inverseChestRy = 1 / chestRy
       const eye =
         source.side === 'L' ? A.eyeL : source.side === 'R' ? A.eyeR : undefined
       const vOpen = source.side === 'L' ? e.eyeOpenL : e.eyeOpenR
@@ -1228,13 +1278,13 @@ export class Anime25DPlayer {
           y += jawDrop * jawWeight
           x += (A.face.cx - x) * jawOpen * 0.006 * jawWeight * jawWeight
         }
-        let hw = isHead ? 1 : source.group === 'body' ? 0.16 : 0
+        const neckHeadBlend =
+          bn === 'neck'
+            ? smoothstep((A.neckBottom - rest[index + 1]) / neckFollowSpan)
+            : 0
+        let hw = isHead ? 1 : source.group === 'body' ? BODY_HEAD_FOLLOW : 0
         if (bn === 'neck') {
-          hw =
-            0.55 *
-            smoothstep(
-              (A.neckBottom - y) / Math.max(1, A.neckBottom - A.neckTop),
-            )
+          hw = BODY_HEAD_FOLLOW + (1 - BODY_HEAD_FOLLOW) * neckHeadBlend
         }
         if (hw > 0) {
           const rx = x - npx
@@ -1255,16 +1305,27 @@ export class Anime25DPlayer {
             (-e.angleY * (9 + 30 * depthOffset) -
               e.angleY * depthOffset * (y - A.face.cy) * 0.05)
         }
-        y -= (source.group === 'body' ? breath * 2.0 : breathHead * 1.6) * fs
+        const breathOffset = isHead
+          ? headBreathOffset
+          : bn === 'neck'
+            ? bodyBreathOffset +
+              (headBreathOffset - bodyBreathOffset) * neckHeadBlend
+            : bodyBreathOffset
+        y -= breathOffset * fs
         if (isTopwear && y < chestCy) {
           y -= breath * 2.2 * fs * smoothstep((chestCy - y) / (chestRy * 2))
         }
         if (isTopwear) x = npx + (x - npx) * (1 + breath * 0.003)
         if (isTopwear && (chestOffsetX !== 0 || chestOffsetY !== 0)) {
-          const gx = (x - chestCx) * inverseChestRx
-          const gy = (y - chestCenterY) * inverseChestRy
+          const gx = (rest[index] - chestCx) * inverseChestRx
+          const gy = (rest[index + 1] - chestCenterY) * inverseChestRy
           const skinWeight = layer.chestWeights?.[vertex] ?? 1
-          const chestWeight = skinWeight * Math.exp(-(gx * gx + gy * gy))
+          const chestWeight = chestDeformationWeight(
+            chestProfile?.source,
+            gx,
+            gy,
+            skinWeight,
+          )
           x += chestOffsetX * chestWeight
           y += chestOffsetY * chestWeight
         }
@@ -1380,7 +1441,7 @@ export class Anime25DPlayer {
     layerIndex: number,
   ): GpuLayer {
     const cell =
-      (source.phys ? 30 : 42) *
+      (source.role === 'neck' ? NECK_MESH_CELL : source.phys ? 30 : 42) *
       Math.max(0.6, this.playback.pixelCanvas.width / 768)
     const morphingMouth =
       source.fade === 'mouthOpen' ||
@@ -1428,7 +1489,7 @@ export class Anime25DPlayer {
     const vertexBuffer = gl.createBuffer()
     const indexBuffer = gl.createBuffer()
     if (!vao || !vertexBuffer || !indexBuffer) {
-      throw new Error('Anime2.5DRig mesh buffers failed')
+      throw new Error(currentCopy().merope.anime25dPlaybackFailed)
     }
     const position = gl.getAttribLocation(this.program, 'a_pos')
     const uv = gl.getAttribLocation(this.program, 'a_uv')
@@ -1509,10 +1570,10 @@ function cropLayerTexture(
   crop.width = sw
   crop.height = sh
   const context = crop.getContext('2d')
-  if (!context) throw new Error('Anime2.5DRig layer crop failed')
+  if (!context) throw new Error(currentCopy().merope.anime25dPlaybackFailed)
   context.drawImage(atlas, sx, sy, sw, sh, 0, 0, sw, sh)
   const texture = gl.createTexture()
-  if (!texture) throw new Error('Anime2.5DRig layer texture failed')
+  if (!texture) throw new Error(currentCopy().merope.anime25dPlaybackFailed)
   gl.bindTexture(gl.TEXTURE_2D, texture)
   gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
@@ -1809,14 +1870,14 @@ function compileProgram(gl: WebGL2RenderingContext): WebGLProgram {
   const vertex = compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER)
   const fragment = compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER)
   const program = gl.createProgram()
-  if (!program) throw new Error('Anime2.5DRig program failed')
+  if (!program) throw new Error(currentCopy().merope.anime25dPlaybackFailed)
   gl.attachShader(program, vertex)
   gl.attachShader(program, fragment)
   gl.linkProgram(program)
   gl.deleteShader(vertex)
   gl.deleteShader(fragment)
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    throw new Error(gl.getProgramInfoLog(program) || 'Anime2.5DRig link failed')
+    throw new Error(currentCopy().merope.anime25dPlaybackFailed)
   }
   return program
 }
@@ -1827,14 +1888,12 @@ function compileShader(
   source: string,
 ): WebGLShader {
   const shader = gl.createShader(type)
-  if (!shader) throw new Error('Anime2.5DRig shader failed')
+  if (!shader) throw new Error(currentCopy().merope.anime25dPlaybackFailed)
   gl.shaderSource(shader, source)
   gl.compileShader(shader)
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    const log =
-      gl.getShaderInfoLog(shader) || 'Anime2.5DRig shader compile failed'
     gl.deleteShader(shader)
-    throw new Error(log)
+    throw new Error(currentCopy().merope.anime25dPlaybackFailed)
   }
   return shader
 }
@@ -1845,7 +1904,7 @@ function requiredUniform(
   name: string,
 ): WebGLUniformLocation {
   const location = gl.getUniformLocation(program, name)
-  if (!location) throw new Error(`Missing uniform ${name}`)
+  if (!location) throw new Error(currentCopy().merope.anime25dPlaybackFailed)
   return location
 }
 

@@ -71,9 +71,24 @@ profiles. Jaw travel is then driven on a separate bounded spring: open and
 round visemes use more mandible motion, wide and narrow visemes rely more on
 the lip mesh, and short lip seals do not snap the jaw shut. Only the mouth
 meshes and the face region below the mouth receive that motion.
-Character asset contract v9 requires the independent variants and mouth
-profile, so older packages must be reimported rather than falling back at
-runtime.
+Character asset contract v10 requires the independent variants, mouth profile,
+and clothing-aware chest profile, so older packages must be reimported rather
+than falling back at runtime.
+
+Chest analysis is also import-time only. Its v2 profile records apparent size,
+the garment-aware visible deformation ellipse, mechanical support, and how much
+local soft-tissue response reaches the outer topwear. A structured or compressed
+surface therefore follows the torso more tightly, while loose or rigid outer
+layers suppress localized deformation without pretending the underlying size
+changed. Male policy still disables this path authoritatively.
+
+At runtime the imported chest centre is treated as an attachment base. A
+two-axis relative-velocity spring follows that base, so motion starts in the
+same direction as the torso; inertia can cross into the opposite direction only
+after the torso slows or turns. Apparent size controls the base response,
+support controls frequency and damping, and garment transmission controls the
+bounded visible blend. The deformation weights are sampled in rest-mesh space,
+preventing the active region from sliding across the clothing during a pose.
 
 ## Runtime flow
 
@@ -87,8 +102,9 @@ Agent reply speech enters through `speechEvents.ts`. The lifecycle controller
 handles streamed chunks, complete replies, interruption, and proactive lines,
 then drives the mounted `RigCharacter`. Real audio energy or phoneme events own
 the mouth when present; otherwise the bounded local auto-prosody controller is
-used. The bridge reuses fixed typed arrays, and the jaw path adds only two
-scalar state values and constant-time spring arithmetic to the render loop.
+used. The bridge reuses fixed typed arrays; the jaw and chest paths use fixed
+scalar state with constant-time spring arithmetic. Clothing analysis never runs
+inside the render loop.
 
 Without a live Anime2.5D package, `RigCharacter` draws the master portrait as a
 still image. Manifests do not carry clip stacks. There is no separate global

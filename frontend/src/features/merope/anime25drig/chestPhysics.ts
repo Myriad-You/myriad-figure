@@ -6,16 +6,48 @@ const COORDINATE_EPSILON = 1e-5
 const MAX_SPRING_STEP_SECONDS = 1 / 120
 const HORIZONTAL_SPRING = { stiffness: 68, damping: 7.4 } as const
 const VERTICAL_SPRING = { stiffness: 82, damping: 8 } as const
+const BODY_LAYER_INFLUENCE = 0.16
 const MIN_AI_MOTION_SCALE = 0.22
 const MAX_AI_MOTION_SCALE = 1.14
 const AI_MOTION_RAMP_START = 0.1
 const AI_MOTION_RAMP_END = 0.85
+const DEFAULT_SUPPORT_SCALE = 0.45
+const DEFAULT_GARMENT_MOTION_SCALE = 0.65
+const REFERENCE_BUST_CONTROL = 2.5
+const CHEST_OUTPUT_GAIN = 2
+const MAX_RESPONSE_MIX = 0.94
+const MAX_FOLLOW_MIX = 0.58
+const MIN_SIZE_TRANSMISSION = 0.04
+const SIZE_BOOST_START = 0.38
+const SIZE_BOOST_END = 0.65
+const MAX_SIZE_TRANSMISSION_BOOST = 0.75
+const MIN_GARMENT_TRANSMISSION = 0.35
+const MIN_RESPONSE_GARMENT_TRANSMISSION = 0.55
+const AI_MIN_RADIUS_X_BASE = 0.48
+const AI_MIN_RADIUS_X_SIZE = 0.25
+const AI_MIN_RADIUS_Y_BASE = 0.26
+const AI_MIN_RADIUS_Y_SIZE = 0.14
+const AI_MIN_CENTER_Y_BASE = 0.44
+const AI_MIN_CENTER_Y_SIZE = 0.2
+const AI_LOBE_CENTER = 0.58
+const AI_LOBE_RADIUS = 0.62
+const AI_CENTER_BRIDGE = 0.68
 
 interface ChestMotionDriver {
   angleX: number
   angleY: number
   angleZ: number
   body: number
+}
+
+export interface ChestMotionGeometry {
+  faceScale: number
+  faceCenterY: number
+  neckX: number
+  neckY: number
+  centerX: number
+  centerY: number
+  depth: number
 }
 
 interface ChestRigVertex {
@@ -43,11 +75,52 @@ export interface ChestMotionTarget {
   y: number
 }
 
+export interface ChestDeformationRegion {
+  centerX: number
+  centerY: number
+  radiusX: number
+  radiusY: number
+}
+
+export interface ChestRegionContext {
+  faceWidth: number
+  faceHeight: number
+  neckBottom: number
+  fallbackCenterX: number
+  fallbackCenterY: number
+  fallbackRadiusX: number
+  fallbackRadiusY: number
+}
+
 type ChestWeightProfile = Pick<Anime25DChestProfile, 'enabled' | 'source'>
+type ChestRegionProfile = Pick<
+  Anime25DChestProfile,
+  'source' | 'centerX' | 'centerY' | 'radiusX' | 'radiusY' | 'visibleScale'
+>
 type ChestMotionProfile = Pick<
   Anime25DChestProfile,
   'enabled' | 'source' | 'visibleScale' | 'motionScale'
 >
+
+type ChestDynamicsProfile = Pick<
+  Anime25DChestProfile,
+  | 'enabled'
+  | 'source'
+  | 'visibleScale'
+  | 'motionScale'
+  | 'frequencyScale'
+  | 'supportScale'
+  | 'garmentMotionScale'
+>
+
+export interface ChestDynamicsTuning {
+  /** Fraction of the authored chest attachment travel visible through topwear. */
+  followScale: number
+  /** Fraction of the imported soft response visible through the garment. */
+  responseScale: number
+  frequencyScale: number
+  dampingScale: number
+}
 
 /**
  * AI vision already authors the complete two-dimensional deformation region.
@@ -61,9 +134,71 @@ export function chestProfileUsesGeometryWeights(
 }
 
 /**
+ * Treat an AI ellipse as the envelope of the paired volume, not a small patch
+ * around the cleavage. The import-time analyzer applies the same lower bounds;
+ * resolving them again here also repairs already persisted v2 profiles.
+ */
+export function resolveChestDeformationRegion(
+  profile: ChestRegionProfile | null | undefined,
+  context: ChestRegionContext,
+): ChestDeformationRegion {
+  const region = {
+    centerX: profile?.centerX ?? context.fallbackCenterX,
+    centerY: profile?.centerY ?? context.fallbackCenterY,
+    radiusX: profile?.radiusX ?? context.fallbackRadiusX,
+    radiusY: profile?.radiusY ?? context.fallbackRadiusY,
+  }
+  if (profile?.source !== 'ai-vision') return region
+
+  const visibleScale = clamp(profile.visibleScale, 0, 1)
+  region.centerY = Math.max(
+    region.centerY,
+    context.neckBottom +
+      context.faceHeight *
+        (AI_MIN_CENTER_Y_BASE + AI_MIN_CENTER_Y_SIZE * visibleScale),
+  )
+  region.radiusX = Math.max(
+    region.radiusX,
+    context.faceWidth *
+      (AI_MIN_RADIUS_X_BASE + AI_MIN_RADIUS_X_SIZE * visibleScale),
+  )
+  region.radiusY = Math.max(
+    region.radiusY,
+    context.faceHeight *
+      (AI_MIN_RADIUS_Y_BASE + AI_MIN_RADIUS_Y_SIZE * visibleScale),
+  )
+  return region
+}
+
+/**
+ * Shape AI-authored motion as two continuous lobes within the shared envelope.
+ * The restrained bridge keeps the sternum, central seams, and ornaments from
+ * receiving the maximum displacement. This uses one exponential per vertex,
+ * matching the previous hot-path cost.
+ */
+export function chestDeformationWeight(
+  source: Anime25DChestProfile['source'] | undefined,
+  normalizedX: number,
+  normalizedY: number,
+  skinWeight: number,
+): number {
+  if (source !== 'ai-vision') {
+    return skinWeight * Math.exp(-(normalizedX ** 2 + normalizedY ** 2))
+  }
+  const absoluteX = Math.abs(normalizedX)
+  const lobeX = (absoluteX - AI_LOBE_CENTER) / AI_LOBE_RADIUS
+  const pairedWeight = Math.exp(-(lobeX * lobeX + normalizedY * normalizedY))
+  const bridgeProgress = clamp(absoluteX / AI_LOBE_CENTER, 0, 1)
+  const bridgeEased = bridgeProgress ** 2 * (3 - 2 * bridgeProgress)
+  return (
+    pairedWeight * (AI_CENTER_BRIDGE + (1 - AI_CENTER_BRIDGE) * bridgeEased)
+  )
+}
+
+/**
  * Bound AI-authored displacement by apparent soft-tissue size. The eased ramp
  * keeps small profiles restrained without introducing a hard size threshold;
- * `min` also makes this backward-compatible with already-persisted profiles.
+ * `min` preserves the more conservative of the authored and derived limits.
  */
 export function resolveChestMotionScale(
   profile: ChestMotionProfile | null | undefined,
@@ -80,9 +215,118 @@ export function resolveChestMotionScale(
   )
   const eased = progress * progress * (3 - 2 * progress)
   const sizeLimit =
-    MIN_AI_MOTION_SCALE +
-    (MAX_AI_MOTION_SCALE - MIN_AI_MOTION_SCALE) * eased
+    MIN_AI_MOTION_SCALE + (MAX_AI_MOTION_SCALE - MIN_AI_MOTION_SCALE) * eased
   return Math.min(authoredScale, sizeLimit)
+}
+
+/**
+ * Combine apparent size with garment support. Size owns the base inertia;
+ * support changes coupling and damping, while garment motion controls how much
+ * of the tissue response reaches the visible topwear surface.
+ */
+export function resolveChestDynamics(
+  profile: ChestDynamicsProfile | null | undefined,
+): ChestDynamicsTuning {
+  if (profile?.enabled === false) {
+    return {
+      followScale: 0,
+      responseScale: 0,
+      frequencyScale: 1,
+      dampingScale: 1,
+    }
+  }
+  const support = clamp(profile?.supportScale ?? DEFAULT_SUPPORT_SCALE, 0, 1)
+  const garmentMotion = clamp(
+    profile?.garmentMotionScale ?? DEFAULT_GARMENT_MOTION_SCALE,
+    0,
+    1,
+  )
+  // Visual estimates near the restrained end must not erase the authored
+  // motion. A perceptual curve preserves strong differentiation while leaving
+  // a small visible response even through rigid or heavily layered clothing.
+  const garmentTransmission =
+    MIN_GARMENT_TRANSMISSION +
+    (1 - MIN_GARMENT_TRANSMISSION) * garmentMotion ** 0.25
+  const responseGarmentTransmission =
+    MIN_RESPONSE_GARMENT_TRANSMISSION +
+    (1 - MIN_RESPONSE_GARMENT_TRANSMISSION) * garmentMotion ** 0.25
+  const sizeTransmission = resolveChestSizeTransmission(profile)
+  const followAttenuation = 1 - 0.12 * support ** 1.1
+  const supportAttenuation = 1 - 0.08 * support ** 1.15
+  const followScale = garmentTransmission * followAttenuation * sizeTransmission
+  return {
+    followScale,
+    responseScale: Math.min(
+      followScale,
+      resolveChestMotionScale(profile) *
+        responseGarmentTransmission *
+        supportAttenuation *
+        sizeTransmission,
+    ),
+    frequencyScale: clamp(
+      (profile?.frequencyScale ?? 1) * (0.94 + support * 0.08),
+      0.7,
+      1.45,
+    ),
+    dampingScale: 0.82 + support * 0.16,
+  }
+}
+
+/**
+ * Apparent size controls how much local attachment travel reaches the visible
+ * garment. The smooth gate strongly restrains small AI regions without a hard
+ * threshold, while medium and large regions converge to the authored response.
+ */
+function resolveChestSizeTransmission(
+  profile: ChestDynamicsProfile | null | undefined,
+): number {
+  if (profile?.source !== 'ai-vision') return 1
+  const progress = clamp(
+    (profile.visibleScale - AI_MOTION_RAMP_START) /
+      (AI_MOTION_RAMP_END - AI_MOTION_RAMP_START),
+    0,
+    1,
+  )
+  const eased = progress * progress * (3 - 2 * progress)
+  const baseTransmission =
+    MIN_SIZE_TRANSMISSION + (1 - MIN_SIZE_TRANSMISSION) * eased
+  const boostProgress = clamp(
+    (profile.visibleScale - SIZE_BOOST_START) /
+      (SIZE_BOOST_END - SIZE_BOOST_START),
+    0,
+    1,
+  )
+  const boostEased = boostProgress ** 2 * (3 - 2 * boostProgress)
+  return Math.min(
+    1,
+    baseTransmission * (1 + MAX_SIZE_TRANSMISSION_BOOST * boostEased),
+  )
+}
+
+/** Convert the workbench strength into bounded primary attachment travel. */
+export function chestFollowMix(
+  bustControl: number,
+  followScale: number,
+): number {
+  const authoredStrength = normalizedChestStrength(bustControl)
+  return clamp(followScale * authoredStrength, 0, MAX_FOLLOW_MIX)
+}
+
+/** Convert the workbench strength into a bounded physical response blend. */
+export function chestResponseMix(
+  bustControl: number,
+  responseScale: number,
+): number {
+  const authoredStrength = normalizedChestStrength(bustControl)
+  return clamp(responseScale * authoredStrength, 0, MAX_RESPONSE_MIX)
+}
+
+function normalizedChestStrength(bustControl: number): number {
+  return clamp(
+    (bustControl / REFERENCE_BUST_CONTROL) * CHEST_OUTPUT_GAIN,
+    0,
+    1.6,
+  )
 }
 
 export interface ChestSpringState {
@@ -90,6 +334,8 @@ export interface ChestSpringState {
   y: number
   vx: number
   vy: number
+  previousTargetX: number
+  previousTargetY: number
   offsetX: number
   offsetY: number
   initialized: boolean
@@ -101,22 +347,61 @@ export function createChestSpringState(): ChestSpringState {
     y: 0,
     vx: 0,
     vy: 0,
+    previousTargetX: 0,
+    previousTargetY: 0,
     offsetX: 0,
     offsetY: 0,
     initialized: false,
   }
 }
 
-/** Convert the resolved pose into the moving base followed by chest tissue. */
+/**
+ * Resolve the authored chest attachment travel. This preserves direct pointer
+ * ownership: horizontal and vertical gaze pose move the attachment in the same
+ * direction before the tissue response is evaluated. `body` is intentionally
+ * excluded: the renderer applies that whole-layer rotation after all local mesh
+ * deformation, so adding it here would count the same motion twice.
+ */
 export function chestMotionTarget(
   driver: ChestMotionDriver,
   faceScale: number,
   target: ChestMotionTarget = { x: 0, y: 0 },
 ): ChestMotionTarget {
   const scale = Math.max(0.01, faceScale)
-  target.x =
-    (driver.angleX * 5.5 - driver.angleZ * 4.5 + driver.body * 7) * scale
+  target.x = (driver.angleX * 5.5 - driver.angleZ * 4.5) * scale
   target.y = -driver.angleY * 4.5 * scale
+  return target
+}
+
+/** Resolve the parent topwear displacement already applied by the renderer. */
+export function topwearMotionAtChest(
+  driver: ChestMotionDriver,
+  geometry: ChestMotionGeometry,
+  target: ChestMotionTarget = { x: 0, y: 0 },
+): ChestMotionTarget {
+  const scale = Math.max(0.01, geometry.faceScale)
+  const az = driver.angleZ * 0.07
+  const cosine = Math.cos(az)
+  const sine = Math.sin(az)
+  const relativeX = geometry.centerX - geometry.neckX
+  const relativeY = geometry.centerY - geometry.neckY
+  const rotatedX = relativeX * cosine - relativeY * sine
+  const rotatedY = relativeX * sine + relativeY * cosine
+  let x = geometry.centerX + (rotatedX - relativeX) * BODY_LAYER_INFLUENCE
+  let y = geometry.centerY + (rotatedY - relativeY) * BODY_LAYER_INFLUENCE
+  const depthOffset = geometry.depth - 1
+  x +=
+    BODY_LAYER_INFLUENCE *
+    scale *
+    (driver.angleX * (14 + 40 * depthOffset) +
+      driver.angleX * (geometry.neckY - y) * 0.028)
+  y +=
+    BODY_LAYER_INFLUENCE *
+    scale *
+    (-driver.angleY * (9 + 30 * depthOffset) -
+      driver.angleY * depthOffset * (y - geometry.faceCenterY) * 0.05)
+  target.x = x - geometry.centerX
+  target.y = y - geometry.centerY
   return target
 }
 
@@ -183,9 +468,10 @@ export function sampleChestWeight(
 }
 
 /**
- * Track the resolved pose with an under-damped two-axis mass. The returned
- * relative offset is zero at a held pose, so the chest reacts to movement
- * without becoming permanently bound to the pointer position.
+ * Follow a moving attachment base with a Kelvin-Voigt spring. Damping uses
+ * relative velocity (`baseVelocity - tissueVelocity`), allowing the tissue to
+ * travel with the torso first and only reverse after the base slows or turns.
+ * The relative offset still settles to zero at a held pose.
  */
 export function stepChestSpring(
   state: ChestSpringState,
@@ -193,29 +479,43 @@ export function stepChestSpring(
   targetY: number,
   deltaSeconds: number,
   frequencyScale = 1,
+  dampingScale = 1,
 ): void {
   if (!state.initialized) {
     state.x = targetX
     state.y = targetY
+    state.previousTargetX = targetX
+    state.previousTargetY = targetY
     state.initialized = true
   }
   const dt = clamp(deltaSeconds, 0.001, 0.05)
-  const frequency = clamp(frequencyScale, 0.75, 1.25)
+  const targetVelocityX = (targetX - state.previousTargetX) / dt
+  const targetVelocityY = (targetY - state.previousTargetY) / dt
+  const frequency = clamp(frequencyScale, 0.7, 1.45)
+  const damping = clamp(dampingScale, 0.7, 1.5)
   const stiffnessScale = frequency * frequency
   const steps = Math.ceil(dt / MAX_SPRING_STEP_SECONDS)
   const stepSeconds = dt / steps
   for (let step = 0; step < steps; step += 1) {
     const accelX =
       -HORIZONTAL_SPRING.stiffness * stiffnessScale * (state.x - targetX) -
-      HORIZONTAL_SPRING.damping * frequency * state.vx
+      HORIZONTAL_SPRING.damping *
+        frequency *
+        damping *
+        (state.vx - targetVelocityX)
     const accelY =
       -VERTICAL_SPRING.stiffness * stiffnessScale * (state.y - targetY) -
-      VERTICAL_SPRING.damping * frequency * state.vy
+      VERTICAL_SPRING.damping *
+        frequency *
+        damping *
+        (state.vy - targetVelocityY)
     state.vx += accelX * stepSeconds
     state.vy += accelY * stepSeconds
     state.x += state.vx * stepSeconds
     state.y += state.vy * stepSeconds
   }
+  state.previousTargetX = targetX
+  state.previousTargetY = targetY
   state.offsetX = state.x - targetX
   state.offsetY = state.y - targetY
 }
