@@ -6,8 +6,12 @@ import type {
   ChestMotionGeometry,
   ChestWeightField,
 } from './chestPhysics'
+import type { FrontCollarContactModel } from './collarContact'
 import type { HairSpringState } from './hairPhysics'
-import type { MouthTransitionSample, SpeechMouthMaterial } from './mouthTransition'
+import type {
+  MouthTransitionSample,
+  SpeechMouthMaterial,
+} from './mouthTransition'
 import type { Anime25DPlayback, Anime25DPlaybackLayer } from './types'
 import { currentCopy } from '../../../i18n/localeCopy'
 import { cryEyeDisplayScale } from '../rig/cryEye'
@@ -29,6 +33,11 @@ import {
   topwearMotionAtChest,
 } from './chestPhysics'
 import {
+  buildFrontCollarContactModel,
+  COLLAR_ATTACHMENT_NECK,
+  deformRigidMlsPoint,
+} from './collarContact'
+import {
   cryTearHorizontalOffset,
   cryTearVerticalOffset,
   sampleCryMouthMotion,
@@ -48,7 +57,6 @@ import {
 import {
   dominantMouthMaterial,
   MouthTransitionController,
-
 } from './mouthTransition'
 import {
   applyPerformanceExpressionOffset,
@@ -69,6 +77,11 @@ import { ThinkingMotionController } from './thinkingMotion'
 
 const BODY_HEAD_FOLLOW = 0.16
 const NECK_MESH_CELL = 28
+const FRONT_COLLAR_MESH_CELL = 22
+const HIGH_COLLAR_NECK_FOLLOW_POWER = 3
+const FRONT_COLLAR_HEAD_FOLLOW = 0.42
+const FRONT_COLLAR_FLEX_REGION = 0.78
+const FRONT_COLLAR_INNER_REGION = 0.72
 
 const VERTEX_SHADER = `#version 300 es
 in vec2 a_pos;
@@ -280,6 +293,33 @@ interface GpuLayer {
   alongStrand: Float32Array | null
   bangWeights: Float32Array | null
   springs: HairStrandSpring[] | null
+  collarContact: FrontCollarContactModel | null
+}
+
+interface CollarClipMesh {
+  rest: Float32Array
+  deformed: Float32Array
+  uvs: Float32Array
+  indices: Uint16Array
+  vao: WebGLVertexArrayObject
+  vertexBuffer: WebGLBuffer
+  indexBuffer: WebGLBuffer
+  indexCount: number
+}
+
+interface CollarMotionPose {
+  neckPivotX: number
+  neckPivotY: number
+  neckFollowTop: number
+  neckFollowSpan: number
+  faceCenterY: number
+  faceScale: number
+  angleX: number
+  angleY: number
+  headRotationCosine: number
+  headRotationSine: number
+  bodyBreathOffset: number
+  headBreathOffset: number
 }
 
 export const DEFAULT_FRONT_HAIR_SWAY = 1
@@ -501,6 +541,9 @@ export class Anime25DPlayer {
   private readonly chestWeightField: ChestWeightField | null
   private readonly jaw = createJawMotionState()
   private readonly jawTravel: number
+  private readonly highCollar: boolean
+  private readonly neckDepth: number
+  private collarClip: CollarClipMesh | null = null
   private jawEmphasis = 0
   private readonly mouse = { x: 0, y: 0, inside: false }
   private disposed = false
@@ -521,6 +564,11 @@ export class Anime25DPlayer {
     if (!gl) throw new Error(currentCopy().merope.anime25dWebglFailed)
     this.gl = gl
     this.playback = playback
+    this.highCollar = playback.layers.some(
+      (layer) => layer.role === 'collar-back' || layer.role === 'collar-front',
+    )
+    this.neckDepth =
+      playback.layers.find((layer) => layer.role === 'neck')?.depth ?? 0.95
     this.mouthTransition = new MouthTransitionController(playback.mouthProfile)
     this.jawTravel = jawTravelPixels(playback)
     this.chestDynamics = resolveChestDynamics(playback.chestProfile)
@@ -704,6 +752,12 @@ export class Anime25DPlayer {
       gl.deleteBuffer(layer.indexBuffer)
       gl.deleteVertexArray(layer.vao)
       gl.deleteTexture(layer.texture)
+    }
+    if (this.collarClip) {
+      gl.deleteBuffer(this.collarClip.vertexBuffer)
+      gl.deleteBuffer(this.collarClip.indexBuffer)
+      gl.deleteVertexArray(this.collarClip.vao)
+      this.collarClip = null
     }
     gl.deleteProgram(this.program)
     this.layers = []
@@ -1061,10 +1115,39 @@ export class Anime25DPlayer {
     resolveMouthMorph(this.layers, e, A.mouth, this.mouthMorph)
     applyMouthTransitionBridge(this.mouthMorph, mouthTransition)
     const mouthMorph = this.mouthMorph
-    const neckFollowTop = Math.max(A.neckTop, A.face.y1 - fs * 2)
+    const neckFollowTop = Math.min(
+      A.neckBottom - 1,
+      Math.max(A.neckTop, A.face.y1 + fs * 5),
+    )
     const neckFollowSpan = Math.max(1, A.neckBottom - neckFollowTop)
     const bodyBreathOffset = breath * 2.0
     const headBreathOffset = breathHead * 1.6
+    const collarMotion: CollarMotionPose = {
+      neckPivotX: npx,
+      neckPivotY: npy,
+      neckFollowTop,
+      neckFollowSpan,
+      faceCenterY: A.face.cy,
+      faceScale: fs,
+      angleX: e.angleX,
+      angleY: e.angleY,
+      headRotationCosine: cz,
+      headRotationSine: sz,
+      bodyBreathOffset,
+      headBreathOffset,
+    }
+    if (this.collarClip) {
+      updateCollarClipMesh(
+        this.gl,
+        this.collarClip,
+        collarMotion,
+        this.neckDepth,
+        bpx,
+        bpy,
+        cb,
+        sb,
+      )
+    }
     for (const layer of this.layers) {
       const rest = layer.rest
       const deformed = layer.deformed
@@ -1072,6 +1155,7 @@ export class Anime25DPlayer {
       const source = layer.source
       const bn = layerBaseName(source.role)
       const isTopwear = bn === 'topwear'
+      const isFrontCollar = bn === 'collar_front'
       const eye =
         source.side === 'L' ? A.eyeL : source.side === 'R' ? A.eyeR : undefined
       const vOpen = source.side === 'L' ? e.eyeOpenL : e.eyeOpenR
@@ -1092,6 +1176,14 @@ export class Anime25DPlayer {
         source.fade === 'mouthRound' ||
         source.fade === 'mouthNarrow' ||
         source.fade === 'mouthClose'
+      if (layer.collarContact) {
+        updateFrontCollarTargets(
+          layer.collarContact,
+          source.depth,
+          this.neckDepth,
+          collarMotion,
+        )
+      }
       for (let vertex = 0; vertex < vertexCount; vertex += 1) {
         const index = vertex * 2
         let x = rest[index]
@@ -1278,23 +1370,68 @@ export class Anime25DPlayer {
           y += jawDrop * jawWeight
           x += (A.face.cx - x) * jawOpen * 0.006 * jawWeight * jawWeight
         }
-        const neckHeadBlend =
+        if (layer.collarContact) {
+          deformRigidMlsPoint(
+            rest[index],
+            rest[index + 1],
+            layer.collarContact.handles,
+            layer.collarContact.targets,
+            deformed,
+            index,
+          )
+          x = deformed[index]
+          y = deformed[index + 1]
+        }
+        const neckFollowProgress =
           bn === 'neck'
-            ? smoothstep((A.neckBottom - rest[index + 1]) / neckFollowSpan)
+            ? clamp((A.neckBottom - rest[index + 1]) / neckFollowSpan, 0, 1)
             : 0
+        const neckFollowInput = this.highCollar
+          ? neckFollowProgress ** HIGH_COLLAR_NECK_FOLLOW_POWER
+          : neckFollowProgress
+        const neckHeadBlend = bn === 'neck' ? smoothstep(neckFollowInput) : 0
+        const frontCollarProgress =
+          isFrontCollar && !layer.collarContact
+            ? clamp(
+                1 -
+                  (rest[index + 1] - source.y) /
+                    Math.max(1, source.h * FRONT_COLLAR_FLEX_REGION),
+                0,
+                1,
+              )
+            : 0
+        const frontCollarLocalX =
+          isFrontCollar && !layer.collarContact
+            ? Math.abs(
+                (rest[index] - (source.x + source.w / 2)) /
+                  Math.max(1, source.w / 2),
+              )
+            : 1
+        const frontCollarInnerWeight =
+          isFrontCollar && !layer.collarContact
+            ? smoothstep((1 - frontCollarLocalX) / FRONT_COLLAR_INNER_REGION)
+            : 0
+        const frontCollarHeadBlend =
+          smoothstep(frontCollarProgress) *
+          frontCollarInnerWeight *
+          FRONT_COLLAR_HEAD_FOLLOW
         let hw = isHead ? 1 : source.group === 'body' ? BODY_HEAD_FOLLOW : 0
         if (bn === 'neck') {
           hw = BODY_HEAD_FOLLOW + (1 - BODY_HEAD_FOLLOW) * neckHeadBlend
+        } else if (isFrontCollar && !layer.collarContact) {
+          hw = BODY_HEAD_FOLLOW + (1 - BODY_HEAD_FOLLOW) * frontCollarHeadBlend
         }
-        if (hw > 0) {
+        if (!layer.collarContact && hw > 0) {
           const rx = x - npx
           const ry = y - npy
           const rx2 = rx * cz - ry * sz
           const ry2 = rx * sz + ry * cz
           x += (rx2 - rx) * hw
           y += (ry2 - ry) * hw
-          const depthOffset =
+          let depthOffset =
             (source.depth - 1) * (layer.frontHairParallaxScale?.[vertex] ?? 1)
+          if (bn === 'neck') depthOffset *= 1 - neckHeadBlend
+          else if (isFrontCollar) depthOffset *= 1 - frontCollarHeadBlend
           x +=
             hw *
             fs *
@@ -1305,13 +1442,18 @@ export class Anime25DPlayer {
             (-e.angleY * (9 + 30 * depthOffset) -
               e.angleY * depthOffset * (y - A.face.cy) * 0.05)
         }
-        const breathOffset = isHead
-          ? headBreathOffset
-          : bn === 'neck'
-            ? bodyBreathOffset +
-              (headBreathOffset - bodyBreathOffset) * neckHeadBlend
-            : bodyBreathOffset
-        y -= breathOffset * fs
+        if (!layer.collarContact) {
+          const breathOffset = isHead
+            ? headBreathOffset
+            : bn === 'neck'
+              ? bodyBreathOffset +
+                (headBreathOffset - bodyBreathOffset) * neckHeadBlend
+              : isFrontCollar
+                ? bodyBreathOffset +
+                  (headBreathOffset - bodyBreathOffset) * frontCollarHeadBlend
+                : bodyBreathOffset
+          y -= breathOffset * fs
+        }
         if (isTopwear && y < chestCy) {
           y -= breath * 2.2 * fs * smoothstep((chestCy - y) / (chestRy * 2))
         }
@@ -1412,7 +1554,32 @@ export class Anime25DPlayer {
       gl.uniform1f(this.opacityLocation, opacity)
       gl.uniform1f(this.cryLocation, crying ? crySide * this.current.eyeCry : 0)
       gl.bindVertexArray(layer.vao)
-      if (eyewhite) {
+      if (layer.source.role === 'neck' && this.collarClip) {
+        gl.enable(gl.STENCIL_TEST)
+        gl.stencilMask(255)
+        gl.stencilFunc(gl.ALWAYS, 1, 255)
+        gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
+        gl.colorMask(false, false, false, false)
+        gl.uniform1f(this.opacityLocation, 1)
+        gl.uniform1f(this.cryLocation, 0)
+        gl.uniform1f(this.cutLocation, 0)
+        gl.bindVertexArray(this.collarClip.vao)
+        gl.drawElements(
+          gl.TRIANGLES,
+          this.collarClip.indexCount,
+          gl.UNSIGNED_SHORT,
+          0,
+        )
+        gl.colorMask(true, true, true, true)
+        gl.stencilMask(0)
+        gl.stencilFunc(gl.EQUAL, 1, 255)
+        gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP)
+        gl.uniform1f(this.opacityLocation, opacity)
+        gl.bindVertexArray(layer.vao)
+        gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
+        gl.stencilMask(255)
+        gl.disable(gl.STENCIL_TEST)
+      } else if (eyewhite) {
         gl.enable(gl.STENCIL_TEST)
         gl.stencilFunc(gl.ALWAYS, 1, 255)
         gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
@@ -1440,8 +1607,30 @@ export class Anime25DPlayer {
     atlasImage: HTMLImageElement,
     layerIndex: number,
   ): GpuLayer {
+    const cropped = cropLayerTexture(
+      this.gl,
+      atlasImage,
+      source,
+      source.role === 'collar-front',
+    )
+    const collarContact =
+      source.role === 'collar-front' && cropped.pixels
+        ? buildFrontCollarContactModel(
+            cropped.pixels,
+            cropped.width,
+            cropped.height,
+            source,
+            this.playback.anchors.neckPivot.x,
+          )
+        : null
+    const flexibleCell =
+      source.role === 'neck'
+        ? NECK_MESH_CELL
+        : source.role === 'collar-front'
+          ? FRONT_COLLAR_MESH_CELL
+          : null
     const cell =
-      (source.role === 'neck' ? NECK_MESH_CELL : source.phys ? 30 : 42) *
+      (flexibleCell ?? (source.phys ? 30 : 42)) *
       Math.max(0.6, this.playback.pixelCanvas.width / 768)
     const morphingMouth =
       source.fade === 'mouthOpen' ||
@@ -1449,20 +1638,39 @@ export class Anime25DPlayer {
       source.fade === 'mouthRound' ||
       source.fade === 'mouthNarrow' ||
       source.fade === 'mouthClose'
-    const cols = Math.max(morphingMouth ? 6 : 2, Math.round(source.w / cell))
-    const rows = Math.max(
+    const baseCols = Math.max(
+      morphingMouth ? 6 : 2,
+      Math.round(source.w / cell),
+    )
+    const baseRows = Math.max(
       morphingMouth ? 4 : source.role === 'eye-cry' ? 3 : 2,
       Math.round(source.h / cell),
     )
+    const xCoordinates = layerGridAxis(
+      source.x,
+      source.w,
+      baseCols,
+      collarContact?.gridX,
+    )
+    const yCoordinates = layerGridAxis(
+      source.y,
+      source.h,
+      baseRows,
+      collarContact?.gridY,
+    )
+    const cols = xCoordinates.length - 1
+    const rows = yCoordinates.length - 1
     const rest = new Float32Array((cols + 1) * (rows + 1) * 2)
     const uvs = new Float32Array(rest.length)
     let cursor = 0
     for (let row = 0; row <= rows; row += 1) {
-      const v = row / rows
+      const y = yCoordinates[row]
+      const v = (y - source.y) / Math.max(1, source.h)
       for (let col = 0; col <= cols; col += 1) {
-        const u = col / cols
-        rest[cursor] = source.x + source.w * u
-        rest[cursor + 1] = source.y + source.h * v
+        const x = xCoordinates[col]
+        const u = (x - source.x) / Math.max(1, source.w)
+        rest[cursor] = x
+        rest[cursor + 1] = y
         uvs[cursor] = u
         uvs[cursor + 1] = v
         cursor += 2
@@ -1521,6 +1729,18 @@ export class Anime25DPlayer {
         ? source.z
         : layerIndex,
     )
+    if (collarContact && !this.collarClip) {
+      const neck = this.playback.layers.find((layer) => layer.role === 'neck')
+      if (neck) {
+        this.collarClip = createCollarClipMesh(
+          gl,
+          this.program,
+          collarContact,
+          neck,
+          source,
+        )
+      }
+    }
     return {
       source,
       rest,
@@ -1533,11 +1753,235 @@ export class Anime25DPlayer {
       vertexBuffer,
       indexBuffer,
       indexCount: indices.length,
-      texture: cropLayerTexture(gl, atlasImage, source),
+      texture: cropped.texture,
       chestWeights,
       ...hair,
+      collarContact,
     }
   }
+}
+
+function updateFrontCollarTargets(
+  model: FrontCollarContactModel,
+  collarDepth: number,
+  neckDepth: number,
+  pose: CollarMotionPose,
+): void {
+  for (let handle = 0; handle < model.attachments.length; handle += 1) {
+    const index = handle * 2
+    const restX = model.handles[index]
+    const restY = model.handles[index + 1]
+    const attachedToNeck = model.attachments[handle] === COLLAR_ATTACHMENT_NECK
+    const neckHeadBlend = attachedToNeck ? collarNeckHeadBlend(restY, pose) : 0
+    const headFollow = attachedToNeck
+      ? BODY_HEAD_FOLLOW + (1 - BODY_HEAD_FOLLOW) * neckHeadBlend
+      : BODY_HEAD_FOLLOW
+    transformCollarPoint(
+      restX,
+      restY,
+      headFollow,
+      attachedToNeck ? neckDepth : collarDepth,
+      neckHeadBlend,
+      attachedToNeck,
+      pose,
+      model.targets,
+      index,
+    )
+  }
+}
+
+function collarNeckHeadBlend(y: number, pose: CollarMotionPose): number {
+  const progress = clamp(
+    (pose.neckFollowTop + pose.neckFollowSpan - y) / pose.neckFollowSpan,
+    0,
+    1,
+  )
+  return smoothstep(progress ** HIGH_COLLAR_NECK_FOLLOW_POWER)
+}
+
+function transformCollarPoint(
+  restX: number,
+  restY: number,
+  headFollow: number,
+  depth: number,
+  neckHeadBlend: number,
+  attachedToNeck: boolean,
+  pose: CollarMotionPose,
+  output: Float32Array,
+  index: number,
+): void {
+  let x = restX
+  let y = restY
+  const rotationX = x - pose.neckPivotX
+  const rotationY = y - pose.neckPivotY
+  const rotatedX =
+    rotationX * pose.headRotationCosine - rotationY * pose.headRotationSine
+  const rotatedY =
+    rotationX * pose.headRotationSine + rotationY * pose.headRotationCosine
+  x += (rotatedX - rotationX) * headFollow
+  y += (rotatedY - rotationY) * headFollow
+  let depthOffset = depth - 1
+  if (attachedToNeck) depthOffset *= 1 - neckHeadBlend
+  x +=
+    headFollow *
+    pose.faceScale *
+    (pose.angleX * (14 + 40 * depthOffset) +
+      pose.angleX * (pose.neckPivotY - y) * 0.028)
+  y +=
+    headFollow *
+    pose.faceScale *
+    (-pose.angleY * (9 + 30 * depthOffset) -
+      pose.angleY * depthOffset * (y - pose.faceCenterY) * 0.05)
+  const breathOffset = attachedToNeck
+    ? pose.bodyBreathOffset +
+      (pose.headBreathOffset - pose.bodyBreathOffset) * neckHeadBlend
+    : pose.bodyBreathOffset
+  output[index] = x
+  output[index + 1] = y - breathOffset * pose.faceScale
+}
+
+function createCollarClipMesh(
+  gl: WebGL2RenderingContext,
+  program: WebGLProgram,
+  model: FrontCollarContactModel,
+  neck: Anime25DPlaybackLayer,
+  collar: Anime25DPlaybackLayer,
+): CollarClipMesh {
+  const firstLeftIndex = model.contactPairs[0] * 2
+  const firstRightIndex = model.contactPairs[1] * 2
+  const firstY = model.handles[firstLeftIndex + 1]
+  const transitionHeight = Math.max(7, Math.min(collar.h * 0.16, neck.h * 0.1))
+  const transitionY = Math.max(neck.y, firstY - transitionHeight)
+  const horizontalMargin = collar.w * 0.075
+  const seamAllowance = Math.max(1, Math.min(2.5, collar.w * 0.01))
+  const restValues = [
+    neck.x,
+    neck.y,
+    neck.x + neck.w,
+    neck.y,
+    Math.max(neck.x, model.handles[firstLeftIndex] - horizontalMargin),
+    transitionY,
+    Math.min(
+      neck.x + neck.w,
+      model.handles[firstRightIndex] + horizontalMargin,
+    ),
+    transitionY,
+  ]
+  for (let pair = 0; pair < model.contactPairs.length; pair += 2) {
+    const leftIndex = model.contactPairs[pair] * 2
+    const rightIndex = model.contactPairs[pair + 1] * 2
+    restValues.push(
+      Math.max(neck.x, model.handles[leftIndex] - seamAllowance),
+      model.handles[leftIndex + 1],
+      Math.min(neck.x + neck.w, model.handles[rightIndex] + seamAllowance),
+      model.handles[rightIndex + 1],
+    )
+  }
+  const rest = Float32Array.from(restValues)
+  const deformed = rest.slice()
+  const uvs = new Float32Array(rest.length)
+  const rowCount = rest.length / 4
+  const indices = new Uint16Array((rowCount - 1) * 6)
+  for (let row = 0; row < rowCount - 1; row += 1) {
+    const topLeft = row * 2
+    const topRight = topLeft + 1
+    const bottomLeft = topLeft + 2
+    const bottomRight = topLeft + 3
+    indices.set(
+      [topLeft, topRight, bottomLeft, topRight, bottomRight, bottomLeft],
+      row * 6,
+    )
+  }
+  const vao = gl.createVertexArray()
+  const vertexBuffer = gl.createBuffer()
+  const indexBuffer = gl.createBuffer()
+  if (!vao || !vertexBuffer || !indexBuffer) {
+    throw new Error(currentCopy().merope.anime25dPlaybackFailed)
+  }
+  const position = gl.getAttribLocation(program, 'a_pos')
+  const uv = gl.getAttribLocation(program, 'a_uv')
+  gl.bindVertexArray(vao)
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, packVertices(deformed, uvs), gl.DYNAMIC_DRAW)
+  gl.enableVertexAttribArray(position)
+  gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 16, 0)
+  gl.enableVertexAttribArray(uv)
+  gl.vertexAttribPointer(uv, 2, gl.FLOAT, false, 16, 8)
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW)
+  gl.bindVertexArray(null)
+  return {
+    rest,
+    deformed,
+    uvs,
+    indices,
+    vao,
+    vertexBuffer,
+    indexBuffer,
+    indexCount: indices.length,
+  }
+}
+
+function updateCollarClipMesh(
+  gl: WebGL2RenderingContext,
+  clip: CollarClipMesh,
+  pose: CollarMotionPose,
+  neckDepth: number,
+  bodyPivotX: number,
+  bodyPivotY: number,
+  bodyRotationCosine: number,
+  bodyRotationSine: number,
+): void {
+  for (let index = 0; index < clip.rest.length; index += 2) {
+    const headBlend = collarNeckHeadBlend(clip.rest[index + 1], pose)
+    transformCollarPoint(
+      clip.rest[index],
+      clip.rest[index + 1],
+      BODY_HEAD_FOLLOW + (1 - BODY_HEAD_FOLLOW) * headBlend,
+      neckDepth,
+      headBlend,
+      true,
+      pose,
+      clip.deformed,
+      index,
+    )
+    const rotationX = clip.deformed[index] - bodyPivotX
+    const rotationY = clip.deformed[index + 1] - bodyPivotY
+    clip.deformed[index] =
+      bodyPivotX + rotationX * bodyRotationCosine - rotationY * bodyRotationSine
+    clip.deformed[index + 1] =
+      bodyPivotY + rotationX * bodyRotationSine + rotationY * bodyRotationCosine
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, clip.vertexBuffer)
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, packVertices(clip.deformed, clip.uvs))
+}
+
+function layerGridAxis(
+  origin: number,
+  length: number,
+  segmentCount: number,
+  extraCoordinates?: readonly number[],
+): number[] {
+  const coordinates: number[] = []
+  for (let segment = 0; segment <= segmentCount; segment += 1) {
+    coordinates.push(origin + (length * segment) / segmentCount)
+  }
+  for (const coordinate of extraCoordinates ?? []) {
+    if (coordinate >= origin && coordinate <= origin + length) {
+      coordinates.push(coordinate)
+    }
+  }
+  coordinates.sort((left, right) => left - right)
+  const unique: number[] = []
+  for (const coordinate of coordinates) {
+    if (
+      unique.length === 0 ||
+      Math.abs(coordinate - unique[unique.length - 1]) > 0.05
+    ) {
+      unique.push(coordinate)
+    }
+  }
+  return unique
 }
 
 function samplePlaybackChestWeights(
@@ -1557,11 +2001,19 @@ function samplePlaybackChestWeights(
   return weights
 }
 
+interface CroppedLayerTexture {
+  texture: WebGLTexture
+  pixels: Uint8ClampedArray | null
+  width: number
+  height: number
+}
+
 function cropLayerTexture(
   gl: WebGL2RenderingContext,
   atlas: HTMLImageElement,
   source: Anime25DPlaybackLayer,
-): WebGLTexture {
+  readPixels = false,
+): CroppedLayerTexture {
   const sx = Math.max(0, Math.round(source.atlas.x * atlas.width))
   const sy = Math.max(0, Math.round(source.atlas.y * atlas.height))
   const sw = Math.max(1, Math.round(source.atlas.w * atlas.width))
@@ -1572,6 +2024,14 @@ function cropLayerTexture(
   const context = crop.getContext('2d')
   if (!context) throw new Error(currentCopy().merope.anime25dPlaybackFailed)
   context.drawImage(atlas, sx, sy, sw, sh, 0, 0, sw, sh)
+  let pixels: Uint8ClampedArray | null = null
+  if (readPixels) {
+    try {
+      pixels = context.getImageData(0, 0, sw, sh).data
+    } catch {
+      pixels = null
+    }
+  }
   const texture = gl.createTexture()
   if (!texture) throw new Error(currentCopy().merope.anime25dPlaybackFailed)
   gl.bindTexture(gl.TEXTURE_2D, texture)
@@ -1581,7 +2041,7 @@ function cropLayerTexture(
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, crop)
-  return texture
+  return { texture, pixels, width: sw, height: sh }
 }
 
 function layerBaseName(role: string): string {
