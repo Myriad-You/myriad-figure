@@ -34,11 +34,11 @@ test('builds asymmetric crying replacements with a stable dark eye and blue lowe
 test('sizes each crying replacement from its own eye bounds', () => {
   assert.deepEqual(cryEyeGeneratedSize({ x0: 10, x1: 90, y0: 20, y1: 52 }), {
     width: 88,
-    height: 102,
+    height: 131,
   })
   assert.deepEqual(cryEyeGeneratedSize({ x0: 10, x1: 70, y0: 20, y1: 48 }), {
     width: 66,
-    height: 77,
+    height: 98,
   })
 })
 

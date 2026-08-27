@@ -12,6 +12,7 @@ export const ANIME25D_MOUTH_MATERIALS: readonly Anime25DMouthMaterial[] = [
   'mouthWide',
   'mouthRound',
   'mouthNarrow',
+  'mouthManiac',
 ]
 
 interface MouthRasterLayer {
@@ -46,7 +47,7 @@ interface BaseBridgeProfile {
 }
 
 /**
- * Builds a character-specific mouth bridge from the five raster alpha masks.
+ * Builds a character-specific mouth bridge from the six raster alpha masks.
  * The robust 1.5% contour excludes isolated antialiasing and PSD fringe pixels.
  */
 export function analyzeAnime25DMouthProfile(
@@ -229,6 +230,8 @@ function fallbackSize(
     return { width: width * 0.76, height: height * 2.2 }
   if (material === 'mouthNarrow')
     return { width: width * 1.08, height: height * 0.9 }
+  if (material === 'mouthManiac')
+    return { width: width * 3.2, height: height * 4.2 }
   return { width, height }
 }
 
@@ -307,6 +310,16 @@ function baseBridge(
   first: Anime25DMouthMaterial,
   second: Anime25DMouthMaterial,
 ): BaseBridgeProfile {
+  if (first === 'mouthManiac' || second === 'mouthManiac') {
+    return {
+      widthScale: 0.9,
+      heightScale: 0.76,
+      neutralization: 0.66,
+      expectedWidthSimilarity: 0.4,
+      expectedHeightSimilarity: 0.32,
+      expectedDifference: 0.5,
+    }
+  }
   if (first === 'mouthClose' || second === 'mouthClose') {
     return {
       widthScale: 0.97,
@@ -365,6 +378,7 @@ function roleForMaterial(material: Anime25DMouthMaterial): string {
   if (material === 'mouthOpen') return 'mouth-open'
   if (material === 'mouthWide') return 'mouth-wide'
   if (material === 'mouthRound') return 'mouth-round'
+  if (material === 'mouthManiac') return 'mouth-maniac'
   return 'mouth-narrow'
 }
 

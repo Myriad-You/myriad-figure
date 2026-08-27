@@ -1,4 +1,5 @@
-export type MouthExpressionKind = 'open' | 'wide' | 'round' | 'narrow' | 'cry'
+export type MouthExpressionKind =
+  'open' | 'wide' | 'round' | 'narrow' | 'cry' | 'maniac'
 
 export interface MouthExpressionSize {
   width: number
@@ -23,11 +24,14 @@ const FALLBACK_LINE = { red: 104, green: 57, blue: 75 }
 const FALLBACK_CAVITY = { red: 91, green: 45, blue: 65 }
 const FALLBACK_FILL = { red: 232, green: 139, blue: 151 }
 
-/** Sizes flat expression glyphs from the character's own neutral mouth. */
-export function mouthExpressionGeneratedSizes(source: {
-  width: number
-  height: number
-}): Record<MouthExpressionKind, MouthExpressionSize> {
+/** Sizes regular glyphs from the neutral mouth and the extreme laugh from the face. */
+export function mouthExpressionGeneratedSizes(
+  source: {
+    width: number
+    height: number
+  },
+  face?: { width: number; height: number; mouthToChin?: number },
+): Record<MouthExpressionKind, MouthExpressionSize> {
   const sourceWidth = Math.max(1, source.width - 4)
   const sourceHeight = Math.max(1, source.height - 4)
   const openWidth = clampInt(Math.round(sourceWidth * 0.96), 24, 128)
@@ -35,6 +39,30 @@ export function mouthExpressionGeneratedSizes(source: {
   const roundWidth = clampInt(Math.round(sourceWidth * 0.76), 20, 112)
   const narrowWidth = clampInt(Math.round(sourceWidth * 1.08), 24, 136)
   const cryWidth = clampInt(Math.round(sourceWidth * 1.3), 30, 160)
+  const faceWidth = Math.max(1, face?.width ?? 1)
+  const maniacPreferredWidth = Math.max(sourceWidth * 1.62, faceWidth * 0.29)
+  const maniacWidth = clampInt(
+    Math.round(
+      face
+        ? Math.min(maniacPreferredWidth, faceWidth * 0.33)
+        : maniacPreferredWidth,
+    ),
+    64,
+    280,
+  )
+  const maniacUnboundedHeight = Math.max(
+    sourceHeight * 2.7,
+    maniacWidth * 0.64,
+    Math.max(1, face?.height ?? 1) * 0.162,
+  )
+  const mouthToChin = face?.mouthToChin
+  const maniacHeightLimit =
+    mouthToChin && mouthToChin > 0
+      ? Math.max(
+          42,
+          (mouthToChin - Math.max(2, (face?.height ?? 1) * 0.01)) / 0.44,
+        )
+      : 220
   return {
     open: {
       width: openWidth,
@@ -74,6 +102,14 @@ export function mouthExpressionGeneratedSizes(source: {
         Math.round(Math.max(sourceHeight * 2, cryWidth * 0.64)),
         22,
         120,
+      ),
+    },
+    maniac: {
+      width: maniacWidth,
+      height: clampInt(
+        Math.round(Math.min(maniacUnboundedHeight, maniacHeightLimit)),
+        42,
+        220,
       ),
     },
   }
@@ -131,7 +167,7 @@ export function sampleMouthExpressionPalette(
 }
 
 /**
- * Draws a small cel-style anime mouth without canvas, gradients, or runtime AI.
+ * Draws cel-style anime mouth variants without canvas, gradients, or runtime AI.
  * Four sub-pixel samples keep the checked-in result stable and cheap to import.
  */
 export function createMouthExpressionBitmap(
@@ -139,15 +175,41 @@ export function createMouthExpressionBitmap(
   requestedSize: Readonly<MouthExpressionSize>,
   palette: Readonly<MouthExpressionPalette>,
 ): { width: number; height: number; data: Uint8ClampedArray } {
-  const width = clampInt(Math.round(requestedSize.width), 16, 160)
-  const height = clampInt(Math.round(requestedSize.height), 12, 120)
+  const width = clampInt(
+    Math.round(requestedSize.width),
+    16,
+    kind === 'maniac' ? 360 : 160,
+  )
+  const height = clampInt(
+    Math.round(requestedSize.height),
+    12,
+    kind === 'maniac' ? 300 : 120,
+  )
   const data = new Uint8ClampedArray(width * height * 4)
   const outer = mouthOuterPath(kind)
   const inner = insetPath(
     outer,
-    kind === 'cry' ? 0.83 : kind === 'narrow' ? 0.8 : 0.78,
-    kind === 'cry' ? 0.76 : kind === 'narrow' ? 0.58 : 0.75,
-    kind === 'cry' ? 0.035 : kind === 'wide' ? 0.045 : 0.025,
+    kind === 'maniac'
+      ? 0.97
+      : kind === 'cry'
+        ? 0.83
+        : kind === 'narrow'
+          ? 0.8
+          : 0.78,
+    kind === 'maniac'
+      ? 0.955
+      : kind === 'cry'
+        ? 0.76
+        : kind === 'narrow'
+          ? 0.58
+          : 0.75,
+    kind === 'maniac'
+      ? 0.006
+      : kind === 'cry'
+        ? 0.035
+        : kind === 'wide'
+          ? 0.045
+          : 0.025,
   )
   const samples: readonly Point[] = [
     [0.25, 0.25],
@@ -177,7 +239,7 @@ export function createMouthExpressionBitmap(
       }
       if (outerCoverage <= 0) continue
       const offset = (y * width + x) * 4
-      paint(data, offset, palette.line, outerCoverage)
+      if (outerCoverage > 0) paint(data, offset, palette.line, outerCoverage)
       if (innerCoverage > 0) {
         paint(
           data,
@@ -199,12 +261,14 @@ function mouthOuterPath(kind: MouthExpressionKind): Point[] {
   if (kind === 'round') return roundOuterPath()
   if (kind === 'narrow') return narrowOuterPath()
   if (kind === 'cry') return cryOuterPath()
+  if (kind === 'maniac') return maniacOuterPath()
   return openOuterPath()
 }
 
 function tongueBoundary(kind: MouthExpressionKind, x: number): number {
   if (kind === 'round') return 0.3 - 0.12 * (1 - x * x)
   if (kind === 'wide') return 0.2 - 0.12 * (1 - x * x)
+  if (kind === 'maniac') return 0.08 - 0.1 * (1 - x * x)
   return 0.24 - 0.16 * (1 - x * x)
 }
 
@@ -298,6 +362,59 @@ function cryOuterPath(): Point[] {
     [-0.73, 0.48],
     [-0.89, 0.18],
   ]
+}
+
+/**
+ * Front-facing anime laugh with a deep cavity and heavy lower tongue.
+ * Cubic sampling avoids the sticker-like polygon facets of ordinary visemes.
+ */
+function maniacOuterPath(): Point[] {
+  const output: Point[] = []
+  appendCubic(
+    output,
+    [-0.88, -0.72],
+    [-0.48, -0.84],
+    [0.48, -0.84],
+    [0.88, -0.72],
+  )
+  appendCubic(output, [0.88, -0.72], [0.93, -0.16], [0.75, 0.55], [0.43, 0.82])
+  appendCubic(output, [0.43, 0.82], [0.2, 0.98], [-0.2, 0.98], [-0.43, 0.82])
+  appendCubic(
+    output,
+    [-0.43, 0.82],
+    [-0.75, 0.55],
+    [-0.93, -0.16],
+    [-0.88, -0.72],
+  )
+  return output
+}
+
+function appendCubic(
+  output: Point[],
+  from: Point,
+  controlA: Point,
+  controlB: Point,
+  to: Point,
+): void {
+  if (output.length === 0) output.push(from)
+  for (let step = 1; step <= 7; step += 1) {
+    const t = step / 7
+    const inverse = 1 - t
+    const fromWeight = inverse * inverse * inverse
+    const controlAWeight = 3 * inverse * inverse * t
+    const controlBWeight = 3 * inverse * t * t
+    const toWeight = t * t * t
+    output.push([
+      from[0] * fromWeight +
+        controlA[0] * controlAWeight +
+        controlB[0] * controlBWeight +
+        to[0] * toWeight,
+      from[1] * fromWeight +
+        controlA[1] * controlAWeight +
+        controlB[1] * controlBWeight +
+        to[1] * toWeight,
+    ])
+  }
 }
 
 function insetPath(

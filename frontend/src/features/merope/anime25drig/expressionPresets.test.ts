@@ -4,6 +4,7 @@ import {
   activityExpressionDriverPatch,
   CRY_EXPRESSION_PRESET,
   DIZZY_EXPRESSION_PRESET,
+  MANIAC_EXPRESSION_PRESET,
   SQUEEZE_EXPRESSION_PRESET,
   THINKING_ACTIVITY_EXPRESSION,
   THINKING_EXPRESSION_PRESET,
@@ -35,6 +36,7 @@ test('leaving thinking resets every activity-owned expression channel', () => {
   assert.equal(neutral.eyeDizzy, 0)
   assert.equal(neutral.eyeSqueeze, 0)
   assert.equal(neutral.eyeCry, 0)
+  assert.equal(neutral.maniac, 0)
   assert.equal(neutral.irisScale, 1)
   for (const key of [
     'angleX',
@@ -64,6 +66,12 @@ test('cry preview combines its own artwork with sad symmetric brows', () => {
   assert.ok((CRY_EXPRESSION_PRESET.brow || 0) > 0.2)
   assert.ok((CRY_EXPRESSION_PRESET.browAngSym || 0) < -0.3)
   assert.equal(CRY_EXPRESSION_PRESET.eyeSqueeze, undefined)
+})
+
+test('maniac preview selects its dedicated mouth while retaining source eyes', () => {
+  assert.equal(MANIAC_EXPRESSION_PRESET.maniac, 1)
+  assert.equal(MANIAC_EXPRESSION_PRESET.eyeDizzy, undefined)
+  assert.equal(MANIAC_EXPRESSION_PRESET.eyeCry, undefined)
 })
 
 test('thinking preview enables the dedicated motion loop', () => {

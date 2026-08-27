@@ -13,12 +13,16 @@ export type Anime25DFade =
   | 'eyeDizzy'
   | 'eyeSqueeze'
   | 'eyeCry'
+  | 'maniacEyeShadow'
+  | 'angerMark'
+  | 'speechlessSweat'
   | 'mouthOpen'
   | 'mouthWide'
   | 'mouthRound'
   | 'mouthNarrow'
   | 'mouthClose'
   | 'mouthCry'
+  | 'mouthManiac'
 
 export type Anime25DGroup = 'head' | 'body'
 
@@ -105,7 +109,12 @@ export interface Anime25DChestProfile {
 }
 
 export type Anime25DMouthMaterial =
-  'mouthClose' | 'mouthOpen' | 'mouthWide' | 'mouthRound' | 'mouthNarrow'
+  | 'mouthClose'
+  | 'mouthOpen'
+  | 'mouthWide'
+  | 'mouthRound'
+  | 'mouthNarrow'
+  | 'mouthManiac'
 
 export interface Anime25DMouthSilhouette {
   material: Anime25DMouthMaterial
@@ -195,6 +204,7 @@ const MOUTH_MATERIALS: readonly Anime25DMouthMaterial[] = [
   'mouthWide',
   'mouthRound',
   'mouthNarrow',
+  'mouthManiac',
 ]
 
 function isAnime25DMouthProfile(
@@ -211,7 +221,7 @@ function isAnime25DMouthProfile(
     !Array.isArray(profile.silhouettes) ||
     profile.silhouettes.length !== MOUTH_MATERIALS.length ||
     !Array.isArray(profile.bridges) ||
-    profile.bridges.length !== 10
+    profile.bridges.length !== 15
   ) {
     return false
   }
@@ -265,7 +275,7 @@ function isAnime25DMouthProfile(
     }
     pairs.add(pair)
   }
-  return materials.size === MOUTH_MATERIALS.length && pairs.size === 10
+  return materials.size === MOUTH_MATERIALS.length && pairs.size === 15
 }
 
 function isAnime25DChestProfile(

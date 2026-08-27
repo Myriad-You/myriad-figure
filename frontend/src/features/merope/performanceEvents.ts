@@ -165,6 +165,9 @@ function sanitizeCue(value: unknown): PerformanceCue | null {
     'think',
     'dizzy',
     'cry',
+    'angry',
+    'speechless',
+    'maniac',
   ] as const
   const interrupts = ['replace', 'queue', 'if-lower'] as const
   if (

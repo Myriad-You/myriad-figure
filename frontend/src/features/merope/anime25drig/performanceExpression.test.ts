@@ -80,6 +80,9 @@ test('maps semantic baselines and cues to conservative expression offsets', () =
     ...cue('cry'),
     intensity: 1.2,
   })
+  const angry = expressionCueOffset(cue('angry'))
+  const speechless = expressionCueOffset(cue('speechless'))
+  const maniac = expressionCueOffset(cue('maniac'))
 
   assert.ok(warm.mouthForm > 0 && warm.mouthForm <= 0.12)
   assert.ok(withdrawn.eyeOpen < 0 && withdrawn.eyeOpen >= -0.08)
@@ -99,7 +102,11 @@ test('maps semantic baselines and cues to conservative expression offsets', () =
   assert.equal(cry.eyeCry, 1)
   assert.ok(cry.browAngSym < -0.3)
   assert.ok(cry.mouthForm < 0)
+  assert.equal(angry.anger, 1)
+  assert.equal(speechless.speechless, 1)
+  assert.equal(maniac.maniac, 1)
   assert.deepEqual(Object.keys(warm).sort(), [
+    'anger',
     'angleY',
     'angleZ',
     'brow',
@@ -111,7 +118,9 @@ test('maps semantic baselines and cues to conservative expression offsets', () =
     'eyeX',
     'eyeY',
     'irisScale',
+    'maniac',
     'mouthForm',
+    'speechless',
   ])
 })
 
@@ -241,6 +250,9 @@ test('eases baseline changes without a first-frame jump or frame allocation', ()
       irisScale: 0,
       angleY: 0,
       angleZ: 0,
+      anger: 0,
+      speechless: 0,
+      maniac: 0,
     },
   )
   const next = expression.sample(1 / 60)
@@ -423,6 +435,9 @@ test('does not resume an older cue after a replacement finishes', () => {
       irisScale: 0,
       angleY: 0,
       angleZ: 0,
+      anger: 0,
+      speechless: 0,
+      maniac: 0,
     },
   )
 })

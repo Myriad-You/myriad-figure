@@ -93,6 +93,9 @@ export function cueDriverPatch(cue: PerformanceCue): Partial<Anime25DDriver> {
     think: {},
     dizzy: {},
     cry: {},
+    angry: { body: 0.1 * amount },
+    speechless: { body: -0.045 * amount, idle: false },
+    maniac: { body: 0.055 * amount, idle: false },
   }
   return patches[cue.intent]
 }
@@ -102,7 +105,9 @@ export function cuePriority(cue: PerformanceCue): number {
     cue.intent === 'delight' ||
     cue.intent === 'notify' ||
     cue.intent === 'dizzy' ||
-    cue.intent === 'cry'
+    cue.intent === 'cry' ||
+    cue.intent === 'angry' ||
+    cue.intent === 'maniac'
   ) {
     return 3
   }
@@ -110,7 +115,8 @@ export function cuePriority(cue: PerformanceCue): number {
     cue.intent === 'greet' ||
     cue.intent === 'question' ||
     cue.intent === 'emphasize' ||
-    cue.intent === 'think'
+    cue.intent === 'think' ||
+    cue.intent === 'speechless'
   ) {
     return 2
   }

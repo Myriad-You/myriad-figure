@@ -18,6 +18,9 @@ export interface PerformanceExpressionOffset {
   irisScale: number
   angleY: number
   angleZ: number
+  anger?: number
+  speechless?: number
+  maniac?: number
 }
 
 export interface PerformanceExpressionTarget {
@@ -34,6 +37,9 @@ export interface PerformanceExpressionTarget {
   irisScale: number
   angleY: number
   angleZ: number
+  anger?: number
+  speechless?: number
+  maniac?: number
 }
 
 interface ScheduledExpressionCue {
@@ -60,6 +66,9 @@ const OFFSET_KEYS = [
   'irisScale',
   'angleY',
   'angleZ',
+  'anger',
+  'speechless',
+  'maniac',
 ] as const
 
 const ZERO_OFFSET: PerformanceExpressionOffset = {
@@ -75,6 +84,9 @@ const ZERO_OFFSET: PerformanceExpressionOffset = {
   irisScale: 0,
   angleY: 0,
   angleZ: 0,
+  anger: 0,
+  speechless: 0,
+  maniac: 0,
 }
 
 const EYE_CLOSED_GUARD = 0.12
@@ -201,7 +213,9 @@ export class PerformanceExpressionController {
     this.ambientScale +=
       (this.ambientScaleTarget - this.ambientScale) * baselineRate
     for (const key of OFFSET_KEYS) {
-      this.current[key] += (this.target[key] - this.current[key]) * baselineRate
+      const current = this.current[key] ?? 0
+      const target = this.target[key] ?? 0
+      this.current[key] = current + (target - current) * baselineRate
       this.output[key] = this.current[key]
     }
 
@@ -211,7 +225,8 @@ export class PerformanceExpressionController {
     if (selected) {
       const envelope = cueEnvelope(selected, now)
       for (const key of OFFSET_KEYS) {
-        this.output[key] += selected.offset[key] * envelope
+        this.output[key] =
+          (this.output[key] ?? 0) + (selected.offset[key] ?? 0) * envelope
       }
     }
     return this.output
@@ -369,6 +384,9 @@ export function expressionCueOffset(
       eyeCry: 1,
       mouthForm: -0.12 * amount,
     },
+    angry: { anger: amount },
+    speechless: { speechless: amount },
+    maniac: { maniac: amount },
   }
   Object.assign(output, patches[cue.intent])
   return output
@@ -437,6 +455,27 @@ export function applyPerformanceExpressionOffset(
     target.angleZ,
     offset.angleZ,
     -1,
+    1,
+    0,
+  )
+  target.anger = mixBoundedExpressionChannel(
+    target.anger ?? 0,
+    offset.anger ?? 0,
+    0,
+    1,
+    0,
+  )
+  target.speechless = mixBoundedExpressionChannel(
+    target.speechless ?? 0,
+    offset.speechless ?? 0,
+    0,
+    1,
+    0,
+  )
+  target.maniac = mixBoundedExpressionChannel(
+    target.maniac ?? 0,
+    offset.maniac ?? 0,
+    0,
     1,
     0,
   )
@@ -528,7 +567,9 @@ function expressionCuePriority(cue: PerformanceCue): number {
     cue.intent === 'delight' ||
     cue.intent === 'notify' ||
     cue.intent === 'dizzy' ||
-    cue.intent === 'cry'
+    cue.intent === 'cry' ||
+    cue.intent === 'angry' ||
+    cue.intent === 'maniac'
   ) {
     return 3
   }
@@ -536,7 +577,8 @@ function expressionCuePriority(cue: PerformanceCue): number {
     cue.intent === 'greet' ||
     cue.intent === 'question' ||
     cue.intent === 'emphasize' ||
-    cue.intent === 'think'
+    cue.intent === 'think' ||
+    cue.intent === 'speechless'
   ) {
     return 2
   }

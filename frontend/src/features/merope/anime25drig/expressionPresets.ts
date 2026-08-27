@@ -10,6 +10,9 @@ type ActivityExpressionDriver = Pick<
   | 'eyeDizzy'
   | 'eyeSqueeze'
   | 'eyeCry'
+  | 'anger'
+  | 'speechless'
+  | 'maniac'
   | 'eyeX'
   | 'eyeY'
   | 'irisScale'
@@ -28,6 +31,9 @@ const NEUTRAL_ACTIVITY_EXPRESSION: Readonly<ActivityExpressionDriver> = {
   eyeDizzy: 0,
   eyeSqueeze: 0,
   eyeCry: 0,
+  anger: 0,
+  speechless: 0,
+  maniac: 0,
   eyeX: 0,
   eyeY: 0,
   irisScale: 1,
@@ -48,6 +54,9 @@ export const THINKING_ACTIVITY_EXPRESSION: Readonly<ActivityExpressionDriver> =
     eyeDizzy: 0,
     eyeSqueeze: 0,
     eyeCry: 0,
+    anger: 0,
+    speechless: 0,
+    maniac: 0,
     eyeX: 0.58,
     eyeY: -0.42,
     irisScale: 1,
@@ -72,6 +81,27 @@ export const CRY_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
   eyeCry: 1,
   brow: 0.28,
   browAngSym: -0.34,
+}
+
+/** Facial deformation carries the expression; the vein mark is secondary. */
+export const ANGRY_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
+  anger: 1,
+  speechless: 0,
+}
+
+/** Half-lidded side glance with a restrained temple sweat accent. */
+export const SPEECHLESS_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
+  anger: 0,
+  speechless: 1,
+}
+
+/** Wide open laugh with rolled-up gaze; runtime adds restrained instability. */
+export const MANIAC_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
+  anger: 0,
+  speechless: 0,
+  maniac: 1,
+  eyeOpenL: 1,
+  eyeOpenR: 0.94,
 }
 
 export const THINKING_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {

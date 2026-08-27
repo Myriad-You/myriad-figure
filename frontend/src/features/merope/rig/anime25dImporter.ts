@@ -33,10 +33,19 @@ import {
   sampleDizzyEyeTint,
 } from './dizzyEye'
 import {
+  createAngerMarkBitmap,
+  createSpeechlessSweatBitmap,
+  expressionSymbolGeneratedSizes,
+} from './expressionSymbols'
+import {
   createMouthExpressionBitmap,
   mouthExpressionGeneratedSizes,
   sampleMouthExpressionPalette,
 } from './mouthExpression'
+import {
+  createManiacEyeShadowBitmap,
+  maniacEyeShadowGeneratedSize,
+} from './maniacEyeShadow'
 import { inferOutfitProfileFromPartIds } from './outfit'
 import { createSqueezeEyeBitmap, squeezeEyeGeneratedSize } from './squeezeEye'
 import '../anime25drig/vendor/genericparts.js'
@@ -104,6 +113,9 @@ const COLLAR_COLOR_ITERATIONS = 8
 const COLLAR_COLOR_MIN_LIGHTNESS_GAP = 0.035
 const COLLAR_COLOR_SEED_FRACTION = 0.18
 const COLLAR_COLOR_MAX_REAR_FRACTION = 0.48
+const COLLAR_STANDALONE_MIN_LIGHTNESS_GAP = 0.018
+const COLLAR_STANDALONE_MIN_SEED_FRACTION = 0.12
+const COLLAR_STANDALONE_MIN_GEOMETRY = 0.08
 const COLLAR_REFERENCE_SAMPLE_TARGET = 4096
 const COLLAR_REFERENCE_MATCH_DISTANCE = 40 * 40 * 7
 const COLLAR_REFERENCE_MIN_LAYER_SAMPLES = 64
@@ -144,6 +156,7 @@ interface RasterLayer {
     | 'dizzy'
     | 'squeeze'
     | 'cry'
+    | 'maniac'
   documentStrands?: HairStrand[]
 }
 
@@ -292,7 +305,9 @@ export async function prepareAnime25DRigPsd(
   layers = synthesizeMissingDizzyEyes(layers, rig.anchors)
   layers = synthesizeMissingSqueezeEyes(layers, rig.anchors)
   layers = synthesizeMissingCryEyes(layers, rig.anchors)
+  layers = synthesizeMissingManiacEyeShadows(layers, rig.anchors)
   layers = synthesizeMissingMouthExpressions(layers, rig.anchors)
+  layers = synthesizeMissingExpressionSymbols(layers, rig.anchors)
   layers = splitHighCollarOcclusion(layers, rig.anchors, sourceReference)
   layers.forEach((layer, index) => {
     layer.order = index
@@ -573,12 +588,6 @@ function splitHighCollarOcclusion(
   const centerX = neck.left + neck.width / 2
   const halfWidth = Math.max(1, neck.width / 2)
   const exposedHeight = exposedBottom - exposedTop
-  const colorRearMask = segmentRearCollarByColor(
-    neck,
-    topwear,
-    exposedTop,
-    exposedBottom,
-  )
   const referenceMask = trustedSourceReference
     ? buildCollarReferenceMask(
         trustedSourceReference,
@@ -588,6 +597,16 @@ function splitHighCollarOcclusion(
         exposedBottom,
       )
     : undefined
+  // Keep the reference-assisted path stable. A standalone PSD needs a full
+  // front/rear partition because there is no visible master pixel to classify
+  // the overlap; a rear-only color mask would move the entire front collar
+  // behind the neck.
+  const colorRearMask = trustedSourceReference
+    ? segmentRearCollarByColor(neck, topwear, exposedTop, exposedBottom, false)
+    : undefined
+  const standaloneMask = trustedSourceReference
+    ? undefined
+    : segmentRearCollarByColor(neck, topwear, exposedTop, exposedBottom, true)
   let minimumX = topwear.width
   let minimumY = topwear.height
   let maximumX = -1
@@ -629,15 +648,35 @@ function splitHighCollarOcclusion(
         referenceClass === COLLAR_REFERENCE_REAR ? 1 : 0
       const referenceFrontAmount =
         referenceClass === COLLAR_REFERENCE_FRONT ? 1 : 0
+      const standaloneBlend = collarStandaloneRearAmount(standaloneMask, x, y)
+      const standaloneRearAmount = standaloneBlend >= 0 ? standaloneBlend : 0
+      const standaloneFrontAmount =
+        standaloneBlend >= 0 ? 1 - standaloneBlend : 0
       const fallbackRearAmount =
-        !colorRearMask && !referenceMask ? geometricRearAmount : 0
-      const semanticRearAmount = Math.max(
+        !colorRearMask && !referenceMask && !standaloneMask
+          ? geometricRearAmount
+          : 0
+      const fallbackFrontAmount =
+        !colorRearMask && !referenceMask && !standaloneMask
+          ? 1 - geometricRearAmount
+          : 0
+      const definitiveRearAmount = Math.max(
         colorRearAmount,
         referenceRearAmount,
+      )
+      const semanticRearAmount = Math.max(
+        definitiveRearAmount,
+        standaloneRearAmount,
         fallbackRearAmount,
       )
       const semanticFrontAmount =
-        semanticRearAmount > 0 ? 0 : referenceFrontAmount
+        definitiveRearAmount > 0
+          ? 0
+          : Math.max(
+              referenceFrontAmount,
+              standaloneFrontAmount,
+              fallbackFrontAmount,
+            )
       const overlapAmount = neckAlpha / 255
       const rearAmount = semanticRearAmount * overlapAmount
       const frontAmount = semanticFrontAmount * overlapAmount
@@ -837,14 +876,17 @@ function sourceReferenceAgreesWithLayers(
 /**
  * Split the collar palette before assigning depth. K-means operates in OKLab
  * so luminance differences remain useful across pale, saturated, and dark
- * outfits. Only broad dark components connected to the upper collar band are
- * accepted; equally dark capes and metal outlines lower down stay in front.
+ * outfits. A trusted reference keeps the conservative dark-component mask;
+ * standalone PSDs instead follow the largest darker upper-edge material
+ * through the collar geometry and classify the complementary overlap as the
+ * front collar.
  */
 function segmentRearCollarByColor(
   neck: RasterLayer,
   topwear: RasterLayer,
   exposedTop: number,
   exposedBottom: number,
+  standalone: boolean,
 ): CollarColorMask | undefined {
   const left = Math.ceil(neck.left)
   const right = Math.floor(neck.left + neck.width)
@@ -945,18 +987,52 @@ function segmentRearCollarByColor(
 
   let rearLabel = -1
   let rearSeedCount = 0
-  centroids.forEach((centroid, index) => {
-    if (
-      centroid[0] >= upperLightness - COLLAR_COLOR_MIN_LIGHTNESS_GAP ||
-      seedCounts[index] <= rearSeedCount
-    ) {
-      return
+  if (standalone) {
+    // The rear lining is normally darker than the upper collar as a whole,
+    // but pale outfits can have only a small luminance gap. Prefer the largest
+    // upper-edge cluster that is meaningfully darker; falling back to the
+    // dominant cluster still supports nearly monochrome collars.
+    centroids.forEach((centroid, index) => {
+      const count = seedCounts[index]
+      if (
+        centroid[0] >= upperLightness - COLLAR_STANDALONE_MIN_LIGHTNESS_GAP ||
+        count <= rearSeedCount
+      ) {
+        return
+      }
+      rearLabel = index
+      rearSeedCount = count
+    })
+    if (rearLabel < 0) {
+      seedCounts.forEach((count, index) => {
+        if (count <= rearSeedCount) return
+        rearLabel = index
+        rearSeedCount = count
+      })
     }
-    rearLabel = index
-    rearSeedCount = seedCounts[index]
-  })
+  } else {
+    centroids.forEach((centroid, index) => {
+      if (
+        centroid[0] >= upperLightness - COLLAR_COLOR_MIN_LIGHTNESS_GAP ||
+        seedCounts[index] <= rearSeedCount
+      ) {
+        return
+      }
+      rearLabel = index
+      rearSeedCount = seedCounts[index]
+    })
+  }
   if (rearLabel < 0 || rearSeedCount < Math.max(12, width * 0.08)) {
     return undefined
+  }
+  if (standalone) {
+    const seedSampleCount = seedCounts.reduce((sum, count) => sum + count, 0)
+    if (
+      rearSeedCount / Math.max(1, seedSampleCount) <
+      COLLAR_STANDALONE_MIN_SEED_FRACTION
+    ) {
+      return undefined
+    }
   }
 
   const labelGrid = new Int8Array(width * height)
@@ -970,6 +1046,7 @@ function segmentRearCollarByColor(
     height,
     rearLabel,
     seedHeight,
+    standalone,
   )
   const best = components[0]
   if (
@@ -997,7 +1074,29 @@ function segmentRearCollarByColor(
       if (rowMaximum[y] < rowMinimum[y]) continue
       const start = Math.max(0, rowMinimum[y] - 1)
       const end = Math.min(width - 1, rowMaximum[y] + 1)
-      mask.fill(1, y * width + start, y * width + end + 1)
+      for (let x = start; x <= end; x += 1) {
+        if (
+          standalone &&
+          collarBoundaryRearAmount(
+            x,
+            y,
+            width / 2,
+            width / 2,
+            0,
+            Math.max(1, height - 1),
+          ) < COLLAR_STANDALONE_MIN_GEOMETRY
+        ) {
+          continue
+        }
+        mask[y * width + x] = COLLAR_REFERENCE_REAR
+      }
+    }
+  }
+  if (standalone) {
+    for (let pixel = 0; pixel < mask.length; pixel += 1) {
+      if (labelGrid[pixel] >= 0 && mask[pixel] === 0) {
+        mask[pixel] = COLLAR_REFERENCE_FRONT
+      }
     }
   }
   return { left, top: exposedTop, width, height, data: mask }
@@ -1009,11 +1108,11 @@ function collarColorComponents(
   height: number,
   rearLabel: number,
   seedHeight: number,
+  standalone: boolean,
 ): CollarColorComponent[] {
-  const maximumY = Math.min(
-    height,
-    Math.ceil(height * COLLAR_COLOR_MAX_REAR_FRACTION),
-  )
+  const maximumY = standalone
+    ? height
+    : Math.min(height, Math.ceil(height * COLLAR_COLOR_MAX_REAR_FRACTION))
   const visited = new Uint8Array(width * height)
   const components: CollarColorComponent[] = []
   for (let y = 0; y < seedHeight; y += 1) {
@@ -1042,6 +1141,19 @@ function collarColorComponents(
         ]
         for (const [nextX, nextY] of neighbours) {
           if (nextX < 0 || nextX >= width || nextY < 0 || nextY >= maximumY) {
+            continue
+          }
+          if (
+            standalone &&
+            collarBoundaryRearAmount(
+              nextX,
+              nextY,
+              width / 2,
+              width / 2,
+              0,
+              Math.max(1, height - 1),
+            ) < COLLAR_STANDALONE_MIN_GEOMETRY
+          ) {
             continue
           }
           const next = nextY * width + nextX
@@ -1074,6 +1186,59 @@ function collarColorMaskAt(
     return 0
   }
   return mask.data[localY * mask.width + localX]
+}
+
+/**
+ * Feather only the internal front/rear seam of a standalone PSD mask. Pixels
+ * outside the classified overlap are ignored, preserving the source layer's
+ * own antialiased outer contour while avoiding a rigid cut between two meshes.
+ */
+function collarStandaloneRearAmount(
+  mask: CollarReferenceMask | undefined,
+  x: number,
+  y: number,
+): number {
+  if (!mask) return -1
+  const localX = x - mask.left
+  const localY = y - mask.top
+  if (
+    localX < 0 ||
+    localX >= mask.width ||
+    localY < 0 ||
+    localY >= mask.height
+  ) {
+    return -1
+  }
+  const center = mask.data[localY * mask.width + localX]
+  if (center === 0) return -1
+
+  let rearWeight = 0
+  let classifiedWeight = 0
+  for (
+    let sampleY = Math.max(0, localY - 1);
+    sampleY <= Math.min(mask.height - 1, localY + 1);
+    sampleY += 1
+  ) {
+    for (
+      let sampleX = Math.max(0, localX - 1);
+      sampleX <= Math.min(mask.width - 1, localX + 1);
+      sampleX += 1
+    ) {
+      const value = mask.data[sampleY * mask.width + sampleX]
+      if (value === 0) continue
+      const horizontalDistance = Math.abs(sampleX - localX)
+      const verticalDistance = Math.abs(sampleY - localY)
+      const weight =
+        horizontalDistance === 0 && verticalDistance === 0
+          ? 4
+          : horizontalDistance + verticalDistance === 1
+            ? 2
+            : 1
+      classifiedWeight += weight
+      if (value === COLLAR_REFERENCE_REAR) rearWeight += weight
+    }
+  }
+  return classifiedWeight > 0 ? rearWeight / classifiedWeight : -1
 }
 
 function collarColorDistance(
@@ -1502,7 +1667,9 @@ function synthesizeMissingCryEyes(
       side,
       group: 'head',
       left: Math.round(eye.icx - bitmap.width / 2),
-      top: Math.round(eyeMarkCenterY - bitmap.height * 0.23),
+      // Anchor the squeeze mark by eye width so a longer tear canvas extends
+      // downward without moving the eye artwork or the tear root.
+      top: Math.round(eyeMarkCenterY - bitmap.width * 0.305),
       width: bitmap.width,
       height: bitmap.height,
       data: bitmap.data,
@@ -1525,6 +1692,66 @@ function synthesizeMissingCryEyes(
   return output
 }
 
+function synthesizeMissingManiacEyeShadows(
+  layers: RasterLayer[],
+  anchors: Anime25DRiggerAnchors,
+): RasterLayer[] {
+  const generated: RasterLayer[] = []
+  const usedIds = new Set(layers.map((layer) => layer.id))
+  for (const side of ['left', 'right'] as const) {
+    if (
+      layers.some(
+        (layer) => layer.role === 'maniac-eye-shadow' && layer.side === side,
+      )
+    ) {
+      continue
+    }
+    const eye = side === 'left' ? anchors.eyeL : anchors.eyeR
+    if (!eye) continue
+    const eyelash = layers.find(
+      (layer) => layer.role === 'eyelash' && layer.side === side,
+    )
+    const bitmap = createManiacEyeShadowBitmap(
+      maniacEyeShadowGeneratedSize(eye),
+      sampleDizzyEyeTint(eyelash?.data),
+      side,
+    )
+    const eyeHeight = Math.max(1, eye.y1 - eye.y0)
+    const eyeWidth = Math.max(1, eye.x1 - eye.x0)
+    const inwardOffset = (side === 'left' ? 1 : -1) * eyeWidth * 0.12
+    generated.push({
+      id: uniquePartId(`maniac-eye-shadow-${side}`, usedIds),
+      role: 'maniac-eye-shadow',
+      sourceName: `maniac-eye-shadow-${side}`,
+      order: 0,
+      side,
+      group: 'head',
+      left: Math.round(eye.icx + inwardOffset - bitmap.width / 2),
+      // Sink the shadow into the eyewhite edge. Its lower depth lets the
+      // eyewhite crop the overlap, so the visible shadow starts flush with the
+      // lower lid instead of floating on the cheek.
+      top: Math.round(eye.y1 - eyeHeight * 0.22),
+      width: bitmap.width,
+      height: bitmap.height,
+      data: bitmap.data,
+      synthetic: true,
+    })
+  }
+  if (generated.length === 0) return layers
+
+  const output = [...layers]
+  const firstEyeLayer = output.findIndex(
+    (layer) =>
+      layer.role === 'eyewhite' ||
+      layer.role === 'irides' ||
+      layer.role === 'eyelash' ||
+      layer.role === 'eye-close',
+  )
+  if (firstEyeLayer >= 0) output.splice(firstEyeLayer, 0, ...generated)
+  else output.push(...generated)
+  return output
+}
+
 function synthesizeMissingMouthExpressions(
   layers: RasterLayer[],
   anchors: Anime25DRiggerAnchors,
@@ -1535,7 +1762,12 @@ function synthesizeMissingMouthExpressions(
   if (!reference) return layers
   const expressions: ReadonlyArray<{
     role:
-      'mouth-open' | 'mouth-wide' | 'mouth-round' | 'mouth-narrow' | 'mouth-cry'
+      | 'mouth-open'
+      | 'mouth-wide'
+      | 'mouth-round'
+      | 'mouth-narrow'
+      | 'mouth-cry'
+      | 'mouth-maniac'
     kind: MouthExpressionKind
   }> = [
     { role: 'mouth-open', kind: 'open' },
@@ -1543,13 +1775,18 @@ function synthesizeMissingMouthExpressions(
     { role: 'mouth-round', kind: 'round' },
     { role: 'mouth-narrow', kind: 'narrow' },
     { role: 'mouth-cry', kind: 'cry' },
+    { role: 'mouth-maniac', kind: 'maniac' },
   ]
   const missing = expressions.filter(
     ({ role }) => !layers.some((layer) => layer.role === role),
   )
   if (missing.length === 0) return layers
 
-  const sizes = mouthExpressionGeneratedSizes(reference)
+  const sizes = mouthExpressionGeneratedSizes(reference, {
+    width: Math.max(1, anchors.face.x1 - anchors.face.x0),
+    height: Math.max(1, anchors.face.y1 - anchors.face.y0),
+    mouthToChin: Math.max(1, anchors.face.y1 - anchors.mouth.cy),
+  })
   const palette = sampleMouthExpressionPalette(reference.data)
   const usedIds = new Set(layers.map((layer) => layer.id))
   const generated: RasterLayer[] = []
@@ -1567,7 +1804,10 @@ function synthesizeMissingMouthExpressions(
       group: 'head',
       left: Math.round(anchors.mouth.cx - bitmap.width / 2),
       top: Math.round(
-        anchors.mouth.cy - bitmap.height * (kind === 'cry' ? 0.46 : 0.5),
+        anchors.mouth.cy -
+          bitmap.height *
+            (kind === 'cry' ? 0.46 : kind === 'maniac' ? 0.61 : 0.5) +
+          (kind === 'maniac' ? 3 : 0),
       ),
       width: bitmap.width,
       height: bitmap.height,
@@ -1585,13 +1825,75 @@ function synthesizeMissingMouthExpressions(
       output[index].role === 'mouth-close' ||
       output[index].role === 'mouth-wide' ||
       output[index].role === 'mouth-round' ||
-      output[index].role === 'mouth-narrow'
+      output[index].role === 'mouth-narrow' ||
+      output[index].role === 'mouth-cry' ||
+      output[index].role === 'mouth-maniac'
     ) {
       insertAt = index
     }
   }
   output.splice(insertAt + 1, 0, ...generated)
   return output
+}
+
+function synthesizeMissingExpressionSymbols(
+  layers: RasterLayer[],
+  anchors: Anime25DRiggerAnchors,
+): RasterLayer[] {
+  const needsAnger = !layers.some((layer) => layer.role === 'anger-mark')
+  const needsSweat = !layers.some((layer) => layer.role === 'speechless-sweat')
+  if (!needsAnger && !needsSweat) return layers
+
+  const faceWidth = Math.max(1, anchors.face.x1 - anchors.face.x0)
+  const faceHeight = Math.max(1, anchors.face.y1 - anchors.face.y0)
+  const sizes = expressionSymbolGeneratedSizes(faceWidth)
+  const usedIds = new Set(layers.map((layer) => layer.id))
+  const eyelash = layers.find((layer) => layer.role === 'eyelash')
+  const tint = sampleDizzyEyeTint(eyelash?.data)
+  const generated: RasterLayer[] = []
+
+  if (needsAnger) {
+    const bitmap = createAngerMarkBitmap(sizes.anger, tint)
+    const centerX = anchors.face.x0 + faceWidth * 0.13
+    const centerY = anchors.face.y0 + faceHeight * 0.22
+    generated.push({
+      id: uniquePartId('anger-mark', usedIds),
+      role: 'anger-mark',
+      sourceName: 'anger-mark',
+      order: 0,
+      side: null,
+      group: 'head',
+      left: Math.round(centerX - bitmap.width / 2),
+      top: Math.round(centerY - bitmap.height / 2),
+      width: bitmap.width,
+      height: bitmap.height,
+      data: bitmap.data,
+      synthetic: true,
+    })
+  }
+
+  if (needsSweat) {
+    const bitmap = createSpeechlessSweatBitmap(sizes.speechless)
+    const eyeY = anchors.eyeR?.icy ?? anchors.eyeL?.icy
+    const centerX = anchors.face.x1 - faceWidth * 0.015
+    const centerY = eyeY ?? anchors.face.y0 + faceHeight * 0.48
+    generated.push({
+      id: uniquePartId('speechless-sweat', usedIds),
+      role: 'speechless-sweat',
+      sourceName: 'speechless-sweat',
+      order: 0,
+      side: null,
+      group: 'head',
+      left: Math.round(centerX - bitmap.width / 2),
+      top: Math.round(centerY - bitmap.height * 0.2),
+      width: bitmap.width,
+      height: bitmap.height,
+      data: bitmap.data,
+      synthetic: true,
+    })
+  }
+
+  return [...layers, ...generated]
 }
 
 function validPixelData(value: PixelData | undefined): value is PixelData {
@@ -1676,6 +1978,7 @@ function assignCrossfadeSlots(layers: RasterLayer[]): void {
     ['mouth-narrow', 'narrow'],
     ['mouth-close', 'closed'],
     ['mouth-cry', 'cry'],
+    ['mouth-maniac', 'maniac'],
   ] as const
   for (const [role, variant] of mouthVariants) {
     const layer = layers.find((candidate) => candidate.role === role)
@@ -1713,9 +2016,10 @@ function validateCharacterAssetLayers(layers: readonly RasterLayer[]): void {
     !hasRole('mouth-round') ||
     !hasRole('mouth-narrow') ||
     !hasRole('mouth-close') ||
-    !hasRole('mouth-cry')
+    !hasRole('mouth-cry') ||
+    !hasRole('mouth-maniac')
   ) {
-    missing.push('open/wide/round/narrow/closed/cry mouth')
+    missing.push('open/wide/round/narrow/closed/cry/maniac mouth')
   }
   if (!hasSides('handwear')) {
     missing.push('left/right sleeve-forearm-hand fragments')
@@ -1897,6 +2201,13 @@ async function packAtlas(
 }
 
 function visibleInAnalysisReference(layer: RasterLayer): boolean {
+  if (
+    layer.role === 'maniac-eye-shadow' ||
+    layer.role === 'anger-mark' ||
+    layer.role === 'speechless-sweat'
+  ) {
+    return false
+  }
   if (
     (layer.slot === 'eye-left' || layer.slot === 'eye-right') &&
     layer.variant !== 'open'
@@ -2137,6 +2448,13 @@ function handlesForLayer(
   const has = (id: string) => bones.some((bone) => bone.id === id)
   const side = layer.side
   if (layer.role === 'face') return [fullLayerHandle(layer, 'face')]
+  if (
+    layer.role === 'maniac-eye-shadow' ||
+    layer.role === 'anger-mark' ||
+    layer.role === 'speechless-sweat'
+  ) {
+    return [fullLayerHandle(layer, 'face')]
+  }
   if (side && layer.role === 'eyewhite' && has(`a25d-eyewhite-${side}`)) {
     return [fullLayerHandle(layer, `a25d-eyewhite-${side}`)]
   }
@@ -2163,7 +2481,8 @@ function handlesForLayer(
       layer.role === 'mouth-round' ||
       layer.role === 'mouth-narrow' ||
       layer.role === 'mouth-close' ||
-      layer.role === 'mouth-cry') &&
+      layer.role === 'mouth-cry' ||
+      layer.role === 'mouth-maniac') &&
     has('mouth')
   ) {
     return [fullLayerHandle(layer, 'mouth')]

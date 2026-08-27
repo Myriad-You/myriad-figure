@@ -11,6 +11,7 @@ export interface MouthTransitionInput {
   mouthWide: number
   mouthRound: number
   mouthNarrow: number
+  maniac: number
   mouthSeal: number
   mouthEase: number
 }
@@ -166,11 +167,14 @@ function resolveMouthMaterialScores(
   const round = clamp01(input.mouthRound) * shapeScale
   const narrow = clamp01(input.mouthNarrow) * shapeScale
   const ordinary = Math.max(0, 1 - wide - round - narrow)
-  output[0] = 1 - presence
-  output[1] = presence * ordinary
-  output[2] = presence * wide
-  output[3] = presence * round
-  output[4] = presence * narrow
+  const maniac = smootherstep(clamp01(input.maniac))
+  const regular = 1 - maniac
+  output[0] = (1 - presence) * regular
+  output[1] = presence * ordinary * regular
+  output[2] = presence * wide * regular
+  output[3] = presence * round * regular
+  output[4] = presence * narrow * regular
+  output[5] = maniac
 }
 
 function mouthMaterialPresence(input: MouthTransitionInput): number {
@@ -185,6 +189,7 @@ function switchMargin(
   second: SpeechMouthMaterial,
 ): number {
   if (first === 'mouthClose' || second === 'mouthClose') return 0.04
+  if (first === 'mouthManiac' || second === 'mouthManiac') return 0.055
   const wideRound =
     (first === 'mouthWide' && second === 'mouthRound') ||
     (first === 'mouthRound' && second === 'mouthWide')

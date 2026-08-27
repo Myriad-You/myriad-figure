@@ -69,9 +69,10 @@ test('symbol artwork replaces both open and closed eyes without stacking', () =>
   assert.equal(fadeOpacity(layer('eyeCry'), { ...both, eyeCry: 1 }), 0)
 })
 
-test('cry mouth replaces normal speaking and closed artwork without stacking', () => {
-  const layer = (fade: 'mouthOpen' | 'mouthClose' | 'mouthCry') =>
-    ({ fade, side: null }) as never
+test('special mouths replace normal speaking and closed artwork without stacking', () => {
+  const layer = (
+    fade: 'mouthOpen' | 'mouthClose' | 'mouthCry' | 'mouthManiac',
+  ) => ({ fade, side: null }) as never
   const crying = { ...IDENTITY_DRIVER, eyeCry: 1, mouthOpen: 0.5 }
   assert.equal(fadeOpacity(layer('mouthCry'), crying), 1)
   assert.equal(fadeOpacity(layer('mouthOpen'), crying), 0)
@@ -81,4 +82,49 @@ test('cry mouth replaces normal speaking and closed artwork without stacking', (
   assert.equal(fadeOpacity(layer('mouthCry'), talking), 0)
   assert.equal(fadeOpacity(layer('mouthOpen'), talking), 1)
   assert.equal(fadeOpacity(layer('mouthClose'), talking), 0)
+
+  const maniac = { ...IDENTITY_DRIVER, maniac: 1 }
+  assert.equal(fadeOpacity(layer('mouthManiac'), maniac), 1)
+  assert.equal(fadeOpacity(layer('mouthOpen'), maniac), 0)
+  assert.equal(fadeOpacity(layer('mouthClose'), maniac), 0)
+})
+
+test('shows semantic accents only when replacement-eye expressions are clear', () => {
+  const layer = (fade: 'angerMark' | 'speechlessSweat') =>
+    ({ fade, side: null }) as never
+  assert.equal(
+    fadeOpacity(layer('angerMark'), { ...IDENTITY_DRIVER, anger: 1 }),
+    1,
+  )
+  assert.equal(
+    fadeOpacity(layer('speechlessSweat'), {
+      ...IDENTITY_DRIVER,
+      speechless: 1,
+    }),
+    1,
+  )
+  assert.equal(
+    fadeOpacity(layer('speechlessSweat'), {
+      ...IDENTITY_DRIVER,
+      anger: 1,
+      speechless: 1,
+    }),
+    0,
+  )
+  assert.equal(
+    fadeOpacity(layer('angerMark'), {
+      ...IDENTITY_DRIVER,
+      anger: 1,
+      eyeCry: 1,
+    }),
+    0,
+  )
+  assert.equal(
+    fadeOpacity(layer('angerMark'), {
+      ...IDENTITY_DRIVER,
+      anger: 1,
+      maniac: 1,
+    }),
+    0,
+  )
 })

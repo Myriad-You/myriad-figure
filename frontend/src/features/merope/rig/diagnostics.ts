@@ -55,16 +55,14 @@ export function rigCapabilityRegressions(
   )
 }
 
-export function diagnoseRig(
-  manifest: MeropeRigManifest,
-): RigDiagnosticReport {
+export function diagnoseRig(manifest: MeropeRigManifest): RigDiagnosticReport {
   const issues: RigDiagnostic[] = []
   const semantics = resolveRigSemantics(manifest)
   const facial = Boolean(
     semantics.bones.face ||
-      semantics.bones['left-eye'] ||
-      semantics.bones['right-eye'] ||
-      semantics.bones.mouth,
+    semantics.bones['left-eye'] ||
+    semantics.bones['right-eye'] ||
+    semantics.bones.mouth,
   )
   const lipSync = Boolean(semantics.bones.mouth)
   const secondaryMotion = semantics.secondaryBoneIds.length > 0
@@ -79,9 +77,9 @@ export function diagnoseRig(
     (facialSlots.has('iris-left') && facialSlots.has('iris-right'))
   const gaze = Boolean(
     semantics.bones['left-eye'] &&
-      semantics.bones['right-eye'] &&
-      semantics.bones.head &&
-      splitEyeGaze,
+    semantics.bones['right-eye'] &&
+    semantics.bones.head &&
+    splitEyeGaze,
   )
   const mouthVariantCount = (manifest.parts || []).filter(
     (part) => part.slot === 'mouth',
@@ -90,7 +88,7 @@ export function diagnoseRig(
     (part) => part.slot === 'head-expression',
   ).length
   const facialVariants = anime25d
-    ? splitEyeGaze && mouthVariantCount >= 6
+    ? splitEyeGaze && mouthVariantCount >= 7
     : (splitEyeGaze && mouthVariantCount >= 4) ||
       (headExpressionCount >= 4 && mouthVariantCount >= 4)
   const deformableSkinning = (manifest.parts || []).some((part) =>
@@ -100,9 +98,9 @@ export function diagnoseRig(
   )
   const outfitAware = Boolean(
     manifest.outfitProfile &&
-      ['forehead', 'chest', 'chin'].every(
-        (anchor) => manifest.semanticAnchors?.[anchor],
-      ),
+    ['forehead', 'chest', 'chin'].every(
+      (anchor) => manifest.semanticAnchors?.[anchor],
+    ),
   )
   const collisionAware = ['head', 'torso'].every((id) =>
     manifest.spatialProfile?.collisionVolumes.some(

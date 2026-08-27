@@ -16,13 +16,16 @@ test('keeps one explicit legacy IR readable while new imports use current IR', (
 })
 
 test('character imports require independent generated expression variants', () => {
-  assert.equal(CHARACTER_ASSET_CONTRACT_VERSION, 8)
+  assert.equal(CHARACTER_ASSET_CONTRACT_VERSION, 11)
   assert.ok(CHARACTER_ASSET_REQUIRED_CAPABILITIES.includes('dizzy-eye-variant'))
   assert.ok(
     CHARACTER_ASSET_REQUIRED_CAPABILITIES.includes('squeeze-eye-variant'),
   )
   assert.ok(CHARACTER_ASSET_REQUIRED_CAPABILITIES.includes('cry-eye-variant'))
   assert.ok(CHARACTER_ASSET_REQUIRED_CAPABILITIES.includes('cry-mouth-variant'))
+  assert.ok(
+    CHARACTER_ASSET_REQUIRED_CAPABILITIES.includes('maniac-mouth-variant'),
+  )
   assert.deepEqual(RIG_PRESENTATION_SLOTS['eye-left'].variants, [
     'open',
     'closed',
@@ -41,6 +44,7 @@ test('character imports require independent generated expression variants', () =
   assert.ok(RIG_PRESENTATION_SLOTS.mouth.variants.includes('wide'))
   assert.ok(RIG_PRESENTATION_SLOTS.mouth.variants.includes('round'))
   assert.ok(RIG_PRESENTATION_SLOTS.mouth.variants.includes('narrow'))
+  assert.ok(RIG_PRESENTATION_SLOTS.mouth.variants.includes('maniac'))
 })
 
 test('GPU capacity covers every manifest bone accepted by the contract', () => {

@@ -57,16 +57,22 @@ asymmetric chevron-and-tear eyes from the independent eye anchors. All three
 presentation variants are compiled into the atlas and are never emulated by
 warping the open eye.
 
+Import also synthesizes optional `anger_mark` and `speechless_sweat` manga
+accents from the face scale. They stay out of the neutral analysis reference;
+runtime facial deformation remains the primary expression signal and stages
+the accents after the brows, gaze, lids, and mouth have begun moving.
+
 See-through's plain `mouth` is treated as the static closed portrait drawing,
 not as a speaking phoneme. Import keeps that artwork and generates a small
 character-tinted cel-style `mouth_open`, `mouth_wide`, `mouth_round`, and
-`mouth_narrow` shapes plus an independent `mouth_cry` glyph.
+`mouth_narrow` shapes plus independent `mouth_cry` and face-scaled
+`mouth_maniac` glyphs.
 The runtime morphs the speaking meshes through one continuous articulation
 envelope. A lip-seal channel preserves short bilabial closures independently
 from the slower jaw response. The two strongest visemes form a shared
 dominance bridge, while a stateful selector draws exactly one ordinary mouth
 texture at a time; crying replaces that mouth stack.
-Import also records the five alpha silhouettes and their ten pairwise bridge
+Import also records the six alpha silhouettes and their fifteen pairwise bridge
 profiles. Jaw travel is then driven on a separate bounded spring: open and
 round visemes use more mandible motion, wide and narrow visemes rely more on
 the lip mesh, and short lip seals do not snap the jaw shut. Only the mouth

@@ -94,16 +94,16 @@ test('Anime2.5DRig diagnostics do not score retired limb gates', () => {
       { id: 'a25d-mouth-round', slot: 'mouth', variant: 'round' },
       { id: 'a25d-mouth-narrow', slot: 'mouth', variant: 'narrow' },
       { id: 'a25d-mouth-cry', slot: 'mouth', variant: 'cry' },
+      { id: 'a25d-mouth-maniac', slot: 'mouth', variant: 'maniac' },
     ],
   } as unknown as MeropeRigManifest)
   assert.equal(report.profile, 'anime25d')
   assert.equal(report.capabilities.facialVariants, true)
   assert.equal(
     report.issues.some((item) =>
-      [
-        'missing-spatial-profile',
-        'incomplete-presentation-coverage',
-      ].includes(item.code),
+      ['missing-spatial-profile', 'incomplete-presentation-coverage'].includes(
+        item.code,
+      ),
     ),
     false,
   )

@@ -15,6 +15,7 @@ export const ANIME25D_LAYER_DEPTH = {
   ears: 0.96,
   face: 1,
   facedetail: 1.02,
+  'maniac-eye-shadow': 1.04,
   headwear: 1.2,
   'mouth-close': 1.08,
   'mouth-open': 1.08,
@@ -22,6 +23,7 @@ export const ANIME25D_LAYER_DEPTH = {
   'mouth-round': 1.08,
   'mouth-narrow': 1.08,
   'mouth-cry': 1.08,
+  'mouth-maniac': 1.08,
   nose: 1.15,
   eyewhite: 1.06,
   eyebrow: 1.14,
@@ -32,6 +34,8 @@ export const ANIME25D_LAYER_DEPTH = {
   'eye-squeeze': 1.12,
   'eye-cry': 1.12,
   'front-hair': 1.28,
+  'anger-mark': 1.3,
+  'speechless-sweat': 1.3,
 } as const
 
 export type Anime25DLayerRole = keyof typeof ANIME25D_LAYER_DEPTH

@@ -183,12 +183,16 @@ function playbackFade(role: string): Anime25DFade | null {
   if (role === 'eye-dizzy') return 'eyeDizzy'
   if (role === 'eye-squeeze') return 'eyeSqueeze'
   if (role === 'eye-cry') return 'eyeCry'
+  if (role === 'maniac-eye-shadow') return 'maniacEyeShadow'
+  if (role === 'anger-mark') return 'angerMark'
+  if (role === 'speechless-sweat') return 'speechlessSweat'
   if (role === 'mouth-open') return 'mouthOpen'
   if (role === 'mouth-wide') return 'mouthWide'
   if (role === 'mouth-round') return 'mouthRound'
   if (role === 'mouth-narrow') return 'mouthNarrow'
   if (role === 'mouth-close') return 'mouthClose'
   if (role === 'mouth-cry') return 'mouthCry'
+  if (role === 'mouth-maniac') return 'mouthManiac'
   return null
 }
 
