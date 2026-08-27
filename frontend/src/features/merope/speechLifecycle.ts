@@ -15,6 +15,11 @@ export interface SpeechLifecycleScheduler {
   clearTimeout: (timer: unknown) => void
 }
 
+/** Mutable occupancy flag so singing can yield until finishNow, not just the end event. */
+export interface SpeechOccupancy {
+  current: boolean
+}
+
 const MIN_END_TAIL_MS = 180
 const MAX_UTTERANCE_MS = 12_000
 const MAX_BUFFERED_TEXT = 2_000
@@ -39,11 +44,17 @@ export class SpeechLifecycleController {
   private autoActive = false
   private speechActive = false
   private timer: unknown = null
+  private readonly scheduler: SpeechLifecycleScheduler
+  private readonly occupancy?: SpeechOccupancy
 
   constructor(
     private readonly target: SpeechLifecycleTarget,
-    private readonly scheduler: SpeechLifecycleScheduler = defaultScheduler,
-  ) {}
+    scheduler: SpeechLifecycleScheduler = defaultScheduler,
+    occupancy?: SpeechOccupancy,
+  ) {
+    this.scheduler = scheduler ?? defaultScheduler
+    this.occupancy = occupancy
+  }
 
   handle(event: MeropeSpeechEventDetail): void {
     if (event.phase === 'cancel') {
@@ -112,6 +123,7 @@ export class SpeechLifecycleController {
     this.authored = false
     this.autoActive = true
     this.speechActive = true
+    this.setOccupancy(true)
     this.target.setSpeechActive(true)
     this.target.setAutoSpeech(true)
     this.scheduleWatchdog()
@@ -155,6 +167,7 @@ export class SpeechLifecycleController {
       this.target.setAutoSpeech(false)
     }
     if (this.speechActive) this.target.setSpeechActive(false)
+    this.setOccupancy(false)
     this.activeMessageId = null
     this.activeUtteranceId = null
     this.startedAt = 0
@@ -168,6 +181,11 @@ export class SpeechLifecycleController {
     if (this.timer === null) return
     this.scheduler.clearTimeout(this.timer)
     this.timer = null
+  }
+
+  private setOccupancy(busy: boolean): void {
+    if (!this.occupancy || this.occupancy.current === busy) return
+    this.occupancy.current = busy
   }
 }
 

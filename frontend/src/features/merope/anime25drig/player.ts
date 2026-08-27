@@ -1,5 +1,6 @@
 import type { PerformanceDirective } from '../../../services/agent/types'
 import type { MeropeRigManifest } from '../rig/types'
+import type { SingingSpectrumDrive } from '../singing/singingGroove'
 import type {
   ChestDeformationRegion,
   ChestDynamicsTuning,
@@ -17,6 +18,11 @@ import { currentCopy } from '../../../i18n/localeCopy'
 import { cryEyeDisplayScale } from '../rig/cryEye'
 import { dizzyEyeDisplayScale } from '../rig/dizzyEye'
 import { squeezeEyeDisplayScale } from '../rig/squeezeEye'
+import {
+  applySingingGroove,
+  singingDriveAmount,
+  SingingGrooveController,
+} from '../singing/singingGroove'
 import { AmbientMotionController } from './ambientMotion'
 import {
   buildChestWeightField,
@@ -249,6 +255,7 @@ export interface Anime25DDriver {
   blink: boolean
   rand: boolean
   thinking: boolean
+  singing: boolean
   talk: boolean
   mouse: boolean
   phys: boolean
@@ -382,6 +389,7 @@ export const IDENTITY_DRIVER: Anime25DDriver = {
   blink: true,
   rand: true,
   thinking: false,
+  singing: false,
   talk: true,
   mouse: false,
   phys: true,
@@ -537,6 +545,9 @@ export class Anime25DPlayer {
   private nextBlink = 1.8
   private readonly ambientMotion = new AmbientMotionController()
   private readonly randomAction = new RandomActionController()
+  private readonly singingGroove = new SingingGrooveController()
+  private singingDrive: SingingSpectrumDrive | null = null
+  private singingDeform = 0
   private readonly thinkingMotion = new ThinkingMotionController()
   private readonly stylizedExpression = new StylizedExpressionMotionController()
   private stylizedMotion: Readonly<StylizedExpressionMotion> | null = null
@@ -668,6 +679,14 @@ export class Anime25DPlayer {
 
   setSpeechActive(active: boolean): void {
     this.speechActive = active
+  }
+
+  setSinging(active: boolean): void {
+    this.target.singing = active
+  }
+
+  setSingingSpectrum(drive: SingingSpectrumDrive | null): void {
+    this.singingDrive = drive
   }
 
   enqueueSpeechText(text: string, locale?: string): void {
@@ -872,10 +891,17 @@ export class Anime25DPlayer {
     const speech = this.speechMotion.sample(t, this.target.talk)
     this.jawEmphasis = speech.browAccent
     const speaking = this.speechActive || this.target.talk
+    const singing = this.target.singing
+    this.singingDeform +=
+      ((singing ? 1 : 0) - this.singingDeform) *
+      (1 - Math.exp(-(singing ? 5.5 : 1.05) * dt))
+    const groove = this.singingGroove.sample(t, singing, this.singingDrive)
+    applySingingGroove(tgt, groove, 1)
     // `talk` is a workbench preview generator, not ownership by real speech.
-    // Only authored speech suppresses autonomous idle actions.
+    // Agent speech suppresses idle actions; singing keeps them and switches
+    // the catalog to an excited groove driven by the live spectrum.
     const actionBlocked =
-      this.speechActive ||
+      (this.speechActive && !singing) ||
       angerTarget > 0.03 ||
       speechlessTarget > 0.03 ||
       maniacTarget > 0.03
@@ -883,6 +909,8 @@ export class Anime25DPlayer {
       t,
       this.target.rand && !pointerDriven,
       actionBlocked,
+      singing ? 'excited' : 'idle',
+      this.singingDrive ? singingDriveAmount(this.singingDrive) : 1,
     )
     const ambient = this.ambientMotion.sample(
       t,
@@ -1146,6 +1174,7 @@ export class Anime25DPlayer {
       'blink',
       'rand',
       'thinking',
+      'singing',
       'talk',
       'mouse',
       'phys',
@@ -1272,10 +1301,13 @@ export class Anime25DPlayer {
     const npy = A.neckPivot.y
     const bpx = A.bodyPivot.x
     const bpy = A.bodyPivot.y
-    const az = e.angleZ * 0.07
+    const singingLift = this.singingDeform
+    const az = e.angleZ * (0.07 + 0.19 * singingLift)
     const cz = Math.cos(az)
     const sz = Math.sin(az)
-    const ab = e.body * 0.028
+    // Keep waist rotation near idle while singing; boosting it swings the
+    // shoulder seam around a second pivot from the neck.
+    const ab = e.body * (0.028 + 0.04 * singingLift)
     const cb = Math.cos(ab)
     const sb = Math.sin(ab)
     const chestProfile = this.playback.chestProfile
@@ -1283,11 +1315,12 @@ export class Anime25DPlayer {
     const chestCy = this.chestRegion.centerY
     const chestRx = this.chestRegion.radiusX
     const chestRy = this.chestRegion.radiusY
-    const chestMotionMix = chestResponseMix(
-      e.bust,
-      this.chestDynamics.responseScale,
-    )
-    const chestFollow = chestFollowMix(e.bust, this.chestDynamics.followScale)
+    const chestMotionMix =
+      chestResponseMix(e.bust, this.chestDynamics.responseScale) *
+      (1 - 0.75 * singingLift)
+    const chestFollow =
+      chestFollowMix(e.bust, this.chestDynamics.followScale) *
+      (1 - 0.7 * singingLift)
     const chestCenterY = chestProfile
       ? chestCy + (e.bustY - 1) * 70 * fs
       : chestCy + e.bustY * 70 * fs
@@ -1301,6 +1334,9 @@ export class Anime25DPlayer {
     const inverseChestRy = 1 / chestRy
     const jawDrop = this.jaw.value * this.jawTravel
     const jawOpen = Math.max(0, this.jaw.value)
+    const maniacHeadOffset = this.stylizedMotion
+      ? this.stylizedMotion.maniacHeadPulse * 80 * fs
+      : 0
     const mHalfW = (A.mouth.x1 - A.mouth.x0) / 2
     const mouthTransition = this.mouthTransition.sample(e)
     this.activeMouthMaterial = mouthTransition.material
@@ -1578,24 +1614,21 @@ export class Anime25DPlayer {
               0,
               1,
             )
-            const localX =
-              ((rest[index] - source.x) / Math.max(1, source.w)) * 2 - 1
-            const upperLipAnchor = mouthMorph.centerY - mouthMorph.height * 0.42
-            x =
+            const upperMouthPulse = this.stylizedMotion.maniacUpperMouthPulse
+            const tongueRootAnchor =
+              mouthMorph.centerY - mouthMorph.height * 0.045
+            const scaledX =
               mouthMorph.centerX +
-              (x - mouthMorph.centerX) * this.stylizedMotion.maniacMouthScaleX
-            y =
-              upperLipAnchor +
-              (y - upperLipAnchor) * this.stylizedMotion.maniacMouthScaleY
-            // Pull the mouth-corner shadow outward and let the upper cavity
-            // follow the jaw, rather than leaving both in the upper-lip cell.
-            const jawPulse = this.stylizedMotion.maniacMouthScaleY - 1
-            const cornerWeight = smoothstep((Math.abs(localX) - 0.48) / 0.46)
-            const cavityWeight = smoothstep((localY - 0.08) / 0.7)
-            x += Math.sign(localX || 1) * jawPulse * 22 * fs * cornerWeight
-            y += jawPulse * fs * (7 * cavityWeight + 3 * cornerWeight)
-            const tongueWeight = smoothstep((localY - 0.43) / 0.5)
-            y += this.stylizedMotion.maniacTongueOffsetY * fs * tongueWeight
+              (x - mouthMorph.centerX) * (1 - upperMouthPulse * 0.5)
+            const scaledY =
+              tongueRootAnchor +
+              (y - tongueRootAnchor) * (1 + upperMouthPulse * 3.4)
+            // The reference holds the tongue and lower lip nearly still. The
+            // upper lip opens around the tongue root, while the face-locked
+            // corner shadows move only with the delayed head follow.
+            const upperMouthWeight = 1 - smoothstep((localY - 0.16) / 0.31)
+            x += (scaledX - x) * upperMouthWeight
+            y += (scaledY - y) * upperMouthWeight
           }
           const thM = e.mouthCAng * 0.24
           if (thM) {
@@ -1708,6 +1741,16 @@ export class Anime25DPlayer {
             fs *
             (-e.angleY * (9 + 30 * depthOffset) -
               e.angleY * depthOffset * (y - A.face.cy) * 0.05)
+        }
+        if (!layer.collarContact && maniacHeadOffset !== 0) {
+          const maniacHeadFollow = isHead
+            ? 1
+            : bn === 'neck'
+              ? neckHeadBlend
+              : isFrontCollar
+                ? frontCollarHeadBlend
+                : 0
+          y += maniacHeadOffset * maniacHeadFollow
         }
         if (!layer.collarContact) {
           const breathOffset = isHead
@@ -1908,12 +1951,12 @@ export class Anime25DPlayer {
       source.fade === 'mouthManiac'
     const maniacMouthMesh = source.fade === 'mouthManiac'
     const baseCols = Math.max(
-      maniacMouthMesh ? 10 : morphingMouth ? 6 : 2,
+      maniacMouthMesh ? 14 : morphingMouth ? 6 : 2,
       Math.round(source.w / cell),
     )
     const baseRows = Math.max(
       maniacMouthMesh
-        ? 8
+        ? 10
         : morphingMouth
           ? 4
           : source.role === 'eye-cry'
@@ -2479,6 +2522,7 @@ export function fadeOpacity(
   if (layer.fade === 'eyeDizzy') return dizzy
   if (layer.fade === 'eyeCry') return cry * (1 - dizzy)
   if (layer.fade === 'maniacEyeShadow') return maniac * symbolBlocker
+  if (layer.fade === 'maniacMouthShadow') return maniac * symbolBlocker
   if (layer.fade === 'angerMark') return anger * (1 - maniac) * symbolBlocker
   if (layer.fade === 'speechlessSweat') {
     return speechless * (1 - anger) * (1 - maniac) * symbolBlocker

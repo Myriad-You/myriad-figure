@@ -28,7 +28,7 @@ export type MeropeSpeechEventDetail =
       utteranceId?: string
     })
 
-interface SpeechUtteranceInput {
+export interface SpeechUtteranceInput {
   messageId: string
   source: MeropeSpeechSource
   text: string

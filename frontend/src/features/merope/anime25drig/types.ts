@@ -14,6 +14,7 @@ export type Anime25DFade =
   | 'eyeSqueeze'
   | 'eyeCry'
   | 'maniacEyeShadow'
+  | 'maniacMouthShadow'
   | 'angerMark'
   | 'speechlessSweat'
   | 'mouthOpen'

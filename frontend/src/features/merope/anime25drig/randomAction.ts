@@ -3,8 +3,21 @@ import {
   mixEyeOpen,
 } from './performanceExpression'
 
+export type RandomActionEnergy = 'idle' | 'excited'
+
 export type RandomActionName =
-  'acknowledge' | 'curious' | 'openGesture' | 'pleased'
+  | 'acknowledge'
+  | 'curious'
+  | 'openGesture'
+  | 'pleased'
+  | 'beam'
+  | 'sparkle'
+  | 'glance'
+  | 'cheer'
+  | 'dreamy'
+  | 'coy'
+  | 'smug'
+  | 'squint'
 
 export interface RandomActionFrame {
   angleX: number
@@ -46,11 +59,22 @@ interface ActionDefinition {
 
 type RandomSource = () => number
 
-const ACTIONS: readonly ActionDefinition[] = [
+const IDLE_ACTIONS: readonly ActionDefinition[] = [
   { name: 'acknowledge', minimumDuration: 1.45, maximumDuration: 1.75 },
   { name: 'curious', minimumDuration: 2, maximumDuration: 2.55 },
   { name: 'openGesture', minimumDuration: 2, maximumDuration: 2.5 },
   { name: 'pleased', minimumDuration: 1.8, maximumDuration: 2.3 },
+]
+
+const EXCITED_ACTIONS: readonly ActionDefinition[] = [
+  { name: 'beam', minimumDuration: 1.05, maximumDuration: 1.55 },
+  { name: 'sparkle', minimumDuration: 0.85, maximumDuration: 1.35 },
+  { name: 'glance', minimumDuration: 0.8, maximumDuration: 1.25 },
+  { name: 'cheer', minimumDuration: 1.15, maximumDuration: 1.7 },
+  { name: 'dreamy', minimumDuration: 1.1, maximumDuration: 1.7 },
+  { name: 'coy', minimumDuration: 0.9, maximumDuration: 1.4 },
+  { name: 'smug', minimumDuration: 0.95, maximumDuration: 1.45 },
+  { name: 'squint', minimumDuration: 0.7, maximumDuration: 1.15 },
 ]
 
 const NEUTRAL_FRAME: RandomActionFrame = {
@@ -77,6 +101,7 @@ const RELEASE_DURATION = 0.32
  */
 export class RandomActionController {
   private readonly output: RandomActionFrame = { ...NEUTRAL_FRAME }
+  private readonly actionFrom: RandomActionFrame = { ...NEUTRAL_FRAME }
   private readonly releaseFrom: RandomActionFrame = { ...NEUTRAL_FRAME }
   private initialized = false
   private available = false
@@ -89,6 +114,8 @@ export class RandomActionController {
   private nextActionAt = Number.POSITIVE_INFINITY
   private releaseStartedAt = 0
   private releasing = false
+  private energy: RandomActionEnergy = 'idle'
+  private drive = 1
 
   constructor(private readonly random: RandomSource = Math.random) {}
 
@@ -96,12 +123,26 @@ export class RandomActionController {
     timeSeconds: number,
     enabled: boolean,
     blocked: boolean,
+    energy: RandomActionEnergy = 'idle',
+    drive = 1,
   ): Readonly<RandomActionFrame> {
     const now = finiteTime(timeSeconds)
+    this.drive = clamp(Number.isFinite(drive) ? drive : 1, 0, 1)
     const available = enabled && !blocked
     if (!this.initialized) {
       this.initialized = true
       this.available = available
+      this.energy = energy
+      if (available) this.scheduleFirstAction(now)
+    }
+
+    if (energy !== this.energy) {
+      if (this.activeIndex >= 0) {
+        this.resolveAction(now)
+        this.beginRelease(now)
+      }
+      this.energy = energy
+      this.lastIndex = -1
       if (available) this.scheduleFirstAction(now)
     }
 
@@ -126,7 +167,7 @@ export class RandomActionController {
         return this.resolveAction(now)
       }
       this.activeIndex = -1
-      writeNeutral(this.output)
+      if (this.energy !== 'excited') writeNeutral(this.output)
     }
 
     if (now >= this.nextActionAt) {
@@ -138,58 +179,85 @@ export class RandomActionController {
 
   getActiveAction(): RandomActionName | null {
     return this.activeIndex >= 0
-      ? (ACTIONS[this.activeIndex]?.name ?? null)
+      ? (this.catalog()[this.activeIndex]?.name ?? null)
       : null
   }
 
+  private catalog(): readonly ActionDefinition[] {
+    return this.energy === 'excited' ? EXCITED_ACTIONS : IDLE_ACTIONS
+  }
+
   private scheduleFirstAction(now: number): void {
-    this.nextActionAt = now + this.randomRange(1.2, 2)
+    this.nextActionAt =
+      now +
+      (this.energy === 'excited'
+        ? this.randomRange(0.28, 0.8)
+        : this.randomRange(1.2, 2))
   }
 
   private beginAction(now: number): void {
     this.releasing = false
     this.activeIndex = this.nextActionIndex()
     this.lastIndex = this.activeIndex
-    const action = ACTIONS[this.activeIndex] ?? ACTIONS[0]
+    const actions = this.catalog()
+    const action = actions[this.activeIndex] ?? actions[0]
     this.actionStartedAt = now
     this.actionDuration = this.randomRange(
       action.minimumDuration,
       action.maximumDuration,
     )
     this.actionDirection = this.randomUnit() < 0.5 ? -1 : 1
-    this.actionIntensity = this.randomRange(0.9, 1.08)
-    this.nextActionAt = now + this.actionDuration + this.randomRange(3.8, 6.5)
-    writeNeutral(this.output)
+    this.actionIntensity =
+      this.energy === 'excited'
+        ? this.randomRange(0.78, 1) * mix(0.62, 1.12, this.drive)
+        : this.randomRange(0.9, 1.08)
+    this.nextActionAt =
+      now +
+      this.actionDuration +
+      (this.energy === 'excited'
+        ? this.randomRange(0.45, 1.15)
+        : this.randomRange(3.8, 6.5))
+    if (this.energy === 'excited') {
+      copyFrame(this.actionFrom, this.output)
+    } else {
+      writeNeutral(this.output)
+    }
   }
 
   private nextActionIndex(): number {
+    const actions = this.catalog()
     let index = Math.min(
-      ACTIONS.length - 1,
-      Math.floor(this.randomUnit() * ACTIONS.length),
+      actions.length - 1,
+      Math.floor(this.randomUnit() * actions.length),
     )
-    if (ACTIONS.length > 1 && index === this.lastIndex) {
+    if (actions.length > 1 && index === this.lastIndex) {
       const offset =
         1 +
         Math.min(
-          ACTIONS.length - 2,
-          Math.floor(this.randomUnit() * (ACTIONS.length - 1)),
+          actions.length - 2,
+          Math.floor(this.randomUnit() * (actions.length - 1)),
         )
-      index = (index + offset) % ACTIONS.length
+      index = (index + offset) % actions.length
     }
     return index
   }
 
   private resolveAction(now: number): Readonly<RandomActionFrame> {
-    const action = ACTIONS[this.activeIndex]
+    const action = this.catalog()[this.activeIndex]
     if (!action) return this.output
     const progress = clamp(
       (now - this.actionStartedAt) / this.actionDuration,
       0,
       1,
     )
-    const motion = stagedEnvelope(progress, 0.2, 0.68)
-    const face = stagedEnvelope(progress, 0.16, 0.7)
-    const gesture = stagedEnvelope(progress, 0.24, 0.66)
+    const hold = this.energy === 'excited'
+    const motion = stagedEnvelope(progress, hold ? 0.3 : 0.2, hold ? 1 : 0.68)
+    const face = stagedEnvelope(progress, hold ? 0.26 : 0.16, hold ? 1 : 0.7)
+    const gesture = stagedEnvelope(
+      progress,
+      hold ? 0.32 : 0.24,
+      hold ? 1 : 0.66,
+    )
     const direction = this.actionDirection
     const intensity = this.actionIntensity
     writeNeutral(this.output)
@@ -210,8 +278,6 @@ export class RandomActionController {
         this.output.angleY = -0.055 * motion * intensity
         this.output.angleZ = direction * 0.2 * motion * intensity
         this.output.body = -direction * 0.09 * motion * intensity
-        this.output.eyeX = direction * 0.18 * motion * intensity
-        this.output.eyeY = -0.04 * motion * intensity
         this.output.brow = 0.18 * face * intensity
         this.output.browAngSym = direction * 0.1 * face * intensity
         this.output.eyeOpen = -0.055 * face * intensity
@@ -225,7 +291,6 @@ export class RandomActionController {
         this.output.angleY = -0.07 * motion * intensity
         this.output.angleZ = -direction * 0.08 * motion * intensity
         this.output.body = direction * 0.13 * motion * intensity
-        this.output.eyeX = direction * 0.08 * motion * intensity
         this.output.brow = 0.14 * face * intensity
         this.output.eyeOpen = -0.1 * face * intensity
         this.output.irisScale = 0.012 * face * intensity
@@ -238,7 +303,6 @@ export class RandomActionController {
         this.output.angleY = 0.03 * motion * intensity
         this.output.angleZ = direction * 0.14 * motion * intensity
         this.output.body = -direction * 0.06 * motion * intensity
-        this.output.eyeX = direction * 0.05 * motion * intensity
         this.output.brow = 0.18 * face * intensity
         this.output.browAngSym = -0.08 * face * intensity
         this.output.eyeOpen = -0.42 * face * intensity
@@ -247,8 +311,74 @@ export class RandomActionController {
         this.output.armPos = -0.04 * gesture * intensity
         this.output.ambientScale = 1 - 0.64 * motion
         break
+      case 'beam':
+        this.output.brow = 0.3 * face * intensity
+        this.output.browAngSym = -0.07 * face * intensity
+        this.output.eyeOpen = -0.24 * face * intensity
+        this.output.irisScale = 0.028 * face * intensity
+        this.output.ambientScale = 1 - 0.08 * face
+        break
+      case 'sparkle':
+        this.output.brow = 0.34 * face * intensity
+        this.output.eyeOpen = 0.18 * face * intensity
+        this.output.irisScale = 0.05 * face * intensity
+        this.output.ambientScale = 1 - 0.08 * face
+        break
+      case 'glance':
+        this.output.brow = 0.16 * face * intensity
+        this.output.browAngSym = direction * 0.09 * face * intensity
+        this.output.eyeOpen = -0.05 * face * intensity
+        this.output.ambientScale = 1 - 0.08 * face
+        break
+      case 'cheer':
+        this.output.brow = 0.36 * face * intensity
+        this.output.browAngSym = -0.1 * face * intensity
+        this.output.eyeOpen = 0.14 * face * intensity
+        this.output.irisScale = 0.045 * face * intensity
+        this.output.ambientScale = 1 - 0.08 * face
+        break
+      case 'dreamy':
+        this.output.eyeOpen = -0.2 * face * intensity
+        this.output.irisScale = 0.045 * face * intensity
+        this.output.brow = 0.14 * face * intensity
+        this.output.ambientScale = 1 - 0.07 * face
+        break
+      case 'coy':
+        this.output.eyeOpen = -0.14 * face * intensity
+        this.output.brow = 0.12 * face * intensity
+        this.output.browAngSym = direction * 0.08 * face * intensity
+        this.output.ambientScale = 1 - 0.07 * face
+        break
+      case 'smug':
+        this.output.brow = 0.1 * face * intensity
+        this.output.browAngSym = direction * 0.12 * face * intensity
+        this.output.eyeOpen = -0.18 * face * intensity
+        this.output.irisScale = 0.02 * face * intensity
+        this.output.ambientScale = 1 - 0.07 * face
+        break
+      case 'squint':
+        this.output.eyeOpen = -0.34 * face * intensity
+        this.output.brow = 0.22 * face * intensity
+        this.output.irisScale = -0.02 * face * intensity
+        this.output.ambientScale = 1 - 0.08 * face
+        break
+    }
+    if (this.energy === 'excited') {
+      this.blendFromPrevious(smootherstep(progress / 0.34))
     }
     return this.output
+  }
+
+  private blendFromPrevious(amount: number): void {
+    if (amount >= 1) return
+    for (const key of ACTION_OFFSET_KEYS) {
+      this.output[key] = mix(this.actionFrom[key], this.output[key], amount)
+    }
+    this.output.ambientScale = mix(
+      this.actionFrom.ambientScale,
+      this.output.ambientScale,
+      amount,
+    )
   }
 
   private beginRelease(now: number): void {

@@ -163,27 +163,6 @@ export interface RigLayerSource {
   boneHandles: RigBoneHandle[]
 }
 
-export interface MeropeRigCompileRequest {
-  rigIrVersion?: number
-  characterAssetContractVersion: number
-  sourceMasterAssetId: string
-  sourceGenerationFingerprint?: string
-  canvas: RigSize
-  textures: Array<{
-    id: string
-    assetId: string
-    width: number
-    height: number
-  }>
-  bones: RigBone[]
-  layers: RigLayerSource[]
-  motionProfile?: RigMotionProfile
-  outfitProfile?: RigOutfitProfile
-  semanticAnchors?: Record<string, RigSemanticAnchor>
-  semantics?: RigSemantics
-  spatialProfile?: RigSpatialProfile
-}
-
 export interface MeropeRigImportSource {
   rigIrVersion?: number
   characterAssetContractVersion: number

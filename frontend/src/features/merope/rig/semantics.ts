@@ -6,7 +6,6 @@ import type {
   RigSemantics,
 } from './types'
 import { RIG_SECONDARY_PART_PATTERNS } from './contract'
-import { rigBoneIndexes } from './runtimeIndex'
 
 const CANONICAL_BONE_IDS: Readonly<Record<RigSemanticBoneRole, string>> = {
   root: 'root',
@@ -131,14 +130,6 @@ export function semanticBoneId(
   role: RigSemanticBoneRole,
 ): string | undefined {
   return resolveRigSemantics(manifest).bones[role]
-}
-
-export function semanticBoneIndex(
-  manifest: MeropeRigManifest,
-  role: RigSemanticBoneRole,
-): number | undefined {
-  const id = semanticBoneId(manifest, role)
-  return id === undefined ? undefined : rigBoneIndexes(manifest).get(id)
 }
 
 export function semanticChain(

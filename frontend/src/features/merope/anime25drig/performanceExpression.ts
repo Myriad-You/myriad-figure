@@ -325,7 +325,7 @@ export function performancePhaseRank(phase: PerformancePhase): number | null {
   return ordered[phase] ?? null
 }
 
-export function performanceDirectiveFingerprint(
+function performanceDirectiveFingerprint(
   directive: PerformanceDirective,
 ): string {
   return JSON.stringify(directive)

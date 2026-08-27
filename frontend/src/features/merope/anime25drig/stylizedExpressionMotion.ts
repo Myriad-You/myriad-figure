@@ -15,9 +15,8 @@ export interface StylizedExpressionMotion {
   mouthCY: number
   mouthCAng: number
   mouthScale: number
-  maniacMouthScaleX: number
-  maniacMouthScaleY: number
-  maniacTongueOffsetY: number
+  maniacUpperMouthPulse: number
+  maniacHeadPulse: number
   angleX: number
   angleY: number
   angleZ: number
@@ -49,9 +48,8 @@ const ZERO_MOTION: StylizedExpressionMotion = {
   mouthCY: 0,
   mouthCAng: 0,
   mouthScale: 0,
-  maniacMouthScaleX: 1,
-  maniacMouthScaleY: 1,
-  maniacTongueOffsetY: 0,
+  maniacUpperMouthPulse: 0,
+  maniacHeadPulse: 0,
   angleX: 0,
   angleY: 0,
   angleZ: 0,
@@ -156,10 +154,10 @@ export class StylizedExpressionMotionController {
     // one restrained rebound. This keeps the reference's nearly-held grin and
     // avoids a mechanical equal-amplitude sine wave.
     const maniacMouthPhase = (now / 0.82 + 0.17) % 1
-    const maniacJawCycle = maniacLaughCurve(maniacMouthPhase) * maniacMouth
-    const delayedManiacJaw =
+    const maniacUpperMouthCycle =
+      maniacLaughCurve(maniacMouthPhase) * maniacMouth
+    const delayedManiacHead =
       maniacLaughCurve((maniacMouthPhase + 0.94) % 1) * maniacMouth
-    const maniacTongueCycle = (delayedManiacJaw - maniacJawCycle) * 16
 
     const output = this.output
     output.anger = this.anger
@@ -187,9 +185,8 @@ export class StylizedExpressionMotionController {
     output.mouthCAng = -0.075 * speechlessFace
     output.mouthScale =
       -0.1 * angerMouth - 0.1 * speechlessFace + 0.018 * maniacMouth
-    output.maniacMouthScaleX = 1 - maniacJawCycle * 0.16
-    output.maniacMouthScaleY = 1 + maniacJawCycle
-    output.maniacTongueOffsetY = maniacTongueCycle
+    output.maniacUpperMouthPulse = maniacUpperMouthCycle
+    output.maniacHeadPulse = delayedManiacHead
     output.angleX =
       0.05 * angerPose +
       Math.sin(now * 6.1 + 0.7) * 0.012 * angerPose -

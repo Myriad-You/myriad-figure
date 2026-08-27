@@ -10,7 +10,7 @@ interface OutfitSafetyRule {
   secondaryMotionScale: number
 }
 
-export const OUTFIT_SAFETY_RULES = RIG_OUTFIT_SAFETY satisfies Readonly<
+const OUTFIT_SAFETY_RULES = RIG_OUTFIT_SAFETY satisfies Readonly<
   Record<RigOutfitTopology, OutfitSafetyRule>
 >
 
@@ -55,7 +55,7 @@ export function inferOutfitProfileFromPartIds(
   )
 }
 
-export function isSecondaryMotionPartId(partId: string): boolean {
+function isSecondaryMotionPartId(partId: string): boolean {
   const normalized = partId.toLowerCase()
   return RIG_SECONDARY_PART_PATTERNS.some((pattern) =>
     normalized.includes(pattern),

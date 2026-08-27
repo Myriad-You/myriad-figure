@@ -38,6 +38,7 @@ import {
   expressionSymbolGeneratedSizes,
 } from './expressionSymbols'
 import {
+  createManiacMouthShadowBitmap,
   createMouthExpressionBitmap,
   mouthExpressionGeneratedSizes,
   sampleMouthExpressionPalette,
@@ -1780,7 +1781,10 @@ function synthesizeMissingMouthExpressions(
   const missing = expressions.filter(
     ({ role }) => !layers.some((layer) => layer.role === role),
   )
-  if (missing.length === 0) return layers
+  const needsManiacShadow = !layers.some(
+    (layer) => layer.role === 'maniac-mouth-shadow',
+  )
+  if (missing.length === 0 && !needsManiacShadow) return layers
 
   const sizes = mouthExpressionGeneratedSizes(reference, {
     width: Math.max(1, anchors.face.x1 - anchors.face.x0),
@@ -1816,6 +1820,34 @@ function synthesizeMissingMouthExpressions(
     })
   }
   for (const expression of missing) add(expression.role, expression.kind)
+  if (needsManiacShadow) {
+    const maniacMouth =
+      layers.find((layer) => layer.role === 'mouth-maniac') ||
+      generated.find((layer) => layer.role === 'mouth-maniac')
+    const bitmap = createManiacMouthShadowBitmap(
+      maniacMouth
+        ? { width: maniacMouth.width, height: maniacMouth.height }
+        : sizes.maniac,
+      palette,
+    )
+    generated.unshift({
+      id: uniquePartId('maniac-mouth-shadow', usedIds),
+      role: 'maniac-mouth-shadow',
+      sourceName: 'maniac-mouth-shadow',
+      order: 0,
+      side: null,
+      group: 'head',
+      left:
+        maniacMouth?.left ?? Math.round(anchors.mouth.cx - bitmap.width / 2),
+      top:
+        maniacMouth?.top ??
+        Math.round(anchors.mouth.cy - bitmap.height * 0.61 + 3),
+      width: bitmap.width,
+      height: bitmap.height,
+      data: bitmap.data,
+      synthetic: true,
+    })
+  }
 
   const output = [...layers]
   let insertAt = -1
@@ -2203,6 +2235,7 @@ async function packAtlas(
 function visibleInAnalysisReference(layer: RasterLayer): boolean {
   if (
     layer.role === 'maniac-eye-shadow' ||
+    layer.role === 'maniac-mouth-shadow' ||
     layer.role === 'anger-mark' ||
     layer.role === 'speechless-sweat'
   ) {
@@ -2450,6 +2483,7 @@ function handlesForLayer(
   if (layer.role === 'face') return [fullLayerHandle(layer, 'face')]
   if (
     layer.role === 'maniac-eye-shadow' ||
+    layer.role === 'maniac-mouth-shadow' ||
     layer.role === 'anger-mark' ||
     layer.role === 'speechless-sweat'
   ) {

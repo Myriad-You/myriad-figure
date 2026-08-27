@@ -16,6 +16,7 @@ export const ANIME25D_LAYER_DEPTH = {
   face: 1,
   facedetail: 1.02,
   'maniac-eye-shadow': 1.04,
+  'maniac-mouth-shadow': 1.07,
   headwear: 1.2,
   'mouth-close': 1.08,
   'mouth-open': 1.08,

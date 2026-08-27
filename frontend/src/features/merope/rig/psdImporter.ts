@@ -96,61 +96,6 @@ async function alignSourceMasterToSeeThroughDocument(
   }
 }
 
-export async function compositePsdToPng(file: File): Promise<File> {
-  if (file.size <= 0 || file.size > MAX_PSD_BYTES) {
-    throw new Error(currentCopy().merope.psdTooLarge)
-  }
-  const { readPsd } = await import('ag-psd')
-  const psd = readPsd(await file.arrayBuffer(), {
-    useImageData: true,
-    skipCompositeImageData: true,
-    skipThumbnail: true,
-    skipLinkedFilesData: true,
-    totalMemoryLimit: 128 * 1024 * 1024,
-  })
-  validateFaceRigDocument(psd)
-  const canvas = document.createElement('canvas')
-  canvas.width = psd.width
-  canvas.height = psd.height
-  const context = canvas.getContext('2d')
-  if (!context) throw new Error(currentCopy().merope.psdPreviewFailed)
-  paintPsdLayers(context, psd.children || [])
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (next) =>
-        next
-          ? resolve(next)
-          : reject(new Error(currentCopy().merope.psdPreviewFailed)),
-      'image/png',
-    )
-  })
-  return new File([blob], 'uploaded-portrait.png', { type: 'image/png' })
-}
-
-function paintPsdLayers(
-  context: CanvasRenderingContext2D,
-  layers: Layer[],
-): void {
-  for (const layer of layers) {
-    if (layer.hidden) continue
-    if (layer.children) {
-      paintPsdLayers(context, layer.children)
-      continue
-    }
-    const pixels = layer.imageData
-    if (!pixels?.data || !pixels.width || !pixels.height) continue
-    const image = context.createImageData(pixels.width, pixels.height)
-    image.data.set(pixels.data)
-    const scratch = document.createElement('canvas')
-    scratch.width = pixels.width
-    scratch.height = pixels.height
-    const scratchContext = scratch.getContext('2d')
-    if (!scratchContext) continue
-    scratchContext.putImageData(image, 0, 0)
-    context.drawImage(scratch, layer.left ?? 0, layer.top ?? 0)
-  }
-}
-
 export const normalizePsdLayerName = normalizeAnime25DLayerName
 
 function validateFaceRigDocument(psd: Psd): void {
