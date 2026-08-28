@@ -1,5 +1,8 @@
 import type { Layer, PixelData, Psd } from 'ag-psd'
-import type { Anime25DRiggerAnchors } from '../anime25drig/playback'
+import type {
+  UpstreamGenericPartsApi,
+  UpstreamRiggerApi,
+} from '../anime25drig/upstream/types'
 import type { Anime25DLayerRole } from './anime25d'
 import type {
   Anime25DSourceReference,
@@ -38,42 +41,11 @@ import '../anime25drig/vendor/genericparts.js'
 import '../anime25drig/vendor/rigger.js'
 
 const Rigger = (
-  globalThis as unknown as {
-    Rigger: {
-      buildRig: (
-        psd: { width: number; height: number; children?: unknown[] },
-        opts?: { generic?: unknown },
-      ) => {
-        layers: Array<{
-          name: string
-          x: number
-          y: number
-          w: number
-          h: number
-          z: number
-          group: 'head' | 'body'
-          side: 'L' | 'R' | null
-          strands: Array<{ x: number; rootY: number; tipY: number }> | null
-          synthetic?: boolean
-          img: { width: number; height: number; data: Uint8ClampedArray }
-        }>
-        anchors: Anime25DRiggerAnchors
-      }
-      cleanPsdLayers: (psd: unknown) => unknown
-    }
-  }
+  globalThis as typeof globalThis & { Rigger: UpstreamRiggerApi }
 ).Rigger
 
 const GenericParts = (
-  globalThis as unknown as {
-    GenericParts: {
-      get: (key: string) => {
-        width: number
-        height: number
-        data: Uint8ClampedArray
-      } | null
-    }
-  }
+  globalThis as typeof globalThis & { GenericParts: UpstreamGenericPartsApi }
 ).GenericParts
 
 function genericCloseParts() {
