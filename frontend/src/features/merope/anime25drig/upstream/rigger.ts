@@ -1,6 +1,8 @@
-/*
+/*!
  * Behavioral TypeScript port of Anime2.5DRig `lib/rigger.js` at
  * d48825867acd081de22b0e7b5585bb562288796d.
+ * Copyright (c) 2026 hakoniwa
+ * SPDX-License-Identifier: MIT
  *
  * This module intentionally preserves upstream thresholds, mutation, warning
  * text, array order, typed-array rounding, and edge behavior. Myriad-specific

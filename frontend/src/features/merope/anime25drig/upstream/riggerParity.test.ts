@@ -9,16 +9,17 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { genericParts as upstreamGenericParts } from './genericParts'
 import {
+  ANIME25D_GENERIC_PART_SHA256,
   ANIME25D_UPSTREAM_REVISION,
   ANIME25D_VENDOR_SHA256,
 } from './revision'
 import { rigger as port } from './rigger'
 import '../vendor/rigger.js'
 
-const oracle = (
-  globalThis as typeof globalThis & { Rigger: UpstreamRiggerApi }
-).Rigger
+const oracle = (globalThis as typeof globalThis & { Rigger: UpstreamRiggerApi })
+  .Rigger
 
 function image(
   width: number,
@@ -156,10 +157,28 @@ test('pins the exact vendored Anime2.5DRig oracle revision', async () => {
     await sha256(new URL('../vendor/rigger.js', import.meta.url)),
     ANIME25D_VENDOR_SHA256.rigger,
   )
-  assert.equal(
-    await sha256(new URL('../vendor/genericparts.js', import.meta.url)),
-    ANIME25D_VENDOR_SHA256.genericParts,
-  )
+})
+
+test('preserves every decoded byte of the upstream generic parts', () => {
+  const expectedDimensions = {
+    eyeL: { width: 88, height: 42 },
+    eyeR: { width: 94, height: 32 },
+    mouth: { width: 72, height: 18 },
+  }
+  for (const key of ['eyeL', 'eyeR', 'mouth'] as const) {
+    const part = upstreamGenericParts.get(key)
+    assert.ok(part)
+    assert.deepEqual(
+      { width: part.width, height: part.height },
+      expectedDimensions[key],
+    )
+    assert.equal(
+      createHash('sha256').update(part.data).digest('hex'),
+      ANIME25D_GENERIC_PART_SHA256[key],
+    )
+    assert.equal(upstreamGenericParts.get(key)?.data, part.data)
+  }
+  assert.equal(upstreamGenericParts.get('missing'), null)
 })
 
 test('freezes upstream name normalization and numbered-layer semantics', () => {
@@ -261,9 +280,18 @@ test('freezes complete rig order, anchors, warnings, strands, and synthesis', ()
   )
   assert.ok(rig.layers.every((layer, index) => layer.z === index))
   assert.deepEqual(rig.synth, { eye: true, mouth: true })
-  assert.equal(rig.layers.find((layer) => layer.name === 'front hair_1')?.strands?.length, 2)
-  assert.equal(rig.layers.find((layer) => layer.name === 'unknown ornament')?.group, 'head')
-  assert.equal(rig.layers.find((layer) => layer.name === 'unknown sash')?.group, 'body')
+  assert.equal(
+    rig.layers.find((layer) => layer.name === 'front hair_1')?.strands?.length,
+    2,
+  )
+  assert.equal(
+    rig.layers.find((layer) => layer.name === 'unknown ornament')?.group,
+    'head',
+  )
+  assert.equal(
+    rig.layers.find((layer) => layer.name === 'unknown sash')?.group,
+    'body',
+  )
   assert.equal(rig.anchors.bodyPivot.cy, 240)
   assert.equal(rig.anchors.hairRootY, rig.anchors.face.y0 + 60)
   assert.deepEqual(rig.warnings, [
@@ -277,7 +305,9 @@ test('freezes complete rig order, anchors, warnings, strands, and synthesis', ()
 test('freezes missing-face fallbacks and exact Japanese diagnostics', () => {
   assert.throws(
     () => oracle.buildRig({ width: 20, height: 30, children: [] }),
-    new Error('レイヤーが見つかりません（グループは未対応・フラット構成にしてください）'),
+    new Error(
+      'レイヤーが見つかりません（グループは未対応・フラット構成にしてください）',
+    ),
   )
   const rig = oracle.buildRig({
     width: 100,
@@ -310,7 +340,10 @@ test('freezes flat-image composition and widest-gap eye splitting', () => {
     ],
   })
   assert.ok(flat)
-  assert.deepEqual({ width: flat.width, height: flat.height }, { width: 6, height: 1 })
+  assert.deepEqual(
+    { width: flat.width, height: flat.height },
+    { width: 6, height: 1 },
+  )
   assert.deepEqual(Array.from(flat.data.subarray(4, 8)), [50, 50, 0, 192])
 
   const eyes = pairedLayer('eyes', 18, 5, [
@@ -321,7 +354,12 @@ test('freezes flat-image composition and widest-gap eye splitting', () => {
   const split = oracle.splitImgLR(eyes)
   assert.ok(split)
   assert.deepEqual(
-    { lw: split.l.width, lh: split.l.height, rw: split.r.width, rh: split.r.height },
+    {
+      lw: split.l.width,
+      lh: split.l.height,
+      rw: split.r.width,
+      rh: split.r.height,
+    },
     { lw: 4, lh: 3, rw: 4, rh: 3 },
   )
 })
@@ -330,7 +368,10 @@ test('oracle corpus can be cloned without sharing image buffers', () => {
   const source = representativePsd()
   const cloned = clonePsd(source)
   assert.deepEqual(cloned, source)
-  assert.notEqual(cloned.children?.[0]?.imageData?.data, source.children?.[0]?.imageData?.data)
+  assert.notEqual(
+    cloned.children?.[0]?.imageData?.data,
+    source.children?.[0]?.imageData?.data,
+  )
 })
 
 test('TypeScript port is byte-for-byte equivalent on the representative corpus', () => {
@@ -386,7 +427,7 @@ test('TypeScript port is byte-for-byte equivalent on the representative corpus',
 })
 
 test('TypeScript image primitives match the JS oracle across seeded masks', () => {
-  let state = 0x25D_2026
+  let state = 39657510
   const randomByte = () => {
     state = (Math.imul(state, 1664525) + 1013904223) >>> 0
     return state >>> 24

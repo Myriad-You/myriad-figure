@@ -1,8 +1,4 @@
 import type { Layer, PixelData, Psd } from 'ag-psd'
-import type {
-  UpstreamGenericPartsApi,
-  UpstreamRiggerApi,
-} from '../anime25drig/upstream/types'
 import type { Anime25DLayerRole } from './anime25d'
 import type {
   Anime25DSourceReference,
@@ -19,6 +15,8 @@ import {
   buildAnime25DPlayback,
   remapRiggerAnchors,
 } from '../anime25drig/playback'
+import { genericParts as GenericParts } from '../anime25drig/upstream/genericParts'
+import { rigger as Rigger } from '../anime25drig/upstream/rigger'
 import { ANIME25D_LAYER_DEPTH } from './anime25d'
 import { validateAnime25DCharacterLayers } from './anime25dAssetValidation'
 import { packAnime25DAtlas } from './anime25dAtlasCompiler'
@@ -37,16 +35,6 @@ import {
   RIG_IR_VERSION,
 } from './contract'
 import { inferOutfitProfileFromPartIds } from './outfit'
-import '../anime25drig/vendor/genericparts.js'
-import '../anime25drig/vendor/rigger.js'
-
-const Rigger = (
-  globalThis as typeof globalThis & { Rigger: UpstreamRiggerApi }
-).Rigger
-
-const GenericParts = (
-  globalThis as typeof globalThis & { GenericParts: UpstreamGenericPartsApi }
-).GenericParts
 
 function genericCloseParts() {
   if (!GenericParts) return undefined

@@ -4,6 +4,11 @@ export const ANIME25D_UPSTREAM_REVISION =
 
 export const ANIME25D_VENDOR_SHA256 = {
   rigger: '5a1a120941bf2218707221fa48261f232e14aae526b57d78cc3e441c9ee37acf',
-  genericParts:
-    '319d863e654cdbcbb44e8ee99ae03ce4772a3d6cc97cb359a56dfb2f592cf43a',
+} as const
+
+/** Decoded upstream RGBA bytes; independent of the TypeScript data wrapper. */
+export const ANIME25D_GENERIC_PART_SHA256 = {
+  eyeL: '72b89e71b0a227903bee6b465349ce8dd45c15fc1eb5ab8ae1b8c6b31cbe9a9f',
+  eyeR: '147f1d9cc71a0a067177526c48850b4dad1e35080f1ec94c3c5c7235c6008d83',
+  mouth: '60b2e8d98724cdf80f4798c5713190f5115ea59a56dac629b5fd08034786099b',
 } as const

@@ -3,8 +3,12 @@ https://github.com/852wa/Anime2.5DRig
 MIT License
 Copyright (c) 2026 hakoniwa
 
-rigger.js and genericparts.js are copies of the upstream sources.
-The UMD boot line in rigger.js is adjusted so it loads under ESM; the rigger itself is unchanged.
+rigger.js is a pinned test oracle copied from the upstream source. Production
+uses a byte-for-byte parity-tested TypeScript port in ../upstream/rigger.ts.
+The generic close-diff RGBA data and decoder are ported in
+../upstream/genericParts.ts; tests pin the decoded pixels by SHA-256.
+The UMD boot line in rigger.js is adjusted so the oracle loads under ESM; the
+rigger algorithm itself is unchanged.
 The base bind, deform, and fade math follows index.html. Myriad supplies its own
 bounded ambient and text-free preview speech timing.
 The surrounding Myriad page, overlay, and settings chrome are not from that project.
