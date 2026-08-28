@@ -60,14 +60,8 @@ export function sillyIrisTravelRoom(size: Readonly<SillyEyeSize>): {
 } {
   const half = size.iris / 2
   return {
-    x: Math.max(
-      0,
-      (size.width * SCLERA_RADIUS_X) / 2 - RIM_THICKNESS - half,
-    ),
-    y: Math.max(
-      0,
-      (size.height * SCLERA_RADIUS_Y) / 2 - RIM_THICKNESS - half,
-    ),
+    x: Math.max(0, (size.width * SCLERA_RADIUS_X) / 2 - RIM_THICKNESS - half),
+    y: Math.max(0, (size.height * SCLERA_RADIUS_Y) / 2 - RIM_THICKNESS - half),
   }
 }
 
@@ -128,8 +122,7 @@ export function createSillyEyeWhiteBitmap(
         const rx = nx * cosine - ny * sine
         const ry = nx * sine + ny * cosine
         const organicEdge =
-          Math.sin(rx * 5.1 + ry * 3.3 + (side === 'left' ? 0.4 : 1.5)) *
-          0.009
+          Math.sin(rx * 5.1 + ry * 3.3 + (side === 'left' ? 0.4 : 1.5)) * 0.009
         const radius = Math.hypot(
           rx / SCLERA_RADIUS_X,
           ry / (SCLERA_RADIUS_Y + organicEdge),
@@ -137,8 +130,7 @@ export function createSillyEyeWhiteBitmap(
         const insidePixels = (1 - radius) * minimumSpan * 0.5
         outlineCoverage += clamp(insidePixels + 0.65, 0, 1) * 0.25
         const upperStroke = ry < -0.15 ? RIM_THICKNESS : 2.35
-        fillCoverage +=
-          clamp(insidePixels - upperStroke + 0.65, 0, 1) * 0.25
+        fillCoverage += clamp(insidePixels - upperStroke + 0.65, 0, 1) * 0.25
       }
       if (outlineCoverage <= 0) continue
       const offset = (y * width + x) * 4
@@ -313,7 +305,8 @@ function sampleBilinear(
   for (let stepY = 0; stepY <= 1; stepY += 1) {
     for (let stepX = 0; stepX <= 1; stepX += 1) {
       const weight =
-        (stepX ? fractionX : 1 - fractionX) * (stepY ? fractionY : 1 - fractionY)
+        (stepX ? fractionX : 1 - fractionX) *
+        (stepY ? fractionY : 1 - fractionY)
       if (weight <= 0) continue
       const sourceX = Math.max(0, Math.min(source.width - 1, baseX + stepX))
       const sourceY = Math.max(0, Math.min(source.height - 1, baseY + stepY))
@@ -341,11 +334,12 @@ function ellipseCoverage(
   radiusY: number,
   pixelScale: number,
 ): number {
-  const distance = Math.hypot(
-    (x - centerX) / radiusX,
-    (y - centerY) / radiusY,
+  const distance = Math.hypot((x - centerX) / radiusX, (y - centerY) / radiusY)
+  return clamp(
+    (1 - distance) * pixelScale * Math.min(radiusX, radiusY) + 0.7,
+    0,
+    1,
   )
-  return clamp((1 - distance) * pixelScale * Math.min(radiusX, radiusY) + 0.7, 0, 1)
 }
 
 function sampleChromaWeightedColor(
@@ -359,13 +353,24 @@ function sampleChromaWeightedColor(
   for (let index = 0; index + 3 < pixels.length; index += 4) {
     const alpha = pixels[index + 3] / 255
     if (alpha < 0.1) continue
-    const maximum = Math.max(pixels[index], pixels[index + 1], pixels[index + 2])
-    const minimum = Math.min(pixels[index], pixels[index + 1], pixels[index + 2])
+    const maximum = Math.max(
+      pixels[index],
+      pixels[index + 1],
+      pixels[index + 2],
+    )
+    const minimum = Math.min(
+      pixels[index],
+      pixels[index + 1],
+      pixels[index + 2],
+    )
     const chroma = maximum - minimum
     if (chroma < 14) continue
     const luminance =
-      pixels[index] * 0.299 + pixels[index + 1] * 0.587 + pixels[index + 2] * 0.114
-    const weight = alpha * (chroma / 255) ** 1.35 * (0.3 + (1 - luminance / 255) * 0.7)
+      pixels[index] * 0.299 +
+      pixels[index + 1] * 0.587 +
+      pixels[index + 2] * 0.114
+    const weight =
+      alpha * (chroma / 255) ** 1.35 * (0.3 + (1 - luminance / 255) * 0.7)
     red += pixels[index] * weight
     green += pixels[index + 1] * weight
     blue += pixels[index + 2] * weight
@@ -387,10 +392,20 @@ function sampleLightNeutralColor(
   for (let index = 0; index + 3 < pixels.length; index += 4) {
     const alpha = pixels[index + 3] / 255
     if (alpha < 0.1) continue
-    const maximum = Math.max(pixels[index], pixels[index + 1], pixels[index + 2])
-    const minimum = Math.min(pixels[index], pixels[index + 1], pixels[index + 2])
+    const maximum = Math.max(
+      pixels[index],
+      pixels[index + 1],
+      pixels[index + 2],
+    )
+    const minimum = Math.min(
+      pixels[index],
+      pixels[index + 1],
+      pixels[index + 2],
+    )
     const luminance =
-      pixels[index] * 0.299 + pixels[index + 1] * 0.587 + pixels[index + 2] * 0.114
+      pixels[index] * 0.299 +
+      pixels[index + 1] * 0.587 +
+      pixels[index + 2] * 0.114
     if (luminance < 150 || maximum - minimum > 72) continue
     const weight = alpha * (0.3 + luminance / 255)
     red += pixels[index] * weight
@@ -414,7 +429,9 @@ function paint(
   const output = source + destination * (1 - source)
   if (output <= 0) return
   const retained = destination * (1 - source)
-  data[offset] = Math.round((color.red * source + data[offset] * retained) / output)
+  data[offset] = Math.round(
+    (color.red * source + data[offset] * retained) / output,
+  )
   data[offset + 1] = Math.round(
     (color.green * source + data[offset + 1] * retained) / output,
   )

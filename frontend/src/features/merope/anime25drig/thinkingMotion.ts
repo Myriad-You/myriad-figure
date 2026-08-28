@@ -93,8 +93,7 @@ export class ThinkingMotionController {
       eyeY: this.randomRange(-0.13, 0.11),
       brow: this.randomRange(-0.025, 0.055),
       mouthCY: this.randomRange(-0.025, 0.035),
-      mouthCAng:
-        direction * this.randomRange(pursing ? 0.035 : 0.015, 0.06),
+      mouthCAng: direction * this.randomRange(pursing ? 0.035 : 0.015, 0.06),
       mouthScale: pursing
         ? -this.randomRange(0.045, 0.075)
         : this.randomRange(-0.01, 0.02),
@@ -172,11 +171,7 @@ export class ThinkingMotionController {
     )
     this.output.angleZ = mix(this.from.angleZ, this.to.angleZ, headProgress)
     this.output.brow = mix(this.from.brow, this.to.brow, faceProgress)
-    this.output.mouthCY = mix(
-      this.from.mouthCY,
-      this.to.mouthCY,
-      mouthProgress,
-    )
+    this.output.mouthCY = mix(this.from.mouthCY, this.to.mouthCY, mouthProgress)
     this.output.mouthCAng = mix(
       this.from.mouthCAng,
       this.to.mouthCAng,
@@ -234,8 +229,7 @@ function settlingProgress(value: number): number {
   const endpoint =
     1 -
     Math.exp(-decay) *
-      (Math.cos(angularRate) +
-        (decay / angularRate) * Math.sin(angularRate))
+      (Math.cos(angularRate) + (decay / angularRate) * Math.sin(angularRate))
   return response / endpoint
 }
 

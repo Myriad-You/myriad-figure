@@ -575,13 +575,7 @@ function maniacOuterPath(): Point[] {
 /** Small cat-like open mouth that can collapse continuously into an omega. */
 function sillyOuterPath(): Point[] {
   const output: Point[] = []
-  appendCubic(
-    output,
-    [-0.72, -0.36],
-    [-0.5, -0.58],
-    [-0.2, -0.48],
-    [0, -0.38],
-  )
+  appendCubic(output, [-0.72, -0.36], [-0.5, -0.58], [-0.2, -0.48], [0, -0.38])
   appendCubic(output, [0, -0.38], [0.2, -0.5], [0.5, -0.58], [0.72, -0.34])
   appendCubic(output, [0.72, -0.34], [0.68, 0.2], [0.42, 0.68], [0, 0.79])
   appendCubic(output, [0, 0.79], [-0.42, 0.67], [-0.68, 0.2], [-0.72, -0.36])

@@ -38,7 +38,9 @@ test('compiles verbatim tokens onto their absolute clock', async () => {
   assert.ok(cues.length > 0)
   assert.equal(cues[0].start, 0.5)
   assert.ok(cues[cues.length - 1].end <= 0.9 + 1e-9)
-  assert.ok(cues.some((cue) => cue.viseme === 'closed' || cue.viseme === 'open'))
+  assert.ok(
+    cues.some((cue) => cue.viseme === 'closed' || cue.viseme === 'open'),
+  )
 })
 
 test('fills line lyrics until the next line then rests', async () => {
@@ -50,12 +52,17 @@ test('fills line lyrics until the next line then rests', async () => {
   })
   assert.ok(cues.length > 0)
   assert.equal(cues[0].start, 1)
-  const firstLineEnd = Math.max(...cues.filter((cue) => cue.start < 3).map((cue) => cue.end))
+  const firstLineEnd = Math.max(
+    ...cues.filter((cue) => cue.start < 3).map((cue) => cue.end),
+  )
   assert.ok(firstLineEnd <= 3 + 1e-9)
   assert.ok(cues.some((cue) => cue.start >= 3))
 })
 
 test('leaves an empty timeline when there are no lyrics', async () => {
   assert.deepEqual(await compileSingingTimeline({}), [])
-  assert.deepEqual(await compileSingingTimeline({ lines: [], verbatim: [] }), [])
+  assert.deepEqual(
+    await compileSingingTimeline({ lines: [], verbatim: [] }),
+    [],
+  )
 })

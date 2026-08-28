@@ -50,7 +50,9 @@ async function compileVerbatim(
       const next = words[index + 1]
       const end = tokenEnd(token.time, token.duration, next?.time)
       if (end <= token.time) continue
-      cues.push(...(await stretchText(text, token.time, end - token.time, locale)))
+      cues.push(
+        ...(await stretchText(text, token.time, end - token.time, locale)),
+      )
     }
   }
   return cues
@@ -153,7 +155,11 @@ function tokenEnd(
 ): number {
   const origin = finiteTime(start)
   if (duration > 0.01 && Number.isFinite(duration)) return origin + duration
-  if (typeof nextStart === 'number' && Number.isFinite(nextStart) && nextStart > origin) {
+  if (
+    typeof nextStart === 'number' &&
+    Number.isFinite(nextStart) &&
+    nextStart > origin
+  ) {
     return nextStart
   }
   return origin + FALLBACK_TOKEN_SECONDS

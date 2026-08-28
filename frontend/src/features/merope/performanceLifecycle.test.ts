@@ -18,7 +18,7 @@ const performance = {
 }
 
 test('forwards only semantic performance data and leaves event text speech-owned', () => {
-  const played: typeof performance[] = []
+  const played: (typeof performance)[] = []
   let stopped = 0
   const target: PerformanceLifecycleTarget = {
     playMotionPlan: (value) => {
@@ -55,7 +55,7 @@ test('stops the mounted rig when the lifecycle owner is disposed', () => {
 })
 
 test('cancels only the transient plan owned by the interrupted message', () => {
-  const played: typeof performance[] = []
+  const played: (typeof performance)[] = []
   let stopped = 0
   const controller = new PerformanceLifecycleController({
     playMotionPlan: (value) => {
@@ -88,7 +88,7 @@ test('cancels only the transient plan owned by the interrupted message', () => {
 })
 
 test('drops a performance plan that arrives after its message was cancelled', () => {
-  const played: typeof performance[] = []
+  const played: (typeof performance)[] = []
   const controller = new PerformanceLifecycleController({
     playMotionPlan: (value) => {
       played.push(value as typeof performance)

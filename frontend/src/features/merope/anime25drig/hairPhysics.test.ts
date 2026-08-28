@@ -36,10 +36,7 @@ test('matches strand displacement to projected pixel length within safe bounds',
     stiffnessScale: 1,
     dampingScale: 1,
   })
-  assert.equal(
-    hairStrandDynamics(100, 1100, referenceHeight).amplitudeScale,
-    2,
-  )
+  assert.equal(hairStrandDynamics(100, 1100, referenceHeight).amplitudeScale, 2)
   assert.equal(
     hairStrandDynamics(100, 200, referenceHeight).amplitudeScale,
     0.5,

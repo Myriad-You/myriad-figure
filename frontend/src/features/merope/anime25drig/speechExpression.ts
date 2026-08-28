@@ -4,27 +4,6 @@ export interface CoSpeechExpressionOffset {
   angleY: number
 }
 
-const SHARED_OUTPUT: CoSpeechExpressionOffset = {
-  brow: 0,
-  eyeOpen: 0,
-  angleY: 0,
-}
-
-/**
- * Translate visual-prosody envelopes into small additive rig offsets.
- *
- * This layer deliberately does not own the base expression: semantic mood,
- * workbench sliders, blinking, and gaze remain free to provide their own pose.
- * The returned object is reused because this runs once per animation frame.
- */
-export function coSpeechExpressionOffset(
-  phraseActivity: number,
-  browAccent: number,
-  headAccent: number,
-): Readonly<CoSpeechExpressionOffset> {
-  return writeOffset(SHARED_OUTPUT, phraseActivity, browAccent, headAccent)
-}
-
 /** Keeps authored audio/viseme input on the same visual-prosody path. */
 export class CoSpeechExpressionController {
   private readonly output: CoSpeechExpressionOffset = {

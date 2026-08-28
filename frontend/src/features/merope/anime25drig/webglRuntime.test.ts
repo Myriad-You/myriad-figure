@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createAtlasTexture } from './webglRuntime'
+import { createAtlasTexture, createIndexedDeformableMesh } from './webglRuntime'
 
 test('uploads a packed character atlas through one WebGL texture allocation', () => {
   const calls = { create: 0, image: 0, parameters: 0 }
@@ -32,4 +32,43 @@ test('uploads a packed character atlas through one WebGL texture allocation', ()
 
   assert.equal(createAtlasTexture(gl, {} as HTMLImageElement), texture)
   assert.deepEqual(calls, { create: 1, image: 1, parameters: 4 })
+})
+
+test('keeps positions dynamic while uploading UVs and indices only once', () => {
+  const uploads: Array<{ usage: number; bytes: number }> = []
+  let nextBuffer = 0
+  const gl = {
+    ARRAY_BUFFER: 1,
+    ELEMENT_ARRAY_BUFFER: 2,
+    DYNAMIC_DRAW: 3,
+    STATIC_DRAW: 4,
+    FLOAT: 5,
+    createVertexArray: () => ({ vao: true }),
+    createBuffer: () => ({ id: (nextBuffer += 1) }),
+    getAttribLocation: (_program: unknown, name: string) =>
+      name === 'a_pos' ? 0 : 1,
+    bindVertexArray() {},
+    bindBuffer() {},
+    bufferData(_target: number, data: ArrayBufferView, usage: number) {
+      uploads.push({ usage, bytes: data.byteLength })
+    },
+    enableVertexAttribArray() {},
+    vertexAttribPointer() {},
+  } as unknown as WebGL2RenderingContext
+
+  const mesh = createIndexedDeformableMesh(
+    gl,
+    {} as WebGLProgram,
+    new Float32Array([0, 0, 1, 1]),
+    new Float32Array([0, 0, 1, 1]),
+    new Uint16Array([0, 1, 0]),
+  )
+
+  assert.ok(mesh.positionBuffer)
+  assert.ok(mesh.uvBuffer)
+  assert.deepEqual(uploads, [
+    { usage: 3, bytes: 16 },
+    { usage: 4, bytes: 16 },
+    { usage: 4, bytes: 6 },
+  ])
 })

@@ -31,12 +31,7 @@ export function squeezeEyeGeneratedSize(eye: {
   return {
     width,
     height: clampInt(
-      Math.round(
-        Math.max(
-          eyeHeight * SQUEEZE_EYE_HEIGHT_FIT,
-          width * 0.5,
-        ),
-      ),
+      Math.round(Math.max(eyeHeight * SQUEEZE_EYE_HEIGHT_FIT, width * 0.5)),
       SQUEEZE_EYE_MIN_HEIGHT,
       SQUEEZE_EYE_MAX_HEIGHT,
     ),
@@ -91,7 +86,11 @@ export function createSqueezeEyeBitmap(
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       let coverage = 0
-      for (let strokeIndex = 0; strokeIndex < strokes.length; strokeIndex += 1) {
+      for (
+        let strokeIndex = 0;
+        strokeIndex < strokes.length;
+        strokeIndex += 1
+      ) {
         const stroke = strokes[strokeIndex]
         for (let index = 1; index < stroke.length; index += 1) {
           coverage = Math.max(

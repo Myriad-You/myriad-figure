@@ -25,7 +25,11 @@ export function dizzyEyeGeneratedSize(eye: {
   y1: number
 }): number {
   const span = Math.max(eye.x1 - eye.x0, eye.y1 - eye.y0)
-  return clampInt(Math.round(span * DIZZY_EYE_FIT), DIZZY_EYE_MIN_SIZE, DIZZY_EYE_MAX_SIZE)
+  return clampInt(
+    Math.round(span * DIZZY_EYE_FIT),
+    DIZZY_EYE_MIN_SIZE,
+    DIZZY_EYE_MAX_SIZE,
+  )
 }
 
 /** Enlarge already-imported small spirals without shrinking authored artwork. */
@@ -37,7 +41,11 @@ export function dizzyEyeDisplayScale(
   const layerSpan = Math.max(layerWidth, layerHeight)
   const eyeSpan = Math.max(eye.x1 - eye.x0, eye.y1 - eye.y0)
   if (layerSpan <= 0 || eyeSpan <= 0) return 1
-  return clamp((eyeSpan * DIZZY_EYE_FIT) / layerSpan, 1, DIZZY_EYE_MAX_DISPLAY_SCALE)
+  return clamp(
+    (eyeSpan * DIZZY_EYE_FIT) / layerSpan,
+    1,
+    DIZZY_EYE_MAX_DISPLAY_SCALE,
+  )
 }
 
 /** Matches Anime2.5DRig's dark-weighted tint sampling for generated diffs. */
@@ -74,7 +82,11 @@ export function createDizzyEyeBitmap(
   tint: Readonly<RgbColor>,
   side: DizzyEyeSide,
 ): { width: number; height: number; data: Uint8ClampedArray } {
-  const edge = clampInt(Math.round(size), DIZZY_EYE_MIN_SIZE, DIZZY_EYE_MAX_SIZE)
+  const edge = clampInt(
+    Math.round(size),
+    DIZZY_EYE_MIN_SIZE,
+    DIZZY_EYE_MAX_SIZE,
+  )
   const data = new Uint8ClampedArray(edge * edge * 4)
   const center = (edge - 1) / 2
   const radius = edge * 0.46

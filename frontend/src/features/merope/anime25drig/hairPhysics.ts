@@ -91,8 +91,7 @@ export function stepHairSpring(
   )
   const dt = boundedElapsed / steps
   for (let step = 0; step < steps; step += 1) {
-    const acceleration =
-      -stiffness * (spring.x - target) - damping * spring.v
+    const acceleration = -stiffness * (spring.x - target) - damping * spring.v
     spring.v += acceleration * dt
     spring.x += spring.v * dt
   }

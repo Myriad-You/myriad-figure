@@ -1,75 +1,7 @@
 import type { MeropeRigManifest } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {
-  anime25DAbandonsCapability,
-  anime25DFacialVariantsComplete,
-  diagnoseRig,
-  rigCapabilityRegressions,
-} from './diagnostics'
-
-test('replacement regression gate reports only lost current capabilities', () => {
-  const capabilities = {
-    facial: true,
-    lipSync: true,
-    gaze: true,
-    secondaryMotion: true,
-    facialVariants: true,
-    deformableSkinning: true,
-    outfitAware: true,
-    collisionAware: true,
-    presentationCoverage: true,
-  }
-  const current = { score: 100, issues: [], capabilities }
-  const candidate = {
-    score: 80,
-    issues: [],
-    capabilities: {
-      ...capabilities,
-      gaze: false,
-      secondaryMotion: false,
-      deformableSkinning: false,
-    },
-  }
-  assert.deepEqual(rigCapabilityRegressions(current, candidate), [
-    'gaze',
-    'secondaryMotion',
-    'deformableSkinning',
-  ])
-  assert.deepEqual(rigCapabilityRegressions(candidate, current), [])
-})
-
-test('Anime2.5DRig replacement preserves FaceRig capability gates', () => {
-  assert.equal(anime25DAbandonsCapability('presentationCoverage'), false)
-  assert.equal(anime25DAbandonsCapability('collisionAware'), true)
-  assert.equal(anime25DAbandonsCapability('gaze'), false)
-  const current = {
-    profile: 'face-rig' as const,
-    score: 100,
-    issues: [],
-    capabilities: {
-      facial: true,
-      lipSync: true,
-      gaze: true,
-      secondaryMotion: true,
-      facialVariants: true,
-      deformableSkinning: true,
-      outfitAware: true,
-      collisionAware: true,
-      presentationCoverage: true,
-    },
-  }
-  const candidate = {
-    ...current,
-    profile: 'anime25d' as const,
-    capabilities: {
-      ...current.capabilities,
-      gaze: false,
-      collisionAware: false,
-    },
-  }
-  assert.deepEqual(rigCapabilityRegressions(current, candidate), ['gaze'])
-})
+import { anime25DFacialVariantsComplete, diagnoseRig } from './diagnostics'
 
 test('Anime2.5DRig diagnostics do not score retired limb gates', () => {
   const report = diagnoseRig({

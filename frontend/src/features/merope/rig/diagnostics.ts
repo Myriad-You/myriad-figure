@@ -35,30 +35,6 @@ export interface RigDiagnosticReport {
 
 export type RigCapability = keyof RigDiagnosticReport['capabilities']
 
-const ANIME25D_ABANDONED_CAPABILITIES = new Set<RigCapability>([
-  'collisionAware',
-])
-
-export function anime25DAbandonsCapability(capability: RigCapability): boolean {
-  return ANIME25D_ABANDONED_CAPABILITIES.has(capability)
-}
-
-/** Capabilities a replacement candidate would remove from the current Rig. */
-export function rigCapabilityRegressions(
-  current: RigDiagnosticReport,
-  candidate: RigDiagnosticReport,
-): RigCapability[] {
-  return (Object.keys(current.capabilities) as RigCapability[]).filter(
-    (capability) =>
-      !(
-        candidate.profile === 'anime25d' &&
-        anime25DAbandonsCapability(capability)
-      ) &&
-      current.capabilities[capability] &&
-      !candidate.capabilities[capability],
-  )
-}
-
 /** Exact facial subset of the current Anime2.5D character-asset contract. */
 export function anime25DFacialVariantsComplete(
   parts: MeropeRigManifest['parts'],

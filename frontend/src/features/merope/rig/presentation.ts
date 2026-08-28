@@ -9,9 +9,9 @@ type PresentationSlotDefinition = {
 function presentationSlotDefinition(
   slot: string,
 ): PresentationSlotDefinition | undefined {
-  return (
-    RIG_PRESENTATION_SLOTS as Record<string, PresentationSlotDefinition>
-  )[slot]
+  return (RIG_PRESENTATION_SLOTS as Record<string, PresentationSlotDefinition>)[
+    slot
+  ]
 }
 
 export function presentationAssetCoverage(

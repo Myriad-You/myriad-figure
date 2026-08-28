@@ -75,10 +75,8 @@ export function createAngerMarkBitmap(
         for (let segment = 1; segment < points.length; segment += 1) {
           const start = points[segment - 1]
           const end = points[segment]
-          const roughX =
-            Math.sin(y * 0.39 + branch * 2.1 + segment) * 0.22
-          const roughY =
-            Math.sin(x * 0.31 - branch * 1.7 - segment) * 0.18
+          const roughX = Math.sin(y * 0.39 + branch * 2.1 + segment) * 0.22
+          const roughY = Math.sin(x * 0.31 - branch * 1.7 - segment) * 0.18
           distance = Math.min(
             distance,
             pointToSegmentDistance(
@@ -198,12 +196,7 @@ export function createSpeechlessSweatBitmap(requestedSize: {
         paint(data, offset, { red: 250, green: 253, blue: 255 }, outerCoverage)
       }
       if (borderCoverage > 0) {
-        paint(
-          data,
-          offset,
-          { red: 35, green: 125, blue: 199 },
-          borderCoverage,
-        )
+        paint(data, offset, { red: 35, green: 125, blue: 199 }, borderCoverage)
       }
       if (innerCoverage > 0) {
         paint(data, offset, { red: 84, green: 211, blue: 248 }, innerCoverage)

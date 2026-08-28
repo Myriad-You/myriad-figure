@@ -1,8 +1,7 @@
 import type { FrontCollarContactModel } from './collarContact'
 import type { Anime25DPlaybackLayer } from './types'
-import { currentCopy } from '../../../i18n/localeCopy'
 import { COLLAR_ATTACHMENT_NECK } from './collarContact'
-import { createPackedVertices, packVerticesInto } from './vertexPacking'
+import { createIndexedDeformableMesh } from './webglRuntime'
 
 export const BODY_HEAD_FOLLOW = 0.16
 export const HIGH_COLLAR_NECK_FOLLOW_POWER = 3
@@ -13,11 +12,9 @@ export const FRONT_COLLAR_INNER_REGION = 0.72
 export interface CollarClipMesh {
   rest: Float32Array
   deformed: Float32Array
-  uvs: Float32Array
-  packedVertices: Float32Array
-  indices: Uint16Array
   vao: WebGLVertexArrayObject
   vertexBuffer: WebGLBuffer
+  uvBuffer: WebGLBuffer
   indexBuffer: WebGLBuffer
   indexCount: number
 }
@@ -156,7 +153,6 @@ export function createCollarClipMesh(
   const rest = Float32Array.from(restValues)
   const deformed = rest.slice()
   const uvs = new Float32Array(rest.length)
-  const packedVertices = createPackedVertices(deformed, uvs)
   const rowCount = rest.length / 4
   const indices = new Uint16Array((rowCount - 1) * 6)
   for (let row = 0; row < rowCount - 1; row += 1) {
@@ -169,33 +165,14 @@ export function createCollarClipMesh(
       row * 6,
     )
   }
-  const vao = gl.createVertexArray()
-  const vertexBuffer = gl.createBuffer()
-  const indexBuffer = gl.createBuffer()
-  if (!vao || !vertexBuffer || !indexBuffer) {
-    throw new Error(currentCopy().merope.anime25dPlaybackFailed)
-  }
-  const position = gl.getAttribLocation(program, 'a_pos')
-  const uv = gl.getAttribLocation(program, 'a_uv')
-  gl.bindVertexArray(vao)
-  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer)
-  gl.bufferData(gl.ARRAY_BUFFER, packedVertices, gl.DYNAMIC_DRAW)
-  gl.enableVertexAttribArray(position)
-  gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 16, 0)
-  gl.enableVertexAttribArray(uv)
-  gl.vertexAttribPointer(uv, 2, gl.FLOAT, false, 16, 8)
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
-  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW)
-  gl.bindVertexArray(null)
+  const mesh = createIndexedDeformableMesh(gl, program, deformed, uvs, indices)
   return {
     rest,
     deformed,
-    uvs,
-    packedVertices,
-    indices,
-    vao,
-    vertexBuffer,
-    indexBuffer,
+    vao: mesh.vao,
+    vertexBuffer: mesh.positionBuffer,
+    uvBuffer: mesh.uvBuffer,
+    indexBuffer: mesh.indexBuffer,
     indexCount: indices.length,
   }
 }
@@ -205,10 +182,6 @@ export function updateCollarClipMesh(
   clip: CollarClipMesh,
   pose: CollarMotionPose,
   neckDepth: number,
-  bodyPivotX: number,
-  bodyPivotY: number,
-  bodyRotationCosine: number,
-  bodyRotationSine: number,
 ): void {
   for (let index = 0; index < clip.rest.length; index += 2) {
     const headBlend = collarNeckHeadBlend(clip.rest[index + 1], pose)
@@ -223,19 +196,9 @@ export function updateCollarClipMesh(
       clip.deformed,
       index,
     )
-    const rotationX = clip.deformed[index] - bodyPivotX
-    const rotationY = clip.deformed[index + 1] - bodyPivotY
-    clip.deformed[index] =
-      bodyPivotX + rotationX * bodyRotationCosine - rotationY * bodyRotationSine
-    clip.deformed[index + 1] =
-      bodyPivotY + rotationX * bodyRotationSine + rotationY * bodyRotationCosine
   }
   gl.bindBuffer(gl.ARRAY_BUFFER, clip.vertexBuffer)
-  gl.bufferSubData(
-    gl.ARRAY_BUFFER,
-    0,
-    packVerticesInto(clip.deformed, clip.uvs, clip.packedVertices),
-  )
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, clip.deformed)
 }
 
 function smoothstep(value: number): number {

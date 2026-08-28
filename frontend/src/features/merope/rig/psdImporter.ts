@@ -5,7 +5,6 @@ import type {
 } from './anime25dImporter'
 import { currentCopy } from '../../../i18n/localeCopy'
 import {
-  normalizeAnime25DLayerName,
   prepareAnime25DRigPsd,
 } from './anime25dImporter'
 
@@ -95,8 +94,6 @@ async function alignSourceMasterToSeeThroughDocument(
     bitmap.close()
   }
 }
-
-export const normalizePsdLayerName = normalizeAnime25DLayerName
 
 function validateFaceRigDocument(psd: Psd): void {
   if (

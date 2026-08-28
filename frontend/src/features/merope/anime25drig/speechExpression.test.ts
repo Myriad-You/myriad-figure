@@ -1,19 +1,35 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {
-  CoSpeechExpressionController,
-  coSpeechExpressionOffset,
-} from './speechExpression'
+import { CoSpeechExpressionController } from './speechExpression'
+
+/** 不带 authored energy 的那一路：直接把三个包络喂进 writeOffset。 */
+function envelopeOnly(
+  expression: CoSpeechExpressionController,
+  phraseActivity: number,
+  browAccent: number,
+  headAccent: number,
+) {
+  return expression.sample(
+    0,
+    false,
+    null,
+    phraseActivity,
+    browAccent,
+    headAccent,
+  )
+}
 
 test('keeps co-speech expression neutral without a speech envelope', () => {
   assert.deepEqual(
-    { ...coSpeechExpressionOffset(0, 0, 0) },
+    { ...envelopeOnly(new CoSpeechExpressionController(), 0, 0, 0) },
     { brow: 0, eyeOpen: 0, angleY: 0 },
   )
 })
 
 test('adds a small bounded expression without owning the base pose', () => {
-  const offset = { ...coSpeechExpressionOffset(1, 1, 1) }
+  const offset = {
+    ...envelopeOnly(new CoSpeechExpressionController(), 1, 1, 1),
+  }
   assert.equal(offset.brow, 0.095)
   assert.ok(offset.eyeOpen < 0)
   assert.ok(Math.abs(offset.eyeOpen) < 0.01)
@@ -21,11 +37,12 @@ test('adds a small bounded expression without owning the base pose', () => {
 })
 
 test('sanitizes unusable inputs and reuses its frame result', () => {
-  const first = coSpeechExpressionOffset(Number.NaN, -1, 2)
+  const expression = new CoSpeechExpressionController()
+  const first = envelopeOnly(expression, Number.NaN, -1, 2)
   assert.equal(first.brow, 0)
   assert.equal(first.eyeOpen, 0)
   assert.equal(first.angleY, 0.035)
-  assert.equal(first, coSpeechExpressionOffset(0.5, 0.5, 0.5))
+  assert.equal(first, envelopeOnly(expression, 0.5, 0.5, 0.5))
 })
 
 test('derives a delayed visual beat from authored energy without frame allocation', () => {

@@ -70,9 +70,7 @@ export function buildRigSemantics(
 }
 
 /** Resolves legacy manifests through canonical fallback without mutating them. */
-export function resolveRigSemantics(
-  manifest: MeropeRigManifest,
-): RigSemantics {
+export function resolveRigSemantics(manifest: MeropeRigManifest): RigSemantics {
   const cached = resolvedCache.get(manifest)
   if (cached) return cached
   const inferred = buildRigSemantics(
@@ -125,21 +123,10 @@ function supportedChainMappings(
   )
 }
 
-export function semanticBoneId(
-  manifest: MeropeRigManifest,
-  role: RigSemanticBoneRole,
-): string | undefined {
-  return resolveRigSemantics(manifest).bones[role]
-}
-
-export function semanticChain(
-  manifest: MeropeRigManifest,
-  role: RigSemanticChainRole,
-): readonly string[] {
-  return resolveRigSemantics(manifest).chains[role] ?? []
-}
-
-function connected(chain: readonly string[], bones: readonly RigBone[]): boolean {
+function connected(
+  chain: readonly string[],
+  bones: readonly RigBone[],
+): boolean {
   const parents = new Map(bones.map((bone) => [bone.id, bone.parent]))
   return chain.slice(1).every((boneId, index) => {
     const previous = chain[index]

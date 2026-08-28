@@ -2,9 +2,6 @@ import type { RigOutfitProfile, RigOutfitTopology } from './types'
 import { RIG_OUTFIT_SAFETY, RIG_SECONDARY_PART_PATTERNS } from './contract'
 import { RIG_OUTFIT_TOPOLOGIES } from './types'
 
-export const OUTFIT_TOPOLOGIES: readonly RigOutfitTopology[] =
-  RIG_OUTFIT_TOPOLOGIES
-
 interface OutfitSafetyRule {
   torsoTwistScale: number
   secondaryMotionScale: number

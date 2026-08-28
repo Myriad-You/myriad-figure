@@ -1,7 +1,4 @@
-import {
-  isAnime25DPlayback,
-  type Anime25DPlayback,
-} from '../anime25drig/types'
+import { isAnime25DPlayback, type Anime25DPlayback } from '../anime25drig/types'
 import {
   CHARACTER_ASSET_CONTRACT_VERSION,
   MAX_RIG_BONES,

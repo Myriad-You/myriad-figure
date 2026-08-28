@@ -115,20 +115,10 @@ export function cueDurationMs(cue: PerformanceCue): number {
   )
 }
 
-/** Prevents throttled browser timers from replaying an already-expired pose. */
-export function cueRemainingDurationMs(
-  cue: PerformanceCue,
-  scheduledStartMs: number,
-  nowMs: number,
-): number {
-  return intervalRemainingDurationMs(
-    scheduledStartMs,
-    scheduledStartMs + cueDurationMs(cue),
-    nowMs,
-  )
-}
-
-/** Also respects an interval shortened by a later replacement cue. */
+/**
+ * Prevents throttled browser timers from replaying an already-expired pose,
+ * and respects an interval shortened by a later replacement cue.
+ */
 export function scheduledBodyCueRemainingDurationMs(
   scheduled: ScheduledBodyCue,
   nowMs: number,

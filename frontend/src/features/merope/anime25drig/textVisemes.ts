@@ -27,7 +27,7 @@ export async function compileTextVisemes(
     compileNonHan(normalized, language, output)
     return coalesce(output).slice(0, MAX_COMPILED_CUES)
   }
-  let pinyin: typeof import('pinyin-pro')['pinyin'] | null = null
+  let pinyin: (typeof import('pinyin-pro'))['pinyin'] | null = null
   if (HAN_CHAR.test(normalized)) {
     try {
       pinyin = (await import('pinyin-pro')).pinyin
@@ -65,7 +65,7 @@ function compileUnknownHan(text: string, output: TextVisemeCue[]): void {
 function compileHan(
   text: string,
   output: TextVisemeCue[],
-  pinyin: typeof import('pinyin-pro')['pinyin'],
+  pinyin: (typeof import('pinyin-pro'))['pinyin'],
 ): void {
   const syllables = pinyin(text, {
     toneType: 'none',

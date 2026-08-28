@@ -183,9 +183,7 @@ export class SingingGrooveController {
       this.turnAround()
     }
 
-    const slow = outward
-      ? mix(1, 0.7, clamp((edge - 0.55) / 0.35, 0, 1))
-      : 1
+    const slow = outward ? mix(1, 0.7, clamp((edge - 0.55) / 0.35, 0, 1)) : 1
     const desired = this.leanDir * this.cruise * slow
     this.leanSpeed += (desired - this.leanSpeed) * (1 - Math.exp(-12 * dt))
     this.leanTarget = clamp(this.leanTarget + this.leanSpeed * dt, -span, span)

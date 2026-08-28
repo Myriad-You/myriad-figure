@@ -5,9 +5,17 @@ const VERTEX_SHADER = `#version 300 es
 in vec2 a_pos;
 in vec2 a_uv;
 uniform vec2 u_view;
+uniform mat3 u_layer_transform;
+uniform vec4 u_body_transform;
 out vec2 v_uv;
 void main() {
-  vec2 clip = vec2(a_pos.x / u_view.x * 2.0 - 1.0, 1.0 - a_pos.y / u_view.y * 2.0);
+  vec2 layer_position = (u_layer_transform * vec3(a_pos, 1.0)).xy;
+  vec2 offset = layer_position - u_body_transform.xy;
+  vec2 transformed = u_body_transform.xy + vec2(
+    offset.x * u_body_transform.z - offset.y * u_body_transform.w,
+    offset.x * u_body_transform.w + offset.y * u_body_transform.z
+  );
+  vec2 clip = vec2(transformed.x / u_view.x * 2.0 - 1.0, 1.0 - transformed.y / u_view.y * 2.0);
   gl_Position = vec4(clip, 0.0, 1.0);
   v_uv = a_uv;
 }`
@@ -122,6 +130,47 @@ export interface CroppedLayerPixels {
   pixels: Uint8ClampedArray
   width: number
   height: number
+}
+
+export interface IndexedDeformableMesh {
+  vao: WebGLVertexArrayObject
+  positionBuffer: WebGLBuffer
+  uvBuffer: WebGLBuffer
+  indexBuffer: WebGLBuffer
+}
+
+export function createIndexedDeformableMesh(
+  gl: WebGL2RenderingContext,
+  program: WebGLProgram,
+  positions: Float32Array,
+  uvs: Float32Array,
+  indices: Uint16Array,
+): IndexedDeformableMesh {
+  if (positions.length !== uvs.length) {
+    throw new Error(currentCopy().merope.anime25dPlaybackFailed)
+  }
+  const vao = gl.createVertexArray()
+  const positionBuffer = gl.createBuffer()
+  const uvBuffer = gl.createBuffer()
+  const indexBuffer = gl.createBuffer()
+  if (!vao || !positionBuffer || !uvBuffer || !indexBuffer) {
+    throw new Error(currentCopy().merope.anime25dPlaybackFailed)
+  }
+  const position = gl.getAttribLocation(program, 'a_pos')
+  const uv = gl.getAttribLocation(program, 'a_uv')
+  gl.bindVertexArray(vao)
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, positions, gl.DYNAMIC_DRAW)
+  gl.enableVertexAttribArray(position)
+  gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0)
+  gl.bindBuffer(gl.ARRAY_BUFFER, uvBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW)
+  gl.enableVertexAttribArray(uv)
+  gl.vertexAttribPointer(uv, 2, gl.FLOAT, false, 0, 0)
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW)
+  gl.bindVertexArray(null)
+  return { vao, positionBuffer, uvBuffer, indexBuffer }
 }
 
 export function readLayerPixels(

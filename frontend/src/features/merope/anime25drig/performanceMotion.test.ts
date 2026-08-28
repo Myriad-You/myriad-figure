@@ -4,7 +4,6 @@ import {
   baselineDriverPatch,
   cueDriverPatch,
   cueDurationMs,
-  cueRemainingDurationMs,
   idleSpeechDriverPatch,
   performanceRestDriverPatch,
   scheduleBodyCues,
@@ -134,9 +133,16 @@ test('does not replay expired body cues after a throttled timer', () => {
     interrupt: 'replace' as const,
   }
   const duration = cueDurationMs(cue)
-  assert.equal(cueRemainingDurationMs(cue, 5_000, 4_900), duration)
-  assert.equal(cueRemainingDurationMs(cue, 5_000, 5_300), duration - 300)
-  assert.equal(cueRemainingDurationMs(cue, 5_000, 5_000 + duration), 0)
+  const scheduled = { cue, startMs: 5_000, endMs: 5_000 + duration }
+  assert.equal(scheduledBodyCueRemainingDurationMs(scheduled, 4_900), duration)
+  assert.equal(
+    scheduledBodyCueRemainingDurationMs(scheduled, 5_300),
+    duration - 300,
+  )
+  assert.equal(
+    scheduledBodyCueRemainingDurationMs(scheduled, 5_000 + duration),
+    0,
+  )
 })
 
 test('precomputes queued body timing independently of delayed callbacks', () => {
@@ -161,9 +167,8 @@ test('precomputes queued body timing independently of delayed callbacks', () => 
   assert.equal(scheduledFirst?.startMs, 5_000)
   assert.equal(scheduledQueued?.startMs, scheduledFirst?.endMs)
   assert.ok(
-    cueRemainingDurationMs(
-      queued,
-      scheduledQueued?.startMs ?? 0,
+    scheduledBodyCueRemainingDurationMs(
+      scheduledQueued!,
       (scheduledFirst?.endMs ?? 0) + 100,
     ) > 0,
   )

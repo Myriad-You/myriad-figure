@@ -3,10 +3,7 @@ import type { SpeechArticulation, SpeechViseme } from './rig/articulation'
 export const MEROPE_SPEECH_EVENT = 'arael-merope-speech'
 
 export type MeropeSpeechSource =
-  | 'reply'
-  | 'proactive'
-  | 'interaction'
-  | 'preview'
+  'reply' | 'proactive' | 'interaction' | 'preview'
 
 interface SpeechEventBase {
   messageId: string
