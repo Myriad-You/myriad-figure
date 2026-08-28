@@ -8,7 +8,7 @@ import type {
   Anime25DPlaybackLayer,
 } from './types'
 import { currentCopy } from '../../../i18n/localeCopy'
-import { ANIME25D_LAYER_DEPTH } from '../rig/anime25d'
+import { ANIME25D_LAYER_DEPTH, anime25DLayerFade } from '../rig/anime25d'
 import { fallbackAnime25DMouthProfile } from './mouthProfile'
 import { anime25DPlaybackSource } from './types'
 
@@ -177,24 +177,7 @@ function playbackDepth(role: string): number {
 }
 
 function playbackFade(role: string): Anime25DFade | null {
-  if (role === 'eyewhite' || role === 'irides' || role === 'eyelash')
-    return 'eyeOpen'
-  if (role === 'eye-close') return 'eyeClose'
-  if (role === 'eye-dizzy') return 'eyeDizzy'
-  if (role === 'eye-squeeze') return 'eyeSqueeze'
-  if (role === 'eye-cry') return 'eyeCry'
-  if (role === 'maniac-eye-shadow') return 'maniacEyeShadow'
-  if (role === 'maniac-mouth-shadow') return 'maniacMouthShadow'
-  if (role === 'anger-mark') return 'angerMark'
-  if (role === 'speechless-sweat') return 'speechlessSweat'
-  if (role === 'mouth-open') return 'mouthOpen'
-  if (role === 'mouth-wide') return 'mouthWide'
-  if (role === 'mouth-round') return 'mouthRound'
-  if (role === 'mouth-narrow') return 'mouthNarrow'
-  if (role === 'mouth-close') return 'mouthClose'
-  if (role === 'mouth-cry') return 'mouthCry'
-  if (role === 'mouth-maniac') return 'mouthManiac'
-  return null
+  return anime25DLayerFade(role)
 }
 
 function requiredLayer(

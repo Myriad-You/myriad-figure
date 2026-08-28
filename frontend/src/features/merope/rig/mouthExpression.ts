@@ -1,5 +1,5 @@
 export type MouthExpressionKind =
-  'open' | 'wide' | 'round' | 'narrow' | 'cry' | 'maniac'
+  'open' | 'wide' | 'round' | 'narrow' | 'cry' | 'maniac' | 'silly'
 
 export interface MouthExpressionSize {
   width: number
@@ -46,6 +46,11 @@ export function mouthExpressionGeneratedSizes(
   const narrowWidth = clampInt(Math.round(sourceWidth * 1.08), 24, 136)
   const cryWidth = clampInt(Math.round(sourceWidth * 1.3), 30, 160)
   const faceWidth = Math.max(1, face?.width ?? 1)
+  const sillyWidth = clampInt(
+    Math.round(Math.max(sourceWidth * 1.1, faceWidth * 0.115)),
+    26,
+    128,
+  )
   const maniacPreferredWidth = Math.max(sourceWidth * 1.62, faceWidth * 0.29)
   const maniacWidth = clampInt(
     Math.round(
@@ -116,6 +121,14 @@ export function mouthExpressionGeneratedSizes(
         Math.round(Math.min(maniacUnboundedHeight, maniacHeightLimit)),
         42,
         220,
+      ),
+    },
+    silly: {
+      width: sillyWidth,
+      height: clampInt(
+        Math.round(Math.max(sourceHeight * 1.6, sillyWidth * 0.72)),
+        20,
+        96,
       ),
     },
   }
@@ -352,6 +365,7 @@ function mouthOuterPath(kind: MouthExpressionKind): Point[] {
   if (kind === 'narrow') return narrowOuterPath()
   if (kind === 'cry') return cryOuterPath()
   if (kind === 'maniac') return maniacOuterPath()
+  if (kind === 'silly') return sillyOuterPath()
   return openOuterPath()
 }
 
@@ -362,6 +376,7 @@ function tongueBoundary(kind: MouthExpressionKind, x: number): number {
     const normalizedX = clamp(Math.abs(x) / 0.9, 0, 1)
     return -0.08 - 0.18 * (1 - normalizedX * normalizedX)
   }
+  if (kind === 'silly') return 0.16 - 0.14 * (1 - x * x)
   return 0.24 - 0.16 * (1 - x * x)
 }
 
@@ -554,6 +569,22 @@ function maniacOuterPath(): Point[] {
     [-0.85, -0.18],
     [-0.82, -0.62],
   )
+  return output
+}
+
+/** Small cat-like open mouth that can collapse continuously into an omega. */
+function sillyOuterPath(): Point[] {
+  const output: Point[] = []
+  appendCubic(
+    output,
+    [-0.72, -0.36],
+    [-0.5, -0.58],
+    [-0.2, -0.48],
+    [0, -0.38],
+  )
+  appendCubic(output, [0, -0.38], [0.2, -0.5], [0.5, -0.58], [0.72, -0.34])
+  appendCubic(output, [0.72, -0.34], [0.68, 0.2], [0.42, 0.68], [0, 0.79])
+  appendCubic(output, [0, 0.79], [-0.42, 0.67], [-0.68, 0.2], [-0.72, -0.36])
   return output
 }
 

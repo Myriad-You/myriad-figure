@@ -4,6 +4,7 @@ import {
   activityExpressionDriverPatch,
   CRY_EXPRESSION_PRESET,
   DIZZY_EXPRESSION_PRESET,
+  LOVESTRUCK_EXPRESSION_PRESET,
   MANIAC_EXPRESSION_PRESET,
   SQUEEZE_EXPRESSION_PRESET,
   THINKING_ACTIVITY_EXPRESSION,
@@ -37,6 +38,7 @@ test('leaving thinking resets every activity-owned expression channel', () => {
   assert.equal(neutral.eyeSqueeze, 0)
   assert.equal(neutral.eyeCry, 0)
   assert.equal(neutral.maniac, 0)
+  assert.equal(neutral.lovestruck, 0)
   assert.equal(neutral.irisScale, 1)
   for (const key of [
     'angleX',
@@ -72,6 +74,13 @@ test('maniac preview selects its dedicated mouth while retaining source eyes', (
   assert.equal(MANIAC_EXPRESSION_PRESET.maniac, 1)
   assert.equal(MANIAC_EXPRESSION_PRESET.eyeDizzy, undefined)
   assert.equal(MANIAC_EXPRESSION_PRESET.eyeCry, undefined)
+})
+
+test('lovestruck preview selects the additive face expression', () => {
+  assert.equal(LOVESTRUCK_EXPRESSION_PRESET.lovestruck, 1)
+  assert.equal(LOVESTRUCK_EXPRESSION_PRESET.silly, 0)
+  assert.equal(LOVESTRUCK_EXPRESSION_PRESET.eyeOpenL, 1)
+  assert.equal(LOVESTRUCK_EXPRESSION_PRESET.eyeOpenR, 1)
 })
 
 test('thinking preview enables the dedicated motion loop', () => {

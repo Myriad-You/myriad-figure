@@ -62,19 +62,25 @@ export function singingDriveAmount(drive: SingingSpectrumDrive): number {
 }
 
 /**
- * Weight cruises side to side and eases around at the outside.
- * Instantly flipping speed at the wall reads as a shake.
+ * Weight cruises side to side. Nod size comes from the live mix: vocals lift,
+ * kick/bass dip, and a punch on rising beats. Turns ease instead of bouncing.
  */
 export class SingingGrooveController {
   private readonly output: SingingGroovePose = { ...ZERO }
   private lastTime = Number.NaN
   private energy = 0.4
+  private vocalFollow = 0
+  private beatFollow = 0
+  private nodPulse = 0
   private leanTarget = 0
   private leanSpeed = 0
   private leanDir = 0
-  private cruise = 0.034
-  private spanNow = 0.18
-  private spanGoal = 0.18
+  private cruise = 0.16
+  private spanNow = 0.26
+  private spanGoal = 0.26
+  private turnAt = 0.82
+  private cruiseClock = 0
+  private nextCruiseAt = 0.6
   private readonly neckX: Spring1 = { value: 0, velocity: 0 }
   private readonly neckZ: Spring1 = { value: 0, velocity: 0 }
   private readonly neckY: Spring1 = { value: 0, velocity: 0 }
@@ -97,24 +103,21 @@ export class SingingGrooveController {
     this.energy +=
       ((enabled ? Math.max(vocal, beat * 0.4, 0.32) : 0) - this.energy) *
       (1 - Math.exp(-1.6 * dt))
+    this.followSpectrum(dt, enabled, vocal, beat)
 
     if (enabled) this.driftLean(dt)
     else this.settleLean(dt)
 
-    const nod = enabled
-      ? mix(0.4, 0.56, this.energy) + Math.abs(this.leanTarget) * 0.12
-      : 0
-    // Overdamped so the neck does not ring when weight turns around.
-    stepSpring(this.neckZ, this.leanTarget, dt, 0.88, 1.05)
-    stepSpring(this.neckX, this.leanTarget * 0.42, dt, 0.92, 1.05)
-    stepSpring(this.neckY, nod, dt, 0.78, 1.02)
-    stepSpring(this.torso, this.neckZ.value * 0.55, dt, 0.58, 1.1)
+    const pitch = enabled ? this.nodPitch() : 0
+    stepSpring(this.neckZ, this.leanTarget, dt, 1.45, 1.04)
+    stepSpring(this.neckX, this.leanTarget * 0.42, dt, 1.5, 1.04)
+    stepSpring(this.neckY, pitch, dt, 2.25, 1.16)
+    stepSpring(this.torso, this.neckZ.value * 0.55, dt, 0.95, 1.08)
     stepSpring(this.arm, 0, dt, 1.6, 0.9)
 
     this.output.angleX = this.neckX.value
     this.output.angleY = this.neckY.value
     this.output.angleZ = this.neckZ.value
-    // A little delayed weight, not a second shoulder swing.
     this.output.body = this.torso.value * 0.22
     this.output.armY = 0
     this.output.armPos = 0
@@ -123,26 +126,68 @@ export class SingingGrooveController {
     return this.output
   }
 
-  private driftLean(dt: number): void {
-    if (this.leanDir === 0) this.leanDir = this.unit() < 0.5 ? -1 : 1
+  private followSpectrum(
+    dt: number,
+    enabled: boolean,
+    vocal: number,
+    beat: number,
+  ): void {
+    const vocalTarget = enabled ? vocal : 0
+    const beatTarget = enabled ? beat : 0
+    this.vocalFollow +=
+      (vocalTarget - this.vocalFollow) * (1 - Math.exp(-1.35 * dt))
+    const rise = enabled ? Math.max(0, beatTarget - this.beatFollow) : 0
+    const beatRate = beatTarget > this.beatFollow ? 9 : 3.2
+    this.beatFollow +=
+      (beatTarget - this.beatFollow) * (1 - Math.exp(-beatRate * dt))
+    this.nodPulse += rise * 14
+    this.nodPulse +=
+      (0 - this.nodPulse) * (1 - Math.exp(-(enabled ? 8.2 : 10) * dt))
+    this.nodPulse = clamp(this.nodPulse, 0, 1)
+  }
 
-    this.spanNow += (this.spanGoal - this.spanNow) * (1 - Math.exp(-0.45 * dt))
-    if (Math.abs(this.spanNow - this.spanGoal) < 0.003) {
-      this.spanGoal = mix(0.14, 0.23, this.energy) * mix(0.88, 1.12, this.unit())
+  /** Dip on rising beats, then come back up. Loud hits nod deeper. */
+  private nodPitch(): number {
+    const spanForNod = Math.max(this.spanNow, 0.16)
+    const edge = clamp(Math.abs(this.leanTarget) / spanForNod, 0, 1)
+    const lift = mix(0.16, 0.32, this.vocalFollow)
+    const grooveDip = mix(0.01, 0.04, this.beatFollow)
+    const hitDip = smootherstep(this.nodPulse) * mix(0.48, 0.7, this.beatFollow)
+    const edgeDip = edge * mix(0.03, 0.06, this.energy)
+    return clamp(lift - grooveDip - hitDip - edgeDip, -0.55, 0.32)
+  }
+
+  private driftLean(dt: number): void {
+    if (this.leanDir === 0) {
+      this.leanDir = this.unit() < 0.5 ? -1 : 1
+      this.pickCruise()
+      this.turnAt = this.mixRange(0.4, 0.96)
     }
 
-    const span = Math.max(this.spanNow, 0.08)
+    this.cruiseClock += dt
+    if (this.cruiseClock >= this.nextCruiseAt) {
+      this.cruiseClock = 0
+      this.nextCruiseAt = this.mixRange(0.25, 1.1)
+      this.pickCruise()
+    }
+
+    this.spanNow += (this.spanGoal - this.spanNow) * (1 - Math.exp(-0.7 * dt))
+    if (Math.abs(this.spanNow - this.spanGoal) < 0.004) {
+      this.spanGoal = mix(0.22, 0.3, this.energy) * mix(0.94, 1.08, this.unit())
+    }
+
+    const span = Math.max(this.spanNow, 0.16)
     const edge = Math.abs(this.leanTarget) / span
     const outward = Math.sign(this.leanTarget) === this.leanDir
-    if (outward && (edge > 0.86 || Math.abs(this.leanTarget) >= span)) {
+    if (outward && (edge > this.turnAt || Math.abs(this.leanTarget) >= span)) {
       this.turnAround()
     }
 
     const slow = outward
-      ? mix(1, 0.55, clamp((edge - 0.5) / 0.36, 0, 1))
+      ? mix(1, 0.7, clamp((edge - 0.55) / 0.35, 0, 1))
       : 1
     const desired = this.leanDir * this.cruise * slow
-    this.leanSpeed += (desired - this.leanSpeed) * (1 - Math.exp(-7 * dt))
+    this.leanSpeed += (desired - this.leanSpeed) * (1 - Math.exp(-12 * dt))
     this.leanTarget = clamp(this.leanTarget + this.leanSpeed * dt, -span, span)
   }
 
@@ -154,7 +199,18 @@ export class SingingGrooveController {
 
   private turnAround(): void {
     this.leanDir = -this.leanDir
-    this.cruise = mix(0.026, 0.042, this.energy) * mix(0.86, 1.16, this.unit())
+    this.turnAt = this.mixRange(0.4, 0.96)
+    this.pickCruise()
+    this.cruiseClock = 0
+    this.nextCruiseAt = this.mixRange(0.25, 1.1)
+  }
+
+  private pickCruise(): void {
+    this.cruise = mix(0.14, 0.24, this.energy) * mix(0.82, 1.22, this.unit())
+  }
+
+  private mixRange(minimum: number, maximum: number): number {
+    return mix(minimum, maximum, this.unit())
   }
 
   private unit(): number {
@@ -216,6 +272,11 @@ function finiteOrZero(value: number): number {
 
 function mix(from: number, to: number, amount: number): number {
   return from + (to - from) * unit(amount)
+}
+
+function smootherstep(value: number): number {
+  const amount = unit(value)
+  return amount * amount * amount * (amount * (amount * 6 - 15) + 10)
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

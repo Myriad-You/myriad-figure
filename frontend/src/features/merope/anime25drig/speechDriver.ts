@@ -1,5 +1,5 @@
 import type { SpeechArticulation } from '../rig/articulation'
-import type { Anime25DDriver } from './player'
+import type { Anime25DDriver } from './driver'
 
 type EnergyDriverPatch = Pick<
   Anime25DDriver,

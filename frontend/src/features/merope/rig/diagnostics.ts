@@ -1,4 +1,8 @@
 import type { MeropeRigManifest } from './types'
+import {
+  ANIME25D_FACIAL_CAPABILITIES,
+  hasAnime25DCapability,
+} from './anime25dCapabilities'
 import { presentationAssetCoverage } from './presentation'
 import { resolveRigSemantics } from './semantics'
 
@@ -55,6 +59,15 @@ export function rigCapabilityRegressions(
   )
 }
 
+/** Exact facial subset of the current Anime2.5D character-asset contract. */
+export function anime25DFacialVariantsComplete(
+  parts: MeropeRigManifest['parts'],
+): boolean {
+  return ANIME25D_FACIAL_CAPABILITIES.every((capability) =>
+    hasAnime25DCapability(parts || [], capability),
+  )
+}
+
 export function diagnoseRig(manifest: MeropeRigManifest): RigDiagnosticReport {
   const issues: RigDiagnostic[] = []
   const semantics = resolveRigSemantics(manifest)
@@ -88,7 +101,7 @@ export function diagnoseRig(manifest: MeropeRigManifest): RigDiagnosticReport {
     (part) => part.slot === 'head-expression',
   ).length
   const facialVariants = anime25d
-    ? splitEyeGaze && mouthVariantCount >= 7
+    ? anime25DFacialVariantsComplete(manifest.parts)
     : (splitEyeGaze && mouthVariantCount >= 4) ||
       (headExpressionCount >= 4 && mouthVariantCount >= 4)
   const deformableSkinning = (manifest.parts || []).some((part) =>

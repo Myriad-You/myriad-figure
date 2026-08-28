@@ -369,7 +369,9 @@ export function chestMotionTarget(
 ): ChestMotionTarget {
   const scale = Math.max(0.01, faceScale)
   target.x = (driver.angleX * 5.5 - driver.angleZ * 4.5) * scale
-  target.y = -driver.angleY * 4.5 * scale
+  // Subtracted rather than negated so a neutral pose resolves to +0. A -0
+  // travel target is inert in the spring but leaks into equality checks.
+  target.y = 0 - driver.angleY * 4.5 * scale
   return target
 }
 
@@ -496,15 +498,25 @@ export function stepChestSpring(
   const stiffnessScale = frequency * frequency
   const steps = Math.ceil(dt / MAX_SPRING_STEP_SECONDS)
   const stepSeconds = dt / steps
+  const fromX = state.previousTargetX
+  const fromY = state.previousTargetY
   for (let step = 0; step < steps; step += 1) {
+    // The attachment base slides across the frame instead of teleporting at
+    // the frame boundary. Holding it still inside the substeps made a 30fps
+    // frame integrate a different trajectory than the two 60fps frames
+    // covering the same motion, which is exactly what the substeps exist to
+    // avoid. This also matches the constant target velocity used below.
+    const blend = (step + 1) / steps
+    const stepTargetX = fromX + (targetX - fromX) * blend
+    const stepTargetY = fromY + (targetY - fromY) * blend
     const accelX =
-      -HORIZONTAL_SPRING.stiffness * stiffnessScale * (state.x - targetX) -
+      -HORIZONTAL_SPRING.stiffness * stiffnessScale * (state.x - stepTargetX) -
       HORIZONTAL_SPRING.damping *
         frequency *
         damping *
         (state.vx - targetVelocityX)
     const accelY =
-      -VERTICAL_SPRING.stiffness * stiffnessScale * (state.y - targetY) -
+      -VERTICAL_SPRING.stiffness * stiffnessScale * (state.y - stepTargetY) -
       VERTICAL_SPRING.damping *
         frequency *
         damping *

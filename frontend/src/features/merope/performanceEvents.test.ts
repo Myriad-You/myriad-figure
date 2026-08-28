@@ -117,8 +117,14 @@ test('accepts crying only as a bounded semantic performance cue', () => {
   assert.equal(performance?.plan.cues[0]?.intensity, 1.4)
 })
 
-test('accepts angry, speechless, and maniac semantic performance cues', () => {
-  for (const intent of ['angry', 'speechless', 'maniac'] as const) {
+test('accepts stylized semantic performance cues', () => {
+  for (const intent of [
+    'angry',
+    'speechless',
+    'maniac',
+    'silly',
+    'lovestruck',
+  ] as const) {
     const performance = sanitizePerformanceDirective({
       phase: 'reaction',
       moodRevision: 3,

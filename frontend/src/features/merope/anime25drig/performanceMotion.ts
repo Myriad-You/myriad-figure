@@ -2,8 +2,9 @@ import type {
   PerformanceBaseline,
   PerformanceCue,
 } from '../../../services/agent/types'
-import type { Anime25DDriver } from './player'
-import { DEFAULT_FRONT_HAIR_SWAY, DEFAULT_REAR_HAIR_SWAY } from './player'
+import type { Anime25DDriver } from './driver'
+import { performanceCuePriority } from '../performanceContract'
+import { DEFAULT_FRONT_HAIR_SWAY, DEFAULT_REAR_HAIR_SWAY } from './driver'
 
 export interface ScheduledBodyCue {
   cue: PerformanceCue
@@ -96,31 +97,14 @@ export function cueDriverPatch(cue: PerformanceCue): Partial<Anime25DDriver> {
     angry: { body: 0.1 * amount },
     speechless: { body: -0.045 * amount, idle: false },
     maniac: { body: 0.055 * amount, idle: false },
+    silly: { body: -0.03 * amount, idle: false },
+    lovestruck: { body: -0.025 * amount, idle: false },
   }
   return patches[cue.intent]
 }
 
 export function cuePriority(cue: PerformanceCue): number {
-  if (
-    cue.intent === 'delight' ||
-    cue.intent === 'notify' ||
-    cue.intent === 'dizzy' ||
-    cue.intent === 'cry' ||
-    cue.intent === 'angry' ||
-    cue.intent === 'maniac'
-  ) {
-    return 3
-  }
-  if (
-    cue.intent === 'greet' ||
-    cue.intent === 'question' ||
-    cue.intent === 'emphasize' ||
-    cue.intent === 'think' ||
-    cue.intent === 'speechless'
-  ) {
-    return 2
-  }
-  return 1
+  return performanceCuePriority(cue.intent)
 }
 
 export function cueDurationMs(cue: PerformanceCue): number {

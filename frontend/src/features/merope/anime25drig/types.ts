@@ -13,6 +13,10 @@ export type Anime25DFade =
   | 'eyeDizzy'
   | 'eyeSqueeze'
   | 'eyeCry'
+  | 'eyeSilly'
+  | 'lovestruckHeart'
+  | 'lovestruckFace'
+  | 'lovestruckDrool'
   | 'maniacEyeShadow'
   | 'maniacMouthShadow'
   | 'angerMark'
@@ -24,6 +28,7 @@ export type Anime25DFade =
   | 'mouthClose'
   | 'mouthCry'
   | 'mouthManiac'
+  | 'mouthSilly'
 
 export type Anime25DGroup = 'head' | 'body'
 

@@ -3,16 +3,23 @@ import test from 'node:test'
 import {
   DEFAULT_FRONT_HAIR_SWAY,
   DEFAULT_REAR_HAIR_SWAY,
-  fadeOpacity,
   IDENTITY_DRIVER,
   sanitizeDriverPatch,
-} from './player'
+} from './driver'
+import { fadeOpacity, shouldDeformLayer } from './mouthRuntime'
 
 test('uses restrained front and rear hair sway defaults', () => {
   assert.equal(DEFAULT_FRONT_HAIR_SWAY, 1)
   assert.equal(DEFAULT_REAR_HAIR_SWAY, 0.5)
   assert.equal(IDENTITY_DRIVER.fhAmp, 1)
   assert.equal(IDENTITY_DRIVER.physAmp, 0.5)
+})
+
+test('skips invisible expression uploads while preserving authored eye-white state', () => {
+  assert.equal(shouldDeformLayer({ name: 'eye-dizzy-left' }, 0), false)
+  assert.equal(shouldDeformLayer({ name: 'mouth-maniac' }, 0.003), false)
+  assert.equal(shouldDeformLayer({ name: 'eye-dizzy-left' }, 0.004), true)
+  assert.equal(shouldDeformLayer({ name: 'eyewhite-left' }, 0), true)
 })
 
 test('clamps all external driver writes at the runtime boundary', () => {
@@ -87,6 +94,58 @@ test('special mouths replace normal speaking and closed artwork without stacking
   assert.equal(fadeOpacity(layer('mouthManiac'), maniac), 1)
   assert.equal(fadeOpacity(layer('mouthOpen'), maniac), 0)
   assert.equal(fadeOpacity(layer('mouthClose'), maniac), 0)
+})
+
+test('vacant-stare artwork owns both eyes and the mouth while it is up', () => {
+  const eye = (fade: 'eyeOpen' | 'eyeClose' | 'eyeSilly') =>
+    ({ fade, side: 'L' }) as never
+  const mouth = (
+    fade: 'mouthOpen' | 'mouthClose' | 'mouthSilly' | 'mouthManiac',
+  ) => ({ fade, side: null }) as never
+
+  const silly = { ...IDENTITY_DRIVER, silly: 1, mouthOpen: 1 }
+  assert.equal(fadeOpacity(eye('eyeSilly'), silly), 1)
+  assert.equal(fadeOpacity(eye('eyeOpen'), silly), 0)
+  assert.equal(fadeOpacity(eye('eyeClose'), silly), 0)
+  assert.equal(fadeOpacity(mouth('mouthSilly'), silly), 1)
+  assert.equal(fadeOpacity(mouth('mouthOpen'), silly), 0)
+  assert.equal(fadeOpacity(mouth('mouthClose'), silly), 0)
+
+  const half = { ...IDENTITY_DRIVER, silly: 0.5 }
+  assert.ok(Math.abs(fadeOpacity(eye('eyeSilly'), half) - 0.5) < 1e-12)
+  assert.ok(Math.abs(fadeOpacity(eye('eyeOpen'), half) - 0.5) < 1e-12)
+
+  // A cue landing mid-reply keeps the stare but gives the mouth back.
+  assert.equal(fadeOpacity(mouth('mouthSilly'), silly, undefined, 0), 0)
+  assert.equal(fadeOpacity(mouth('mouthOpen'), silly, undefined, 0), 1)
+  assert.equal(fadeOpacity(eye('eyeSilly'), silly, undefined, 0), 1)
+
+  const crying = { ...IDENTITY_DRIVER, silly: 1, eyeCry: 1 }
+  assert.equal(fadeOpacity(eye('eyeSilly'), crying), 0)
+
+  const laughing = { ...IDENTITY_DRIVER, silly: 1, maniac: 1 }
+  assert.equal(fadeOpacity(eye('eyeSilly'), laughing), 0)
+  assert.equal(fadeOpacity(mouth('mouthSilly'), laughing), 0)
+  assert.equal(fadeOpacity(mouth('mouthManiac'), laughing), 1)
+})
+
+test('lovestruck accents preserve authored eyes and yield to replacement eyes', () => {
+  const layer = (
+    fade: 'eyeOpen' | 'lovestruckHeart' | 'lovestruckFace' | 'lovestruckDrool',
+  ) => ({ fade, side: 'L' }) as never
+  const lovestruck = { ...IDENTITY_DRIVER, lovestruck: 1 }
+  assert.equal(fadeOpacity(layer('eyeOpen'), lovestruck), 1)
+  assert.equal(fadeOpacity(layer('lovestruckHeart'), lovestruck), 1)
+  assert.equal(fadeOpacity(layer('lovestruckFace'), lovestruck), 1)
+  assert.equal(fadeOpacity(layer('lovestruckDrool'), lovestruck), 1)
+
+  const blinking = { ...lovestruck, eyeOpenL: 0 }
+  assert.equal(fadeOpacity(layer('lovestruckHeart'), blinking), 0)
+  assert.equal(fadeOpacity(layer('lovestruckFace'), blinking), 1)
+
+  const crying = { ...lovestruck, eyeCry: 1 }
+  assert.equal(fadeOpacity(layer('lovestruckHeart'), crying), 0)
+  assert.equal(fadeOpacity(layer('lovestruckFace'), crying), 0)
 })
 
 test('shows semantic accents only when replacement-eye expressions are clear', () => {

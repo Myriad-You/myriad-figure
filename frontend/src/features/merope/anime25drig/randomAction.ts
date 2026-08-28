@@ -55,6 +55,7 @@ interface ActionDefinition {
   name: RandomActionName
   minimumDuration: number
   maximumDuration: number
+  weight?: number
 }
 
 type RandomSource = () => number
@@ -63,18 +64,23 @@ const IDLE_ACTIONS: readonly ActionDefinition[] = [
   { name: 'acknowledge', minimumDuration: 1.45, maximumDuration: 1.75 },
   { name: 'curious', minimumDuration: 2, maximumDuration: 2.55 },
   { name: 'openGesture', minimumDuration: 2, maximumDuration: 2.5 },
-  { name: 'pleased', minimumDuration: 1.8, maximumDuration: 2.3 },
+  { name: 'pleased', minimumDuration: 1.8, maximumDuration: 2.3, weight: 2.4 },
 ]
 
 const EXCITED_ACTIONS: readonly ActionDefinition[] = [
-  { name: 'beam', minimumDuration: 1.05, maximumDuration: 1.55 },
-  { name: 'sparkle', minimumDuration: 0.85, maximumDuration: 1.35 },
-  { name: 'glance', minimumDuration: 0.8, maximumDuration: 1.25 },
-  { name: 'cheer', minimumDuration: 1.15, maximumDuration: 1.7 },
-  { name: 'dreamy', minimumDuration: 1.1, maximumDuration: 1.7 },
-  { name: 'coy', minimumDuration: 0.9, maximumDuration: 1.4 },
-  { name: 'smug', minimumDuration: 0.95, maximumDuration: 1.45 },
-  { name: 'squint', minimumDuration: 0.7, maximumDuration: 1.15 },
+  { name: 'beam', minimumDuration: 1.05, maximumDuration: 1.55, weight: 3.2 },
+  {
+    name: 'sparkle',
+    minimumDuration: 0.85,
+    maximumDuration: 1.35,
+    weight: 2.4,
+  },
+  { name: 'glance', minimumDuration: 0.8, maximumDuration: 1.25, weight: 0.7 },
+  { name: 'cheer', minimumDuration: 1.15, maximumDuration: 1.7, weight: 3.2 },
+  { name: 'dreamy', minimumDuration: 1.1, maximumDuration: 1.7, weight: 0.7 },
+  { name: 'coy', minimumDuration: 0.9, maximumDuration: 1.4, weight: 2.2 },
+  { name: 'smug', minimumDuration: 0.95, maximumDuration: 1.45, weight: 1.6 },
+  { name: 'squint', minimumDuration: 0.7, maximumDuration: 1.15, weight: 0.6 },
 ]
 
 const NEUTRAL_FRAME: RandomActionFrame = {
@@ -226,20 +232,19 @@ export class RandomActionController {
 
   private nextActionIndex(): number {
     const actions = this.catalog()
-    let index = Math.min(
-      actions.length - 1,
-      Math.floor(this.randomUnit() * actions.length),
-    )
-    if (actions.length > 1 && index === this.lastIndex) {
-      const offset =
-        1 +
-        Math.min(
-          actions.length - 2,
-          Math.floor(this.randomUnit() * (actions.length - 1)),
-        )
-      index = (index + offset) % actions.length
+    if (actions.length <= 1) return 0
+    let total = 0
+    for (let index = 0; index < actions.length; index += 1) {
+      if (index === this.lastIndex) continue
+      total += actionWeight(actions[index])
     }
-    return index
+    let pick = this.randomUnit() * total
+    for (let index = 0; index < actions.length; index += 1) {
+      if (index === this.lastIndex) continue
+      pick -= actionWeight(actions[index])
+      if (pick <= 0) return index
+    }
+    return this.lastIndex === 0 ? 1 : 0
   }
 
   private resolveAction(now: number): Readonly<RandomActionFrame> {
@@ -415,6 +420,12 @@ export class RandomActionController {
     const value = this.random()
     return Number.isFinite(value) ? clamp(value, 0, 1) : 0.5
   }
+}
+
+function actionWeight(action: ActionDefinition): number {
+  const weight = action.weight
+  if (weight == null || !Number.isFinite(weight) || weight <= 0) return 1
+  return weight
 }
 
 const ACTION_OFFSET_KEYS = [

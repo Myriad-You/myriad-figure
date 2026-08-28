@@ -42,10 +42,10 @@ contact, wrist rotation, locomotion, or gesture constraints.
 
 ## Implemented path
 
-- `anime25dImporter.ts` owns detection, normalization, connected-component eye
-  splitting, synthetic close fallbacks, atlas packing, anchors, semantic depth,
-  explicit interior grids, root/tip hair chains, chest weighting, and optional
-  rigid left/right `handwear` fragments below one semantic parent.
+- `anime25dImporter.ts` owns import sequencing and normalization. Dedicated
+  expression, collar, atlas, skeleton, raster, and validation modules own their
+  respective compile stages, so image segmentation no longer shares a module
+  boundary with GPU-facing mesh construction.
 - `../anime25drig` owns live playback: bind, deform, blink/mouth crossfade,
   depth parallax, hair springs, clothing-aware base/response chest motion, and
   ±15° handwear composition.
@@ -64,7 +64,7 @@ variants. These are Myriad extensions rather than upstream Anime2.5DRig
 features: authored `eye_dizzy` / `eye_squeeze` / `eye_cry` layers win,
 otherwise the importer generates independent character-tinted spiral,
 inward-chevron, or asymmetric chevron-and-tear artwork at the detected
-left/right eye anchors. Contract v10 also preserves a plain See-through `mouth`
+left/right eye anchors. Contract v13 also preserves a plain See-through `mouth`
 as the closed portrait drawing and generates separate flat `mouth_open`,
 `mouth_wide`, `mouth_round`, `mouth_narrow`, and `mouth_cry` variants from its
 bounds and dark-line palette. Runtime speech morphs every ordinary mouth mesh

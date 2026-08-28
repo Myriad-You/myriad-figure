@@ -1,4 +1,4 @@
-import type { Anime25DDriver } from './player'
+import type { Anime25DDriver } from './driver'
 
 type ActivityExpressionDriver = Pick<
   Anime25DDriver,
@@ -13,6 +13,8 @@ type ActivityExpressionDriver = Pick<
   | 'anger'
   | 'speechless'
   | 'maniac'
+  | 'silly'
+  | 'lovestruck'
   | 'eyeX'
   | 'eyeY'
   | 'irisScale'
@@ -34,6 +36,8 @@ const NEUTRAL_ACTIVITY_EXPRESSION: Readonly<ActivityExpressionDriver> = {
   anger: 0,
   speechless: 0,
   maniac: 0,
+  silly: 0,
+  lovestruck: 0,
   eyeX: 0,
   eyeY: 0,
   irisScale: 1,
@@ -57,6 +61,8 @@ export const THINKING_ACTIVITY_EXPRESSION: Readonly<ActivityExpressionDriver> =
     anger: 0,
     speechless: 0,
     maniac: 0,
+    silly: 0,
+    lovestruck: 0,
     eyeX: 0.58,
     eyeY: -0.42,
     irisScale: 1,
@@ -102,6 +108,28 @@ export const MANIAC_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
   maniac: 1,
   eyeOpenL: 1,
   eyeOpenR: 0.94,
+}
+
+/**
+ * Vacant stare with its own eye artwork. The two irides drift apart on the
+ * expression's private schedule, so no shared gaze channel is touched here.
+ */
+export const SILLY_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
+  anger: 0,
+  speechless: 0,
+  maniac: 0,
+  silly: 1,
+}
+
+/** Half-lidded heart pupils with a face-local blush and restrained soft mouth. */
+export const LOVESTRUCK_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
+  anger: 0,
+  speechless: 0,
+  maniac: 0,
+  silly: 0,
+  lovestruck: 1,
+  eyeOpenL: 1,
+  eyeOpenR: 1,
 }
 
 export const THINKING_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {

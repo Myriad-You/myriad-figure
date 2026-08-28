@@ -33,7 +33,7 @@ test('waits briefly, then plays a visible staged action', () => {
 })
 
 test('reuses one frame object and keeps every action channel bounded', () => {
-  let seed = 0x9E37_79B9
+  let seed = 0x9e37_79b9
   const random = () => {
     seed = (seed * 1_664_525 + 1_013_904_223) >>> 0
     return seed / 0x1_0000_0000
@@ -70,7 +70,7 @@ test('reuses one frame object and keeps every action channel bounded', () => {
 })
 
 test('cycles through the complete action catalog without immediate repeats', () => {
-  let seed = 0x1234_ABCD
+  let seed = 0x1234_abcd
   const random = () => {
     seed = (seed * 1_103_515_245 + 12_345) >>> 0
     return seed / 0x1_0000_0000
@@ -104,45 +104,52 @@ test('excited singing starts a face clip quickly without moving hands', () => {
   assert.equal(controller.sample(0.52, true, false, 'excited').armY, 0)
   assert.equal(controller.getActiveAction(), null)
   controller.sample(0.55, true, false, 'excited')
-  assert.equal(controller.getActiveAction(), 'dreamy')
+  assert.equal(controller.getActiveAction(), 'cheer')
   const face = controller.sample(0.95, true, false, 'excited')
   assert.equal(face.armY, 0)
   assert.equal(face.body, 0)
   assert.equal(face.angleZ, 0)
   assert.equal(face.eyeX, 0)
   assert.equal(face.eyeY, 0)
-  assert.ok(face.eyeOpen < -0.05)
   assert.ok(face.brow > 0.04)
 })
 
 test('excited catalog cycles singing faces without idle clips', () => {
-  let seed = 0x51C3_0A17
+  let seed = 0x51c3_0a17
   const random = () => {
     seed = (seed * 1_103_515_245 + 12_345) >>> 0
     return seed / 0x1_0000_0000
   }
   const controller = new RandomActionController(random)
-  const seen = new Set<RandomActionName>()
-  let clips = 0
-  let activeBefore: RandomActionName | null = null
-  for (let frame = 0; frame <= 60 * 40; frame += 1) {
-    controller.sample(frame / 60, true, false, 'excited')
-    const active = controller.getActiveAction()
-    if (active) seen.add(active)
-    if (active && activeBefore === null) clips += 1
-    activeBefore = active
-  }
-  assert.deepEqual([...seen].sort(), [
+  const smileNames = new Set<RandomActionName>([
     'beam',
     'cheer',
     'coy',
-    'dreamy',
-    'glance',
     'smug',
     'sparkle',
-    'squint',
   ])
+  const seen = new Set<RandomActionName>()
+  let clips = 0
+  let smileClips = 0
+  let otherClips = 0
+  let activeBefore: RandomActionName | null = null
+  for (let frame = 0; frame <= 60 * 90; frame += 1) {
+    controller.sample(frame / 60, true, false, 'excited')
+    const active = controller.getActiveAction()
+    if (active) seen.add(active)
+    if (active && activeBefore === null) {
+      clips += 1
+      if (smileNames.has(active)) smileClips += 1
+      else otherClips += 1
+    }
+    activeBefore = active
+  }
+  assert.ok(seen.has('beam'))
+  assert.ok(seen.has('cheer'))
+  assert.ok(!seen.has('acknowledge'))
+  assert.ok(!seen.has('pleased'))
   assert.ok(clips >= 12)
+  assert.ok(smileClips > otherClips * 1.8)
 })
 
 test('switching into singing releases the idle clip before grooving', () => {
@@ -154,7 +161,10 @@ test('switching into singing releases the idle clip before grooving', () => {
   const switched = controller.sample(2.25, true, false, 'excited')
   assert.deepEqual(switched, idle)
   assert.equal(controller.getActiveAction(), null)
-  assert.ok(magnitude(controller.sample(2.57, true, false, 'excited')) < magnitude(idle))
+  assert.ok(
+    magnitude(controller.sample(2.57, true, false, 'excited')) <
+      magnitude(idle),
+  )
 })
 
 test('speech or another owner releases an action and delays the next one', () => {

@@ -177,7 +177,7 @@ test('maps resolved horizontal and vertical pose travel to independent chest axe
     2,
   )
   assert.equal(horizontal.x, 11)
-  assert.equal(Math.abs(horizontal.y), 0)
+  assert.equal(horizontal.y, 0)
   assert.equal(horizontal, reusableTarget)
   assert.equal(vertical.x, 0)
   assert.equal(vertical.y, -9)
@@ -256,11 +256,21 @@ test('chest spring reverses only after following a moving base', () => {
 })
 
 test('chest spring response stays stable across common render frame rates', () => {
+  // The chest base moves every frame in the player, so the invariant is about
+  // a base in motion. The relative offset this spring reports is driven by the
+  // base's acceleration, and a single instantaneous jump carries none that a
+  // sampled input can reproduce at two different rates.
+  const base = (seconds: number) => {
+    const progress = Math.min(1, seconds / 0.25)
+    const eased = progress * progress * (3 - 2 * progress)
+    return { x: 6 * eased, y: -4 * eased }
+  }
   const simulate = (fps: number) => {
     const state = createChestSpringState()
     stepChestSpring(state, 0, 0, 1 / fps)
-    for (let frame = 0; frame < fps / 2; frame += 1) {
-      stepChestSpring(state, 6, -4, 1 / fps)
+    for (let frame = 1; frame <= fps / 2; frame += 1) {
+      const at = base(frame / fps)
+      stepChestSpring(state, at.x, at.y, 1 / fps)
     }
     return state
   }

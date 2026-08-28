@@ -4,6 +4,7 @@ import type {
   PerformanceDirective,
   PerformancePhase,
 } from '../../../services/agent/types'
+import { performanceCuePriority } from '../performanceContract'
 
 export interface PerformanceExpressionOffset {
   brow: number
@@ -21,6 +22,8 @@ export interface PerformanceExpressionOffset {
   anger?: number
   speechless?: number
   maniac?: number
+  silly?: number
+  lovestruck?: number
 }
 
 export interface PerformanceExpressionTarget {
@@ -40,6 +43,8 @@ export interface PerformanceExpressionTarget {
   anger?: number
   speechless?: number
   maniac?: number
+  silly?: number
+  lovestruck?: number
 }
 
 interface ScheduledExpressionCue {
@@ -69,6 +74,8 @@ const OFFSET_KEYS = [
   'anger',
   'speechless',
   'maniac',
+  'silly',
+  'lovestruck',
 ] as const
 
 const ZERO_OFFSET: PerformanceExpressionOffset = {
@@ -87,6 +94,8 @@ const ZERO_OFFSET: PerformanceExpressionOffset = {
   anger: 0,
   speechless: 0,
   maniac: 0,
+  silly: 0,
+  lovestruck: 0,
 }
 
 const EYE_CLOSED_GUARD = 0.12
@@ -387,6 +396,8 @@ export function expressionCueOffset(
     angry: { anger: amount },
     speechless: { speechless: amount },
     maniac: { maniac: amount },
+    silly: { silly: amount },
+    lovestruck: { lovestruck: amount },
   }
   Object.assign(output, patches[cue.intent])
   return output
@@ -479,6 +490,20 @@ export function applyPerformanceExpressionOffset(
     1,
     0,
   )
+  target.silly = mixBoundedExpressionChannel(
+    target.silly ?? 0,
+    offset.silly ?? 0,
+    0,
+    1,
+    0,
+  )
+  target.lovestruck = mixBoundedExpressionChannel(
+    target.lovestruck ?? 0,
+    offset.lovestruck ?? 0,
+    0,
+    1,
+    0,
+  )
 }
 
 /** Keeps authored closed eyes closed while allowing partially open eyes to act. */
@@ -563,26 +588,7 @@ function ambientScaleForAttention(attention: number): number {
 }
 
 function expressionCuePriority(cue: PerformanceCue): number {
-  if (
-    cue.intent === 'delight' ||
-    cue.intent === 'notify' ||
-    cue.intent === 'dizzy' ||
-    cue.intent === 'cry' ||
-    cue.intent === 'angry' ||
-    cue.intent === 'maniac'
-  ) {
-    return 3
-  }
-  if (
-    cue.intent === 'greet' ||
-    cue.intent === 'question' ||
-    cue.intent === 'emphasize' ||
-    cue.intent === 'think' ||
-    cue.intent === 'speechless'
-  ) {
-    return 2
-  }
-  return 1
+  return performanceCuePriority(cue.intent)
 }
 
 function cueEnvelope(cue: ScheduledExpressionCue, now: number): number {

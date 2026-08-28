@@ -4,6 +4,12 @@ import type {
   PerformanceCue,
   PerformanceDirective,
 } from '../../services/agent/types'
+import {
+  PERFORMANCE_BASELINE_EXPRESSIONS,
+  PERFORMANCE_CUE_INTENTS,
+  PERFORMANCE_INTERRUPT_MODES,
+  PERFORMANCE_POSTURES,
+} from './performanceContract'
 
 export const MEROPE_PERFORMANCE_EVENT = 'arael-merope-performance'
 export const MEROPE_STATE_EVENT = 'arael-merope-state'
@@ -132,11 +138,13 @@ export function sanitizePerformanceDirective(
 
 function sanitizeBaseline(value: unknown): PerformanceBaseline | null {
   if (!isRecord(value)) return null
-  const expressions = ['withdrawn', 'subdued', 'steady', 'warm'] as const
-  const postures = ['closed', 'neutral', 'open'] as const
   if (
-    !expressions.includes(value.expression as (typeof expressions)[number]) ||
-    !postures.includes(value.posture as (typeof postures)[number]) ||
+    !PERFORMANCE_BASELINE_EXPRESSIONS.includes(
+      value.expression as PerformanceBaseline['expression'],
+    ) ||
+    !PERFORMANCE_POSTURES.includes(
+      value.posture as PerformanceBaseline['posture'],
+    ) ||
     typeof value.motionEnergy !== 'number' ||
     !Number.isFinite(value.motionEnergy) ||
     typeof value.attention !== 'number' ||
@@ -154,25 +162,13 @@ function sanitizeBaseline(value: unknown): PerformanceBaseline | null {
 
 function sanitizeCue(value: unknown): PerformanceCue | null {
   if (!isRecord(value)) return null
-  const intents = [
-    'greet',
-    'respond',
-    'question',
-    'delight',
-    'emphasize',
-    'listen',
-    'notify',
-    'think',
-    'dizzy',
-    'cry',
-    'angry',
-    'speechless',
-    'maniac',
-  ] as const
-  const interrupts = ['replace', 'queue', 'if-lower'] as const
   if (
-    !intents.includes(value.intent as (typeof intents)[number]) ||
-    !interrupts.includes(value.interrupt as (typeof interrupts)[number])
+    !PERFORMANCE_CUE_INTENTS.includes(
+      value.intent as PerformanceCue['intent'],
+    ) ||
+    !PERFORMANCE_INTERRUPT_MODES.includes(
+      value.interrupt as PerformanceCue['interrupt'],
+    )
   ) {
     return null
   }

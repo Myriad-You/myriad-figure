@@ -45,10 +45,12 @@ activated directly. See
 [`docs/design/merope-25d-pipeline.md`](../../../../../docs/design/merope-25d-pipeline.md)
 for the asset-builder boundary and third-party integration policy.
 
-`anime25dImporter.ts` maps both Anime2.5DRig names and native See-through tags
-such as `hairf`, `hairb`, `eyer`, and side-suffixed eye layers into stable
-roles. Unknown decorative layers stay renderable but do not create new
-semantic bones.
+`anime25dImporter.ts` coordinates the transaction while focused compiler
+modules own normalization output, generated expressions, high-collar recovery,
+atlas packing, skeleton/mesh construction, and final capability validation.
+Both Anime2.5DRig names and native See-through tags such as `hairf`, `hairb`,
+`eyer`, and side-suffixed eye layers map into stable roles. Unknown decorative
+layers stay renderable but do not create new semantic bones.
 
 Myriad extends the upstream eye-diff path with `eye_dizzy`, `eye_squeeze`, and
 `eye_cry` layers. Artist artwork is split per eye like `eye_close`; when it is
@@ -57,16 +59,46 @@ asymmetric chevron-and-tear eyes from the independent eye anchors. All three
 presentation variants are compiled into the atlas and are never emulated by
 warping the open eye.
 
+The vacant `silly` stare splits into two parts per eye: a generated near-round
+sclera frame with a thick rim, and the character's own iris drawing resampled
+onto its own layer. Only the frame is new artwork, because the round wide-open
+shape cannot be reached by warping the authored eye; the iris keeps its drawn
+colour, gradient, rim, and catchlights, and a generated disc is used only when
+a portrait ships no separate iris layer at all.
+Import seeds the two irides at opposite offsets, and the runtime drifts each one
+on its own keyframe track, so the eyes lose focus separately.
+That divergence is impossible through the shared `eyeX`/`eyeY` gaze, which the
+expression deliberately never touches.
+Import measures how far an iris can move before it reaches the drawn rim, spends
+a fixed share of that room on the resting divergence, and leaves the rest to the
+loop, whose drift is bounded by the same figure. Successive looks also start at
+different points in the six-second loop, so a face that goes vacant twice in one
+conversation does not replay the same animation.
+
 Import also synthesizes optional `anger_mark` and `speechless_sweat` manga
 accents from the face scale. They stay out of the neutral analysis reference;
 runtime facial deformation remains the primary expression signal and stages
 the accents after the brows, gaze, lids, and mouth have begun moving.
+
+The `lovestruck` expression keeps the character's authored irises and overlays
+one independently anchored, character-tinted heart pupil per eye. A single
+face-local atlas rectangle carries the broad blush, cheek hatching, and three
+small sweat drops, while a separate drool layer follows the continuously
+deformed mouth corner. The normal eyelids still blink over the heart pupils and
+speech retains ownership of articulation instead of switching to a replacement
+mouth texture.
 
 See-through's plain `mouth` is treated as the static closed portrait drawing,
 not as a speaking phoneme. Import keeps that artwork and generates a small
 character-tinted cel-style `mouth_open`, `mouth_wide`, `mouth_round`, and
 `mouth_narrow` shapes plus independent `mouth_cry` and face-scaled
 `mouth_maniac` glyphs.
+A single face-scaled `mouth_silly` shape is generated alongside them. It is not
+a viseme: the runtime holds one mesh and presses it onto an omega curve when
+closed, then opens it continuously into a small cat mouth, so the vacant face
+never crossfades between two mouth drawings. The eyes and the mouth are owned
+separately, so a vacant cue arriving mid-reply keeps the stare while speech
+keeps the articulating mouth; the omega only takes over once the line ends.
 The runtime morphs the speaking meshes through one continuous articulation
 envelope. A lip-seal channel preserves short bilabial closures independently
 from the slower jaw response. The two strongest visemes form a shared
@@ -77,7 +109,7 @@ profiles. Jaw travel is then driven on a separate bounded spring: open and
 round visemes use more mandible motion, wide and narrow visemes rely more on
 the lip mesh, and short lip seals do not snap the jaw shut. Only the mouth
 meshes and the face region below the mouth receive that motion.
-Character asset contract v10 requires the independent variants, mouth profile,
+Character asset contract v13 requires the independent variants, mouth profile,
 and clothing-aware chest profile, so older packages must be reimported rather
 than falling back at runtime.
 
@@ -118,13 +150,15 @@ face overlay.
 
 ## Module ownership
 
-| Area                                     | Owner                                                                        |
-| ---------------------------------------- | ---------------------------------------------------------------------------- |
-| Shared limits and semantic IR            | `contract.ts`, `types.ts`, `semantics.ts`, `shared/merope_rig_contract.json` |
-| PSD normalization and compilation source | `psdImporter.ts`, `anime25dImporter.ts`, `outfit.ts`                         |
-| Asset transaction                        | `../assets/pipeline.ts`, `../assets/compiler.ts`                             |
-| Live playback                            | `../anime25drig`                                                             |
-| Quality gates                            | `diagnostics.ts`, `presentation.ts`                                          |
+| Area                                               | Owner                                                                                                                       |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Shared limits and semantic IR                      | `contract.ts`, `types.ts`, `semantics.ts`, `shared/merope_rig_contract.json`                                                |
+| Import orchestration and normalization             | `psdImporter.ts`, `anime25dImporter.ts`, `anime25dImportTypes.ts`                                                           |
+| Expression, collar, atlas and skeleton compilation | `anime25dExpressionCompiler.ts`, `anime25dCollarCompiler.ts`, `anime25dAtlasCompiler.ts`, `anime25dSkeletonCompiler.ts`     |
+| Raster, capability and asset validation            | `anime25dRaster.ts`, `anime25dCapabilities.ts`, `anime25dAssetValidation.ts`, `diagnostics.ts`                              |
+| Asset transaction                                  | `../assets/pipeline.ts`, `../assets/compiler.ts`                                                                            |
+| Runtime orchestration and performance registry     | `../anime25drig/player.ts`, `../anime25drig/driver.ts`, `../anime25drig/expressionRegistry.ts`, `../performanceContract.ts` |
+| Runtime WebGL, deformation and fallback policy     | `../anime25drig/webglRuntime.ts`, `../anime25drig/mouthRuntime.ts`, `../anime25drig/collarRuntime.ts`, `../anime25drig/atlasUv.ts`, `../anime25drig/vertexPacking.ts`, `../anime25drig/runtimePolicy.ts` |
 
 ## Verification
 

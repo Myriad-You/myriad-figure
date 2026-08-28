@@ -119,6 +119,8 @@ test('maps cues to bounded deterministic patches and durations', () => {
   assert.equal(cueDriverPatch(speechless).idle, false)
   const maniac = { ...cue, intent: 'maniac' as const }
   assert.equal(cueDriverPatch(maniac).idle, false)
+  const lovestruck = { ...cue, intent: 'lovestruck' as const }
+  assert.equal(cueDriverPatch(lovestruck).idle, false)
 })
 
 test('does not replay expired body cues after a throttled timer', () => {

@@ -83,6 +83,8 @@ test('maps semantic baselines and cues to conservative expression offsets', () =
   const angry = expressionCueOffset(cue('angry'))
   const speechless = expressionCueOffset(cue('speechless'))
   const maniac = expressionCueOffset(cue('maniac'))
+  const silly = expressionCueOffset(cue('silly'))
+  const lovestruck = expressionCueOffset(cue('lovestruck'))
 
   assert.ok(warm.mouthForm > 0 && warm.mouthForm <= 0.12)
   assert.ok(withdrawn.eyeOpen < 0 && withdrawn.eyeOpen >= -0.08)
@@ -105,6 +107,10 @@ test('maps semantic baselines and cues to conservative expression offsets', () =
   assert.equal(angry.anger, 1)
   assert.equal(speechless.speechless, 1)
   assert.equal(maniac.maniac, 1)
+  assert.equal(silly.silly, 1)
+  assert.equal(silly.eyeX, 0)
+  assert.equal(silly.eyeY, 0)
+  assert.equal(lovestruck.lovestruck, 1)
   assert.deepEqual(Object.keys(warm).sort(), [
     'anger',
     'angleY',
@@ -118,8 +124,10 @@ test('maps semantic baselines and cues to conservative expression offsets', () =
     'eyeX',
     'eyeY',
     'irisScale',
+    'lovestruck',
     'maniac',
     'mouthForm',
+    'silly',
     'speechless',
   ])
 })
@@ -253,6 +261,8 @@ test('eases baseline changes without a first-frame jump or frame allocation', ()
       anger: 0,
       speechless: 0,
       maniac: 0,
+      silly: 0,
+      lovestruck: 0,
     },
   )
   const next = expression.sample(1 / 60)
@@ -438,6 +448,8 @@ test('does not resume an older cue after a replacement finishes', () => {
       anger: 0,
       speechless: 0,
       maniac: 0,
+      silly: 0,
+      lovestruck: 0,
     },
   )
 })
