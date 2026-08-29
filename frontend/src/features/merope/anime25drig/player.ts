@@ -27,6 +27,10 @@ import type {
   Anime25DFrameWork,
   Anime25DPerformanceSnapshot,
 } from './performanceTelemetry'
+import type {
+  Anime25DSecondaryDeformationBinding,
+  Anime25DSecondaryDeformationFrame,
+} from './secondaryDeformation'
 import type { StylizedExpressionMotion } from './stylizedExpressionMotion'
 import type { Anime25DPlayback, Anime25DPlaybackLayer } from './types'
 import { currentCopy } from '../../../i18n/localeCopy'
@@ -38,7 +42,6 @@ import {
 import { AmbientMotionController } from './ambientMotion'
 import {
   buildChestWeightField,
-  chestDeformationWeight,
   chestFollowMix,
   chestMotionTarget,
   chestProfileUsesGeometryWeights,
@@ -57,10 +60,6 @@ import {
 import {
   BODY_HEAD_FOLLOW,
   createCollarClipMesh,
-  FRONT_COLLAR_FLEX_REGION,
-  FRONT_COLLAR_HEAD_FOLLOW,
-  FRONT_COLLAR_INNER_REGION,
-  HIGH_COLLAR_NECK_FOLLOW_POWER,
   updateCollarClipMesh,
   updateFrontCollarTargets,
 } from './collarRuntime'
@@ -116,6 +115,11 @@ import {
 } from './performanceTelemetry'
 import { applyRandomActionFrame, RandomActionController } from './randomAction'
 import { resolveAnime25DRenderSurface } from './runtimePolicy'
+import {
+  createAnime25DSecondaryDeformationBinding,
+  deformAnime25DHairPoint,
+  deformAnime25DSecondaryPoint,
+} from './secondaryDeformation'
 import { CoSpeechExpressionController } from './speechExpression'
 import { AutoSpeechController } from './speechMotion'
 import {
@@ -160,6 +164,7 @@ interface GpuLayer {
   upstreamFeature: Anime25DUpstreamFeatureKind | null
   mouthDeformation: Anime25DMouthDeformationKind | null
   expressionDeformation: Anime25DExpressionDeformationBinding | null
+  secondaryDeformation: Anime25DSecondaryDeformationBinding
   frameOpacity: number
   chestWeights: Float32Array | null
   frontHair: boolean
@@ -246,6 +251,8 @@ export class Anime25DPlayer {
   private readonly deformationPoint = { x: 0, y: 0 }
   private readonly deformationFrame: Anime25DMouthDeformationFrame &
     Anime25DExpressionDeformationFrame
+
+  private readonly secondaryDeformationFrame: Anime25DSecondaryDeformationFrame
 
   private readonly mouthTransition: MouthTransitionController
   private activeMouthMaterial: SpeechMouthMaterial = 'mouthClose'
@@ -357,6 +364,37 @@ export class Anime25DPlayer {
     )
       ? buildChestWeightField(rigManifest)
       : null
+    const neckFollowTop = Math.min(
+      anchors.neckBottom - 1,
+      Math.max(anchors.neckTop, anchors.face.y1 + anchors.faceScale * 5),
+    )
+    this.secondaryDeformationFrame = {
+      expression: this.current,
+      faceScale: anchors.faceScale,
+      headAngleY: 0,
+      headRotationCosine: 1,
+      headRotationSine: 0,
+      neckPivotX: anchors.neckPivot.x,
+      neckPivotY: anchors.neckPivot.y,
+      neckBottom: anchors.neckBottom,
+      neckFollowTop,
+      neckFollowSpan: Math.max(1, anchors.neckBottom - neckFollowTop),
+      faceCenterY: anchors.face.cy,
+      bodyBreathOffset: 0,
+      headBreathOffset: 0,
+      specialHeadOffset: 0,
+      highCollar: this.highCollar,
+      breath: 0,
+      chestCenterX: this.chestRegion.centerX,
+      chestRegionCenterY: this.chestRegion.centerY,
+      chestMotionCenterY: this.chestRegion.centerY,
+      chestRadiusY: this.chestRegion.radiusY,
+      inverseChestRadiusX: 1 / this.chestRegion.radiusX,
+      inverseChestRadiusY: 1 / this.chestRegion.radiusY,
+      chestOffsetX: 0,
+      chestOffsetY: 0,
+      chestProfileSource: playback.chestProfile?.source,
+    }
     this.program = compileProgram(gl)
     this.viewLocation = requiredUniform(gl, this.program, 'u_view')
     this.layerTransformLocation = requiredUniform(
@@ -1162,7 +1200,6 @@ export class Anime25DPlayer {
     this.bodyRotationCosine = cb
     this.bodyRotationSine = sb
     const chestProfile = this.playback.chestProfile
-    const chestCx = this.chestRegion.centerX
     const chestCy = this.chestRegion.centerY
     const chestRx = this.chestRegion.radiusX
     const chestRy = this.chestRegion.radiusY
@@ -1202,6 +1239,19 @@ export class Anime25DPlayer {
     deformationFrame.time = t
     deformationFrame.stylizedMotion = this.stylizedMotion
     const deformationPoint = this.deformationPoint
+    const secondaryDeformationFrame = this.secondaryDeformationFrame
+    secondaryDeformationFrame.headAngleY = ay
+    secondaryDeformationFrame.headRotationCosine = cz
+    secondaryDeformationFrame.headRotationSine = sz
+    secondaryDeformationFrame.bodyBreathOffset = breath * 2
+    secondaryDeformationFrame.headBreathOffset = breathHead * 1.6
+    secondaryDeformationFrame.specialHeadOffset = specialHeadOffset
+    secondaryDeformationFrame.breath = breath
+    secondaryDeformationFrame.chestMotionCenterY = chestCenterY
+    secondaryDeformationFrame.inverseChestRadiusX = inverseChestRx
+    secondaryDeformationFrame.inverseChestRadiusY = inverseChestRy
+    secondaryDeformationFrame.chestOffsetX = chestOffsetX
+    secondaryDeformationFrame.chestOffsetY = chestOffsetY
     for (const layer of this.layers) {
       layer.frameOpacity = fadeOpacity(
         layer.source,
@@ -1210,26 +1260,19 @@ export class Anime25DPlayer {
         this.sillyMouthShare,
       )
     }
-    const neckFollowTop = Math.min(
-      A.neckBottom - 1,
-      Math.max(A.neckTop, A.face.y1 + fs * 5),
-    )
-    const neckFollowSpan = Math.max(1, A.neckBottom - neckFollowTop)
-    const bodyBreathOffset = breath * 2.0
-    const headBreathOffset = breathHead * 1.6
     const collarMotion: CollarMotionPose = {
       neckPivotX: npx,
       neckPivotY: npy,
-      neckFollowTop,
-      neckFollowSpan,
+      neckFollowTop: secondaryDeformationFrame.neckFollowTop,
+      neckFollowSpan: secondaryDeformationFrame.neckFollowSpan,
       faceCenterY: A.face.cy,
       faceScale: fs,
       angleX: e.angleX,
       angleY: e.angleY,
       headRotationCosine: cz,
       headRotationSine: sz,
-      bodyBreathOffset,
-      headBreathOffset,
+      bodyBreathOffset: secondaryDeformationFrame.bodyBreathOffset,
+      headBreathOffset: secondaryDeformationFrame.headBreathOffset,
     }
     if (this.collarClip) {
       const uploadStarted = work ? performance.now() : 0
@@ -1253,8 +1296,6 @@ export class Anime25DPlayer {
       const vertexCount = rest.length / 2
       const source = layer.source
       const bn = layerBaseName(source.role)
-      const isTopwear = bn === 'topwear'
-      const isFrontCollar = bn === 'collar_front'
       const isHead = source.group === 'head'
       if (layer.shaderGlobalTransform) {
         writeAnime25DLayerGlobalTransform(
@@ -1274,7 +1315,9 @@ export class Anime25DPlayer {
             depthOffset: source.depth - 1,
             faceCenterY: A.face.cy,
             specialOffsetY: isHead ? specialHeadOffset : 0,
-            breathOffset: isHead ? headBreathOffset : bodyBreathOffset,
+            breathOffset: isHead
+              ? secondaryDeformationFrame.headBreathOffset
+              : secondaryDeformationFrame.bodyBreathOffset,
           },
           layer.layerTransform,
         )
@@ -1315,7 +1358,6 @@ export class Anime25DPlayer {
       const tearHorizontal = cryLayer
         ? cryTearHorizontalOffset(t, source.side, e.eyeCry, fs)
         : 0
-      const nS = layer.springs?.length ?? 0
       const mouthDeformation = layer.mouthDeformation
       if (layer.collarContact) {
         updateFrontCollarTargets(
@@ -1393,149 +1435,24 @@ export class Anime25DPlayer {
           x = deformed[index]
           y = deformed[index + 1]
         }
-        if (!layer.shaderGlobalTransform) {
-          const neckFollowProgress =
-            bn === 'neck'
-              ? clamp((A.neckBottom - rest[index + 1]) / neckFollowSpan, 0, 1)
-              : 0
-          const neckFollowInput = this.highCollar
-            ? neckFollowProgress ** HIGH_COLLAR_NECK_FOLLOW_POWER
-            : neckFollowProgress
-          const neckHeadBlend = bn === 'neck' ? smoothstep(neckFollowInput) : 0
-          const frontCollarProgress =
-            isFrontCollar && !layer.collarContact
-              ? clamp(
-                  1 -
-                    (rest[index + 1] - source.y) /
-                      Math.max(1, source.h * FRONT_COLLAR_FLEX_REGION),
-                  0,
-                  1,
-                )
-              : 0
-          const frontCollarLocalX =
-            isFrontCollar && !layer.collarContact
-              ? Math.abs(
-                  (rest[index] - (source.x + source.w / 2)) /
-                    Math.max(1, source.w / 2),
-                )
-              : 1
-          const frontCollarInnerWeight =
-            isFrontCollar && !layer.collarContact
-              ? smoothstep((1 - frontCollarLocalX) / FRONT_COLLAR_INNER_REGION)
-              : 0
-          const frontCollarHeadBlend =
-            smoothstep(frontCollarProgress) *
-            frontCollarInnerWeight *
-            FRONT_COLLAR_HEAD_FOLLOW
-          let hw = isHead ? 1 : source.group === 'body' ? BODY_HEAD_FOLLOW : 0
-          if (bn === 'neck') {
-            hw = BODY_HEAD_FOLLOW + (1 - BODY_HEAD_FOLLOW) * neckHeadBlend
-          } else if (isFrontCollar && !layer.collarContact) {
-            hw =
-              BODY_HEAD_FOLLOW + (1 - BODY_HEAD_FOLLOW) * frontCollarHeadBlend
-          }
-          if (!layer.collarContact && hw > 0) {
-            const rx = x - npx
-            const ry = y - npy
-            const rx2 = rx * cz - ry * sz
-            const ry2 = rx * sz + ry * cz
-            x += (rx2 - rx) * hw
-            y += (ry2 - ry) * hw
-            let depthOffset =
-              (source.depth - 1) * (layer.frontHairParallaxScale?.[vertex] ?? 1)
-            if (bn === 'neck') depthOffset *= 1 - neckHeadBlend
-            else if (isFrontCollar) depthOffset *= 1 - frontCollarHeadBlend
-            x +=
-              hw *
-              fs *
-              (e.angleX * (14 + 40 * depthOffset) +
-                e.angleX * (npy - y) * 0.028)
-            y +=
-              hw *
-              fs *
-              (-ay * (9 + 30 * depthOffset) -
-                ay * depthOffset * (y - A.face.cy) * 0.05)
-          }
-          if (!layer.collarContact && specialHeadOffset !== 0) {
-            const specialHeadFollow = isHead
-              ? 1
-              : bn === 'neck'
-                ? neckHeadBlend
-                : isFrontCollar
-                  ? frontCollarHeadBlend
-                  : 0
-            y += specialHeadOffset * specialHeadFollow
-          }
-          if (!layer.collarContact) {
-            const breathOffset = isHead
-              ? headBreathOffset
-              : bn === 'neck'
-                ? bodyBreathOffset +
-                  (headBreathOffset - bodyBreathOffset) * neckHeadBlend
-                : isFrontCollar
-                  ? bodyBreathOffset +
-                    (headBreathOffset - bodyBreathOffset) * frontCollarHeadBlend
-                  : bodyBreathOffset
-            y -= breathOffset * fs
-          }
-        }
-        if (isTopwear && y < chestCy) {
-          y -= breath * 2.2 * fs * smoothstep((chestCy - y) / (chestRy * 2))
-        }
-        if (isTopwear) x = npx + (x - npx) * (1 + breath * 0.003)
-        if (isTopwear && (chestOffsetX !== 0 || chestOffsetY !== 0)) {
-          const gx = (rest[index] - chestCx) * inverseChestRx
-          const gy = (rest[index + 1] - chestCenterY) * inverseChestRy
-          const skinWeight = layer.chestWeights?.[vertex] ?? 1
-          const chestWeight = chestDeformationWeight(
-            chestProfile?.source,
-            gx,
-            gy,
-            skinWeight,
-          )
-          x += chestOffsetX * chestWeight
-          y += chestOffsetY * chestWeight
-        }
-        if (bn === 'handwear') {
-          const w = smoothstep(((y - source.y) / source.h) * 1.15)
-          y -= e.armY * 30 * fs * w
-          y += e.armPos * 40 * fs
-          x += e.armY * 6 * fs * w * (x < npx ? 1 : -1)
-        }
-        if (layer.bangWeights && layer.alongStrand) {
-          const along = layer.alongStrand[vertex]
-          const m = along ** 1.4 * 22 * fs
-          x +=
-            (e.bangL * layer.bangWeights[vertex * 3] +
-              e.bangC * layer.bangWeights[vertex * 3 + 1] +
-              e.bangR * layer.bangWeights[vertex * 3 + 2]) *
-            m
-        }
-        if (
-          nS &&
-          layer.springs &&
-          layer.strandWeights &&
-          layer.alongStrand &&
-          e.phys
-        ) {
-          const along = layer.alongStrand[vertex]
-          const front = layer.frontHair
-          const u = front ? Math.min(1, along * 1.6) : along
-          const amp = u ** (front ? 1.8 : 2.1) * (front ? e.fhAmp : e.physAmp)
-          const softMix = u ** 1.2 * (front ? e.fhSoft : e.soft)
-          let dx = 0
-          for (let strand = 0; strand < nS; strand += 1) {
-            const weight = layer.strandWeights[vertex * nS + strand]
-            if (weight < 0.001) continue
-            const spring = layer.springs[strand]
-            dx +=
-              weight *
-              (spring.stiff.dx * (1 - softMix) + spring.soft.dx * softMix)
-          }
-          const offset = dx * amp
-          x += offset
-          y += Math.abs(offset) * 0.12
-        }
+        deformationPoint.x = x
+        deformationPoint.y = y
+        deformAnime25DSecondaryPoint(
+          deformationPoint,
+          rest[index],
+          rest[index + 1],
+          vertex,
+          layer.secondaryDeformation,
+          secondaryDeformationFrame,
+        )
+        deformAnime25DHairPoint(
+          deformationPoint,
+          vertex,
+          layer.secondaryDeformation,
+          secondaryDeformationFrame,
+        )
+        x = deformationPoint.x
+        y = deformationPoint.y
         if (x !== previousX || y !== previousY) {
           geometryChanged = true
           deformed[index] = x
@@ -1710,8 +1627,9 @@ export class Anime25DPlayer {
             this.playback.pixelCanvas.width,
           )
         : null
+    const baseRole = layerBaseName(source.role)
     const deformationPolicy = resolveAnime25DLayerDeformationPolicy({
-      baseRole: layerBaseName(source.role),
+      baseRole,
       fade: source.fade,
       hairPhysics: source.phys === 'hair',
       hasBangWeights: Boolean(hair.bangWeights),
@@ -1737,6 +1655,19 @@ export class Anime25DPlayer {
           centerY: source.y + source.h / 2,
         }
       : null
+    const secondaryDeformation = createAnime25DSecondaryDeformationBinding({
+      source,
+      baseRole,
+      shaderGlobalTransform: deformationPolicy.shaderGlobalTransform,
+      collarContact: Boolean(collarContact),
+      frontHair: hair.frontHair,
+      frontHairParallaxScale: hair.frontHairParallaxScale,
+      chestWeights,
+      bangWeights: hair.bangWeights,
+      strandWeights: hair.strandWeights,
+      alongStrand: hair.alongStrand,
+      springs: hair.springs,
+    })
     const layerTransform = new Float32Array(9)
     writeIdentityLayerTransform(layerTransform)
     if (collarContact && !this.collarClip) {
@@ -1767,6 +1698,7 @@ export class Anime25DPlayer {
       upstreamFeature: resolveAnime25DUpstreamFeature(source, Boolean(eye)),
       mouthDeformation: resolveAnime25DMouthDeformation(source.fade),
       expressionDeformation,
+      secondaryDeformation,
       frameOpacity: source.fade ? 0 : 1,
       chestWeights,
       ...hair,
