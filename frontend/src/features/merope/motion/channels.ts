@@ -39,7 +39,10 @@ export const EXCLUSIVE_CHANNELS = [
 
 export type ExclusiveMotionChannel = (typeof EXCLUSIVE_CHANNELS)[number]
 
-/** Higher number wins. Missing source is idle. */
+/**
+ * Higher number wins. Missing source is idle.
+ * autonomy is reserved: future self-motion publishes intents, never writes a rig.
+ */
 export const CHANNEL_PRIORITY: Record<
   ExclusiveMotionChannel,
   Partial<Record<MotionSourceId, number>>
@@ -52,6 +55,7 @@ export const CHANNEL_PRIORITY: Record<
   expression: {
     preview: 100,
     performance: 80,
+    autonomy: 70,
     coSpeech: 50,
     music: 50,
     mood: 20,
@@ -60,11 +64,13 @@ export const CHANNEL_PRIORITY: Record<
     preview: 100,
     pointer: 80,
     performance: 60,
+    autonomy: 50,
     ambient: 20,
   },
   headBody: {
     preview: 100,
     performance: 80,
+    autonomy: 70,
     music: 60,
     coSpeech: 40,
     ambient: 20,

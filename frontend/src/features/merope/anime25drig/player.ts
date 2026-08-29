@@ -1,4 +1,5 @@
 import type { PerformanceDirective } from '../../../services/agent/types'
+import type { MotionChannelPolicy } from '../motion/policy'
 import type { MeropeRigManifest } from '../rig/types'
 import type { SingingSpectrumDrive } from '../singing/singingGroove'
 import type {
@@ -33,6 +34,13 @@ import type { Anime25DSecondaryDeformationFrame } from './secondaryDeformation'
 import type { StylizedExpressionMotion } from './stylizedExpressionMotion'
 import type { Anime25DPlayback } from './types'
 import { currentCopy } from '../../../i18n/localeCopy'
+import {
+  allowsAmbientMotion,
+  allowsCoSpeechExpression,
+  allowsCoSpeechHead,
+  allowsPointerGaze,
+  IDLE_MOTION_POLICY,
+} from '../motion/policy'
 import {
   singingDriveAmount,
   SingingGrooveController,
@@ -272,6 +280,7 @@ export class Anime25DPlayer {
   private collarClip: CollarClipMesh | null = null
   private jawEmphasis = 0
   private readonly mouse = { x: 0, y: 0, inside: false }
+  private policy: MotionChannelPolicy = { ...IDLE_MOTION_POLICY }
   private disposed = false
 
   constructor(
@@ -437,6 +446,14 @@ export class Anime25DPlayer {
     this.mouse.x = x
     this.mouse.y = y
     this.mouse.inside = inside
+  }
+
+  setMotionPolicy(policy: MotionChannelPolicy): void {
+    this.policy = policy
+  }
+
+  getMotionPolicy(): MotionChannelPolicy {
+    return this.policy
   }
 
   setSpeechActive(active: boolean): void {
@@ -618,10 +635,14 @@ export class Anime25DPlayer {
 
   private smoothDriver(dt: number): void {
     const t = this.time
+    const pointer =
+      this.target.mouse && allowsPointerGaze(this.policy.gaze)
+        ? this.mouse
+        : { x: 0, y: 0, inside: false }
     const tgt = prepareAnime25DWorkingTarget(
       this.workingTarget,
       this.target,
-      this.mouse,
+      pointer,
       t,
     )
     const semanticExpression = this.performanceExpression.sample(
@@ -643,7 +664,7 @@ export class Anime25DPlayer {
     this.stylizedMotion = stylized
     const performanceMotionScale =
       this.performanceExpression.getAmbientMotionScale()
-    const pointerDriven = this.target.mouse && this.mouse.inside
+    const pointerDriven = this.target.mouse && pointer.inside
     const speech = this.speechMotion.sample(t, this.target.talk)
     this.jawEmphasis = speech.browAccent
     const speaking = this.speechActive || this.target.talk
@@ -652,8 +673,9 @@ export class Anime25DPlayer {
       ((singing ? 1 : 0) - this.singingDeform) *
       (1 - Math.exp(-(singing ? 5.5 : 1.05) * dt))
     const groove = this.singingGroove.sample(t, singing, this.singingDrive)
-    // Agent speech suppresses idle actions; singing keeps them and switches
-    // the catalog to an excited groove driven by the live spectrum.
+    const headBodyAmbient = allowsAmbientMotion(this.policy.headBody)
+    // Agent speech suppresses idle actions; singing keeps the excited face
+    // catalog. Ambient/thinking yield when another source owns head/body.
     const actionBlocked =
       (this.speechActive && !singing) ||
       stylizedTargets.anger > 0.03 ||
@@ -663,7 +685,7 @@ export class Anime25DPlayer {
       stylizedTargets.lovestruck > 0.03
     const randomAction = this.randomAction.sample(
       t,
-      this.target.rand && !pointerDriven,
+      this.target.rand && !pointerDriven && (singing || headBodyAmbient),
       actionBlocked,
       singing ? 'excited' : 'idle',
       this.singingDrive ? singingDriveAmount(this.singingDrive) : 1,
@@ -675,6 +697,7 @@ export class Anime25DPlayer {
     const thinking = this.thinkingMotion.sample(
       t,
       this.target.thinking &&
+        headBodyAmbient &&
         !pointerDriven &&
         !speaking &&
         stylizedTargets.anger <= 0.03 &&
@@ -683,8 +706,9 @@ export class Anime25DPlayer {
         stylizedTargets.silly <= 0.03 &&
         stylizedTargets.lovestruck <= 0.03,
     )
-    const ambientScale =
-      performanceMotionScale * randomAction.ambientScale * stylized.ambientScale
+    const ambientScale = headBodyAmbient
+      ? performanceMotionScale * randomAction.ambientScale * stylized.ambientScale
+      : 0
     const headKeep = 1 - 0.88 * this.singingDeform
     applyAnime25DAmbientMotion(tgt, ambient, ambientScale, headKeep)
     applyAnime25DActionMotion(
@@ -705,7 +729,18 @@ export class Anime25DPlayer {
       speech.browAccent,
       speech.headAccent,
     )
-    applyAnime25DSpeechMotion(tgt, speech, speechExpression)
+    const gatedSpeechExpression = {
+      brow: allowsCoSpeechExpression(this.policy.expression)
+        ? speechExpression.brow
+        : 0,
+      eyeOpen: allowsCoSpeechExpression(this.policy.expression)
+        ? speechExpression.eyeOpen
+        : 0,
+      angleY: allowsCoSpeechHead(this.policy.headBody)
+        ? speechExpression.angleY
+        : 0,
+    }
+    applyAnime25DSpeechMotion(tgt, speech, gatedSpeechExpression)
     // The omega mouth only takes over once the character has stopped talking;
     // a cue landing mid-delivery would otherwise freeze the lip sync.
     this.sillyMouthShare +=
@@ -715,7 +750,7 @@ export class Anime25DPlayer {
       smoothAnime25DUnit(stylizedTargets.silly) * this.sillyMouthShare,
     )
     captureAnime25DSecondaryMotion(this.secondaryTarget, tgt)
-    applyExpressiveMotionEnvelope(tgt, semanticExpression, speechExpression)
+    applyExpressiveMotionEnvelope(tgt, semanticExpression, gatedSpeechExpression)
     stepAnime25DBlink(
       tgt,
       this.blinkState,
