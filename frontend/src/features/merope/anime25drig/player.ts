@@ -15,7 +15,7 @@ import type {
   Anime25DExpressionDeformationFrame,
 } from './expressionDeformation'
 import type { Anime25DLayerSpringBinding } from './layerBinding'
-import type { Anime25DUpstreamFeatureKind } from './layerDeformation'
+import type { Anime25DUpstreamFeatureInput } from './layerDeformation'
 import type { Anime25DLayerDeformationExtension } from './layerDeformationPolicy'
 import type {
   Anime25DMouthDeformationFrame,
@@ -60,7 +60,8 @@ import {
 import {
   BODY_HEAD_FOLLOW,
   createCollarClipMesh,
-  updateCollarClipMesh,
+  deformCollarClipMesh,
+  uploadCollarClipMesh,
   updateFrontCollarTargets,
 } from './collarRuntime'
 import {
@@ -83,8 +84,8 @@ import {
 } from './jawMotion'
 import { buildAnime25DLayerBinding } from './layerBinding'
 import {
+  bindAnime25DUpstreamFeature,
   deformAnime25DUpstreamFeaturePoint,
-  resolveAnime25DUpstreamFeature,
 } from './layerDeformation'
 import { resolveAnime25DLayerDeformationPolicy } from './layerDeformationPolicy'
 import {
@@ -161,7 +162,7 @@ interface GpuLayer {
   shaderGlobalTransform: boolean
   localDynamic: boolean
   deformationExtensions: Anime25DLayerDeformationExtension[]
-  upstreamFeature: Anime25DUpstreamFeatureKind | null
+  upstreamFeature: Anime25DUpstreamFeatureInput | null
   mouthDeformation: Anime25DMouthDeformationKind | null
   expressionDeformation: Anime25DExpressionDeformationBinding | null
   secondaryDeformation: Anime25DSecondaryDeformationBinding
@@ -174,6 +175,7 @@ interface GpuLayer {
   bangWeights: Float32Array | null
   springs: Anime25DLayerSpringBinding[] | null
   collarContact: FrontCollarContactModel | null
+  geometryDirty: boolean
 }
 
 export interface Anime25DDebugSnapshot {
@@ -253,6 +255,7 @@ export class Anime25DPlayer {
     Anime25DExpressionDeformationFrame
 
   private readonly secondaryDeformationFrame: Anime25DSecondaryDeformationFrame
+  private readonly collarMotion: CollarMotionPose
 
   private readonly mouthTransition: MouthTransitionController
   private activeMouthMaterial: SpeechMouthMaterial = 'mouthClose'
@@ -394,6 +397,20 @@ export class Anime25DPlayer {
       chestOffsetX: 0,
       chestOffsetY: 0,
       chestProfileSource: playback.chestProfile?.source,
+    }
+    this.collarMotion = {
+      neckPivotX: anchors.neckPivot.x,
+      neckPivotY: anchors.neckPivot.y,
+      neckFollowTop,
+      neckFollowSpan: Math.max(1, anchors.neckBottom - neckFollowTop),
+      faceCenterY: anchors.face.cy,
+      faceScale: anchors.faceScale,
+      angleX: 0,
+      angleY: 0,
+      headRotationCosine: 1,
+      headRotationSine: 0,
+      bodyBreathOffset: 0,
+      headBreathOffset: 0,
     }
     this.program = compileProgram(gl)
     this.viewLocation = requiredUniform(gl, this.program, 'u_view')
@@ -576,6 +593,7 @@ export class Anime25DPlayer {
       this.smoothDriver(dt)
       this.updateSprings(dt)
       this.deform()
+      this.uploadGeometry()
       this.draw()
       return
     }
@@ -587,6 +605,7 @@ export class Anime25DPlayer {
     this.updateSprings(dt)
     const springsFinished = performance.now()
     this.deform(work)
+    this.uploadGeometry(work)
     const deformFinished = performance.now()
     this.draw(work)
     const drawFinished = performance.now()
@@ -1260,33 +1279,18 @@ export class Anime25DPlayer {
         this.sillyMouthShare,
       )
     }
-    const collarMotion: CollarMotionPose = {
-      neckPivotX: npx,
-      neckPivotY: npy,
-      neckFollowTop: secondaryDeformationFrame.neckFollowTop,
-      neckFollowSpan: secondaryDeformationFrame.neckFollowSpan,
-      faceCenterY: A.face.cy,
-      faceScale: fs,
-      angleX: e.angleX,
-      angleY: e.angleY,
-      headRotationCosine: cz,
-      headRotationSine: sz,
-      bodyBreathOffset: secondaryDeformationFrame.bodyBreathOffset,
-      headBreathOffset: secondaryDeformationFrame.headBreathOffset,
-    }
+    const collarMotion = this.collarMotion
+    collarMotion.angleX = e.angleX
+    collarMotion.angleY = e.angleY
+    collarMotion.headRotationCosine = cz
+    collarMotion.headRotationSine = sz
+    collarMotion.bodyBreathOffset = secondaryDeformationFrame.bodyBreathOffset
+    collarMotion.headBreathOffset = secondaryDeformationFrame.headBreathOffset
     if (this.collarClip) {
-      const uploadStarted = work ? performance.now() : 0
-      updateCollarClipMesh(
-        this.gl,
-        this.collarClip,
-        collarMotion,
-        this.neckDepth,
-      )
+      deformCollarClipMesh(this.collarClip, collarMotion, this.neckDepth)
       if (work) {
         work.deformedLayers += 1
         work.deformedVertices += this.collarClip.rest.length / 2
-        work.uploadedBytes += this.collarClip.deformed.byteLength
-        work.uploadSubmitMs += performance.now() - uploadStarted
       }
     }
     for (const layer of this.layers) {
@@ -1334,23 +1338,7 @@ export class Anime25DPlayer {
         work.deformedLayers += 1
         work.deformedVertices += vertexCount
       }
-      const eye =
-        source.side === 'L' ? A.eyeL : source.side === 'R' ? A.eyeR : undefined
-      const bcx = source.x + source.w / 2
-      const bcy = source.y + source.h / 2
       const upstreamFeature = layer.upstreamFeature
-      const upstreamFeatureInput = upstreamFeature
-        ? {
-            kind: upstreamFeature,
-            side: source.side,
-            eye,
-            centerX: bcx,
-            centerY: bcy,
-            faceScale: fs,
-            expression: e,
-          }
-        : null
-      const upstreamFeaturePoint = { x: 0, y: 0 }
       const cryLayer = source.fade === 'eyeCry'
       const tearVertical = cryLayer
         ? cryTearVerticalOffset(t, source.side, e.eyeCry, fs)
@@ -1374,15 +1362,15 @@ export class Anime25DPlayer {
         const previousY = deformed[index + 1]
         let x = rest[index]
         let y = rest[index + 1]
-        if (upstreamFeatureInput) {
-          upstreamFeaturePoint.x = x
-          upstreamFeaturePoint.y = y
+        if (upstreamFeature) {
+          deformationPoint.x = x
+          deformationPoint.y = y
           deformAnime25DUpstreamFeaturePoint(
-            upstreamFeaturePoint,
-            upstreamFeatureInput,
+            deformationPoint,
+            upstreamFeature,
           )
-          x = upstreamFeaturePoint.x
-          y = upstreamFeaturePoint.y
+          x = deformationPoint.x
+          y = deformationPoint.y
         }
         if (layer.expressionDeformation) {
           deformationPoint.x = x
@@ -1460,14 +1448,32 @@ export class Anime25DPlayer {
         }
       }
       if (!geometryChanged) {
+        layer.geometryDirty = false
         if (work) work.savedUploadBytes += deformed.byteLength
         continue
       }
-      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, layer.vertexBuffer)
+      layer.geometryDirty = true
+    }
+  }
+
+  private uploadGeometry(work?: Anime25DFrameWork): void {
+    const { gl } = this
+    if (this.collarClip) {
       const uploadStarted = work ? performance.now() : 0
-      this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, deformed)
+      uploadCollarClipMesh(gl, this.collarClip)
       if (work) {
-        work.uploadedBytes += deformed.byteLength
+        work.uploadedBytes += this.collarClip.deformed.byteLength
+        work.uploadSubmitMs += performance.now() - uploadStarted
+      }
+    }
+    for (const layer of this.layers) {
+      if (!layer.geometryDirty) continue
+      gl.bindBuffer(gl.ARRAY_BUFFER, layer.vertexBuffer)
+      const uploadStarted = work ? performance.now() : 0
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, layer.deformed)
+      layer.geometryDirty = false
+      if (work) {
+        work.uploadedBytes += layer.deformed.byteLength
         work.uploadSubmitMs += performance.now() - uploadStarted
       }
     }
@@ -1695,7 +1701,12 @@ export class Anime25DPlayer {
       indexCount: indices.length,
       layerTransform,
       ...deformationPolicy,
-      upstreamFeature: resolveAnime25DUpstreamFeature(source, Boolean(eye)),
+      upstreamFeature: bindAnime25DUpstreamFeature(
+        source,
+        eye,
+        this.playback.anchors.faceScale,
+        this.current,
+      ),
       mouthDeformation: resolveAnime25DMouthDeformation(source.fade),
       expressionDeformation,
       secondaryDeformation,
@@ -1703,6 +1714,7 @@ export class Anime25DPlayer {
       chestWeights,
       ...hair,
       collarContact,
+      geometryDirty: false,
     }
   }
 }

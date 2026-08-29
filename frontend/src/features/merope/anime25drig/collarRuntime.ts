@@ -177,8 +177,7 @@ export function createCollarClipMesh(
   }
 }
 
-export function updateCollarClipMesh(
-  gl: WebGL2RenderingContext,
+export function deformCollarClipMesh(
   clip: CollarClipMesh,
   pose: CollarMotionPose,
   neckDepth: number,
@@ -197,6 +196,12 @@ export function updateCollarClipMesh(
       index,
     )
   }
+}
+
+export function uploadCollarClipMesh(
+  gl: WebGL2RenderingContext,
+  clip: CollarClipMesh,
+): void {
   gl.bindBuffer(gl.ARRAY_BUFFER, clip.vertexBuffer)
   gl.bufferSubData(gl.ARRAY_BUFFER, 0, clip.deformed)
 }

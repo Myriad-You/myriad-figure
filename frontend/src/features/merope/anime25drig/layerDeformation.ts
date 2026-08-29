@@ -55,6 +55,29 @@ export function resolveAnime25DUpstreamFeature(
   return null
 }
 
+/** Build once per layer; the driver object is mutated in place by the player. */
+export function bindAnime25DUpstreamFeature(
+  source: Pick<
+    Anime25DPlaybackLayer,
+    'fade' | 'h' | 'role' | 'side' | 'w' | 'x' | 'y'
+  >,
+  eye: Anime25DEyeAnchor | undefined,
+  faceScale: number,
+  expression: Readonly<UpstreamFeatureExpression>,
+): Anime25DUpstreamFeatureInput | null {
+  const kind = resolveAnime25DUpstreamFeature(source, Boolean(eye))
+  if (!kind) return null
+  return {
+    kind,
+    side: source.side,
+    eye,
+    centerX: source.x + source.w / 2,
+    centerY: source.y + source.h / 2,
+    faceScale,
+    expression,
+  }
+}
+
 /**
  * Mutates one point with the exact eye/eyebrow-local sequence from upstream
  * `deform`. Global head, breath, and body transforms remain separate stages.

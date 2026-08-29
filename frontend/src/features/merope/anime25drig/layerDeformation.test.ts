@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { IDENTITY_DRIVER } from './driver'
 import {
+  bindAnime25DUpstreamFeature,
   deformAnime25DUpstreamFeaturePoint,
   resolveAnime25DUpstreamFeature,
 } from './layerDeformation'
@@ -125,6 +126,21 @@ test('resolver excludes Myriad replacement expressions from the upstream stage',
   )
 })
 
+test('binding holds the live driver reference without per-frame reconstruction', () => {
+  const source = featureLayers()[0]
+  const expression = runtimeExpression({})
+  const binding = bindAnime25DUpstreamFeature(
+    source,
+    FRAME.anchors.eyeL,
+    FRAME.faceScale,
+    expression,
+  )!
+  assert.equal(binding.kind, 'eye-open-iris')
+  assert.equal(binding.expression, expression)
+  expression.eyeX = 0.73
+  assert.equal(binding.expression.eyeX, 0.73)
+})
+
 function featureLayers(): Anime25DPlaybackLayer[] {
   return [
     layer('irides', 'eyeOpen', 'L', 80, 91, 24, 20, 1.2),
@@ -190,20 +206,17 @@ function localFeatureVertices(
 ): Float32Array {
   const output = vertices(source)
   const eye = source.side === 'L' ? FRAME.anchors.eyeL : FRAME.anchors.eyeR
-  const kind = resolveAnime25DUpstreamFeature(source, Boolean(eye))!
+  const binding = bindAnime25DUpstreamFeature(
+    source,
+    eye,
+    FRAME.faceScale,
+    expression,
+  )!
   const point = { x: 0, y: 0 }
   for (let index = 0; index < output.length; index += 2) {
     point.x = output[index]
     point.y = output[index + 1]
-    deformAnime25DUpstreamFeaturePoint(point, {
-      kind,
-      side: source.side,
-      eye,
-      centerX: source.x + source.w / 2,
-      centerY: source.y + source.h / 2,
-      faceScale: FRAME.faceScale,
-      expression,
-    })
+    deformAnime25DUpstreamFeaturePoint(point, binding)
     output[index] = point.x
     output[index + 1] = point.y
   }
