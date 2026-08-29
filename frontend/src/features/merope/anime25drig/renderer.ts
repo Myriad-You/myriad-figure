@@ -9,7 +9,12 @@ export interface Anime25DRenderableLayer {
   indexCount: number
   layerTransform: Float32Array
   frameOpacity: number
+  renderKind: Anime25DRenderKind
+  retainWhenHidden: boolean
+  cryDirection: number
 }
+
+export type Anime25DRenderKind = 'ordinary' | 'neck' | 'eyewhite' | 'iris'
 
 export interface Anime25DRendererBindings {
   view: WebGLUniformLocation
@@ -84,24 +89,14 @@ export function drawAnime25DFrame(
   gl.bindTexture(gl.TEXTURE_2D, atlasTexture)
   for (const layer of layers) {
     const opacity = layer.frameOpacity
-    const eyewhite =
-      layer.source.name.startsWith('eyewhite') ||
-      layer.source.role === 'eye-silly-white'
-    const iris =
-      layer.source.name.startsWith('irides') ||
-      layer.source.role === 'iris-silly' ||
-      layer.source.role === 'lovestruck-heart'
-    // Only the authored sclera keeps defining the iris clip while invisible.
-    if (opacity < 0.004 && !layer.source.name.startsWith('eyewhite')) continue
+    if (opacity < 0.004 && !layer.retainWhenHidden) continue
     if (work) {
       work.drawnLayers += 1
-      work.drawCalls += layer.source.role === 'neck' && collarClip ? 2 : 1
+      work.drawCalls += layer.renderKind === 'neck' && collarClip ? 2 : 1
     }
     gl.uniformMatrix3fv(bindings.layerTransform, false, layer.layerTransform)
-    const crying = layer.source.fade === 'eyeCry'
-    const crySide = layer.source.side === 'L' ? -1 : 1
     gl.uniform1f(bindings.opacity, opacity)
-    gl.uniform1f(bindings.cry, crying ? crySide * frame.eyeCry : 0)
+    gl.uniform1f(bindings.cry, layer.cryDirection * frame.eyeCry)
     gl.uniform4f(
       bindings.atlasRect,
       layer.source.atlas.x,
@@ -110,9 +105,9 @@ export function drawAnime25DFrame(
       layer.source.atlas.h,
     )
     gl.bindVertexArray(layer.vao)
-    if (layer.source.role === 'neck' && collarClip) {
+    if (layer.renderKind === 'neck' && collarClip) {
       drawCollarMaskedLayer(gl, bindings, layer, collarClip, opacity)
-    } else if (eyewhite) {
+    } else if (layer.renderKind === 'eyewhite') {
       gl.enable(gl.STENCIL_TEST)
       gl.stencilFunc(gl.ALWAYS, 1, 255)
       gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
@@ -120,7 +115,7 @@ export function drawAnime25DFrame(
       gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
       gl.disable(gl.STENCIL_TEST)
       gl.uniform1f(bindings.cut, 0)
-    } else if (iris) {
+    } else if (layer.renderKind === 'iris') {
       gl.enable(gl.STENCIL_TEST)
       gl.stencilFunc(gl.EQUAL, 1, 255)
       gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP)

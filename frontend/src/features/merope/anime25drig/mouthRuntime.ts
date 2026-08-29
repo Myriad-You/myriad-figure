@@ -17,12 +17,52 @@ export interface MouthMorphState {
   narrow: number
 }
 
-interface MouthLayerState {
-  source: Anime25DPlaybackLayer
+export interface Anime25DMouthMorphSources {
+  closed?: Anime25DPlaybackLayer
+  ordinary?: Anime25DPlaybackLayer
+  wide?: Anime25DPlaybackLayer
+  round?: Anime25DPlaybackLayer
+  narrow?: Anime25DPlaybackLayer
+  maniac?: Anime25DPlaybackLayer
+}
+
+export interface Anime25DOpacityFrame {
+  dizzy: number
+  cry: number
+  mouthCry: number
+  squeeze: number
+  anger: number
+  speechless: number
+  maniac: number
+  silly: number
+  lovestruck: number
+  sillyMouth: number
+  symbolBlocker: number
+  eyeOpenL: number
+  eyeOpenR: number
+  lovestruckHeartL: number
+  lovestruckHeartR: number
+  activeMouthMaterial: SpeechMouthMaterial
+}
+
+/** Resolves stable mouth artwork references once instead of scanning per frame. */
+export function compileAnime25DMouthMorphSources(
+  layers: readonly Anime25DPlaybackLayer[],
+): Anime25DMouthMorphSources {
+  const sources: Anime25DMouthMorphSources = {}
+  for (const layer of layers) {
+    if (layer.fade === 'mouthClose') sources.closed ??= layer
+    else if (layer.fade === 'mouthOpen') sources.ordinary ??= layer
+    else if (layer.fade === 'mouthWide') sources.wide ??= layer
+    else if (layer.fade === 'mouthRound') sources.round ??= layer
+    else if (layer.fade === 'mouthNarrow') sources.narrow ??= layer
+    else if (layer.fade === 'mouthManiac') sources.maniac ??= layer
+  }
+  return sources
 }
 
 export function resolveMouthMorph(
-  layers: readonly MouthLayerState[],
+  sources: Readonly<Anime25DMouthMorphSources>,
   driver: Anime25DDriver,
   fallback: Anime25DPlayback['anchors']['mouth'],
   face: Anime25DPlayback['anchors']['face'],
@@ -47,20 +87,12 @@ export function resolveMouthMorph(
   output.centerY = 0
   output.width = 0
   output.height = 0
-  let closed: Anime25DPlaybackLayer | undefined
-  let ordinary: Anime25DPlaybackLayer | undefined
-  let wideLayer: Anime25DPlaybackLayer | undefined
-  let roundLayer: Anime25DPlaybackLayer | undefined
-  let narrowLayer: Anime25DPlaybackLayer | undefined
-  let maniacLayer: Anime25DPlaybackLayer | undefined
-  for (const layer of layers) {
-    if (layer.source.fade === 'mouthClose') closed ??= layer.source
-    else if (layer.source.fade === 'mouthOpen') ordinary ??= layer.source
-    else if (layer.source.fade === 'mouthWide') wideLayer ??= layer.source
-    else if (layer.source.fade === 'mouthRound') roundLayer ??= layer.source
-    else if (layer.source.fade === 'mouthNarrow') narrowLayer ??= layer.source
-    else if (layer.source.fade === 'mouthManiac') maniacLayer ??= layer.source
-  }
+  const closed = sources.closed
+  const ordinary = sources.ordinary
+  const wideLayer = sources.wide
+  const roundLayer = sources.round
+  const narrowLayer = sources.narrow
+  const maniacLayer = sources.maniac
   if (closed)
     total += addMouthMorphSource(output, closed, (1 - openMix) * regular)
   if (ordinary)
@@ -234,6 +266,146 @@ export function fadeOpacity(
   ) {
     const selected = activeMouthMaterial ?? dominantMouthMaterial(driver)
     return (layer.fade === selected ? 1 : 0) * (1 - mouthCry) * (1 - sillyMouth)
+  }
+  return 1
+}
+
+export function createAnime25DOpacityFrame(): Anime25DOpacityFrame {
+  return {
+    dizzy: 0,
+    cry: 0,
+    mouthCry: 0,
+    squeeze: 0,
+    anger: 0,
+    speechless: 0,
+    maniac: 0,
+    silly: 0,
+    lovestruck: 0,
+    sillyMouth: 0,
+    symbolBlocker: 1,
+    eyeOpenL: 1,
+    eyeOpenR: 1,
+    lovestruckHeartL: 0,
+    lovestruckHeartR: 0,
+    activeMouthMaterial: 'mouthClose',
+  }
+}
+
+/** Computes shared expression weights once for every layer in a frame. */
+export function writeAnime25DOpacityFrame(
+  output: Anime25DOpacityFrame,
+  driver: Readonly<Anime25DDriver>,
+  activeMouthMaterial: SpeechMouthMaterial,
+  sillyMouthShare = 1,
+): void {
+  const dizzy = smoothstep(driver.eyeDizzy)
+  const cry = smoothstep(driver.eyeCry)
+  const squeeze = smoothstep(driver.eyeSqueeze)
+  const anger = smoothstep(driver.anger)
+  const speechless = smoothstep(driver.speechless)
+  const maniac = smoothstep(driver.maniac)
+  const silly =
+    smoothstep(driver.silly) *
+    (1 - dizzy) *
+    (1 - cry) *
+    (1 - squeeze) *
+    (1 - maniac)
+  const lovestruck =
+    smoothstep(driver.lovestruck) *
+    (1 - dizzy) *
+    (1 - cry) *
+    (1 - squeeze) *
+    (1 - maniac) *
+    (1 - silly)
+  const sillyMouth = silly * clamp(sillyMouthShare, 0, 1)
+  const symbolBlocker =
+    (1 - dizzy) * (1 - squeeze) * (1 - cry) * (1 - silly) * (1 - lovestruck)
+  const eyeOpenL = smoothstep(
+    (driver.eyeOpenL - (0.1 + driver.eyeEase * 0.45)) / 0.15,
+  )
+  const eyeOpenR = smoothstep(
+    (driver.eyeOpenR - (0.1 + driver.eyeEase * 0.45)) / 0.15,
+  )
+  output.dizzy = dizzy
+  output.cry = cry
+  output.mouthCry = cry * (1 - dizzy)
+  output.squeeze = squeeze
+  output.anger = anger
+  output.speechless = speechless
+  output.maniac = maniac
+  output.silly = silly
+  output.lovestruck = lovestruck
+  output.sillyMouth = sillyMouth
+  output.symbolBlocker = symbolBlocker
+  output.eyeOpenL = eyeOpenL
+  output.eyeOpenR = eyeOpenR
+  output.lovestruckHeartL = lovestruck * smoothstep((driver.eyeOpenL - 0.12) / 0.28)
+  output.lovestruckHeartR = lovestruck * smoothstep((driver.eyeOpenR - 0.12) / 0.28)
+  output.activeMouthMaterial = activeMouthMaterial
+}
+
+/** Resolves one preclassified layer from the shared frame weights. */
+export function fadeOpacityFromFrame(
+  layer: Pick<Anime25DPlaybackLayer, 'fade' | 'side'>,
+  frame: Readonly<Anime25DOpacityFrame>,
+): number {
+  const fade = layer.fade
+  if (!fade) return 1
+  if (fade === 'eyeDizzy') return frame.dizzy
+  if (fade === 'eyeCry') return frame.cry * (1 - frame.dizzy)
+  if (fade === 'eyeSilly') return frame.silly
+  if (fade === 'lovestruckHeart') {
+    return layer.side === 'L'
+      ? frame.lovestruckHeartL
+      : frame.lovestruckHeartR
+  }
+  if (fade === 'lovestruckFace' || fade === 'lovestruckDrool') {
+    return frame.lovestruck
+  }
+  if (fade === 'maniacEyeShadow' || fade === 'maniacMouthShadow') {
+    return frame.maniac * frame.symbolBlocker
+  }
+  if (fade === 'angerMark') {
+    return frame.anger * (1 - frame.maniac) * frame.symbolBlocker
+  }
+  if (fade === 'speechlessSweat') {
+    return (
+      frame.speechless *
+      (1 - frame.anger) *
+      (1 - frame.maniac) *
+      frame.symbolBlocker
+    )
+  }
+  if (fade === 'mouthCry') return frame.mouthCry
+  if (fade === 'mouthSilly') {
+    return frame.sillyMouth * (1 - frame.mouthCry)
+  }
+  if (fade === 'eyeSqueeze') {
+    return frame.squeeze * (1 - frame.dizzy) * (1 - frame.cry)
+  }
+  if (fade === 'eyeOpen' || fade === 'eyeClose') {
+    const open = layer.side === 'L' ? frame.eyeOpenL : frame.eyeOpenR
+    return (
+      (fade === 'eyeOpen' ? open : 1 - open) *
+      (1 - frame.dizzy) *
+      (1 - frame.squeeze) *
+      (1 - frame.cry) *
+      (1 - frame.silly)
+    )
+  }
+  if (
+    fade === 'mouthOpen' ||
+    fade === 'mouthWide' ||
+    fade === 'mouthRound' ||
+    fade === 'mouthNarrow' ||
+    fade === 'mouthClose' ||
+    fade === 'mouthManiac'
+  ) {
+    return (
+      (fade === frame.activeMouthMaterial ? 1 : 0) *
+      (1 - frame.mouthCry) *
+      (1 - frame.sillyMouth)
+    )
   }
   return 1
 }

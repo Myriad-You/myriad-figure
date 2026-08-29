@@ -23,6 +23,7 @@ import { createAnime25DSecondaryDeformationBinding } from './secondaryDeformatio
 import { createIndexedDeformableMesh, readLayerPixels } from './webglRuntime'
 
 export interface Anime25DGpuLayer extends Anime25DRenderableLayer {
+  baseRole: string
   rest: Float32Array
   deformed: Float32Array
   cols: number
@@ -121,6 +122,7 @@ export function compileAnime25DGpuLayers(
           )
         : null
     const baseRole = anime25DLayerBaseName(source.role)
+    const renderKind = anime25DRenderKind(source)
     const deformationPolicy = resolveAnime25DLayerDeformationPolicy({
       baseRole,
       fade: source.fade,
@@ -174,6 +176,7 @@ export function compileAnime25DGpuLayers(
     }
     layers.push({
       source,
+      baseRole,
       rest,
       deformed: deformationPolicy.localDynamic ? rest.slice() : rest,
       cols,
@@ -195,6 +198,10 @@ export function compileAnime25DGpuLayers(
       expressionDeformation,
       secondaryDeformation,
       frameOpacity: source.fade ? 0 : 1,
+      renderKind,
+      retainWhenHidden: source.name.startsWith('eyewhite'),
+      cryDirection:
+        source.fade === 'eyeCry' ? (source.side === 'L' ? -1 : 1) : 0,
       chestWeights,
       ...hair,
       collarContact,
@@ -225,4 +232,21 @@ export function anime25DLayerBaseName(role: string): string {
   if (role === 'front-hair') return 'front hair'
   if (role === 'back-hair') return 'back hair'
   return role.replace(/-/g, '_')
+}
+
+function anime25DRenderKind(
+  source: Anime25DPlayback['layers'][number],
+): Anime25DGpuLayer['renderKind'] {
+  if (source.role === 'neck') return 'neck'
+  if (source.name.startsWith('eyewhite') || source.role === 'eye-silly-white') {
+    return 'eyewhite'
+  }
+  if (
+    source.name.startsWith('irides') ||
+    source.role === 'iris-silly' ||
+    source.role === 'lovestruck-heart'
+  ) {
+    return 'iris'
+  }
+  return 'ordinary'
 }

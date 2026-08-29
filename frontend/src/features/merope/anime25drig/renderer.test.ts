@@ -115,6 +115,14 @@ function renderLayer(
   frameOpacity: number,
   indexCount: number,
 ): Anime25DRenderableLayer {
+  const renderKind =
+    role === 'neck'
+      ? 'neck'
+      : name.startsWith('eyewhite')
+        ? 'eyewhite'
+        : name.startsWith('irides')
+          ? 'iris'
+          : 'ordinary'
   return {
     source: {
       name,
@@ -125,6 +133,9 @@ function renderLayer(
     indexCount,
     layerTransform: new Float32Array(9),
     frameOpacity,
+    renderKind,
+    retainWhenHidden: name.startsWith('eyewhite'),
+    cryDirection: 0,
   }
 }
 

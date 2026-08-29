@@ -17,7 +17,11 @@ import type { Anime25DExpressionDeformationFrame } from './expressionDeformation
 import type { Anime25DHairSpringFrame } from './hairPhysics'
 import type { Anime25DGpuLayer } from './layerGpuBinding'
 import type { Anime25DMouthDeformationFrame } from './mouthDeformation'
-import type { MouthMorphState } from './mouthRuntime'
+import type {
+  Anime25DMouthMorphSources,
+  Anime25DOpacityFrame,
+  MouthMorphState,
+} from './mouthRuntime'
 import type { SpeechMouthMaterial } from './mouthTransition'
 import type {
   Anime25DFrameWork,
@@ -78,10 +82,7 @@ import {
   stepJawMotion,
 } from './jawMotion'
 import { deformAnime25DUpstreamFeaturePoint } from './layerDeformation'
-import {
-  anime25DLayerBaseName,
-  compileAnime25DGpuLayers,
-} from './layerGpuBinding'
+import { compileAnime25DGpuLayers } from './layerGpuBinding'
 import { writeAnime25DLayerGlobalTransform } from './layerTransform'
 import {
   deformAnime25DFaceJawPoint,
@@ -89,9 +90,12 @@ import {
 } from './mouthDeformation'
 import {
   applyMouthTransitionBridge,
-  fadeOpacity,
+  compileAnime25DMouthMorphSources,
+  createAnime25DOpacityFrame,
+  fadeOpacityFromFrame,
   resolveMouthMorph,
   shouldDeformLayer,
+  writeAnime25DOpacityFrame,
 } from './mouthRuntime'
 import { MouthTransitionController } from './mouthTransition'
 import { PerformanceExpressionController } from './performanceExpression'
@@ -195,6 +199,10 @@ export class Anime25DPlayer {
     narrow: 0,
   }
 
+  private readonly mouthMorphSources: Anime25DMouthMorphSources
+  private readonly opacityFrame: Anime25DOpacityFrame =
+    createAnime25DOpacityFrame()
+
   private readonly deformationPoint = { x: 0, y: 0 }
   private readonly deformationFrame: Anime25DMouthDeformationFrame &
     Anime25DExpressionDeformationFrame
@@ -276,6 +284,7 @@ export class Anime25DPlayer {
     this.neckDepth =
       playback.layers.find((layer) => layer.role === 'neck')?.depth ?? 0.95
     this.mouthTransition = new MouthTransitionController(playback.mouthProfile)
+    this.mouthMorphSources = compileAnime25DMouthMorphSources(playback.layers)
     this.deformationFrame = {
       mouth: playback.anchors.mouth,
       face: playback.anchors.face,
@@ -801,7 +810,13 @@ export class Anime25DPlayer {
       : 0
     const mouthTransition = this.mouthTransition.sample(e)
     this.activeMouthMaterial = mouthTransition.material
-    resolveMouthMorph(this.layers, e, A.mouth, A.face, this.mouthMorph)
+    resolveMouthMorph(
+      this.mouthMorphSources,
+      e,
+      A.mouth,
+      A.face,
+      this.mouthMorph,
+    )
     applyMouthTransitionBridge(this.mouthMorph, mouthTransition)
     const deformationFrame = this.deformationFrame
     deformationFrame.faceScale = fs
@@ -823,13 +838,14 @@ export class Anime25DPlayer {
     secondaryDeformationFrame.inverseChestRadiusY = inverseChestRy
     secondaryDeformationFrame.chestOffsetX = chestOffsetX
     secondaryDeformationFrame.chestOffsetY = chestOffsetY
+    writeAnime25DOpacityFrame(
+      this.opacityFrame,
+      e,
+      this.activeMouthMaterial,
+      this.sillyMouthShare,
+    )
     for (const layer of this.layers) {
-      layer.frameOpacity = fadeOpacity(
-        layer.source,
-        e,
-        this.activeMouthMaterial,
-        this.sillyMouthShare,
-      )
+      layer.frameOpacity = fadeOpacityFromFrame(layer.source, this.opacityFrame)
     }
     const collarMotion = this.collarMotion
     collarMotion.angleX = e.angleX
@@ -851,7 +867,7 @@ export class Anime25DPlayer {
       const deformed = layer.deformed
       const vertexCount = rest.length / 2
       const source = layer.source
-      const bn = anime25DLayerBaseName(source.role)
+      const bn = layer.baseRole
       const isHead = source.group === 'head'
       if (layer.shaderGlobalTransform) {
         writeAnime25DLayerGlobalTransform(

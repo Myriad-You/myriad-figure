@@ -1,3 +1,5 @@
+import type { SpeechMouthMaterial } from './mouthTransition'
+import type { Anime25DPlaybackLayer } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
@@ -6,7 +8,14 @@ import {
   IDENTITY_DRIVER,
   sanitizeDriverPatch,
 } from './driver'
-import { fadeOpacity, shouldDeformLayer } from './mouthRuntime'
+import {
+  compileAnime25DMouthMorphSources,
+  createAnime25DOpacityFrame,
+  fadeOpacity,
+  fadeOpacityFromFrame,
+  shouldDeformLayer,
+  writeAnime25DOpacityFrame,
+} from './mouthRuntime'
 
 test('uses restrained front and rear hair sway defaults', () => {
   assert.equal(DEFAULT_FRONT_HAIR_SWAY, 1)
@@ -35,6 +44,110 @@ test('clamps all external driver writes at the runtime boundary', () => {
   assert.equal(patch.armPos, 1)
   assert.equal(patch.bust, undefined)
   assert.equal(patch.talk, true)
+})
+
+test('precompiled mouth sources retain the first authored variant', () => {
+  const closed = { fade: 'mouthClose', name: 'closed-first' } as Anime25DPlaybackLayer
+  const duplicate = {
+    fade: 'mouthClose',
+    name: 'closed-second',
+  } as Anime25DPlaybackLayer
+  const ordinary = { fade: 'mouthOpen', name: 'ordinary' } as Anime25DPlaybackLayer
+  const sources = compileAnime25DMouthMorphSources([
+    closed,
+    duplicate,
+    ordinary,
+  ])
+
+  assert.equal(sources.closed, closed)
+  assert.equal(sources.ordinary, ordinary)
+  assert.equal(sources.wide, undefined)
+})
+
+test('precomputed opacity plan exactly preserves legacy fade results', () => {
+  const fades: Anime25DPlaybackLayer['fade'][] = [
+    undefined,
+    'eyeDizzy',
+    'eyeCry',
+    'eyeSilly',
+    'lovestruckHeart',
+    'lovestruckFace',
+    'lovestruckDrool',
+    'maniacEyeShadow',
+    'maniacMouthShadow',
+    'angerMark',
+    'speechlessSweat',
+    'mouthCry',
+    'mouthSilly',
+    'eyeSqueeze',
+    'eyeOpen',
+    'eyeClose',
+    'mouthOpen',
+    'mouthWide',
+    'mouthRound',
+    'mouthNarrow',
+    'mouthClose',
+    'mouthManiac',
+  ]
+  const drivers = [
+    IDENTITY_DRIVER,
+    {
+      ...IDENTITY_DRIVER,
+      eyeOpenL: 0.17,
+      eyeOpenR: 0.83,
+      eyeEase: 0.31,
+      eyeDizzy: 0.27,
+      eyeCry: 0.41,
+      eyeSqueeze: 0.19,
+      anger: 0.73,
+      speechless: 0.52,
+      maniac: 0.22,
+      silly: 0.38,
+      lovestruck: 0.67,
+    },
+    {
+      ...IDENTITY_DRIVER,
+      eyeOpenL: 0,
+      eyeOpenR: 1,
+      eyeEase: 1,
+      eyeDizzy: 1,
+      eyeCry: 1,
+      eyeSqueeze: 1,
+      anger: 1,
+      speechless: 1,
+      maniac: 1,
+      silly: 1,
+      lovestruck: 1,
+    },
+  ]
+  const mouthMaterials: SpeechMouthMaterial[] = [
+    'mouthClose',
+    'mouthOpen',
+    'mouthWide',
+    'mouthRound',
+    'mouthNarrow',
+    'mouthManiac',
+  ]
+  const shares = [0, 0.37, 1]
+  const frame = createAnime25DOpacityFrame()
+
+  for (const driver of drivers) {
+    for (const material of mouthMaterials) {
+      for (const share of shares) {
+        writeAnime25DOpacityFrame(frame, driver, material, share)
+        for (const fade of fades) {
+          for (const side of ['L', 'R'] as const) {
+            const candidate = { fade, side } as Anime25DPlaybackLayer
+            assert.equal(
+              fadeOpacityFromFrame(candidate, frame),
+              fadeOpacity(candidate, driver, material, share),
+              `${fade ?? 'none'}:${side}:${material}:${share}`,
+            )
+          }
+        }
+      }
+    }
+  }
 })
 
 test('symbol artwork replaces both open and closed eyes without stacking', () => {
