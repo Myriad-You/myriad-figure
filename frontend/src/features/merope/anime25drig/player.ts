@@ -7,37 +7,26 @@ import type {
   ChestMotionGeometry,
   ChestWeightField,
 } from './chestPhysics'
-import type { FrontCollarContactModel } from './collarContact'
 import type { CollarClipMesh, CollarMotionPose } from './collarRuntime'
 import type { Anime25DDriver } from './driver'
 import type {
   Anime25DBlinkState,
   Anime25DStylizedTargets,
 } from './driverComposition'
-import type {
-  Anime25DExpressionDeformationBinding,
-  Anime25DExpressionDeformationFrame,
-} from './expressionDeformation'
+import type { Anime25DExpressionDeformationFrame } from './expressionDeformation'
 import type { Anime25DHairSpringFrame } from './hairPhysics'
-import type { Anime25DLayerSpringBinding } from './layerBinding'
-import type { Anime25DUpstreamFeatureInput } from './layerDeformation'
-import type { Anime25DLayerDeformationExtension } from './layerDeformationPolicy'
-import type {
-  Anime25DMouthDeformationFrame,
-  Anime25DMouthDeformationKind,
-} from './mouthDeformation'
+import type { Anime25DGpuLayer } from './layerGpuBinding'
+import type { Anime25DMouthDeformationFrame } from './mouthDeformation'
 import type { MouthMorphState } from './mouthRuntime'
 import type { SpeechMouthMaterial } from './mouthTransition'
 import type {
   Anime25DFrameWork,
   Anime25DPerformanceSnapshot,
 } from './performanceTelemetry'
-import type {
-  Anime25DSecondaryDeformationBinding,
-  Anime25DSecondaryDeformationFrame,
-} from './secondaryDeformation'
+import type { Anime25DRendererBindings, Anime25DRenderFrame } from './renderer'
+import type { Anime25DSecondaryDeformationFrame } from './secondaryDeformation'
 import type { StylizedExpressionMotion } from './stylizedExpressionMotion'
-import type { Anime25DPlayback, Anime25DPlaybackLayer } from './types'
+import type { Anime25DPlayback } from './types'
 import { currentCopy } from '../../../i18n/localeCopy'
 import {
   singingDriveAmount,
@@ -53,17 +42,12 @@ import {
   createChestSpringState,
   resolveChestDeformationRegion,
   resolveChestDynamics,
-  sampleChestWeight,
   stepChestSpring,
   topwearMotionAtChest,
 } from './chestPhysics'
-import {
-  buildFrontCollarContactModel,
-  deformRigidMlsPoint,
-} from './collarContact'
+import { deformRigidMlsPoint } from './collarContact'
 import {
   BODY_HEAD_FOLLOW,
-  createCollarClipMesh,
   deformCollarClipMesh,
   updateFrontCollarTargets,
   uploadCollarClipMesh,
@@ -84,10 +68,7 @@ import {
   stepAnime25DBlink,
   stepAnime25DDriverResponse,
 } from './driverComposition'
-import {
-  deformAnime25DExpressionPoint,
-  resolveAnime25DExpressionDeformation,
-} from './expressionDeformation'
+import { deformAnime25DExpressionPoint } from './expressionDeformation'
 import { applyExpressiveMotionEnvelope } from './expressiveMotionEnvelope'
 import { stepAnime25DHairLayerSprings } from './hairPhysics'
 import {
@@ -96,20 +77,15 @@ import {
   jawTravelPixels,
   stepJawMotion,
 } from './jawMotion'
-import { buildAnime25DLayerBinding } from './layerBinding'
+import { deformAnime25DUpstreamFeaturePoint } from './layerDeformation'
 import {
-  bindAnime25DUpstreamFeature,
-  deformAnime25DUpstreamFeaturePoint,
-} from './layerDeformation'
-import { resolveAnime25DLayerDeformationPolicy } from './layerDeformationPolicy'
-import {
-  writeAnime25DLayerGlobalTransform,
-  writeIdentityLayerTransform,
-} from './layerTransform'
+  anime25DLayerBaseName,
+  compileAnime25DGpuLayers,
+} from './layerGpuBinding'
+import { writeAnime25DLayerGlobalTransform } from './layerTransform'
 import {
   deformAnime25DFaceJawPoint,
   deformAnime25DMouthPoint,
-  resolveAnime25DMouthDeformation,
 } from './mouthDeformation'
 import {
   applyMouthTransitionBridge,
@@ -124,9 +100,9 @@ import {
   createAnime25DFrameWork,
 } from './performanceTelemetry'
 import { RandomActionController } from './randomAction'
+import { createAnime25DRendererBindings, drawAnime25DFrame } from './renderer'
 import { resolveAnime25DRenderSurface } from './runtimePolicy'
 import {
-  createAnime25DSecondaryDeformationBinding,
   deformAnime25DHairPoint,
   deformAnime25DSecondaryPoint,
 } from './secondaryDeformation'
@@ -134,51 +110,13 @@ import { CoSpeechExpressionController } from './speechExpression'
 import { AutoSpeechController } from './speechMotion'
 import { StylizedExpressionMotionController } from './stylizedExpressionMotion'
 import { ThinkingMotionController } from './thinkingMotion'
-import {
-  compileProgram,
-  createAtlasTexture,
-  createIndexedDeformableMesh,
-  loadImage,
-  readLayerPixels,
-  requiredUniform,
-} from './webglRuntime'
+import { compileProgram, createAtlasTexture, loadImage } from './webglRuntime'
 
 interface SecondaryMotionPose {
   angleX: number
   angleY: number
   angleZ: number
   body: number
-}
-
-interface GpuLayer {
-  source: Anime25DPlaybackLayer
-  rest: Float32Array
-  deformed: Float32Array
-  cols: number
-  rows: number
-  vao: WebGLVertexArrayObject
-  vertexBuffer: WebGLBuffer
-  uvBuffer: WebGLBuffer
-  indexBuffer: WebGLBuffer
-  indexCount: number
-  layerTransform: Float32Array
-  shaderGlobalTransform: boolean
-  localDynamic: boolean
-  deformationExtensions: Anime25DLayerDeformationExtension[]
-  upstreamFeature: Anime25DUpstreamFeatureInput | null
-  mouthDeformation: Anime25DMouthDeformationKind | null
-  expressionDeformation: Anime25DExpressionDeformationBinding | null
-  secondaryDeformation: Anime25DSecondaryDeformationBinding
-  frameOpacity: number
-  chestWeights: Float32Array | null
-  frontHair: boolean
-  frontHairParallaxScale: Float32Array | null
-  strandWeights: Float32Array | null
-  alongStrand: Float32Array | null
-  bangWeights: Float32Array | null
-  springs: Anime25DLayerSpringBinding[] | null
-  collarContact: FrontCollarContactModel | null
-  geometryDirty: boolean
 }
 
 export interface Anime25DDebugSnapshot {
@@ -214,15 +152,19 @@ export class Anime25DPlayer {
   private readonly gl: WebGL2RenderingContext
   private readonly playback: Anime25DPlayback
   private readonly program: WebGLProgram
-  private readonly viewLocation: WebGLUniformLocation
-  private readonly layerTransformLocation: WebGLUniformLocation
-  private readonly bodyTransformLocation: WebGLUniformLocation
-  private readonly opacityLocation: WebGLUniformLocation
-  private readonly cutLocation: WebGLUniformLocation
-  private readonly cryTimeLocation: WebGLUniformLocation
-  private readonly cryLocation: WebGLUniformLocation
-  private readonly atlasRectLocation: WebGLUniformLocation
-  private layers: GpuLayer[] = []
+  private readonly rendererBindings: Anime25DRendererBindings
+  private readonly renderFrame: Anime25DRenderFrame = {
+    viewWidth: 1,
+    viewHeight: 1,
+    bodyPivotX: 0,
+    bodyPivotY: 0,
+    bodyRotationCosine: 1,
+    bodyRotationSine: 0,
+    time: 0,
+    eyeCry: 0,
+  }
+
+  private layers: Anime25DGpuLayer[] = []
   private atlasTexture: WebGLTexture | null = null
   private readonly performanceTelemetry = new Anime25DPerformanceTelemetry()
   private readonly current: Anime25DDriver = { ...IDENTITY_DRIVER }
@@ -313,12 +255,6 @@ export class Anime25DPlayer {
   private jawEmphasis = 0
   private readonly mouse = { x: 0, y: 0, inside: false }
   private disposed = false
-  private viewWidth = 1
-  private viewHeight = 1
-  private bodyPivotX = 0
-  private bodyPivotY = 0
-  private bodyRotationCosine = 1
-  private bodyRotationSine = 0
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -438,35 +374,23 @@ export class Anime25DPlayer {
       time: 0,
     }
     this.program = compileProgram(gl)
-    this.viewLocation = requiredUniform(gl, this.program, 'u_view')
-    this.layerTransformLocation = requiredUniform(
-      gl,
-      this.program,
-      'u_layer_transform',
-    )
-    this.bodyTransformLocation = requiredUniform(
-      gl,
-      this.program,
-      'u_body_transform',
-    )
-    this.opacityLocation = requiredUniform(gl, this.program, 'u_opacity')
-    this.cutLocation = requiredUniform(gl, this.program, 'u_cut')
-    this.cryTimeLocation = requiredUniform(gl, this.program, 'u_cry_time')
-    this.cryLocation = requiredUniform(gl, this.program, 'u_cry')
-    this.atlasRectLocation = requiredUniform(gl, this.program, 'u_atlas_rect')
-    gl.useProgram(this.program)
-    gl.uniform1i(requiredUniform(gl, this.program, 'u_texture'), 0)
-    gl.enable(gl.BLEND)
-    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
-    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1)
+    this.rendererBindings = createAnime25DRendererBindings(gl, this.program)
   }
 
   async loadAtlas(url: string): Promise<void> {
     const image = await loadImage(url)
     this.atlasTexture = createAtlasTexture(this.gl, image)
-    this.layers = this.playback.layers.map((layer, index) =>
-      this.createLayer(layer, image, index),
+    const compiled = compileAnime25DGpuLayers(
+      this.gl,
+      this.program,
+      this.playback,
+      this.current,
+      this.chestWeightField,
+      image,
+      this.collarClip,
     )
+    this.layers = compiled.layers
+    this.collarClip = compiled.collarClip
   }
 
   setTarget(partial: Partial<Anime25DDriver>): void {
@@ -605,8 +529,8 @@ export class Anime25DPlayer {
       canvas.style.width = `${surface.displayWidth}px`
       canvas.style.height = `${surface.displayHeight}px`
     }
-    this.viewWidth = pixelWidth
-    this.viewHeight = pixelHeight
+    this.renderFrame.viewWidth = pixelWidth
+    this.renderFrame.viewHeight = pixelHeight
     this.gl.viewport(0, 0, surface.bufferWidth, surface.bufferHeight)
   }
 
@@ -842,10 +766,10 @@ export class Anime25DPlayer {
     const ab = e.body * (0.028 + 0.05 * singingLift)
     const cb = Math.cos(ab)
     const sb = Math.sin(ab)
-    this.bodyPivotX = bpx
-    this.bodyPivotY = bpy
-    this.bodyRotationCosine = cb
-    this.bodyRotationSine = sb
+    this.renderFrame.bodyPivotX = bpx
+    this.renderFrame.bodyPivotY = bpy
+    this.renderFrame.bodyRotationCosine = cb
+    this.renderFrame.bodyRotationSine = sb
     const chestProfile = this.playback.chestProfile
     const chestCy = this.chestRegion.centerY
     const chestRx = this.chestRegion.radiusX
@@ -927,7 +851,7 @@ export class Anime25DPlayer {
       const deformed = layer.deformed
       const vertexCount = rest.length / 2
       const source = layer.source
-      const bn = layerBaseName(source.role)
+      const bn = anime25DLayerBaseName(source.role)
       const isHead = source.group === 'head'
       if (layer.shaderGlobalTransform) {
         writeAnime25DLayerGlobalTransform(
@@ -1105,264 +1029,17 @@ export class Anime25DPlayer {
   }
 
   private draw(work?: Anime25DFrameWork): void {
-    const { gl } = this
-    gl.clearColor(0, 0, 0, 0)
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
-    gl.useProgram(this.program)
-    gl.uniform2f(this.viewLocation, this.viewWidth, this.viewHeight)
-    gl.uniform4f(
-      this.bodyTransformLocation,
-      this.bodyPivotX,
-      this.bodyPivotY,
-      this.bodyRotationCosine,
-      this.bodyRotationSine,
-    )
-    gl.uniform1f(this.cryTimeLocation, this.time)
-    gl.activeTexture(gl.TEXTURE0)
-    if (!this.atlasTexture) return
-    gl.bindTexture(gl.TEXTURE_2D, this.atlasTexture)
-    for (const layer of this.layers) {
-      const opacity = layer.frameOpacity
-      const eyewhite =
-        layer.source.name.startsWith('eyewhite') ||
-        layer.source.role === 'eye-silly-white'
-      const iris =
-        layer.source.name.startsWith('irides') ||
-        layer.source.role === 'iris-silly' ||
-        layer.source.role === 'lovestruck-heart'
-      // Only the authored sclera has to keep defining the iris clip while it
-      // is invisible; the silly frame costs a draw and a stencil write, so it
-      // leaves the buffer alone whenever the expression is down.
-      if (opacity < 0.004 && !layer.source.name.startsWith('eyewhite')) continue
-      if (work) {
-        work.drawnLayers += 1
-        work.drawCalls +=
-          layer.source.role === 'neck' && this.collarClip ? 2 : 1
-      }
-      gl.uniformMatrix3fv(
-        this.layerTransformLocation,
-        false,
-        layer.layerTransform,
-      )
-      const crying = layer.source.fade === 'eyeCry'
-      const crySide = layer.source.side === 'L' ? -1 : 1
-      gl.uniform1f(this.opacityLocation, opacity)
-      gl.uniform1f(this.cryLocation, crying ? crySide * this.current.eyeCry : 0)
-      gl.uniform4f(
-        this.atlasRectLocation,
-        layer.source.atlas.x,
-        layer.source.atlas.y,
-        layer.source.atlas.w,
-        layer.source.atlas.h,
-      )
-      gl.bindVertexArray(layer.vao)
-      if (layer.source.role === 'neck' && this.collarClip) {
-        gl.enable(gl.STENCIL_TEST)
-        gl.stencilMask(255)
-        gl.stencilFunc(gl.ALWAYS, 1, 255)
-        gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
-        gl.colorMask(false, false, false, false)
-        gl.uniform1f(this.opacityLocation, 1)
-        gl.uniform1f(this.cryLocation, 0)
-        gl.uniform1f(this.cutLocation, 0)
-        gl.bindVertexArray(this.collarClip.vao)
-        gl.drawElements(
-          gl.TRIANGLES,
-          this.collarClip.indexCount,
-          gl.UNSIGNED_SHORT,
-          0,
-        )
-        gl.colorMask(true, true, true, true)
-        gl.stencilMask(0)
-        gl.stencilFunc(gl.EQUAL, 1, 255)
-        gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP)
-        gl.uniform1f(this.opacityLocation, opacity)
-        gl.bindVertexArray(layer.vao)
-        gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
-        gl.stencilMask(255)
-        gl.disable(gl.STENCIL_TEST)
-      } else if (eyewhite) {
-        gl.enable(gl.STENCIL_TEST)
-        gl.stencilFunc(gl.ALWAYS, 1, 255)
-        gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
-        gl.uniform1f(this.cutLocation, 0.25)
-        gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
-        gl.disable(gl.STENCIL_TEST)
-        gl.uniform1f(this.cutLocation, 0)
-      } else if (iris) {
-        gl.enable(gl.STENCIL_TEST)
-        gl.stencilFunc(gl.EQUAL, 1, 255)
-        gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP)
-        gl.uniform1f(this.cutLocation, 0)
-        gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
-        gl.disable(gl.STENCIL_TEST)
-      } else {
-        gl.uniform1f(this.cutLocation, 0)
-        gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
-      }
-    }
-    gl.bindVertexArray(null)
-  }
-
-  private createLayer(
-    source: Anime25DPlaybackLayer,
-    atlasImage: HTMLImageElement,
-    layerIndex: number,
-  ): GpuLayer {
-    const cropped =
-      source.role === 'collar-front'
-        ? readLayerPixels(atlasImage, source)
-        : null
-    const collarContact = cropped?.pixels
-      ? buildFrontCollarContactModel(
-          cropped.pixels,
-          cropped.width,
-          cropped.height,
-          source,
-          this.playback.anchors.neckPivot.x,
-        )
-      : null
-    const binding = buildAnime25DLayerBinding({
-      source,
-      canvasWidth: this.playback.pixelCanvas.width,
-      face: this.playback.anchors.face,
-      layerZ:
-        typeof source.z === 'number' && Number.isFinite(source.z)
-          ? source.z
-          : layerIndex,
-      extraGridX: collarContact?.gridX,
-      extraGridY: collarContact?.gridY,
-    })
-    const {
-      rest,
-      atlasUvs,
-      indices,
-      cols,
-      rows,
-      extensions: _extensions,
-      ...hair
-    } = binding
-    const { gl } = this
-    const mesh = createIndexedDeformableMesh(
-      gl,
+    this.renderFrame.time = this.time
+    this.renderFrame.eyeCry = this.current.eyeCry
+    drawAnime25DFrame(
+      this.gl,
       this.program,
-      rest,
-      atlasUvs,
-      indices,
-    )
-    const chestWeights =
-      source.role === 'topwear' && this.chestWeightField
-        ? samplePlaybackChestWeights(
-            this.chestWeightField,
-            rest,
-            this.playback.pixelCanvas.width,
-          )
-        : null
-    const baseRole = layerBaseName(source.role)
-    const deformationPolicy = resolveAnime25DLayerDeformationPolicy({
-      baseRole,
-      fade: source.fade,
-      hairPhysics: source.phys === 'hair',
-      hasBangWeights: Boolean(hair.bangWeights),
-      hasFrontHairParallax: Boolean(hair.frontHairParallaxScale),
-      hasCollarContact: Boolean(collarContact),
-    })
-    const eye =
-      source.side === 'L'
-        ? this.playback.anchors.eyeL
-        : source.side === 'R'
-          ? this.playback.anchors.eyeR
-          : undefined
-    const expressionDeformationKind = resolveAnime25DExpressionDeformation(
-      source,
-      Boolean(eye),
-    )
-    const expressionDeformation = expressionDeformationKind
-      ? {
-          kind: expressionDeformationKind,
-          source,
-          eye,
-          centerX: source.x + source.w / 2,
-          centerY: source.y + source.h / 2,
-        }
-      : null
-    const secondaryDeformation = createAnime25DSecondaryDeformationBinding({
-      source,
-      baseRole,
-      shaderGlobalTransform: deformationPolicy.shaderGlobalTransform,
-      collarContact: Boolean(collarContact),
-      frontHair: hair.frontHair,
-      frontHairParallaxScale: hair.frontHairParallaxScale,
-      chestWeights,
-      bangWeights: hair.bangWeights,
-      strandWeights: hair.strandWeights,
-      alongStrand: hair.alongStrand,
-      springs: hair.springs,
-    })
-    const layerTransform = new Float32Array(9)
-    writeIdentityLayerTransform(layerTransform)
-    if (collarContact && !this.collarClip) {
-      const neck = this.playback.layers.find((layer) => layer.role === 'neck')
-      if (neck) {
-        this.collarClip = createCollarClipMesh(
-          gl,
-          this.program,
-          collarContact,
-          neck,
-          source,
-        )
-      }
-    }
-    return {
-      source,
-      rest,
-      deformed: deformationPolicy.localDynamic ? rest.slice() : rest,
-      cols,
-      rows,
-      vao: mesh.vao,
-      vertexBuffer: mesh.positionBuffer,
-      uvBuffer: mesh.uvBuffer,
-      indexBuffer: mesh.indexBuffer,
-      indexCount: indices.length,
-      layerTransform,
-      ...deformationPolicy,
-      upstreamFeature: bindAnime25DUpstreamFeature(
-        source,
-        eye,
-        this.playback.anchors.faceScale,
-        this.current,
-      ),
-      mouthDeformation: resolveAnime25DMouthDeformation(source.fade),
-      expressionDeformation,
-      secondaryDeformation,
-      frameOpacity: source.fade ? 0 : 1,
-      chestWeights,
-      ...hair,
-      collarContact,
-      geometryDirty: false,
-    }
-  }
-}
-
-function samplePlaybackChestWeights(
-  field: ChestWeightField,
-  rest: Float32Array,
-  frameWidth: number,
-): Float32Array {
-  const scale = Math.max(1, frameWidth)
-  const weights = new Float32Array(rest.length / 2)
-  for (let vertex = 0; vertex < weights.length; vertex += 1) {
-    weights[vertex] = sampleChestWeight(
-      field,
-      rest[vertex * 2] / scale,
-      rest[vertex * 2 + 1] / scale,
+      this.rendererBindings,
+      this.layers,
+      this.atlasTexture,
+      this.collarClip,
+      this.renderFrame,
+      work,
     )
   }
-  return weights
-}
-
-function layerBaseName(role: string): string {
-  if (role === 'front-hair') return 'front hair'
-  if (role === 'back-hair') return 'back hair'
-  return role.replace(/-/g, '_')
 }
