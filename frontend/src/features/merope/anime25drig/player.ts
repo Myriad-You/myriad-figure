@@ -14,6 +14,7 @@ import type {
   Anime25DExpressionDeformationBinding,
   Anime25DExpressionDeformationFrame,
 } from './expressionDeformation'
+import type { Anime25DHairSpringFrame } from './hairPhysics'
 import type { Anime25DLayerSpringBinding } from './layerBinding'
 import type { Anime25DUpstreamFeatureInput } from './layerDeformation'
 import type { Anime25DLayerDeformationExtension } from './layerDeformationPolicy'
@@ -61,8 +62,8 @@ import {
   BODY_HEAD_FOLLOW,
   createCollarClipMesh,
   deformCollarClipMesh,
-  uploadCollarClipMesh,
   updateFrontCollarTargets,
+  uploadCollarClipMesh,
 } from './collarRuntime'
 import {
   cryTearHorizontalOffset,
@@ -75,7 +76,7 @@ import {
   resolveAnime25DExpressionDeformation,
 } from './expressionDeformation'
 import { applyExpressiveMotionEnvelope } from './expressiveMotionEnvelope'
-import { stepHairSpring } from './hairPhysics'
+import { stepAnime25DHairLayerSprings } from './hairPhysics'
 import {
   createJawMotionState,
   jawMotionTarget,
@@ -256,6 +257,7 @@ export class Anime25DPlayer {
 
   private readonly secondaryDeformationFrame: Anime25DSecondaryDeformationFrame
   private readonly collarMotion: CollarMotionPose
+  private readonly hairSpringFrame: Anime25DHairSpringFrame
 
   private readonly mouthTransition: MouthTransitionController
   private activeMouthMaterial: SpeechMouthMaterial = 'mouthClose'
@@ -411,6 +413,16 @@ export class Anime25DPlayer {
       headRotationSine: 0,
       bodyBreathOffset: 0,
       headBreathOffset: 0,
+    }
+    this.hairSpringFrame = {
+      enabled: true,
+      idle: true,
+      angleX: 0,
+      angleZ: 0,
+      faceScale: anchors.faceScale,
+      neckPivotY: anchors.neckPivot.y,
+      faceCenterY: anchors.face.cy,
+      time: 0,
     }
     this.program = compileProgram(gl)
     this.viewLocation = requiredUniform(gl, this.program, 'u_view')
@@ -1160,39 +1172,13 @@ export class Anime25DPlayer {
         this.chestDynamics.dampingScale,
       )
     }
-    if (!e.phys) return
-    const headDX =
-      (secondary.angleX * 14 +
-        secondary.angleZ * 0.07 * (anchors.neckPivot.y - anchors.face.cy)) *
-      faceScale
-    const time = this.time
-    const windAmp = e.idle ? 1 : 0
-    for (const layer of this.layers) {
-      if (!layer.springs) continue
-      for (const spring of layer.springs) {
-        const wind =
-          windAmp *
-          (1.8 * Math.sin(time * 0.8 + spring.phase) +
-            1.0 * Math.sin(time * 1.9 + spring.phase * 2.3))
-        const target = headDX + wind * faceScale
-        stepHairSpring(
-          spring.stiff,
-          target,
-          70 * spring.stiffnessScale,
-          9 * spring.dampingScale,
-          2.2,
-          dt,
-        )
-        stepHairSpring(
-          spring.soft,
-          target,
-          16 * spring.stiffnessScale,
-          1.3 * spring.dampingScale,
-          3,
-          dt,
-        )
-      }
-    }
+    const hairSpringFrame = this.hairSpringFrame
+    hairSpringFrame.enabled = e.phys
+    hairSpringFrame.idle = e.idle
+    hairSpringFrame.angleX = secondary.angleX
+    hairSpringFrame.angleZ = secondary.angleZ
+    hairSpringFrame.time = this.time
+    stepAnime25DHairLayerSprings(this.layers, hairSpringFrame, dt)
   }
 
   private deform(work?: Anime25DFrameWork): void {
