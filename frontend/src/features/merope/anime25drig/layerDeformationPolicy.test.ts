@@ -41,6 +41,7 @@ test('allows global-only decorations and held shadows to skip uploads', () => {
     assert.deepEqual(policy, {
       shaderGlobalTransform: true,
       localDynamic: false,
+      deformationExtensions: [],
     })
   }
 })
@@ -55,6 +56,43 @@ test('moves global eye motion to the shader without skipping local eye work', ()
     {
       shaderGlobalTransform: true,
       localDynamic: true,
+      deformationExtensions: [],
     },
+  )
+})
+
+test('names every intentional geometry replacement at the policy boundary', () => {
+  assert.deepEqual(
+    resolveAnime25DLayerDeformationPolicy({
+      ...base,
+      baseRole: 'mouth_maniac',
+      fade: 'mouthManiac',
+    }).deformationExtensions,
+    ['continuous-mouth-geometry', 'jaw-face-coupling'],
+  )
+  assert.deepEqual(
+    resolveAnime25DLayerDeformationPolicy({
+      ...base,
+      baseRole: 'mouth_cry',
+      fade: 'mouthCry',
+    }).deformationExtensions,
+    ['cry-mouth-geometry', 'jaw-face-coupling'],
+  )
+  assert.deepEqual(
+    resolveAnime25DLayerDeformationPolicy({
+      ...base,
+      baseRole: 'front hair',
+      hairPhysics: true,
+      hasFrontHairParallax: true,
+    }).deformationExtensions,
+    ['length-scaled-hair-physics', 'front-hair-depth-release'],
+  )
+  assert.deepEqual(
+    resolveAnime25DLayerDeformationPolicy({
+      ...base,
+      baseRole: 'collar_front',
+      hasCollarContact: true,
+    }).deformationExtensions,
+    ['collar-contact', 'neck-collar-continuity'],
   )
 })

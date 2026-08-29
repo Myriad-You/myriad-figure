@@ -189,3 +189,160 @@ export interface UpstreamRiggerApi {
   ) => { l: UpstreamRgbaImage; r: UpstreamRgbaImage } | null
   _internals: UpstreamRiggerInternals
 }
+
+/**
+ * Mutable runtime state used by the WebGL loop in the pinned upstream
+ * `index.html`. These types stay separate from Myriad's extended driver so the
+ * parity suite can compare the original behavior without extension fields.
+ */
+export interface UpstreamRuntimeParameters {
+  angleX: number
+  angleY: number
+  angleZ: number
+  eyeOpenL: number
+  eyeOpenR: number
+  eyeX: number
+  eyeY: number
+  brow: number
+  mouthOpen: number
+  mouthForm: number
+  mouthCY: number
+  body: number
+  physAmp: number
+  soft: number
+  browAngL: number
+  browAngR: number
+  browAngSym: number
+  bangL: number
+  bangC: number
+  bangR: number
+  armY: number
+  armPos: number
+  bust: number
+  bustY: number
+  irisScale: number
+  mouthEase: number
+  eyeEase: number
+  fhAmp: number
+  fhSoft: number
+  eyeCY: number
+  eyeCAng: number
+  mouthCAng: number
+  eyeScaleL: number
+  eyeScaleR: number
+  mouthScale: number
+}
+
+export interface UpstreamRuntimeExpression extends UpstreamRuntimeParameters {
+  breath: number
+  breathHead: number
+}
+
+export interface UpstreamRuntimeSpringValue {
+  x: number
+  v: number
+  dx: number
+}
+
+export interface UpstreamRuntimeStrandSpring {
+  stiff: UpstreamRuntimeSpringValue
+  soft: UpstreamRuntimeSpringValue
+  phase: number
+}
+
+export interface UpstreamRuntimeBustSpring {
+  x: number
+  v: number
+  dy: number
+}
+
+export interface UpstreamRuntimeLayer {
+  name: string
+  bn: string
+  group: UpstreamLayerGroup
+  side: UpstreamLayerSide
+  fade: UpstreamLayerFade
+  x: number
+  y: number
+  w: number
+  h: number
+  depth: number
+  base: Float32Array
+  cur: Float32Array
+  strands?: UpstreamHairStrand[] | null
+  sw?: Float32Array
+  su?: Float32Array
+  spr?: UpstreamRuntimeStrandSpring[]
+  bw?: Float32Array
+}
+
+/**
+ * CPU-visible result of the mesh setup performed by upstream `applyRig`.
+ * GPU handles are deliberately excluded; `uv` and `indices` preserve the
+ * payloads that the original function uploads to WebGL buffers.
+ */
+export interface UpstreamRuntimeBoundLayer extends UpstreamRuntimeLayer {
+  z: number
+  phys: UpstreamLayerPhysics
+  synthetic?: true
+  uv: Float32Array
+  indices: Uint16Array
+  nIdx: number
+}
+
+export interface UpstreamRuntimeRigBinding {
+  canvas: { w: number; h: number }
+  anchors: UpstreamRigAnchors
+  faceScale: number
+  neckPivot: { cx: number; cy: number }
+  bodyPivot: { cx: number; cy: number }
+  faceCenter: { x: number; y: number }
+  chest: { cx: number; cy: number; rx: number; ry: number }
+  layers: UpstreamRuntimeBoundLayer[]
+}
+
+export type UpstreamRuntimeStencilMode = 'none' | 'write' | 'test'
+
+export interface UpstreamRuntimeDrawCommand {
+  layerIndex: number
+  name: string
+  alpha: number
+  alphaCut: number
+  stencil: UpstreamRuntimeStencilMode
+}
+
+export interface UpstreamRuntimeFrame {
+  anchors: UpstreamRigAnchors
+  faceScale: number
+  neckPivot: { cx: number; cy: number }
+  bodyPivot: { cx: number; cy: number }
+  faceCenter: { x: number; y: number }
+  chest: { cx: number; cy: number; rx: number; ry: number }
+  physicsEnabled: boolean
+  bustDisplacement: number
+}
+
+export interface UpstreamRuntimeTickAutomation {
+  idle: boolean
+  blink: boolean
+}
+
+export interface UpstreamRuntimeTickState {
+  lastTimeMs: number
+  blinkElapsed: number
+  nextBlinkAtMs: number
+  cameraPhysicsScale: number
+  current: UpstreamRuntimeParameters
+  expression: UpstreamRuntimeExpression
+  bounce: UpstreamRuntimeBustSpring
+}
+
+export interface UpstreamRuntimeTickInput {
+  nowMs: number
+  target: Readonly<UpstreamRuntimeParameters>
+  automation: Readonly<UpstreamRuntimeTickAutomation>
+  cameraLive: boolean
+  layers: readonly UpstreamRuntimeLayer[]
+  frame: Readonly<UpstreamRuntimeFrame>
+  random: () => number
+}

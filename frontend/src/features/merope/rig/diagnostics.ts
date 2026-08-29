@@ -33,8 +33,6 @@ export interface RigDiagnosticReport {
   }
 }
 
-export type RigCapability = keyof RigDiagnosticReport['capabilities']
-
 /** Exact facial subset of the current Anime2.5D character-asset contract. */
 export function anime25DFacialVariantsComplete(
   parts: MeropeRigManifest['parts'],

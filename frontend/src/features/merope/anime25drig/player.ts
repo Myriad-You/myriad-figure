@@ -10,7 +10,8 @@ import type {
 import type { FrontCollarContactModel } from './collarContact'
 import type { CollarClipMesh, CollarMotionPose } from './collarRuntime'
 import type { Anime25DDriver } from './driver'
-import type { HairSpringState } from './hairPhysics'
+import type { Anime25DLayerSpringBinding } from './layerBinding'
+import type { Anime25DLayerDeformationExtension } from './layerDeformationPolicy'
 import type { MouthMorphState } from './mouthRuntime'
 import type { SpeechMouthMaterial } from './mouthTransition'
 import type {
@@ -29,7 +30,6 @@ import {
   SingingGrooveController,
 } from '../singing/singingGroove'
 import { AmbientMotionController } from './ambientMotion'
-import { localToAtlasUv } from './atlasUv'
 import {
   buildChestWeightField,
   chestDeformationWeight,
@@ -65,22 +65,28 @@ import {
 } from './cryMotion'
 import { IDENTITY_DRIVER, sanitizeDriverPatch } from './driver'
 import { applyExpressiveMotionEnvelope } from './expressiveMotionEnvelope'
-import {
-  frontHairUpperParallaxScale,
-  hairStrandDynamics,
-  stepHairSpring,
-} from './hairPhysics'
+import { stepHairSpring } from './hairPhysics'
 import {
   createJawMotionState,
   jawMotionTarget,
   jawTravelPixels,
   stepJawMotion,
 } from './jawMotion'
+import { buildAnime25DLayerBinding } from './layerBinding'
+import {
+  deformAnime25DUpstreamFeaturePoint,
+  resolveAnime25DUpstreamFeature,
+} from './layerDeformation'
 import { resolveAnime25DLayerDeformationPolicy } from './layerDeformationPolicy'
 import {
   writeAnime25DLayerGlobalTransform,
   writeIdentityLayerTransform,
 } from './layerTransform'
+import {
+  deformAnime25DFaceJawPoint,
+  deformAnime25DMouthPoint,
+  resolveAnime25DMouthDeformation,
+} from './mouthDeformation'
 import {
   applyMouthTransitionBridge,
   fadeOpacity,
@@ -119,17 +125,6 @@ import {
   requiredUniform,
 } from './webglRuntime'
 
-const NECK_MESH_CELL = 28
-const FRONT_COLLAR_MESH_CELL = 22
-
-interface HairStrandSpring {
-  stiff: HairSpringState
-  soft: HairSpringState
-  phase: number
-  stiffnessScale: number
-  dampingScale: number
-}
-
 interface SecondaryMotionPose {
   angleX: number
   angleY: number
@@ -151,6 +146,7 @@ interface GpuLayer {
   layerTransform: Float32Array
   shaderGlobalTransform: boolean
   localDynamic: boolean
+  deformationExtensions: Anime25DLayerDeformationExtension[]
   frameOpacity: number
   chestWeights: Float32Array | null
   frontHair: boolean
@@ -158,7 +154,7 @@ interface GpuLayer {
   strandWeights: Float32Array | null
   alongStrand: Float32Array | null
   bangWeights: Float32Array | null
-  springs: HairStrandSpring[] | null
+  springs: Anime25DLayerSpringBinding[] | null
   collarContact: FrontCollarContactModel | null
 }
 
@@ -1166,12 +1162,23 @@ export class Anime25DPlayer {
           this.stylizedMotion.lovestruckHeadPulse * 5) *
         fs
       : 0
-    const mHalfW = (A.mouth.x1 - A.mouth.x0) / 2
     const mouthTransition = this.mouthTransition.sample(e)
     this.activeMouthMaterial = mouthTransition.material
     resolveMouthMorph(this.layers, e, A.mouth, A.face, this.mouthMorph)
     applyMouthTransitionBridge(this.mouthMorph, mouthTransition)
     const mouthMorph = this.mouthMorph
+    const mouthDeformationFrame = {
+      mouth: A.mouth,
+      face: A.face,
+      faceScale: fs,
+      morph: mouthMorph,
+      expression: e,
+      jawDrop,
+      jawOpen,
+      time: t,
+      stylizedMotion: this.stylizedMotion,
+    }
+    const mouthDeformationPoint = { x: 0, y: 0 }
     for (const layer of this.layers) {
       layer.frameOpacity = fadeOpacity(
         layer.source,
@@ -1266,6 +1273,22 @@ export class Anime25DPlayer {
       const vOpen = source.side === 'L' ? e.eyeOpenL : e.eyeOpenR
       const bcx = source.x + source.w / 2
       const bcy = source.y + source.h / 2
+      const upstreamFeature = resolveAnime25DUpstreamFeature(
+        source,
+        Boolean(eye),
+      )
+      const upstreamFeatureInput = upstreamFeature
+        ? {
+            kind: upstreamFeature,
+            side: source.side,
+            eye,
+            centerX: bcx,
+            centerY: bcy,
+            faceScale: fs,
+            expression: e,
+          }
+        : null
+      const upstreamFeaturePoint = { x: 0, y: 0 }
       const cryLayer = source.fade === 'eyeCry'
       const tearVertical = cryLayer
         ? cryTearVerticalOffset(t, source.side, e.eyeCry, fs)
@@ -1274,14 +1297,7 @@ export class Anime25DPlayer {
         ? cryTearHorizontalOffset(t, source.side, e.eyeCry, fs)
         : 0
       const nS = layer.springs?.length ?? 0
-      const morphingMouth =
-        source.fade === 'mouthOpen' ||
-        source.fade === 'mouthWide' ||
-        source.fade === 'mouthRound' ||
-        source.fade === 'mouthNarrow' ||
-        source.fade === 'mouthClose' ||
-        source.fade === 'mouthManiac' ||
-        source.fade === 'mouthSilly'
+      const mouthDeformation = resolveAnime25DMouthDeformation(source.fade)
       if (layer.collarContact) {
         updateFrontCollarTargets(
           layer.collarContact,
@@ -1297,14 +1313,15 @@ export class Anime25DPlayer {
         const previousY = deformed[index + 1]
         let x = rest[index]
         let y = rest[index + 1]
-        if (eye && bn === 'eye_close') {
-          const scale = source.side === 'L' ? e.eyeScaleL : e.eyeScaleR
-          if (scale !== 1) {
-            const cxE = (eye.x0 + eye.x1) / 2
-            const cyE = (eye.y0 + eye.y1) / 2
-            x = cxE + (x - cxE) * scale
-            y = cyE + (y - cyE) * scale
-          }
+        if (upstreamFeatureInput) {
+          upstreamFeaturePoint.x = x
+          upstreamFeaturePoint.y = y
+          deformAnime25DUpstreamFeaturePoint(
+            upstreamFeaturePoint,
+            upstreamFeatureInput,
+          )
+          x = upstreamFeaturePoint.x
+          y = upstreamFeaturePoint.y
         }
         if (eye && (bn === 'eye_dizzy' || source.fade === 'eyeDizzy')) {
           const scale = dizzyEyeDisplayScale(source.w, source.h, eye)
@@ -1395,221 +1412,30 @@ export class Anime25DPlayer {
           x = bcx + localX * cosine - localY * sine + offsetX
           y = bcy + localX * sine + localY * cosine + offsetY
         }
-        if (morphingMouth) {
-          const localX =
-            (rest[index] - (source.x + source.w / 2)) /
-            Math.max(1, source.w / 2)
-          const localY =
-            (rest[index + 1] - (source.y + source.h / 2)) /
-            Math.max(1, source.h / 2)
-          const xMagnitude = Math.min(1, Math.abs(localX))
-          const yMagnitude = Math.min(1, Math.abs(localY))
-          const ovalPinch =
-            1 -
-            mouthMorph.round * 0.13 * (0.28 + yMagnitude ** 1.35) +
-            mouthMorph.wide * 0.035 * (1 - yMagnitude)
-          x = mouthMorph.centerX + localX * (mouthMorph.width / 2) * ovalPinch
-          const cornerCurve =
-            (0.075 + mouthMorph.round * 0.14 - mouthMorph.wide * 0.025) *
-            xMagnitude ** 1.65
-          const cupidBow =
-            mouthMorph.openMix *
-            mouthMorph.height *
-            0.034 *
-            (1 - xMagnitude) ** 2
-          const lowerFullness =
-            mouthMorph.height *
-            (0.018 + mouthMorph.openMix * 0.018) *
-            (1 - xMagnitude ** 1.7)
-          const upperRail =
-            mouthMorph.centerY -
-            mouthMorph.height / 2 +
-            mouthMorph.height * cornerCurve -
-            cupidBow
-          const lowerRail =
-            mouthMorph.centerY +
-            mouthMorph.height / 2 -
-            mouthMorph.height * cornerCurve * 0.82 +
-            lowerFullness
-          const verticalProgress = clamp((localY + 1) / 2, 0, 1)
-          const upperAnchoredProgress =
-            verticalProgress ** (1 + mouthMorph.openMix * 0.12)
-          const trackedY =
-            upperRail + (lowerRail - upperRail) * upperAnchoredProgress
-          const restingY = mouthMorph.centerY + localY * (mouthMorph.height / 2)
-          const railInfluence = smoothstep(mouthMorph.openMix)
-          y = restingY + (trackedY - restingY) * railInfluence
-        }
-        if (
-          (morphingMouth || source.fade === 'mouthCry') &&
-          source.fade !== 'mouthSilly' &&
-          e.mouthScale !== 1
-        ) {
-          x = A.mouth.cx + (x - A.mouth.cx) * e.mouthScale
-          y = A.mouth.cy + (y - A.mouth.cy) * e.mouthScale
-        }
-        if (
-          (morphingMouth || source.fade === 'mouthCry') &&
-          source.fade !== 'mouthSilly'
-        ) {
-          const localJawY = clamp(
-            (rest[index + 1] - source.y) / Math.max(1, source.h),
-            0,
-            1,
+        if (mouthDeformation) {
+          mouthDeformationPoint.x = x
+          mouthDeformationPoint.y = y
+          deformAnime25DMouthPoint(
+            mouthDeformationPoint,
+            rest[index],
+            rest[index + 1],
+            source,
+            mouthDeformationFrame,
+            mouthDeformation,
           )
-          const lipJawWeight =
-            0.08 + smoothstep((localJawY - 0.18) / 0.82) * 0.72
-          y += jawDrop * lipJawWeight
-        }
-        if (source.fade === 'eyeOpen' && eye) {
-          if (bn === 'irides') {
-            x = eye.icx + (x - eye.icx) * e.irisScale
-            y = eye.icy + (y - eye.icy) * e.irisScale
-            x += e.eyeX * 11 * fs
-            y += e.eyeY * 6 * fs
-            const tl = smoothstep((0.32 - vOpen) / 0.32)
-            y = eye.closeY + (y - eye.closeY) * (1 - 0.8 * tl)
-          } else {
-            y = eye.closeY + (y - eye.closeY) * (1 - 0.85 * (1 - vOpen))
-          }
-        }
-        if (source.fade === 'eyeClose' && eye) {
-          y -= vOpen * 3
-          y += e.eyeCY * 14 * fs
-          const thE = e.eyeCAng * 0.3 * (source.side === 'L' ? 1 : -1)
-          if (thE) {
-            const ct = Math.cos(thE)
-            const st = Math.sin(thE)
-            const rx = x - bcx
-            const ry = y - bcy
-            x = bcx + rx * ct - ry * st
-            y = bcy + rx * st + ry * ct
-          }
-        }
-        if (bn === 'eyebrow') {
-          y += (-e.brow * 9 + (1 - vOpen) * 3.5) * fs
-          const th =
-            (source.side === 'L'
-              ? e.browAngL + e.browAngSym
-              : e.browAngR - e.browAngSym) * 0.3
-          if (th) {
-            const ct = Math.cos(th)
-            const st = Math.sin(th)
-            const rx = x - bcx
-            const ry = y - bcy
-            x = bcx + rx * ct - ry * st
-            y = bcy + rx * st + ry * ct
-          }
-        }
-        if (
-          source.fade === 'mouthOpen' ||
-          source.fade === 'mouthWide' ||
-          source.fade === 'mouthRound' ||
-          source.fade === 'mouthNarrow' ||
-          source.fade === 'mouthClose' ||
-          source.fade === 'mouthManiac'
-        ) {
-          const q = Math.abs(x - A.mouth.cx) / (mHalfW + 4)
-          let formScale = 1
-          if (source.fade === 'mouthRound') formScale = 0.35
-          else if (source.fade === 'mouthNarrow') formScale = 0.7
-          else if (source.fade === 'mouthOpen') formScale = 0.8
-          else if (source.fade === 'mouthClose') formScale = 0.65
-          else if (source.fade === 'mouthManiac') formScale = 0.28
-          y -= e.mouthForm * formScale * 6 * fs * (q ** 1.5 - 0.35)
-        }
-        if (source.fade === 'mouthCry') {
-          const localX = Math.abs(rest[index] - A.mouth.cx) / (mHalfW + 4)
-          const sob = Math.sin(t * 2.55 + 0.35)
-          y += e.mouthCY * 14 * fs
-          y +=
-            smoothstep(e.eyeCry) *
-            sob *
-            0.42 *
-            fs *
-            (0.45 + 0.55 * (1 - Math.min(1, localX)))
-        }
-        if (source.fade === 'mouthManiac') {
-          y += e.mouthCY * 14 * fs
-          if (this.stylizedMotion) {
-            const localY = clamp(
-              (rest[index + 1] - source.y) / Math.max(1, source.h),
-              0,
-              1,
-            )
-            const upperMouthPulse = this.stylizedMotion.maniacUpperMouthPulse
-            const tongueRootAnchor =
-              mouthMorph.centerY - mouthMorph.height * 0.045
-            const scaledX =
-              mouthMorph.centerX +
-              (x - mouthMorph.centerX) * (1 - upperMouthPulse * 0.5)
-            const scaledY =
-              tongueRootAnchor +
-              (y - tongueRootAnchor) * (1 + upperMouthPulse * 3.4)
-            // The reference holds the tongue and lower lip nearly still. The
-            // upper lip opens around the tongue root, while the face-locked
-            // corner shadows move only with the delayed head follow.
-            const upperMouthWeight = 1 - smoothstep((localY - 0.16) / 0.31)
-            x += (scaledX - x) * upperMouthWeight
-            y += (scaledY - y) * upperMouthWeight
-          }
-          const thM = e.mouthCAng * 0.24
-          if (thM) {
-            const ct = Math.cos(thM)
-            const st = Math.sin(thM)
-            const rx = x - A.mouth.cx
-            const ry = y - A.mouth.cy
-            x = A.mouth.cx + rx * ct - ry * st
-            y = A.mouth.cy + rx * st + ry * ct
-          }
-        }
-        if (source.fade === 'mouthSilly' && this.stylizedMotion) {
-          const localX = clamp(
-            (rest[index] - (source.x + source.w / 2)) /
-              Math.max(1, source.w / 2),
-            -1,
-            1,
-          )
-          const localY = clamp(
-            (rest[index + 1] - (source.y + source.h / 2)) /
-              Math.max(1, source.h / 2),
-            -1,
-            1,
-          )
-          const opening = clamp(this.stylizedMotion.sillyMouthOpen, 0, 1)
-          const omegaLobe = Math.sin(Math.PI * Math.abs(localX))
-          // Scaled by this mouth's own drawing. `mouthMorph` collapses onto the
-          // closed speaking silhouette here, which is far too small to carry a
-          // readable omega.
-          const omegaScale = Math.max(1, source.h)
-          const closedX = mouthMorph.centerX + (x - mouthMorph.centerX) * 0.88
-          const closedY =
-            mouthMorph.centerY -
-            omegaScale * 0.04 +
-            omegaLobe * omegaScale * 0.12 +
-            localY * omegaScale * 0.025
-          x = closedX + (x - closedX) * opening
-          y = closedY + (y - closedY) * opening
-        }
-        if (source.fade === 'mouthClose') {
-          y += e.mouthCY * 14 * fs
-          const thM = e.mouthCAng * 0.35
-          if (thM) {
-            const ct = Math.cos(thM)
-            const st = Math.sin(thM)
-            const rx = x - A.mouth.cx
-            const ry = y - A.mouth.cy
-            x = A.mouth.cx + rx * ct - ry * st
-            y = A.mouth.cy + rx * st + ry * ct
-          }
+          x = mouthDeformationPoint.x
+          y = mouthDeformationPoint.y
         }
         if (bn === 'face') {
-          const jawStartY = A.mouth.cy - (A.face.y1 - A.face.y0) * 0.025
-          const jawWeight = smoothstep(
-            (rest[index + 1] - jawStartY) / Math.max(1, A.face.y1 - jawStartY),
+          mouthDeformationPoint.x = x
+          mouthDeformationPoint.y = y
+          deformAnime25DFaceJawPoint(
+            mouthDeformationPoint,
+            rest[index + 1],
+            mouthDeformationFrame,
           )
-          y += jawDrop * jawWeight
-          x += (A.face.cx - x) * jawOpen * 0.006 * jawWeight * jawWeight
+          x = mouthDeformationPoint.x
+          y = mouthDeformationPoint.y
         }
         if (bn === 'nose' && this.stylizedMotion) {
           // The reference's manic look lifts the nose slightly with the grin;
@@ -1914,96 +1740,34 @@ export class Anime25DPlayer {
           this.playback.anchors.neckPivot.x,
         )
       : null
-    const flexibleCell =
-      source.role === 'neck'
-        ? NECK_MESH_CELL
-        : source.role === 'collar-front'
-          ? FRONT_COLLAR_MESH_CELL
-          : null
-    const cell =
-      (flexibleCell ?? (source.phys ? 30 : 42)) *
-      Math.max(0.6, this.playback.pixelCanvas.width / 768)
-    const morphingMouth =
-      source.fade === 'mouthOpen' ||
-      source.fade === 'mouthWide' ||
-      source.fade === 'mouthRound' ||
-      source.fade === 'mouthNarrow' ||
-      source.fade === 'mouthClose' ||
-      source.fade === 'mouthManiac' ||
-      source.fade === 'mouthSilly'
-    const maniacMouthMesh = source.fade === 'mouthManiac'
-    const sillyMouthMesh = source.fade === 'mouthSilly'
-    const baseCols = Math.max(
-      maniacMouthMesh ? 14 : sillyMouthMesh ? 10 : morphingMouth ? 6 : 2,
-      Math.round(source.w / cell),
-    )
-    const baseRows = Math.max(
-      maniacMouthMesh
-        ? 10
-        : sillyMouthMesh
-          ? 8
-          : morphingMouth
-            ? 4
-            : source.role === 'eye-cry'
-              ? 3
-              : 2,
-      Math.round(source.h / cell),
-    )
-    const xCoordinates = layerGridAxis(
-      source.x,
-      source.w,
-      baseCols,
-      collarContact?.gridX,
-    )
-    const yCoordinates = layerGridAxis(
-      source.y,
-      source.h,
-      baseRows,
-      collarContact?.gridY,
-    )
-    const cols = xCoordinates.length - 1
-    const rows = yCoordinates.length - 1
-    const rest = new Float32Array((cols + 1) * (rows + 1) * 2)
-    const uvs = new Float32Array(rest.length)
-    let cursor = 0
-    for (let row = 0; row <= rows; row += 1) {
-      const y = yCoordinates[row]
-      const localV = (y - source.y) / Math.max(1, source.h)
-      for (let col = 0; col <= cols; col += 1) {
-        const x = xCoordinates[col]
-        const localU = (x - source.x) / Math.max(1, source.w)
-        const [u, v] = localToAtlasUv(source.atlas, localU, localV)
-        rest[cursor] = x
-        rest[cursor + 1] = y
-        uvs[cursor] = u
-        uvs[cursor + 1] = v
-        cursor += 2
-      }
-    }
-    const indices = new Uint16Array(cols * rows * 6)
-    let write = 0
-    for (let row = 0; row < rows; row += 1) {
-      for (let col = 0; col < cols; col += 1) {
-        const topLeft = row * (cols + 1) + col
-        const topRight = topLeft + 1
-        const bottomLeft = topLeft + cols + 1
-        const bottomRight = bottomLeft + 1
-        indices.set(
-          [topLeft, topRight, bottomLeft, topRight, bottomRight, bottomLeft],
-          write,
-        )
-        write += 6
-      }
-    }
+    const binding = buildAnime25DLayerBinding({
+      source,
+      canvasWidth: this.playback.pixelCanvas.width,
+      face: this.playback.anchors.face,
+      layerZ:
+        typeof source.z === 'number' && Number.isFinite(source.z)
+          ? source.z
+          : layerIndex,
+      extraGridX: collarContact?.gridX,
+      extraGridY: collarContact?.gridY,
+    })
+    const {
+      rest,
+      atlasUvs,
+      indices,
+      cols,
+      rows,
+      extensions: _extensions,
+      ...hair
+    } = binding
     const { gl } = this
     const mesh = createIndexedDeformableMesh(
       gl,
       this.program,
       rest,
-      uvs,
+      atlasUvs,
       indices,
     )
-    const vertexCount = (cols + 1) * (rows + 1)
     const chestWeights =
       source.role === 'topwear' && this.chestWeightField
         ? samplePlaybackChestWeights(
@@ -2012,15 +1776,6 @@ export class Anime25DPlayer {
             this.playback.pixelCanvas.width,
           )
         : null
-    const hair = attachHairPhysics(
-      source,
-      rest,
-      vertexCount,
-      this.playback.anchors.face,
-      typeof source.z === 'number' && Number.isFinite(source.z)
-        ? source.z
-        : layerIndex,
-    )
     const deformationPolicy = resolveAnime25DLayerDeformationPolicy({
       baseRole: layerBaseName(source.role),
       fade: source.fade,
@@ -2064,34 +1819,6 @@ export class Anime25DPlayer {
   }
 }
 
-function layerGridAxis(
-  origin: number,
-  length: number,
-  segmentCount: number,
-  extraCoordinates?: readonly number[],
-): number[] {
-  const coordinates: number[] = []
-  for (let segment = 0; segment <= segmentCount; segment += 1) {
-    coordinates.push(origin + (length * segment) / segmentCount)
-  }
-  for (const coordinate of extraCoordinates ?? []) {
-    if (coordinate >= origin && coordinate <= origin + length) {
-      coordinates.push(coordinate)
-    }
-  }
-  coordinates.sort((left, right) => left - right)
-  const unique: number[] = []
-  for (const coordinate of coordinates) {
-    if (
-      unique.length === 0 ||
-      Math.abs(coordinate - unique[unique.length - 1]) > 0.05
-    ) {
-      unique.push(coordinate)
-    }
-  }
-  return unique
-}
-
 function samplePlaybackChestWeights(
   field: ChestWeightField,
   rest: Float32Array,
@@ -2113,117 +1840,6 @@ function layerBaseName(role: string): string {
   if (role === 'front-hair') return 'front hair'
   if (role === 'back-hair') return 'back hair'
   return role.replace(/-/g, '_')
-}
-
-function attachHairPhysics(
-  source: Anime25DPlaybackLayer,
-  rest: Float32Array,
-  vertexCount: number,
-  face: Anime25DPlayback['anchors']['face'],
-  layerZ: number,
-): Pick<
-  GpuLayer,
-  | 'frontHair'
-  | 'frontHairParallaxScale'
-  | 'strandWeights'
-  | 'alongStrand'
-  | 'bangWeights'
-  | 'springs'
-> {
-  const frontHair = source.role === 'front-hair'
-  const strands = source.strands
-  if (strands.length === 0) {
-    return {
-      frontHair,
-      frontHairParallaxScale: null,
-      strandWeights: null,
-      alongStrand: null,
-      bangWeights: null,
-      springs: null,
-    }
-  }
-  const strandCount = strands.length
-  let spacing = 120
-  if (strandCount > 1) {
-    const gaps = []
-    for (let index = 1; index < strandCount; index += 1) {
-      gaps.push(strands[index].x - strands[index - 1].x)
-    }
-    gaps.sort((left, right) => left - right)
-    spacing = gaps[gaps.length >> 1]
-  }
-  const sigma = spacing * 0.6
-  const referenceHeight = Math.max(1, face.y1 - face.y0)
-  const dynamics = strands.map((strand) =>
-    hairStrandDynamics(strand.rootY, strand.tipY, referenceHeight),
-  )
-  const frontHairParallaxScale = frontHair
-    ? new Float32Array(vertexCount)
-    : null
-  const strandWeights = new Float32Array(vertexCount * strandCount)
-  const alongStrand = new Float32Array(vertexCount)
-  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
-    const x = rest[vertex * 2]
-    const y = rest[vertex * 2 + 1]
-    if (frontHairParallaxScale) {
-      frontHairParallaxScale[vertex] = frontHairUpperParallaxScale(
-        y,
-        source,
-        face,
-      )
-    }
-    let total = 0
-    for (let strand = 0; strand < strandCount; strand += 1) {
-      const weight = Math.exp(-(((x - strands[strand].x) / sigma) ** 2))
-      strandWeights[vertex * strandCount + strand] = weight
-      total += weight
-    }
-    let rootY = 0
-    let tipY = 0
-    if (total > 1e-6) {
-      for (let strand = 0; strand < strandCount; strand += 1) {
-        const weight = strandWeights[vertex * strandCount + strand] / total
-        strandWeights[vertex * strandCount + strand] =
-          weight * dynamics[strand].amplitudeScale
-        rootY += weight * strands[strand].rootY
-        tipY += weight * strands[strand].tipY
-      }
-    } else {
-      strandWeights[vertex * strandCount] = dynamics[0].amplitudeScale
-      rootY = strands[0].rootY
-      tipY = strands[0].tipY
-    }
-    alongStrand[vertex] = clamp((y - rootY) / Math.max(1, tipY - rootY), 0, 1)
-  }
-  let bangWeights: Float32Array | null = null
-  if (frontHair) {
-    const faceWidth = face.x1 - face.x0
-    const leftSplit = face.cx - faceWidth * 0.22
-    const rightSplit = face.cx + faceWidth * 0.22
-    bangWeights = new Float32Array(vertexCount * 3)
-    for (let vertex = 0; vertex < vertexCount; vertex += 1) {
-      const x = rest[vertex * 2]
-      const left = smoothstep((x - leftSplit) / 36 + 0.5)
-      const right = smoothstep((x - rightSplit) / 36 + 0.5)
-      bangWeights[vertex * 3] = 1 - left
-      bangWeights[vertex * 3 + 1] = left * (1 - right)
-      bangWeights[vertex * 3 + 2] = right
-    }
-  }
-  return {
-    frontHair,
-    frontHairParallaxScale,
-    strandWeights,
-    alongStrand,
-    bangWeights,
-    springs: strands.map((_, index) => ({
-      stiff: { x: 0, v: 0, dx: 0 },
-      soft: { x: 0, v: 0, dx: 0 },
-      phase: index * 1.37 + layerZ,
-      stiffnessScale: dynamics[index].stiffnessScale,
-      dampingScale: dynamics[index].dampingScale,
-    })),
-  }
 }
 
 function smoothstep(value: number): number {

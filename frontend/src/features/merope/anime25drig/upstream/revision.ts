@@ -4,6 +4,7 @@ export const ANIME25D_UPSTREAM_REVISION =
 
 export const ANIME25D_VENDOR_SHA256 = {
   rigger: '5a1a120941bf2218707221fa48261f232e14aae526b57d78cc3e441c9ee37acf',
+  runtime: '716c062909e3832a936901dad99e03e83d2a474cf80b3ce9926bf273f0ee163a',
 } as const
 
 /** Decoded upstream RGBA bytes; independent of the TypeScript data wrapper. */
