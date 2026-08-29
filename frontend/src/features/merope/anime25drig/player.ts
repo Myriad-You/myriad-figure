@@ -11,6 +11,10 @@ import type { FrontCollarContactModel } from './collarContact'
 import type { CollarClipMesh, CollarMotionPose } from './collarRuntime'
 import type { Anime25DDriver } from './driver'
 import type {
+  Anime25DBlinkState,
+  Anime25DStylizedTargets,
+} from './driverComposition'
+import type {
   Anime25DExpressionDeformationBinding,
   Anime25DExpressionDeformationFrame,
 } from './expressionDeformation'
@@ -36,7 +40,6 @@ import type { StylizedExpressionMotion } from './stylizedExpressionMotion'
 import type { Anime25DPlayback, Anime25DPlaybackLayer } from './types'
 import { currentCopy } from '../../../i18n/localeCopy'
 import {
-  applySingingGroove,
   singingDriveAmount,
   SingingGrooveController,
 } from '../singing/singingGroove'
@@ -65,12 +68,22 @@ import {
   updateFrontCollarTargets,
   uploadCollarClipMesh,
 } from './collarRuntime'
-import {
-  cryTearHorizontalOffset,
-  cryTearVerticalOffset,
-  sampleCryMouthMotion,
-} from './cryMotion'
+import { cryTearHorizontalOffset, cryTearVerticalOffset } from './cryMotion'
 import { IDENTITY_DRIVER, sanitizeDriverPatch } from './driver'
+import {
+  applyAnime25DActionMotion,
+  applyAnime25DAmbientMotion,
+  applyAnime25DCryMouth,
+  applyAnime25DSillyMouthOwnership,
+  applyAnime25DSpeechMotion,
+  applyAnime25DStylizedMotion,
+  captureAnime25DSecondaryMotion,
+  prepareAnime25DWorkingTarget,
+  resolveAnime25DStylizedTargets,
+  smoothAnime25DUnit,
+  stepAnime25DBlink,
+  stepAnime25DDriverResponse,
+} from './driverComposition'
 import {
   deformAnime25DExpressionPoint,
   resolveAnime25DExpressionDeformation,
@@ -105,17 +118,12 @@ import {
   shouldDeformLayer,
 } from './mouthRuntime'
 import { MouthTransitionController } from './mouthTransition'
-import {
-  applyPerformanceExpressionOffset,
-  mixBoundedExpressionChannel,
-  mixEyeOpen,
-  PerformanceExpressionController,
-} from './performanceExpression'
+import { PerformanceExpressionController } from './performanceExpression'
 import {
   Anime25DPerformanceTelemetry,
   createAnime25DFrameWork,
 } from './performanceTelemetry'
-import { applyRandomActionFrame, RandomActionController } from './randomAction'
+import { RandomActionController } from './randomAction'
 import { resolveAnime25DRenderSurface } from './runtimePolicy'
 import {
   createAnime25DSecondaryDeformationBinding,
@@ -124,12 +132,6 @@ import {
 } from './secondaryDeformation'
 import { CoSpeechExpressionController } from './speechExpression'
 import { AutoSpeechController } from './speechMotion'
-import {
-  stepMouthForm,
-  stepMouthOpen,
-  stepMouthSeal,
-  stepMouthShape,
-} from './speechResponse'
 import { StylizedExpressionMotionController } from './stylizedExpressionMotion'
 import { ThinkingMotionController } from './thinkingMotion'
 import {
@@ -264,8 +266,11 @@ export class Anime25DPlayer {
   private sillyMouthShare = 1
 
   private time = 0
-  private blinkT = -1
-  private nextBlink = 1.8
+  private readonly blinkState: Anime25DBlinkState = {
+    activeSeconds: -1,
+    nextAtSeconds: 1.8,
+  }
+
   private readonly ambientMotion = new AmbientMotionController()
   private readonly randomAction = new RandomActionController()
   private readonly singingGroove = new SingingGrooveController()
@@ -273,6 +278,14 @@ export class Anime25DPlayer {
   private singingDeform = 0
   private readonly thinkingMotion = new ThinkingMotionController()
   private readonly stylizedExpression = new StylizedExpressionMotionController()
+  private readonly stylizedTargets: Anime25DStylizedTargets = {
+    anger: 0,
+    speechless: 0,
+    maniac: 0,
+    silly: 0,
+    lovestruck: 0,
+  }
+
   private stylizedMotion: Readonly<StylizedExpressionMotion> | null = null
   private readonly performanceExpression = new PerformanceExpressionController()
   private readonly speechMotion = new AutoSpeechController()
@@ -473,8 +486,8 @@ export class Anime25DPlayer {
   }
 
   blinkNow(): void {
-    this.blinkT = 0
-    this.nextBlink = this.time + 1.6 + Math.random() * 3.8
+    this.blinkState.activeSeconds = 0
+    this.blinkState.nextAtSeconds = this.time + 1.6 + Math.random() * 3.8
   }
 
   setMouse(x: number, y: number, inside: boolean): void {
@@ -662,94 +675,27 @@ export class Anime25DPlayer {
 
   private smoothDriver(dt: number): void {
     const t = this.time
-    const tgt = Object.assign(this.workingTarget, this.target)
-    if (this.target.mouse && this.mouse.inside) {
-      tgt.angleX = clamp(this.mouse.x * 0.9, -1, 1)
-      tgt.angleY = clamp(-this.mouse.y * 0.7, -1, 1)
-      tgt.eyeX = clamp(this.mouse.x * 1.2, -1, 1)
-      tgt.eyeY = clamp(-this.mouse.y * 0.8, -1, 1)
-    }
-    if (this.target.idle) {
-      tgt.angleX += 0.13 * Math.sin(t * 0.42) + 0.05 * Math.sin(t * 1.13)
-      tgt.angleY += 0.08 * Math.sin(t * 0.31 + 1.7)
-      tgt.angleZ += 0.07 * Math.sin(t * 0.23 + 0.5)
-      tgt.body += 0.1 * Math.sin(t * 0.19 + 2.1)
-    }
+    const tgt = prepareAnime25DWorkingTarget(
+      this.workingTarget,
+      this.target,
+      this.mouse,
+      t,
+    )
     const semanticExpression = this.performanceExpression.sample(
       this.performanceClockSeconds(),
     )
-    const specialEyeBlocker =
-      1 -
-      Math.max(
-        mixBoundedExpressionChannel(
-          tgt.eyeDizzy,
-          semanticExpression.eyeDizzy,
-          0,
-          1,
-          0,
-        ),
-        mixBoundedExpressionChannel(
-          tgt.eyeSqueeze,
-          semanticExpression.eyeSqueeze,
-          0,
-          1,
-          0,
-        ),
-        mixBoundedExpressionChannel(
-          tgt.eyeCry,
-          semanticExpression.eyeCry,
-          0,
-          1,
-          0,
-        ),
-      )
-    const angerTarget =
-      mixBoundedExpressionChannel(
-        tgt.anger,
-        semanticExpression.anger ?? 0,
-        0,
-        1,
-        0,
-      ) * specialEyeBlocker
-    const speechlessTarget =
-      mixBoundedExpressionChannel(
-        tgt.speechless,
-        semanticExpression.speechless ?? 0,
-        0,
-        1,
-        0,
-      ) * specialEyeBlocker
-    const maniacTarget =
-      mixBoundedExpressionChannel(
-        tgt.maniac,
-        semanticExpression.maniac ?? 0,
-        0,
-        1,
-        0,
-      ) * specialEyeBlocker
-    const sillyTarget =
-      mixBoundedExpressionChannel(
-        tgt.silly,
-        semanticExpression.silly ?? 0,
-        0,
-        1,
-        0,
-      ) * specialEyeBlocker
-    const lovestruckTarget =
-      mixBoundedExpressionChannel(
-        tgt.lovestruck,
-        semanticExpression.lovestruck ?? 0,
-        0,
-        1,
-        0,
-      ) * specialEyeBlocker
+    const stylizedTargets = resolveAnime25DStylizedTargets(
+      this.stylizedTargets,
+      tgt,
+      semanticExpression,
+    )
     const stylized = this.stylizedExpression.sample(
       t,
-      angerTarget,
-      speechlessTarget,
-      maniacTarget,
-      sillyTarget,
-      lovestruckTarget,
+      stylizedTargets.anger,
+      stylizedTargets.speechless,
+      stylizedTargets.maniac,
+      stylizedTargets.silly,
+      stylizedTargets.lovestruck,
     )
     this.stylizedMotion = stylized
     const performanceMotionScale =
@@ -767,11 +713,11 @@ export class Anime25DPlayer {
     // the catalog to an excited groove driven by the live spectrum.
     const actionBlocked =
       (this.speechActive && !singing) ||
-      angerTarget > 0.03 ||
-      speechlessTarget > 0.03 ||
-      maniacTarget > 0.03 ||
-      sillyTarget > 0.03 ||
-      lovestruckTarget > 0.03
+      stylizedTargets.anger > 0.03 ||
+      stylizedTargets.speechless > 0.03 ||
+      stylizedTargets.maniac > 0.03 ||
+      stylizedTargets.silly > 0.03 ||
+      stylizedTargets.lovestruck > 0.03
     const randomAction = this.randomAction.sample(
       t,
       this.target.rand && !pointerDriven,
@@ -788,223 +734,26 @@ export class Anime25DPlayer {
       this.target.thinking &&
         !pointerDriven &&
         !speaking &&
-        angerTarget <= 0.03 &&
-        speechlessTarget <= 0.03 &&
-        maniacTarget <= 0.03 &&
-        sillyTarget <= 0.03 &&
-        lovestruckTarget <= 0.03,
+        stylizedTargets.anger <= 0.03 &&
+        stylizedTargets.speechless <= 0.03 &&
+        stylizedTargets.maniac <= 0.03 &&
+        stylizedTargets.silly <= 0.03 &&
+        stylizedTargets.lovestruck <= 0.03,
     )
     const ambientScale =
       performanceMotionScale * randomAction.ambientScale * stylized.ambientScale
     const headKeep = 1 - 0.88 * this.singingDeform
-    tgt.angleX = clamp(
-      tgt.angleX + ambient.angleX * ambientScale * headKeep,
-      -1,
-      1,
-    )
-    tgt.angleY = clamp(
-      tgt.angleY + ambient.angleY * ambientScale * headKeep,
-      -1,
-      1,
-    )
-    tgt.angleZ = clamp(
-      tgt.angleZ + ambient.angleZ * ambientScale * headKeep,
-      -1,
-      1,
-    )
-    tgt.body = clamp(tgt.body + ambient.body * ambientScale * headKeep, -1, 1)
-    tgt.eyeX = clamp(tgt.eyeX + ambient.eyeX * ambientScale, -1, 1)
-    tgt.eyeY = clamp(tgt.eyeY + ambient.eyeY * ambientScale, -1, 1)
-    applyRandomActionFrame(
+    applyAnime25DAmbientMotion(tgt, ambient, ambientScale, headKeep)
+    applyAnime25DActionMotion(
       tgt,
       randomAction,
       performanceMotionScale * stylized.ambientScale,
+      groove,
+      this.singingDeform,
+      thinking,
     )
-    applySingingGroove(tgt, groove, this.singingDeform)
-    tgt.angleX = mixBoundedExpressionChannel(
-      tgt.angleX,
-      thinking.angleX,
-      -1,
-      1,
-      0,
-    )
-    tgt.angleY = mixBoundedExpressionChannel(
-      tgt.angleY,
-      thinking.angleY,
-      -1,
-      1,
-      0,
-    )
-    tgt.angleZ = mixBoundedExpressionChannel(
-      tgt.angleZ,
-      thinking.angleZ,
-      -1,
-      1,
-      0,
-    )
-    tgt.eyeX = mixBoundedExpressionChannel(tgt.eyeX, thinking.eyeX, -1, 1, 0)
-    tgt.eyeY = mixBoundedExpressionChannel(tgt.eyeY, thinking.eyeY, -1, 1, 0)
-    tgt.brow = mixBoundedExpressionChannel(tgt.brow, thinking.brow, -1, 1, 0)
-    tgt.mouthCY = mixBoundedExpressionChannel(
-      tgt.mouthCY,
-      thinking.mouthCY,
-      -1,
-      1,
-      0,
-    )
-    tgt.mouthCAng = mixBoundedExpressionChannel(
-      tgt.mouthCAng,
-      thinking.mouthCAng,
-      -1,
-      1,
-      0,
-    )
-    tgt.mouthScale = mixBoundedExpressionChannel(
-      tgt.mouthScale,
-      thinking.mouthScale,
-      0.5,
-      1.5,
-      1,
-    )
-    applyPerformanceExpressionOffset(tgt, semanticExpression)
-    tgt.brow = mixBoundedExpressionChannel(tgt.brow, stylized.brow, -1, 1, 0)
-    tgt.browAngL = mixBoundedExpressionChannel(
-      tgt.browAngL,
-      stylized.browAngL,
-      -1,
-      1,
-      0,
-    )
-    tgt.browAngR = mixBoundedExpressionChannel(
-      tgt.browAngR,
-      stylized.browAngR,
-      -1,
-      1,
-      0,
-    )
-    tgt.browAngSym = mixBoundedExpressionChannel(
-      tgt.browAngSym,
-      stylized.browAngSym,
-      -1,
-      1,
-      0,
-    )
-    tgt.eyeOpenL = mixEyeOpen(tgt.eyeOpenL, stylized.eyeOpen)
-    tgt.eyeOpenR = mixEyeOpen(tgt.eyeOpenR, stylized.eyeOpen)
-    tgt.eyeX = mixBoundedExpressionChannel(tgt.eyeX, stylized.eyeX, -1, 1, 0)
-    tgt.eyeY = mixBoundedExpressionChannel(tgt.eyeY, stylized.eyeY, -1, 1, 0)
-    tgt.irisScale = mixBoundedExpressionChannel(
-      tgt.irisScale,
-      stylized.irisScale,
-      0.5,
-      1.3,
-      1,
-    )
-    tgt.mouthForm = mixBoundedExpressionChannel(
-      tgt.mouthForm,
-      stylized.mouthForm,
-      -1,
-      1,
-      0,
-    )
-    tgt.mouthOpen = Math.max(tgt.mouthOpen, stylized.mouthOpen)
-    const lovestruckMouthShare = speaking ? 0.18 : 1
-    tgt.mouthOpen = Math.max(
-      tgt.mouthOpen,
-      stylized.lovestruckMouthOpen * lovestruckMouthShare,
-    )
-    tgt.mouthRound = Math.max(
-      tgt.mouthRound,
-      stylized.lovestruckMouthRound * lovestruckMouthShare,
-    )
-    tgt.mouthCY = mixBoundedExpressionChannel(
-      tgt.mouthCY,
-      stylized.mouthCY,
-      -1,
-      1,
-      0,
-    )
-    tgt.mouthCAng = mixBoundedExpressionChannel(
-      tgt.mouthCAng,
-      stylized.mouthCAng,
-      -1,
-      1,
-      0,
-    )
-    tgt.mouthScale = mixBoundedExpressionChannel(
-      tgt.mouthScale,
-      stylized.mouthScale +
-        stylized.lovestruckMouthScale * lovestruckMouthShare,
-      0.5,
-      1.5,
-      1,
-    )
-    tgt.angleX = mixBoundedExpressionChannel(
-      tgt.angleX,
-      stylized.angleX,
-      -1,
-      1,
-      0,
-    )
-    tgt.angleY = mixBoundedExpressionChannel(
-      tgt.angleY,
-      stylized.angleY,
-      -1,
-      1,
-      0,
-    )
-    tgt.angleZ = mixBoundedExpressionChannel(
-      tgt.angleZ,
-      stylized.angleZ,
-      -1,
-      1,
-      0,
-    )
-    tgt.body = mixBoundedExpressionChannel(tgt.body, stylized.body, -1, 1, 0)
-    const cryResponseRate = tgt.eyeCry > this.current.eyeCry ? 6 : 4.5
-    const cryAmount = clamp(
-      this.current.eyeCry +
-        (tgt.eyeCry - this.current.eyeCry) *
-          (1 - Math.exp(-cryResponseRate * dt)),
-      0,
-      1,
-    )
-    sampleCryMouthMotion(cryAmount, t, this.cryMouth)
-    tgt.mouthOpen = Math.max(tgt.mouthOpen, this.cryMouth.mouthOpen)
-    tgt.mouthForm = mixBoundedExpressionChannel(
-      tgt.mouthForm,
-      this.cryMouth.mouthForm,
-      -1,
-      1,
-      0,
-    )
-    tgt.mouthCY = mixBoundedExpressionChannel(
-      tgt.mouthCY,
-      this.cryMouth.mouthCY,
-      -1,
-      1,
-      0,
-    )
-    tgt.mouthScale = mixBoundedExpressionChannel(
-      tgt.mouthScale,
-      this.cryMouth.mouthScale,
-      0.5,
-      1.5,
-      1,
-    )
-    if (
-      speech.mouthOpen > 0 ||
-      speech.mouthWide > 0 ||
-      speech.mouthRound > 0 ||
-      speech.mouthNarrow > 0 ||
-      speech.mouthSeal > 0
-    ) {
-      tgt.mouthOpen = Math.max(tgt.mouthOpen, speech.mouthOpen)
-      tgt.mouthWide = Math.max(tgt.mouthWide, speech.mouthWide)
-      tgt.mouthRound = Math.max(tgt.mouthRound, speech.mouthRound)
-      tgt.mouthNarrow = Math.max(tgt.mouthNarrow, speech.mouthNarrow)
-      tgt.mouthSeal = Math.max(tgt.mouthSeal, speech.mouthSeal)
-    }
+    applyAnime25DStylizedMotion(tgt, semanticExpression, stylized, speaking)
+    applyAnime25DCryMouth(tgt, this.current.eyeCry, t, dt, this.cryMouth)
     const speechExpression = this.speechExpression.sample(
       t,
       speaking,
@@ -1013,140 +762,33 @@ export class Anime25DPlayer {
       speech.browAccent,
       speech.headAccent,
     )
-    tgt.brow = mixBoundedExpressionChannel(
-      tgt.brow,
-      speechExpression.brow,
-      -1,
-      1,
-      0,
-    )
-    tgt.eyeOpenL = mixEyeOpen(tgt.eyeOpenL, speechExpression.eyeOpen)
-    tgt.eyeOpenR = mixEyeOpen(tgt.eyeOpenR, speechExpression.eyeOpen)
-    tgt.angleY = mixBoundedExpressionChannel(
-      tgt.angleY,
-      speechExpression.angleY,
-      -1,
-      1,
-      0,
-    )
+    applyAnime25DSpeechMotion(tgt, speech, speechExpression)
     // The omega mouth only takes over once the character has stopped talking;
     // a cue landing mid-delivery would otherwise freeze the lip sync.
     this.sillyMouthShare +=
       ((speaking ? 0 : 1) - this.sillyMouthShare) * (1 - Math.exp(-7 * dt))
-    const sillyMouthOwnership = smoothstep(sillyTarget) * this.sillyMouthShare
-    if (sillyMouthOwnership > 0) {
-      const retained = 1 - sillyMouthOwnership
-      tgt.mouthOpen *= retained
-      tgt.mouthWide *= retained
-      tgt.mouthRound *= retained
-      tgt.mouthNarrow *= retained
-      tgt.mouthSeal *= retained
-    }
-    this.secondaryTarget.angleX = tgt.angleX
-    this.secondaryTarget.angleY = tgt.angleY
-    this.secondaryTarget.angleZ = tgt.angleZ
-    this.secondaryTarget.body = tgt.body
+    applyAnime25DSillyMouthOwnership(
+      tgt,
+      smoothAnime25DUnit(stylizedTargets.silly) * this.sillyMouthShare,
+    )
+    captureAnime25DSecondaryMotion(this.secondaryTarget, tgt)
     applyExpressiveMotionEnvelope(tgt, semanticExpression, speechExpression)
-    if (maniacTarget > 0.03 || sillyTarget > 0.03) {
-      this.blinkT = -1
-      this.nextBlink = this.time + 1.8
-    } else if (this.target.blink) {
-      if (this.blinkT < 0 && this.time > this.nextBlink) {
-        this.blinkT = 0
-        this.nextBlink = this.time + 1.6 + Math.random() * 3.8
-        if (Math.random() < 0.18) this.nextBlink = this.time + 0.28
-      }
-      if (this.blinkT >= 0) {
-        this.blinkT += dt
-        const elapsed = this.blinkT
-        let open = 1
-        if (elapsed < 0.08) {
-          open = 1 - elapsed / 0.08
-        } else if (elapsed < 0.42) {
-          open = 0
-        } else if (elapsed < 0.58) {
-          open = (elapsed - 0.42) / 0.16
-        } else {
-          open = 1
-          this.blinkT = -1
-        }
-        tgt.eyeOpenL = Math.min(tgt.eyeOpenL, open)
-        tgt.eyeOpenR = Math.min(tgt.eyeOpenR, open)
-      }
-    }
-    const rate = Math.min(1, dt * 14)
-    const flags = [
-      'idle',
-      'blink',
-      'rand',
-      'thinking',
-      'singing',
-      'talk',
-      'mouse',
-      'phys',
-    ] as const
-    for (const key of Object.keys(IDENTITY_DRIVER) as Array<
-      keyof Anime25DDriver
-    >) {
-      if (flags.includes(key as (typeof flags)[number])) {
-        this.current[key] = this.target[key] as never
-        continue
-      }
-      const from = this.current[key] as number
-      const to = tgt[key] as number
-      if (key === 'mouthOpen') {
-        this.current.mouthOpen = stepMouthOpen(from, to, dt)
-        continue
-      }
-      if (key === 'mouthForm') {
-        this.current.mouthForm = stepMouthForm(from, to, dt)
-        continue
-      }
-      if (key === 'mouthSeal') {
-        this.current.mouthSeal = stepMouthSeal(from, to, dt)
-        continue
-      }
-      if (
-        key === 'mouthWide' ||
-        key === 'mouthRound' ||
-        key === 'mouthNarrow'
-      ) {
-        this.current[key] = stepMouthShape(from, to, dt)
-        continue
-      }
-      if (key === 'eyeCry') {
-        const response = to > from ? 6 : 4.5
-        this.current.eyeCry =
-          from + (to - from) * (1 - Math.exp(-response * dt))
-        continue
-      }
-      if (key === 'maniac') {
-        const response = to > from ? 7.2 : 4.4
-        this.current.maniac =
-          from + (to - from) * (1 - Math.exp(-response * dt))
-        continue
-      }
-      if (key === 'silly') {
-        const response = to > from ? 7 : 4.2
-        this.current.silly = from + (to - from) * (1 - Math.exp(-response * dt))
-        continue
-      }
-      if (key === 'lovestruck') {
-        const response = to > from ? 6.6 : 3.8
-        this.current.lovestruck =
-          from + (to - from) * (1 - Math.exp(-response * dt))
-        continue
-      }
-      ;(this.current[key] as number) = from + (to - from) * rate
-    }
-    this.secondaryCurrent.angleX +=
-      (this.secondaryTarget.angleX - this.secondaryCurrent.angleX) * rate
-    this.secondaryCurrent.angleY +=
-      (this.secondaryTarget.angleY - this.secondaryCurrent.angleY) * rate
-    this.secondaryCurrent.angleZ +=
-      (this.secondaryTarget.angleZ - this.secondaryCurrent.angleZ) * rate
-    this.secondaryCurrent.body +=
-      (this.secondaryTarget.body - this.secondaryCurrent.body) * rate
+    stepAnime25DBlink(
+      tgt,
+      this.blinkState,
+      this.time,
+      dt,
+      this.target.blink,
+      stylizedTargets.maniac > 0.03 || stylizedTargets.silly > 0.03,
+    )
+    stepAnime25DDriverResponse(
+      this.current,
+      this.target,
+      tgt,
+      this.secondaryCurrent,
+      this.secondaryTarget,
+      dt,
+    )
   }
 
   private performanceClockSeconds(): number {
@@ -1351,10 +993,7 @@ export class Anime25DPlayer {
         if (upstreamFeature) {
           deformationPoint.x = x
           deformationPoint.y = y
-          deformAnime25DUpstreamFeaturePoint(
-            deformationPoint,
-            upstreamFeature,
-          )
+          deformAnime25DUpstreamFeaturePoint(deformationPoint, upstreamFeature)
           x = deformationPoint.x
           y = deformationPoint.y
         }
@@ -1726,13 +1365,4 @@ function layerBaseName(role: string): string {
   if (role === 'front-hair') return 'front hair'
   if (role === 'back-hair') return 'back hair'
   return role.replace(/-/g, '_')
-}
-
-function smoothstep(value: number): number {
-  const bounded = clamp(value, 0, 1)
-  return bounded * bounded * (3 - 2 * bounded)
-}
-
-function clamp(value: number, minimum: number, maximum: number): number {
-  return Math.max(minimum, Math.min(maximum, value))
 }
