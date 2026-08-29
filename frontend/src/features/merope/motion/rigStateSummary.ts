@@ -12,7 +12,6 @@ import type { SingingSpectrumDrive } from '../singing/singingGroove'
 import type { MotionRuntime } from './runtime'
 import { scheduleBodyCues } from '../anime25drig/performanceMotion'
 import { hasAnime25DCapability } from '../rig/anime25dCapabilities'
-import { cueOccupiesHeadBody } from './performanceChannels'
 
 const EXPRESSIONS: readonly PerformanceBaseline['expression'][] = [
   'withdrawn',
@@ -177,22 +176,22 @@ function resolveActing(
   if (!directive) {
     return { intent: null, phase: 'idle', remainingMs: 0 }
   }
+  const phase = PHASES.includes(directive.phase) ? directive.phase : 'idle'
   const scheduled = scheduleBodyCues(directive.plan.cues, startedAtMs)
+  if (scheduled.length === 0) {
+    return { intent: null, phase, remainingMs: 0 }
+  }
+  const lastEnd = scheduled.reduce(
+    (until, item) => Math.max(until, item.endMs),
+    scheduled[0].endMs,
+  )
+  const remainingMs = Math.max(0, Math.round(lastEnd - nowMs))
   const active = scheduled.find(
     (item) => nowMs >= item.startMs && nowMs < item.endMs,
   )
-  const lastEnd = scheduled.reduce(
-    (until, item) => Math.max(until, item.endMs),
-    startedAtMs,
-  )
-  const remainingMs = Math.max(0, Math.round(lastEnd - nowMs))
-  const current =
-    active?.cue ??
-    scheduled.find((item) => !cueOccupiesHeadBody(item.cue))?.cue ??
-    null
   return {
-    intent: current?.intent ?? null,
-    phase: PHASES.includes(directive.phase) ? directive.phase : 'idle',
+    intent: remainingMs === 0 ? null : (active?.cue.intent ?? null),
+    phase,
     remainingMs,
   }
 }

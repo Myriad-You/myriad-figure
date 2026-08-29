@@ -61,3 +61,62 @@ test('capture samples the runtime once and never includes per-frame driver keys'
 test('missing special-expression layers are not advertised as capabilities', () => {
   assert.deepEqual(semanticRigCapabilities(null), [])
 })
+
+function cue(
+  intent: 'think' | 'greet' | 'listen',
+  atMs: number,
+): {
+  intent: 'think' | 'greet' | 'listen'
+  atMs: number
+  intensity: number
+  tempo: number
+  fadeInMs: number
+  fadeOutMs: number
+  interrupt: 'replace' | 'queue' | 'if-lower'
+} {
+  return {
+    intent,
+    atMs,
+    intensity: 1,
+    tempo: 1,
+    fadeInMs: 150,
+    fadeOutMs: 220,
+    interrupt: atMs === 0 ? 'if-lower' : 'queue',
+  }
+}
+
+test('acting names only the cue that is currently playing', () => {
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const release = runtime.retain()
+  runtime.performance.handleForTest({
+    phase: 'delivery',
+    moodRevision: 1,
+    plan: { cues: [cue('think', 0), cue('greet', 2_000)] },
+  })
+  const started = runtime.frame().performance?.startedAtMs ?? 0
+  const notStarted = captureRigStateSummary(runtime, started - 20)
+  assert.equal(notStarted.acting.intent, null)
+  assert.ok(notStarted.acting.remainingMs > 0)
+  const duringFace = captureRigStateSummary(runtime, started + 40)
+  assert.equal(duringFace.acting.intent, 'think')
+  assert.ok(duringFace.acting.remainingMs > 0)
+  const between = captureRigStateSummary(runtime, started + 1_200)
+  assert.equal(between.acting.intent, null)
+  assert.ok(between.acting.remainingMs > 0)
+  const duringBody = captureRigStateSummary(runtime, started + 2_040)
+  assert.equal(duringBody.acting.intent, 'greet')
+  const ended = captureRigStateSummary(runtime, started + 8_000)
+  assert.equal(ended.acting.intent, null)
+  assert.equal(ended.acting.remainingMs, 0)
+  release()
+})
+
+test('empty capabilities stay empty after capture', () => {
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const release = runtime.retain()
+  runtime.setCapabilities(['dizzy-eye', 'head-body'])
+  runtime.setCapabilities([])
+  const summary = captureRigStateSummary(runtime)
+  assert.deepEqual(summary.capabilities, [])
+  release()
+})
