@@ -1,3 +1,4 @@
+import type { PerformanceCue, RigMotionStyle } from '../../../services/agent/types'
 import type { MoodIntent, MotionFrame, PerformanceIntent, SpeechIntent } from './intents'
 import type { MusicMotionSource, SingingFrame } from './musicSource'
 import { AmbientMotionSource } from './ambientSource'
@@ -7,6 +8,15 @@ import { PerformanceMotionSource } from './performanceSource'
 import { SpeechMotionSource } from './speechSource'
 
 export type MotionFrameListener = (frame: MotionFrame) => void
+
+export interface RigSummaryFacts {
+  capabilities: string[]
+  recentIntents: PerformanceCue['intent'][]
+  motionStyle: RigMotionStyle
+  faceVisible: boolean
+}
+
+const MAX_RECENT = 6
 
 /**
  * Single motion outlet for one coordinator. Sources publish intents here;
@@ -26,6 +36,9 @@ export class MotionRuntime {
   private performanceIntent: PerformanceIntent | null = null
   private musicFrame: SingingFrame | null = null
   private moodIntent: MoodIntent | null = null
+  private capabilities: string[] = []
+  private recentIntents: PerformanceCue['intent'][] = []
+  private motionStyle: RigMotionStyle = 'even'
 
   constructor(
     coordinator: RigMotionCoordinator,
@@ -39,6 +52,7 @@ export class MotionRuntime {
     })
     this.performance = new PerformanceMotionSource(coordinator, (intent) => {
       this.performanceIntent = intent
+      this.rememberIntents(intent.directive?.plan.cues.map((cue) => cue.intent) ?? [])
       this.emit()
     })
     this.mood = new MoodMotionSource(coordinator, (intent) => {
@@ -75,6 +89,23 @@ export class MotionRuntime {
     }
   }
 
+  setCapabilities(capabilities: readonly string[]): void {
+    this.capabilities = [...new Set(capabilities)].slice(0, 12)
+  }
+
+  setMotionStyle(style: RigMotionStyle): void {
+    this.motionStyle = style
+  }
+
+  summaryFacts(): RigSummaryFacts {
+    return {
+      capabilities: this.capabilities,
+      recentIntents: this.recentIntents,
+      motionStyle: this.motionStyle,
+      faceVisible: this.retains > 0,
+    }
+  }
+
   frame(): MotionFrame {
     return {
       snapshot: this.coordinator.snapshot(),
@@ -91,6 +122,11 @@ export class MotionRuntime {
     return () => {
       this.listeners.delete(listener)
     }
+  }
+
+  private rememberIntents(intents: readonly PerformanceCue['intent'][]): void {
+    if (intents.length === 0) return
+    this.recentIntents = [...this.recentIntents, ...intents].slice(-MAX_RECENT)
   }
 
   private emit(): void {
