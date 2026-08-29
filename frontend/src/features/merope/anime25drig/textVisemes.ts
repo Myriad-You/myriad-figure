@@ -10,7 +10,7 @@ const MAX_COMPILED_CUES = 192
 const HAN_RUN = /\p{Script=Han}+/gu
 const HAN_CHAR = /\p{Script=Han}/u
 const JAPANESE_CHAR = /[\p{Script=Hiragana}\p{Script=Katakana}ー]/u
-const LATIN_RUN = /[A-Za-z]+(?:['’][A-Za-z]+)*/g
+const LATIN_RUN = /[a-z]+(?:['’][a-z]+)*/gi
 
 /**
  * Converts streamed display text to a compact visual-only speech timeline.
@@ -72,9 +72,9 @@ function compileHan(
     type: 'array',
   }) as string[]
   for (const raw of syllables) {
-    const syllable = raw.toLowerCase().replace(/[^a-züv]/g, '')
+    const syllable = raw.toLowerCase().replace(/[^a-zü]/g, '')
     if (!syllable) continue
-    const initial = syllable.match(/^(zh|ch|sh|[bpmfdtnlgkhjqxrzcsyw])/)?.[0]
+    const initial = syllable.match(/^(?:[csz]h|[b-df-hj-np-tw-z])/)?.[0]
     if (initial && /^[bpm]$/.test(initial)) {
       push(output, 'closed', 0.045, false)
     } else if (initial === 'w') {
@@ -83,21 +83,21 @@ function compileHan(
       push(output, 'narrow', 0.045, false)
     }
     const final = syllable.slice(initial?.length || 0) || syllable
-    const apical = final === 'i' && /^(?:zh|ch|sh|r|z|c|s)$/.test(initial || '')
+    const apical = final === 'i' && /^(?:[csz]h|[crsz])$/.test(initial || '')
     const finalViseme = apical ? 'narrow' : chineseFinalViseme(final)
     push(output, finalViseme, 0.115, isOpenFinal(final))
   }
 }
 
 function chineseFinalViseme(final: string): SpeechViseme {
-  if (/(?:u|ü|v|o|ou|ong|uo)/.test(final)) return 'round'
-  if (/(?:i|e|ei|ie|in|ing)/.test(final)) return 'wide'
-  if (/(?:a|ai|an|ang|ao)/.test(final)) return 'open'
+  if (/[ouüv]/.test(final)) return 'round'
+  if (/[ei]/.test(final)) return 'wide'
+  if (/a/.test(final)) return 'open'
   return 'narrow'
 }
 
 function isOpenFinal(final: string): boolean {
-  return /(?:a|ai|an|ang|ao)/.test(final)
+  return /a/.test(final)
 }
 
 function compileNonHan(
@@ -125,7 +125,7 @@ function compileSymbols(
     const symbol = symbols[index]
     if (
       JAPANESE_CHAR.test(symbol) ||
-      (language.startsWith('ja') && /[\p{Script=Han}々ヶヵ]/u.test(symbol))
+      (language.startsWith('ja') && /[\p{Script=Han}ヶヵ]/u.test(symbol))
     ) {
       if (isJapaneseLabial(symbol)) push(output, 'closed', 0.04, false)
       const cue = japaneseCue(symbol, index > 0 ? symbols[index - 1] : '')
@@ -191,7 +191,7 @@ function compileLatinWord(word: string, output: TextVisemeCue[]): void {
     if (/^(?:th|sh|ch|zh)/.test(rest)) {
       push(output, 'narrow', 0.055, false)
       index += 2
-    } else if (/^j/.test(rest)) {
+    } else if (rest.startsWith('j')) {
       push(output, 'narrow', 0.055, false)
       index += 1
     } else if (/^[bmp]/.test(rest)) {
@@ -217,7 +217,7 @@ function compileLatinWord(word: string, output: TextVisemeCue[]): void {
       push(output, 'wide', 0.105, firstVowel)
       firstVowel = false
       index += 1
-    } else if (/^[a]/.test(rest)) {
+    } else if (rest.startsWith('a')) {
       push(output, 'open', 0.12, firstVowel)
       firstVowel = false
       index += 1

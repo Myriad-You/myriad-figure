@@ -1,7 +1,7 @@
 import type { MeropeRigManifest } from './types'
 import { RIG_PRESENTATION_SLOTS } from './contract'
 
-type PresentationSlotDefinition = {
+interface PresentationSlotDefinition {
   fallback: string
   variants: readonly string[]
 }

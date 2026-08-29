@@ -33,7 +33,7 @@ test('waits briefly, then plays a visible staged action', () => {
 })
 
 test('reuses one frame object and keeps every action channel bounded', () => {
-  let seed = 0x9e37_79b9
+  let seed = 0x9E37_79B9
   const random = () => {
     seed = (seed * 1_664_525 + 1_013_904_223) >>> 0
     return seed / 0x1_0000_0000
@@ -70,7 +70,7 @@ test('reuses one frame object and keeps every action channel bounded', () => {
 })
 
 test('cycles through the complete action catalog without immediate repeats', () => {
-  let seed = 0x1234_abcd
+  let seed = 0x1234_ABCD
   const random = () => {
     seed = (seed * 1_103_515_245 + 12_345) >>> 0
     return seed / 0x1_0000_0000
@@ -115,7 +115,7 @@ test('excited singing starts a face clip quickly without moving hands', () => {
 })
 
 test('excited catalog cycles singing faces without idle clips', () => {
-  let seed = 0x51c3_0a17
+  let seed = 0x51C3_0A17
   const random = () => {
     seed = (seed * 1_103_515_245 + 12_345) >>> 0
     return seed / 0x1_0000_0000

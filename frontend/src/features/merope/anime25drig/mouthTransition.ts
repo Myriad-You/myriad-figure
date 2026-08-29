@@ -53,6 +53,7 @@ export class MouthTransitionController {
     centerOffsetX: 0,
     centerOffsetY: 0,
   }
+
   private activeIndex = 0
 
   constructor(profile?: Readonly<Anime25DMouthProfile>) {

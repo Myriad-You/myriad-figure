@@ -1,5 +1,6 @@
 import type { SpeechViseme } from '../rig/articulation'
-import { compileTextVisemes, type TextVisemeCue } from './textVisemes'
+import type { TextVisemeCue } from './textVisemes'
+import { compileTextVisemes } from './textVisemes'
 
 export interface AutoSpeechPose {
   mouthOpen: number

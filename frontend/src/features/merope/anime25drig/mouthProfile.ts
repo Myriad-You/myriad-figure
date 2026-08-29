@@ -61,8 +61,9 @@ export function analyzeAnime25DMouthProfile(
     const role = roleForMaterial(material)
     const layer = layers.find((candidate) => candidate.role === role)
     const result = layer ? analyzeSilhouette(layer, material, frame) : null
-    if (result) analyzed.push(result)
-    else {
+    if (result) {
+      analyzed.push(result)
+    } else {
       usedBoundsFallback = true
       analyzed.push(fallbackSilhouette(material, fallback))
     }
