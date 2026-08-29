@@ -43,6 +43,7 @@ export class SpeechLifecycleController {
   private authored = false
   private autoActive = false
   private speechActive = false
+  private notifiedBusy = false
   private timer: unknown = null
   private readonly scheduler: SpeechLifecycleScheduler
   private readonly occupancy?: SpeechOccupancy
@@ -51,6 +52,7 @@ export class SpeechLifecycleController {
     private readonly target: SpeechLifecycleTarget,
     scheduler: SpeechLifecycleScheduler = defaultScheduler,
     occupancy?: SpeechOccupancy,
+    private readonly onBusyChange?: (busy: boolean) => void,
   ) {
     this.scheduler = scheduler ?? defaultScheduler
     this.occupancy = occupancy
@@ -184,8 +186,10 @@ export class SpeechLifecycleController {
   }
 
   private setOccupancy(busy: boolean): void {
-    if (!this.occupancy || this.occupancy.current === busy) return
-    this.occupancy.current = busy
+    if (this.occupancy) this.occupancy.current = busy
+    if (this.notifiedBusy === busy) return
+    this.notifiedBusy = busy
+    this.onBusyChange?.(busy)
   }
 }
 
