@@ -417,8 +417,8 @@ export function planUpstreamRuntimeDraw(
 
 /**
  * Writes the original Anime2.5DRig vertex deformation into `layer.cur`.
- * The surrounding Myriad renderer does not call this yet; the function is an
- * isolated migration seam guarded against the vendored JavaScript oracle.
+ * The function remains a standalone compatibility boundary guarded by direct
+ * module invariants and fixed multi-frame regression tests.
  */
 export function deformUpstreamRuntimeLayer(
   layer: UpstreamRuntimeLayer,

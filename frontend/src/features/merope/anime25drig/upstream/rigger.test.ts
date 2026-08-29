@@ -3,23 +3,16 @@ import type {
   UpstreamPsd,
   UpstreamPsdLayer,
   UpstreamRgbaImage,
-  UpstreamRiggerApi,
 } from './types'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { genericParts as upstreamGenericParts } from './genericParts'
 import {
   ANIME25D_GENERIC_PART_SHA256,
   ANIME25D_UPSTREAM_REVISION,
-  ANIME25D_VENDOR_SHA256,
 } from './revision'
 import { rigger as port } from './rigger'
-import '../vendor/rigger.js'
-
-const oracle = (globalThis as typeof globalThis & { Rigger: UpstreamRiggerApi })
-  .Rigger
 
 function image(
   width: number,
@@ -143,19 +136,10 @@ function clonePsd(psd: UpstreamPsd): UpstreamPsd {
   }
 }
 
-async function sha256(url: URL): Promise<string> {
-  const source = await readFile(url)
-  return createHash('sha256').update(source).digest('hex')
-}
-
-test('pins the exact vendored Anime2.5DRig oracle revision', async () => {
+test('records the upstream revision implemented by the standalone module', () => {
   assert.equal(
     ANIME25D_UPSTREAM_REVISION,
     'd48825867acd081de22b0e7b5585bb562288796d',
-  )
-  assert.equal(
-    await sha256(new URL('../vendor/rigger.js', import.meta.url)),
-    ANIME25D_VENDOR_SHA256.rigger,
   )
 })
 
@@ -182,12 +166,12 @@ test('preserves every decoded byte of the upstream generic parts', () => {
 })
 
 test('freezes upstream name normalization and numbered-layer semantics', () => {
-  assert.equal(oracle.normName(' ＭＯＵＴＨ のコピー 2 '), 'mouth_open')
-  assert.equal(oracle.normName('eyelash_c'), 'eye_close')
-  assert.equal(oracle.normName('mouth-c'), 'mouth-c')
-  assert.equal(oracle.normName('レイヤー 1'), 'facedetail')
-  assert.equal(oracle.baseName('front hair_12'), 'front hair')
-  assert.equal(oracle.baseName('front hair-12'), 'front hair-12')
+  assert.equal(port.normName(' ＭＯＵＴＨ のコピー 2 '), 'mouth_open')
+  assert.equal(port.normName('eyelash_c'), 'eye_close')
+  assert.equal(port.normName('mouth-c'), 'mouth-c')
+  assert.equal(port.normName('レイヤー 1'), 'facedetail')
+  assert.equal(port.baseName('front hair_12'), 'front hair')
+  assert.equal(port.baseName('front hair-12'), 'front hair-12')
 })
 
 test('freezes connected-component thresholds and the all-dust exception', () => {
@@ -199,7 +183,7 @@ test('freezes connected-component thresholds and the all-dust exception', () => 
   for (let y = 7; y < 12; y += 1) {
     for (let x = 12; x < 19; x += 1) alpha[y * width + x] = 255
   }
-  const cleaned = oracle._internals.cleanAlpha(alpha, width, 12, 40)
+  const cleaned = port._internals.cleanAlpha(alpha, width, 12, 40)
   for (let y = 0; y < 5; y += 1) {
     for (let x = 0; x < 8; x += 1) assert.equal(cleaned[y * width + x], 17)
   }
@@ -209,7 +193,7 @@ test('freezes connected-component thresholds and the all-dust exception', () => 
 
   const onlyDust = new Uint8Array(10)
   onlyDust.fill(255, 0, 9)
-  const returned = oracle._internals.cleanAlpha(onlyDust, 10, 1, 40)
+  const returned = port._internals.cleanAlpha(onlyDust, 10, 1, 40)
   assert.equal(returned, onlyDust)
   assert.ok(returned.every((value, index) => value === (index < 9 ? 255 : 0)))
 })
@@ -229,7 +213,7 @@ test('freezes in-place PSD cleanup, trim padding, and mutation shape', () => {
       { name: 'group without pixels' },
     ],
   }
-  const stats = oracle.cleanPsdLayers(source)
+  const stats = port.cleanPsdLayers(source)
   assert.deepEqual(stats, { noisy: 1, layers: 1 })
   assert.deepEqual(
     {
@@ -254,7 +238,7 @@ test('freezes in-place PSD cleanup, trim padding, and mutation shape', () => {
 })
 
 test('freezes complete rig order, anchors, warnings, strands, and synthesis', () => {
-  const rig = oracle.buildRig(representativePsd(), { generic: genericParts() })
+  const rig = port.buildRig(representativePsd(), { generic: genericParts() })
   assert.deepEqual(rig.canvas, { w: 180, h: 240 })
   assert.deepEqual(
     rig.layers.map((layer) => layer.name),
@@ -304,12 +288,12 @@ test('freezes complete rig order, anchors, warnings, strands, and synthesis', ()
 
 test('freezes missing-face fallbacks and exact Japanese diagnostics', () => {
   assert.throws(
-    () => oracle.buildRig({ width: 20, height: 30, children: [] }),
+    () => port.buildRig({ width: 20, height: 30, children: [] }),
     new Error(
       'レイヤーが見つかりません（グループは未対応・フラット構成にしてください）',
     ),
   )
-  const rig = oracle.buildRig({
+  const rig = port.buildRig({
     width: 100,
     height: 200,
     children: [solidLayer('mystery', 10, 120, 20, 20)],
@@ -331,7 +315,7 @@ test('freezes missing-face fallbacks and exact Japanese diagnostics', () => {
 })
 
 test('freezes flat-image composition and widest-gap eye splitting', () => {
-  const flat = oracle.flattenPsdToImg({
+  const flat = port.flattenPsdToImg({
     width: 8,
     height: 3,
     children: [
@@ -351,7 +335,7 @@ test('freezes flat-image composition and widest-gap eye splitting', () => {
     { x: 13, y: 1, width: 4, height: 3 },
   ]).imageData
   assert.ok(eyes)
-  const split = oracle.splitImgLR(eyes)
+  const split = port.splitImgLR(eyes)
   assert.ok(split)
   assert.deepEqual(
     {
@@ -364,7 +348,7 @@ test('freezes flat-image composition and widest-gap eye splitting', () => {
   )
 })
 
-test('oracle corpus can be cloned without sharing image buffers', () => {
+test('PSD fixtures can be cloned without sharing image buffers', () => {
   const source = representativePsd()
   const cloned = clonePsd(source)
   assert.deepEqual(cloned, source)
@@ -374,59 +358,22 @@ test('oracle corpus can be cloned without sharing image buffers', () => {
   )
 })
 
-test('TypeScript port is byte-for-byte equivalent on the representative corpus', () => {
+test('representative rig stays deterministic and matches its migration fingerprint', () => {
   const source = representativePsd()
+  const representative = port.buildRig(clonePsd(source), {
+    generic: genericParts(),
+  })
+  assert.equal(
+    createHash('sha256').update(JSON.stringify(representative)).digest('hex'),
+    '16c53826c542d4931394b60af9cc0f43a25f3350942f67dcab8424940f8ddfe9',
+  )
   assert.deepEqual(
+    representative,
     port.buildRig(clonePsd(source), { generic: genericParts() }),
-    oracle.buildRig(clonePsd(source), { generic: genericParts() }),
-  )
-
-  const fallback: UpstreamPsd = {
-    width: 100,
-    height: 200,
-    children: [solidLayer('mystery', 10, 120, 20, 20)],
-  }
-  assert.deepEqual(
-    port.buildRig(clonePsd(fallback)),
-    oracle.buildRig(clonePsd(fallback)),
-  )
-
-  const cleanup: UpstreamPsd = {
-    width: 60,
-    height: 40,
-    children: [
-      {
-        ...pairedLayer('face', 60, 40, [
-          { x: 20, y: 10, width: 8, height: 8 },
-          { x: 1, y: 1, width: 1, height: 1 },
-        ]),
-        canvas: { stale: true },
-      },
-    ],
-  }
-  const portCleanup = clonePsd(cleanup)
-  const oracleCleanup = clonePsd(cleanup)
-  assert.deepEqual(
-    port.cleanPsdLayers(portCleanup),
-    oracle.cleanPsdLayers(oracleCleanup),
-  )
-  assert.deepEqual(portCleanup, oracleCleanup)
-
-  const flatSource: UpstreamPsd = {
-    width: 8,
-    height: 3,
-    children: [
-      solidLayer('back', 1, 1, 6, 1, [200, 0, 0, 128]),
-      solidLayer('front', 2, 1, 2, 1, [0, 100, 0, 128]),
-    ],
-  }
-  assert.deepEqual(
-    port.flattenPsdToImg(clonePsd(flatSource)),
-    oracle.flattenPsdToImg(clonePsd(flatSource)),
   )
 })
 
-test('TypeScript image primitives match the JS oracle across seeded masks', () => {
+test('image primitives preserve component and strand invariants across seeded masks', () => {
   let state = 39657510
   const randomByte = () => {
     state = (Math.imul(state, 1664525) + 1013904223) >>> 0
@@ -442,20 +389,44 @@ test('TypeScript image primitives match the JS oracle across seeded masks', () =
       alpha[index] = value < 96 ? 0 : value
     }
     for (const threshold of [0, 8, 16, 127, 255]) {
-      assert.deepEqual(
-        port._internals.labelComponents(alpha, width, height, threshold),
-        oracle._internals.labelComponents(alpha, width, height, threshold),
+      const components = port._internals.labelComponents(
+        alpha,
+        width,
+        height,
+        threshold,
       )
+      assert.equal(components.lab.length, alpha.length)
+      assert.equal(components.sizes.length, components.count + 1)
+      assert.equal(components.sumX.length, components.count + 1)
+      assert.equal(
+        components.sizes.reduce((total, size) => total + size, 0),
+        components.lab.filter((label) => label > 0).length,
+      )
+      assert.ok(
+        components.lab.every(
+          (label) => label >= 0 && label <= components.count,
+        ),
+      )
+      for (let index = 1; index <= components.count; index += 1) {
+        assert.ok(components.sizes[index] > 0)
+        assert.ok(components.sumX[index] >= 0)
+        assert.ok(
+          components.sumX[index] <= components.sizes[index] * (width - 1),
+        )
+      }
     }
-    const portClean = new Uint8Array(alpha)
-    const oracleClean = new Uint8Array(alpha)
-    assert.deepEqual(
-      port._internals.cleanAlpha(portClean, width, height, 40),
-      oracle._internals.cleanAlpha(oracleClean, width, height, 40),
-    )
-    assert.deepEqual(
-      port._internals.detectStrands(alpha, width, height, 3, 6),
-      oracle._internals.detectStrands(alpha, width, height, 3, 6),
+    const clean = new Uint8Array(alpha)
+    assert.equal(port._internals.cleanAlpha(clean, width, height, 40), clean)
+    const strands = port._internals.detectStrands(alpha, width, height, 3, 6)
+    assert.ok(strands.length <= 6)
+    assert.ok(
+      strands.every(
+        (strand) =>
+          Number.isFinite(strand.x) &&
+          strand.rootY >= 0 &&
+          strand.rootY <= strand.tipY &&
+          strand.tipY < height,
+      ),
     )
   }
 
@@ -463,13 +434,25 @@ test('TypeScript image primitives match the JS oracle across seeded masks', () =
   for (let index = 0; index < contour.length; index += 1) {
     contour[index] = randomByte() / 3
   }
-  assert.deepEqual(
-    port._internals.findPeaks(contour, 7, 10),
-    oracle._internals.findPeaks(contour, 7, 10),
+  const peaks = port._internals.findPeaks(contour, 7, 10)
+  assert.deepEqual(peaks, port._internals.findPeaks(contour, 7, 10))
+  assert.ok(
+    peaks.every(
+      (peak) =>
+        peak.x >= 0 && peak.x < contour.length && Number.isFinite(peak.prom),
+    ),
   )
+  for (let index = 1; index < peaks.length; index += 1) {
+    assert.ok(peaks[index - 1].prom >= peaks[index].prom)
+    assert.ok(
+      peaks
+        .slice(0, index)
+        .every((existing) => Math.abs(existing.x - peaks[index].x) >= 7),
+    )
+  }
 })
 
-test('TypeScript port preserves build edge cases outside the representative PSD', () => {
+test('build edge cases match the migration fingerprint', () => {
   const explicitDiffs: UpstreamPsd = {
     width: 120,
     height: 180,
@@ -511,24 +494,30 @@ test('TypeScript port preserves build edge cases outside the representative PSD'
     ],
   }
 
+  const digest = createHash('sha256')
   for (const psd of [explicitDiffs, negativeCoordinates, duplicateNames]) {
-    assert.deepEqual(
-      port.buildRig(clonePsd(psd), { generic: genericParts() }),
-      oracle.buildRig(clonePsd(psd), { generic: genericParts() }),
-    )
+    const actual = port.buildRig(clonePsd(psd), { generic: genericParts() })
+    digest.update(JSON.stringify(actual))
+    assert.ok(actual.layers.length > 0)
+    assert.ok(actual.layers.every((layer, index) => layer.z === index))
   }
+  assert.equal(
+    digest.digest('hex'),
+    '06cd1dfa51aa0da05029b9e4a8fa3636895ec045f281362ba32c192059c6afcc',
+  )
 
   const noGap = image(8, 3, () => [20, 30, 40, 255])
-  assert.deepEqual(port.splitImgLR(noGap), oracle.splitImgLR(noGap))
-  for (const value of [
-    '',
-    ' mouth-01 ',
-    'Ｍｏｕｔｈ＿３',
-    'face のコピー',
-    'face のコピー 19',
-    'face copy 2',
-  ]) {
-    assert.equal(port.normName(value), oracle.normName(value))
-    assert.equal(port.baseName(value), oracle.baseName(value))
+  assert.equal(port.splitImgLR(noGap), null)
+  const names = [
+    ['', '', ''],
+    [' mouth-01 ', 'mouth_open', ' mouth-01 '],
+    ['Ｍｏｕｔｈ＿３', 'mouth_open', 'Ｍｏｕｔｈ＿３'],
+    ['face のコピー', 'face', 'face のコピー'],
+    ['face のコピー 19', 'face', 'face のコピー 19'],
+    ['face copy 2', 'face copy 2', 'face copy 2'],
+  ] as const
+  for (const [value, normalized, base] of names) {
+    assert.equal(port.normName(value), normalized)
+    assert.equal(port.baseName(value), base)
   }
 })

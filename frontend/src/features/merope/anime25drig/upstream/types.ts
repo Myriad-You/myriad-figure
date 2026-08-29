@@ -2,8 +2,8 @@
  * Typed contract of Anime2.5DRig's upstream `lib/rigger.js` boundary.
  *
  * Keep this contract independent from Myriad's post-processing types: it is the
- * compatibility seam used to prove that the TypeScript port still emits the
- * original rigger result before Myriad applies its intentional replacements.
+ * compatibility seam used to keep the standalone TypeScript module's behavior
+ * stable before Myriad applies its intentional replacements.
  */
 
 export type UpstreamPixelArray =
@@ -191,9 +191,9 @@ export interface UpstreamRiggerApi {
 }
 
 /**
- * Mutable runtime state used by the WebGL loop in the pinned upstream
- * `index.html`. These types stay separate from Myriad's extended driver so the
- * parity suite can compare the original behavior without extension fields.
+ * Mutable runtime state modeled after the pinned upstream WebGL loop. These
+ * types stay separate from Myriad's extended driver so module tests can cover
+ * the compatibility behavior without extension fields.
  */
 export interface UpstreamRuntimeParameters {
   angleX: number
