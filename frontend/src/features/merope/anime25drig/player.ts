@@ -8,6 +8,7 @@ import type {
   ChestWeightField,
 } from './chestPhysics'
 import type { CollarClipMesh, CollarMotionPose } from './collarRuntime'
+import type { Anime25DDeformationChangeState } from './deformationDependencies'
 import type { Anime25DDriver } from './driver'
 import type {
   Anime25DBlinkState,
@@ -57,6 +58,12 @@ import {
   uploadCollarClipMesh,
 } from './collarRuntime'
 import { cryTearHorizontalOffset, cryTearVerticalOffset } from './cryMotion'
+import {
+  captureAnime25DDeformationChanges,
+  createAnime25DDeformationChangeState,
+  markAnime25DLayerGeometryUpdated,
+  shouldUpdateAnime25DLayerGeometry,
+} from './deformationDependencies'
 import { IDENTITY_DRIVER, sanitizeDriverPatch } from './driver'
 import {
   applyAnime25DActionMotion,
@@ -202,6 +209,9 @@ export class Anime25DPlayer {
   private readonly mouthMorphSources: Anime25DMouthMorphSources
   private readonly opacityFrame: Anime25DOpacityFrame =
     createAnime25DOpacityFrame()
+
+  private readonly deformationChangeState: Anime25DDeformationChangeState =
+    createAnime25DDeformationChangeState()
 
   private readonly deformationPoint = { x: 0, y: 0 }
   private readonly deformationFrame: Anime25DMouthDeformationFrame &
@@ -844,6 +854,14 @@ export class Anime25DPlayer {
       this.activeMouthMaterial,
       this.sillyMouthShare,
     )
+    const deformationChanges = captureAnime25DDeformationChanges(
+      this.deformationChangeState,
+      e,
+      this.mouthMorph,
+      jawDrop,
+      jawOpen,
+      this.stylizedMotion,
+    )
     for (const layer of this.layers) {
       layer.frameOpacity = fadeOpacityFromFrame(layer.source, this.opacityFrame)
     }
@@ -862,7 +880,15 @@ export class Anime25DPlayer {
       }
     }
     for (const layer of this.layers) {
-      if (!shouldDeformLayer(layer.source, layer.frameOpacity)) continue
+      const visible = shouldDeformLayer(layer.source, layer.frameOpacity)
+      const updateLocalGeometry = layer.deformationPlan.cacheable
+        ? shouldUpdateAnime25DLayerGeometry(
+            layer.deformationPlan,
+            deformationChanges,
+            visible,
+          )
+        : true
+      if (!visible) continue
       const rest = layer.rest
       const deformed = layer.deformed
       const vertexCount = rest.length / 2
@@ -897,6 +923,13 @@ export class Anime25DPlayer {
       if (!layer.localDynamic) {
         if (work) {
           work.shaderOnlyLayers += 1
+          work.skippedVertices += vertexCount
+          work.savedUploadBytes += deformed.byteLength
+        }
+        continue
+      }
+      if (!updateLocalGeometry) {
+        if (work) {
           work.skippedVertices += vertexCount
           work.savedUploadBytes += deformed.byteLength
         }
@@ -1011,6 +1044,9 @@ export class Anime25DPlayer {
           deformed[index] = x
           deformed[index + 1] = y
         }
+      }
+      if (layer.deformationPlan.cacheable) {
+        markAnime25DLayerGeometryUpdated(layer.deformationPlan)
       }
       if (!geometryChanged) {
         layer.geometryDirty = false

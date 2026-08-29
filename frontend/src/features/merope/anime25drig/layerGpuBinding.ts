@@ -1,6 +1,7 @@
 import type { ChestWeightField } from './chestPhysics'
 import type { FrontCollarContactModel } from './collarContact'
 import type { CollarClipMesh } from './collarRuntime'
+import type { Anime25DLayerDeformationPlan } from './deformationDependencies'
 import type { Anime25DDriver } from './driver'
 import type { Anime25DExpressionDeformationBinding } from './expressionDeformation'
 import type { Anime25DLayerSpringBinding } from './layerBinding'
@@ -13,6 +14,10 @@ import type { Anime25DPlayback } from './types'
 import { sampleChestWeight } from './chestPhysics'
 import { buildFrontCollarContactModel } from './collarContact'
 import { createCollarClipMesh } from './collarRuntime'
+import {
+  createAnime25DLayerDeformationPlan,
+  resolveAnime25DDeformationDependencies,
+} from './deformationDependencies'
 import { resolveAnime25DExpressionDeformation } from './expressionDeformation'
 import { buildAnime25DLayerBinding } from './layerBinding'
 import { bindAnime25DUpstreamFeature } from './layerDeformation'
@@ -46,6 +51,7 @@ export interface Anime25DGpuLayer extends Anime25DRenderableLayer {
   bangWeights: Float32Array | null
   springs: Anime25DLayerSpringBinding[] | null
   collarContact: FrontCollarContactModel | null
+  deformationPlan: Anime25DLayerDeformationPlan
   geometryDirty: boolean
 }
 
@@ -150,6 +156,25 @@ export function compileAnime25DGpuLayers(
           centerY: source.y + source.h / 2,
         }
       : null
+    const upstreamFeature = bindAnime25DUpstreamFeature(
+      source,
+      eye,
+      playback.anchors.faceScale,
+      current,
+    )
+    const mouthDeformation = resolveAnime25DMouthDeformation(source.fade)
+    const deformationPlan = createAnime25DLayerDeformationPlan(
+      deformationPolicy.shaderGlobalTransform && deformationPolicy.localDynamic,
+      resolveAnime25DDeformationDependencies({
+        baseRole,
+        fade: source.fade,
+        shaderGlobalTransform: deformationPolicy.shaderGlobalTransform,
+        localDynamic: deformationPolicy.localDynamic,
+        upstreamFeatureKind: upstreamFeature?.kind ?? null,
+        expressionDeformationKind,
+        mouthDeformationKind: mouthDeformation,
+      }),
+    )
     const secondaryDeformation = createAnime25DSecondaryDeformationBinding({
       source,
       baseRole,
@@ -188,13 +213,8 @@ export function compileAnime25DGpuLayers(
       indexCount: indices.length,
       layerTransform,
       ...deformationPolicy,
-      upstreamFeature: bindAnime25DUpstreamFeature(
-        source,
-        eye,
-        playback.anchors.faceScale,
-        current,
-      ),
-      mouthDeformation: resolveAnime25DMouthDeformation(source.fade),
+      upstreamFeature,
+      mouthDeformation,
       expressionDeformation,
       secondaryDeformation,
       frameOpacity: source.fade ? 0 : 1,
@@ -205,6 +225,7 @@ export function compileAnime25DGpuLayers(
       chestWeights,
       ...hair,
       collarContact,
+      deformationPlan,
       geometryDirty: false,
     })
   }
