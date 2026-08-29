@@ -74,9 +74,30 @@ export function resolveAnime25DExpressionDeformation(
   source: Pick<Anime25DPlaybackLayer, 'fade' | 'role'>,
   hasEyeAnchor: boolean,
 ): Anime25DExpressionDeformationKind | null {
-  if (source.fade === 'eyeDizzy' && hasEyeAnchor) return 'dizzy-eye'
-  if (source.fade === 'eyeSqueeze' && hasEyeAnchor) return 'squeeze-eye'
-  if (source.fade === 'eyeCry' && hasEyeAnchor) return 'cry-eye'
+  if (
+    (source.role === 'eye-dizzy' ||
+      source.role === 'eye_dizzy' ||
+      source.fade === 'eyeDizzy') &&
+    hasEyeAnchor
+  ) {
+    return 'dizzy-eye'
+  }
+  if (
+    (source.role === 'eye-squeeze' ||
+      source.role === 'eye_squeeze' ||
+      source.fade === 'eyeSqueeze') &&
+    hasEyeAnchor
+  ) {
+    return 'squeeze-eye'
+  }
+  if (
+    (source.role === 'eye-cry' ||
+      source.role === 'eye_cry' ||
+      source.fade === 'eyeCry') &&
+    hasEyeAnchor
+  ) {
+    return 'cry-eye'
+  }
   if (source.fade === 'eyeSilly' && hasEyeAnchor) return 'silly-eye'
   if (source.fade === 'lovestruckHeart' && hasEyeAnchor) {
     return 'lovestruck-heart'

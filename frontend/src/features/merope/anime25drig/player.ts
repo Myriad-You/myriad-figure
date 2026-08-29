@@ -10,8 +10,17 @@ import type {
 import type { FrontCollarContactModel } from './collarContact'
 import type { CollarClipMesh, CollarMotionPose } from './collarRuntime'
 import type { Anime25DDriver } from './driver'
+import type {
+  Anime25DExpressionDeformationBinding,
+  Anime25DExpressionDeformationFrame,
+} from './expressionDeformation'
 import type { Anime25DLayerSpringBinding } from './layerBinding'
+import type { Anime25DUpstreamFeatureKind } from './layerDeformation'
 import type { Anime25DLayerDeformationExtension } from './layerDeformationPolicy'
+import type {
+  Anime25DMouthDeformationFrame,
+  Anime25DMouthDeformationKind,
+} from './mouthDeformation'
 import type { MouthMorphState } from './mouthRuntime'
 import type { SpeechMouthMaterial } from './mouthTransition'
 import type {
@@ -21,9 +30,6 @@ import type {
 import type { StylizedExpressionMotion } from './stylizedExpressionMotion'
 import type { Anime25DPlayback, Anime25DPlaybackLayer } from './types'
 import { currentCopy } from '../../../i18n/localeCopy'
-import { cryEyeDisplayScale } from '../rig/cryEye'
-import { dizzyEyeDisplayScale } from '../rig/dizzyEye'
-import { squeezeEyeDisplayScale } from '../rig/squeezeEye'
 import {
   applySingingGroove,
   singingDriveAmount,
@@ -64,6 +70,10 @@ import {
   sampleCryMouthMotion,
 } from './cryMotion'
 import { IDENTITY_DRIVER, sanitizeDriverPatch } from './driver'
+import {
+  deformAnime25DExpressionPoint,
+  resolveAnime25DExpressionDeformation,
+} from './expressionDeformation'
 import { applyExpressiveMotionEnvelope } from './expressiveMotionEnvelope'
 import { stepHairSpring } from './hairPhysics'
 import {
@@ -147,6 +157,9 @@ interface GpuLayer {
   shaderGlobalTransform: boolean
   localDynamic: boolean
   deformationExtensions: Anime25DLayerDeformationExtension[]
+  upstreamFeature: Anime25DUpstreamFeatureKind | null
+  mouthDeformation: Anime25DMouthDeformationKind | null
+  expressionDeformation: Anime25DExpressionDeformationBinding | null
   frameOpacity: number
   chestWeights: Float32Array | null
   frontHair: boolean
@@ -230,6 +243,10 @@ export class Anime25DPlayer {
     narrow: 0,
   }
 
+  private readonly deformationPoint = { x: 0, y: 0 }
+  private readonly deformationFrame: Anime25DMouthDeformationFrame &
+    Anime25DExpressionDeformationFrame
+
   private readonly mouthTransition: MouthTransitionController
   private activeMouthMaterial: SpeechMouthMaterial = 'mouthClose'
   private sillyMouthShare = 1
@@ -298,6 +315,18 @@ export class Anime25DPlayer {
     this.neckDepth =
       playback.layers.find((layer) => layer.role === 'neck')?.depth ?? 0.95
     this.mouthTransition = new MouthTransitionController(playback.mouthProfile)
+    this.deformationFrame = {
+      mouth: playback.anchors.mouth,
+      face: playback.anchors.face,
+      faceScale: playback.anchors.faceScale,
+      morph: this.mouthMorph,
+      mouthMorph: this.mouthMorph,
+      expression: this.current,
+      jawDrop: 0,
+      jawOpen: 0,
+      time: 0,
+      stylizedMotion: null,
+    }
     this.jawTravel = jawTravelPixels(playback)
     this.chestDynamics = resolveChestDynamics(playback.chestProfile)
     const anchors = playback.anchors
@@ -1166,19 +1195,13 @@ export class Anime25DPlayer {
     this.activeMouthMaterial = mouthTransition.material
     resolveMouthMorph(this.layers, e, A.mouth, A.face, this.mouthMorph)
     applyMouthTransitionBridge(this.mouthMorph, mouthTransition)
-    const mouthMorph = this.mouthMorph
-    const mouthDeformationFrame = {
-      mouth: A.mouth,
-      face: A.face,
-      faceScale: fs,
-      morph: mouthMorph,
-      expression: e,
-      jawDrop,
-      jawOpen,
-      time: t,
-      stylizedMotion: this.stylizedMotion,
-    }
-    const mouthDeformationPoint = { x: 0, y: 0 }
+    const deformationFrame = this.deformationFrame
+    deformationFrame.faceScale = fs
+    deformationFrame.jawDrop = jawDrop
+    deformationFrame.jawOpen = jawOpen
+    deformationFrame.time = t
+    deformationFrame.stylizedMotion = this.stylizedMotion
+    const deformationPoint = this.deformationPoint
     for (const layer of this.layers) {
       layer.frameOpacity = fadeOpacity(
         layer.source,
@@ -1270,13 +1293,9 @@ export class Anime25DPlayer {
       }
       const eye =
         source.side === 'L' ? A.eyeL : source.side === 'R' ? A.eyeR : undefined
-      const vOpen = source.side === 'L' ? e.eyeOpenL : e.eyeOpenR
       const bcx = source.x + source.w / 2
       const bcy = source.y + source.h / 2
-      const upstreamFeature = resolveAnime25DUpstreamFeature(
-        source,
-        Boolean(eye),
-      )
+      const upstreamFeature = layer.upstreamFeature
       const upstreamFeatureInput = upstreamFeature
         ? {
             kind: upstreamFeature,
@@ -1297,7 +1316,7 @@ export class Anime25DPlayer {
         ? cryTearHorizontalOffset(t, source.side, e.eyeCry, fs)
         : 0
       const nS = layer.springs?.length ?? 0
-      const mouthDeformation = resolveAnime25DMouthDeformation(source.fade)
+      const mouthDeformation = layer.mouthDeformation
       if (layer.collarContact) {
         updateFrontCollarTargets(
           layer.collarContact,
@@ -1323,129 +1342,44 @@ export class Anime25DPlayer {
           x = upstreamFeaturePoint.x
           y = upstreamFeaturePoint.y
         }
-        if (eye && (bn === 'eye_dizzy' || source.fade === 'eyeDizzy')) {
-          const scale = dizzyEyeDisplayScale(source.w, source.h, eye)
-          if (scale !== 1) {
-            x = eye.icx + (x - eye.icx) * scale
-            y = eye.icy + (y - eye.icy) * scale
-          }
-        }
-        if (eye && (bn === 'eye_squeeze' || source.fade === 'eyeSqueeze')) {
-          const scale = squeezeEyeDisplayScale(source.w, eye)
-          if (scale !== 1) {
-            x = bcx + (x - bcx) * scale
-            y = bcy + (y - bcy) * scale
-          }
-        }
-        if (eye && (bn === 'eye_cry' || source.fade === 'eyeCry')) {
-          const scale = cryEyeDisplayScale(source.w, eye)
-          if (scale !== 1) {
-            x = bcx + (x - bcx) * scale
-            y = bcy + (y - bcy) * scale
-          }
-          const localY = (rest[index + 1] - source.y) / Math.max(1, source.h)
-          const flowWeight = smoothstep((localY - 0.31) / 0.62)
-          x += tearHorizontal * flowWeight
-          y += tearVertical * flowWeight
-        }
-        if (eye && source.fade === 'eyeSilly' && this.stylizedMotion) {
-          const scale = 0.84 + this.stylizedMotion.sillyEyeScale * 0.16
-          x = eye.icx + (x - eye.icx) * scale
-          y = eye.icy + (y - eye.icy) * scale
-          if (source.role === 'iris-silly') {
-            const irisOffsetX =
-              source.side === 'L'
-                ? this.stylizedMotion.sillyIrisOffsetXL
-                : this.stylizedMotion.sillyIrisOffsetXR
-            const irisOffsetY =
-              source.side === 'L'
-                ? this.stylizedMotion.sillyIrisOffsetYL
-                : this.stylizedMotion.sillyIrisOffsetYR
-            x += irisOffsetX * Math.max(1, eye.x1 - eye.x0)
-            y += irisOffsetY * Math.max(1, eye.y1 - eye.y0)
-          }
-        }
-        if (eye && source.fade === 'lovestruckHeart' && this.stylizedMotion) {
-          x = eye.icx + (x - eye.icx) * e.irisScale
-          y = eye.icy + (y - eye.icy) * e.irisScale
-          x += e.eyeX * 11 * fs
-          y += e.eyeY * 6 * fs
-          const lidClose = smoothstep((0.32 - vOpen) / 0.32)
-          y = eye.closeY + (y - eye.closeY) * (1 - 0.8 * lidClose)
-          const scale = this.stylizedMotion.lovestruckHeartScale
-          x = bcx + (x - bcx) * scale
-          y = bcy + (y - bcy) * scale
-        }
-        if (this.stylizedMotion && source.fade === 'lovestruckFace') {
-          const scale = this.stylizedMotion.lovestruckFaceScale
-          x = bcx + (x - bcx) * scale
-          y = bcy + (y - bcy) * scale
-        }
-        if (this.stylizedMotion && source.fade === 'lovestruckDrool') {
-          const desiredX = mouthMorph.centerX + mouthMorph.width * 0.48
-          const desiredY = mouthMorph.centerY + mouthMorph.height * 0.18
-          x += desiredX - bcx
-          y += desiredY - bcy + this.stylizedMotion.lovestruckDroolOffsetY * fs
-        }
-        if (
-          this.stylizedMotion &&
-          (source.fade === 'angerMark' || source.fade === 'speechlessSweat')
-        ) {
-          const angerMark = source.fade === 'angerMark'
-          const scale = angerMark
-            ? this.stylizedMotion.angerMarkScale
-            : this.stylizedMotion.speechlessSweatScale
-          const rotation = angerMark
-            ? this.stylizedMotion.angerMarkRotation
-            : this.stylizedMotion.speechlessSweatRotation
-          const offsetX = angerMark
-            ? 0
-            : this.stylizedMotion.speechlessSweatOffsetX * fs
-          const offsetY =
-            (angerMark
-              ? this.stylizedMotion.angerMarkOffsetY
-              : this.stylizedMotion.speechlessSweatOffsetY) * fs
-          const cosine = Math.cos(rotation)
-          const sine = Math.sin(rotation)
-          const localX = (x - bcx) * scale
-          const localY = (y - bcy) * scale
-          x = bcx + localX * cosine - localY * sine + offsetX
-          y = bcy + localX * sine + localY * cosine + offsetY
+        if (layer.expressionDeformation) {
+          deformationPoint.x = x
+          deformationPoint.y = y
+          deformAnime25DExpressionPoint(
+            deformationPoint,
+            rest[index + 1],
+            layer.expressionDeformation,
+            tearHorizontal,
+            tearVertical,
+            deformationFrame,
+          )
+          x = deformationPoint.x
+          y = deformationPoint.y
         }
         if (mouthDeformation) {
-          mouthDeformationPoint.x = x
-          mouthDeformationPoint.y = y
+          deformationPoint.x = x
+          deformationPoint.y = y
           deformAnime25DMouthPoint(
-            mouthDeformationPoint,
+            deformationPoint,
             rest[index],
             rest[index + 1],
             source,
-            mouthDeformationFrame,
+            deformationFrame,
             mouthDeformation,
           )
-          x = mouthDeformationPoint.x
-          y = mouthDeformationPoint.y
+          x = deformationPoint.x
+          y = deformationPoint.y
         }
         if (bn === 'face') {
-          mouthDeformationPoint.x = x
-          mouthDeformationPoint.y = y
+          deformationPoint.x = x
+          deformationPoint.y = y
           deformAnime25DFaceJawPoint(
-            mouthDeformationPoint,
+            deformationPoint,
             rest[index + 1],
-            mouthDeformationFrame,
+            deformationFrame,
           )
-          x = mouthDeformationPoint.x
-          y = mouthDeformationPoint.y
-        }
-        if (bn === 'nose' && this.stylizedMotion) {
-          // The reference's manic look lifts the nose slightly with the grin;
-          // keep it local so ordinary expressions and the face anchor remain
-          // unchanged.
-          const noseLift = this.stylizedMotion.maniac * 10 * fs
-          const noseWeight = smoothstep(
-            (rest[index + 1] - source.y) / Math.max(1, source.h),
-          )
-          y -= noseLift * noseWeight
+          x = deformationPoint.x
+          y = deformationPoint.y
         }
         if (layer.collarContact) {
           deformRigidMlsPoint(
@@ -1784,6 +1718,25 @@ export class Anime25DPlayer {
       hasFrontHairParallax: Boolean(hair.frontHairParallaxScale),
       hasCollarContact: Boolean(collarContact),
     })
+    const eye =
+      source.side === 'L'
+        ? this.playback.anchors.eyeL
+        : source.side === 'R'
+          ? this.playback.anchors.eyeR
+          : undefined
+    const expressionDeformationKind = resolveAnime25DExpressionDeformation(
+      source,
+      Boolean(eye),
+    )
+    const expressionDeformation = expressionDeformationKind
+      ? {
+          kind: expressionDeformationKind,
+          source,
+          eye,
+          centerX: source.x + source.w / 2,
+          centerY: source.y + source.h / 2,
+        }
+      : null
     const layerTransform = new Float32Array(9)
     writeIdentityLayerTransform(layerTransform)
     if (collarContact && !this.collarClip) {
@@ -1811,6 +1764,9 @@ export class Anime25DPlayer {
       indexCount: indices.length,
       layerTransform,
       ...deformationPolicy,
+      upstreamFeature: resolveAnime25DUpstreamFeature(source, Boolean(eye)),
+      mouthDeformation: resolveAnime25DMouthDeformation(source.fade),
+      expressionDeformation,
       frameOpacity: source.fade ? 0 : 1,
       chestWeights,
       ...hair,
