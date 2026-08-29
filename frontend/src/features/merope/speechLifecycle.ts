@@ -15,7 +15,7 @@ export interface SpeechLifecycleScheduler {
   clearTimeout: (timer: unknown) => void
 }
 
-/** Mutable occupancy flag so singing can yield until finishNow, not just the end event. */
+/** Mutable occupancy flag; the mouth lease follows this through onBusyChange. */
 export interface SpeechOccupancy {
   current: boolean
 }

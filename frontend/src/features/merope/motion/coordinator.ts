@@ -5,11 +5,23 @@ import type {
 } from './channels'
 import { channelPriority, isExclusiveChannel } from './channels'
 
+export interface MotionLeaseHandle {
+  leaseId: string
+  ownerToken: string
+  source: MotionSourceId
+  generation: number
+}
+
 export interface MotionLease {
+  leaseId: string
   source: MotionSourceId
   channels: readonly MotionChannel[]
   generation: number
   expiresAtMs: number | null
+}
+
+interface PrivateLease extends MotionLease {
+  ownerToken: string
 }
 
 export interface MotionSnapshot {
@@ -28,62 +40,100 @@ const IDLE: MotionSourceId = 'idle'
 
 /**
  * Runtime motion leases for every mounted face. One process-wide owner;
- * each rig only reads the snapshot. Physics overlays; the rest are exclusive.
+ * each producer holds its own handle and can only release that handle.
+ * Physics overlays; the rest are exclusive.
  */
 export class RigMotionCoordinator {
-  private readonly leases = new Map<MotionSourceId, MotionLease>()
+  private readonly leases = new Map<string, PrivateLease>()
   private generation = 0
   private clockMs = 0
+  private nextLeaseSeq = 1
 
   claim(
     source: MotionSourceId,
     channels: readonly MotionChannel[],
     options: MotionClaimOptions = {},
-  ): number {
-    if (source === IDLE) return this.generation
+  ): MotionLeaseHandle | null {
+    if (source === IDLE) return null
     const unique = uniqueChannels(channels)
-    if (unique.length === 0) {
-      this.leases.delete(source)
-      return this.generation
-    }
+    if (unique.length === 0) return null
     const nowMs = options.nowMs ?? this.clockMs
     this.clockMs = nowMs
     this.generation += 1
-    const ttlMs = options.ttlMs
-    this.leases.set(source, {
+    const leaseId = `lease-${this.nextLeaseSeq}`
+    this.nextLeaseSeq += 1
+    const ownerToken = createOwnerToken()
+    const handle: MotionLeaseHandle = {
+      leaseId,
+      ownerToken,
       source,
-      channels: unique,
       generation: this.generation,
-      expiresAtMs:
-        typeof ttlMs === 'number' && ttlMs > 0 ? nowMs + ttlMs : null,
+    }
+    this.leases.set(leaseId, {
+      ...handle,
+      channels: unique,
+      expiresAtMs: expiry(nowMs, options.ttlMs),
     })
-    return this.generation
+    return handle
   }
 
-  release(source: MotionSourceId, channels?: readonly MotionChannel[]): void {
-    if (!channels || channels.length === 0) {
-      this.leases.delete(source)
+  renew(
+    handle: MotionLeaseHandle | null | undefined,
+    channels: readonly MotionChannel[],
+    options: MotionClaimOptions = {},
+  ): MotionLeaseHandle | null {
+    if (!handle) return null
+    const current = this.authenticated(handle)
+    if (!current) return null
+    const unique = uniqueChannels(channels)
+    const nowMs = options.nowMs ?? this.clockMs
+    this.clockMs = nowMs
+    if (unique.length === 0) {
+      this.leases.delete(handle.leaseId)
       this.generation += 1
-      return
-    }
-    const current = this.leases.get(source)
-    if (!current) return
-    const drop = new Set(channels)
-    const next = current.channels.filter((channel) => !drop.has(channel))
-    if (next.length === 0) {
-      this.leases.delete(source)
-    } else {
-      this.leases.set(source, { ...current, channels: next })
+      return null
     }
     this.generation += 1
+    const next: MotionLeaseHandle = {
+      leaseId: current.leaseId,
+      ownerToken: current.ownerToken,
+      source: current.source,
+      generation: this.generation,
+    }
+    this.leases.set(current.leaseId, {
+      ...next,
+      channels: unique,
+      expiresAtMs: expiry(nowMs, options.ttlMs),
+    })
+    return next
+  }
+
+  release(
+    handle: MotionLeaseHandle | null | undefined,
+    channels?: readonly MotionChannel[],
+  ): boolean {
+    if (!handle) return false
+    const current = this.authenticated(handle)
+    if (!current) return false
+    if (!channels || channels.length === 0) {
+      this.leases.delete(handle.leaseId)
+      this.generation += 1
+      return true
+    }
+    const drop = new Set(channels)
+    const next = current.channels.filter((channel) => !drop.has(channel))
+    if (next.length === 0) this.leases.delete(handle.leaseId)
+    else this.leases.set(handle.leaseId, { ...current, channels: next })
+    this.generation += 1
+    return true
   }
 
   tick(nowMs: number): void {
     this.clockMs = nowMs
     let expired = false
-    for (const [source, lease] of this.leases) {
+    for (const [leaseId, lease] of this.leases) {
       if (lease.expiresAtMs !== null && lease.expiresAtMs <= nowMs) {
-        this.leases.delete(source)
+        this.leases.delete(leaseId)
         expired = true
       }
     }
@@ -122,15 +172,25 @@ export class RigMotionCoordinator {
       headBody: this.owner('headBody', nowMs),
     }
     const physics: MotionSourceId[] = []
+    const publicLeases: MotionLease[] = []
     for (const lease of this.leases.values()) {
       if (lease.channels.includes('physics')) physics.push(lease.source)
+      publicLeases.push(toPublicLease(lease))
     }
     return {
       generation: this.generation,
       owners,
       physics,
-      leases: [...this.leases.values()],
+      leases: publicLeases,
     }
+  }
+
+  private authenticated(handle: MotionLeaseHandle): PrivateLease | null {
+    const current = this.leases.get(handle.leaseId)
+    if (!current) return null
+    if (current.ownerToken !== handle.ownerToken) return null
+    if (current.source !== handle.source) return null
+    return current
   }
 }
 
@@ -155,6 +215,28 @@ function uniqueChannels(channels: readonly MotionChannel[]): MotionChannel[] {
     unique.push(channel)
   }
   return unique
+}
+
+function expiry(nowMs: number, ttlMs: number | null | undefined): number | null {
+  return typeof ttlMs === 'number' && ttlMs > 0 ? nowMs + ttlMs : null
+}
+
+function createOwnerToken(): string {
+  const cryptoObj = globalThis.crypto
+  if (cryptoObj && typeof cryptoObj.randomUUID === 'function') {
+    return cryptoObj.randomUUID()
+  }
+  return `tok-${Math.random().toString(36).slice(2, 12)}-${Date.now().toString(36)}`
+}
+
+function toPublicLease(lease: PrivateLease): MotionLease {
+  return {
+    leaseId: lease.leaseId,
+    source: lease.source,
+    channels: lease.channels,
+    generation: lease.generation,
+    expiresAtMs: lease.expiresAtMs,
+  }
 }
 
 export type { ExclusiveMotionChannel }

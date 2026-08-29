@@ -1,11 +1,15 @@
-import type { MusicMotionAudio, MusicMotionClock, MusicMotionVisibility } from './musicSource'
+import type {
+  MusicMotionAudio,
+  MusicMotionClock,
+  MusicMotionVisibility,
+} from './musicSource'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { RigMotionCoordinator } from './coordinator'
 import {
-
+  MUSIC_LEASE_TTL_MS,
   MusicMotionSource,
-
+  TRACK_SWITCH_HOLD_MS,
 } from './musicSource'
 
 function fakeClock(): MusicMotionClock & {
@@ -101,4 +105,66 @@ test('pause rests the mouth without dropping the music lease', () => {
   assert.equal(frame.apply.writeGroove, true)
   assert.equal(frame.apply.release, false)
   assert.equal(coordinator.owner('headBody', 80), 'music')
+})
+
+test('hiding the page releases music so a later sample can reclaim it', () => {
+  const coordinator = new RigMotionCoordinator()
+  let pageVisible = true
+  const listeners = new Set<(visible: boolean) => void>()
+  const source = new MusicMotionSource(
+    coordinator,
+    fakeClock(),
+    silentAudio(),
+    {
+      isPageVisible: () => pageVisible,
+      onVisibility: (callback) => {
+        listeners.add(callback)
+        return () => listeners.delete(callback)
+      },
+    },
+  )
+  source.setPlayback(true, false)
+  source.subscribe(() => {})
+  source.sampleNow(80)
+  assert.equal(coordinator.owner('headBody', 80), 'music')
+  pageVisible = false
+  for (const listener of listeners) listener(false)
+  assert.equal(coordinator.owner('headBody', 80), 'idle')
+})
+
+test('a track-switch hold then expires and drops the music lease', () => {
+  const coordinator = new RigMotionCoordinator()
+  const source = new MusicMotionSource(
+    coordinator,
+    fakeClock(),
+    silentAudio(),
+    visible,
+  )
+  source.setPlayback(true, false)
+  source.sampleNow(80)
+  assert.equal(coordinator.owner('headBody', 80), 'music')
+  source.setPlayback(false, true)
+  const held = source.sampleNow(90)
+  assert.equal(held.apply.release, false)
+  assert.equal(held.apply.writeGroove, true)
+  const expired = source.sampleNow(90 + TRACK_SWITCH_HOLD_MS)
+  assert.equal(expired.apply.release, true)
+  assert.equal(coordinator.owner('headBody', 90 + TRACK_SWITCH_HOLD_MS), 'idle')
+})
+
+test('music renews one lease instead of stacking a new claim every sample', () => {
+  const coordinator = new RigMotionCoordinator()
+  const source = new MusicMotionSource(
+    coordinator,
+    fakeClock(),
+    silentAudio(),
+    visible,
+  )
+  source.setPlayback(true, false)
+  source.sampleNow(80)
+  source.sampleNow(80 + MUSIC_LEASE_TTL_MS - 10)
+  const leases = coordinator
+    .snapshot(80 + MUSIC_LEASE_TTL_MS - 10)
+    .leases.filter((lease) => lease.source === 'music')
+  assert.equal(leases.length, 1)
 })

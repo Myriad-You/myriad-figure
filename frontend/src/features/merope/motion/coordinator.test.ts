@@ -72,16 +72,18 @@ test('expired leases auto-release and bump generation', () => {
     nowMs: 0,
     ttlMs: 50,
   })
+  assert.ok(first)
   assert.equal(coordinator.owner('headBody', 40), 'music')
   coordinator.tick(50)
   assert.equal(coordinator.owner('headBody', 50), 'idle')
-  assert.ok(coordinator.snapshot(50).generation > first)
+  assert.ok(coordinator.snapshot(50).generation > first.generation)
 })
 
 test('releasing one channel leaves the rest of the lease', () => {
   const coordinator = new RigMotionCoordinator()
-  coordinator.claim('music', ['mouth', 'headBody'], { nowMs: 0 })
-  coordinator.release('music', ['mouth'])
+  const music = coordinator.claim('music', ['mouth', 'headBody'], { nowMs: 0 })
+  assert.ok(music)
+  coordinator.release(music, ['mouth'])
   const snapshot = coordinator.snapshot(0)
   assert.equal(snapshot.owners.mouth, 'idle')
   assert.equal(snapshot.owners.headBody, 'music')
@@ -94,4 +96,71 @@ test('physics overlays instead of taking exclusive ownership', () => {
   const snapshot = coordinator.snapshot(1)
   assert.deepEqual(snapshot.physics.slice().sort(), ['ambient', 'music'])
   assert.equal(snapshot.owners.headBody, 'idle')
+})
+
+test('a producer cannot release another producer lease', () => {
+  const coordinator = new RigMotionCoordinator()
+  const chat = coordinator.claim('speech', ['mouth'], { nowMs: 0 })
+  const widget = coordinator.claim('speech', ['mouth'], { nowMs: 1 })
+  assert.ok(chat)
+  assert.ok(widget)
+  assert.equal(
+    coordinator.release({ ...chat, ownerToken: 'forged-token' }),
+    false,
+  )
+  assert.equal(coordinator.release({ ...widget, leaseId: chat.leaseId }), false)
+  assert.equal(coordinator.owner('mouth', 1), 'speech')
+  assert.equal(coordinator.release(widget), true)
+  assert.equal(coordinator.owner('mouth', 1), 'speech')
+  assert.equal(coordinator.release(chat), true)
+  assert.equal(coordinator.owner('mouth', 1), 'idle')
+})
+
+test('unmounting one speech producer leaves the other rig speaking', () => {
+  const coordinator = new RigMotionCoordinator()
+  const panel = coordinator.claim('speech', ['mouth'], { nowMs: 0 })
+  const home = coordinator.claim('speech', ['mouth'], { nowMs: 1 })
+  const homePerf = coordinator.claim('performance', ['expression'], {
+    nowMs: 1,
+  })
+  assert.ok(panel)
+  assert.ok(home)
+  assert.ok(homePerf)
+  coordinator.release(home)
+  coordinator.release(homePerf)
+  const snapshot = coordinator.snapshot(1)
+  assert.equal(snapshot.owners.mouth, 'speech')
+  assert.equal(snapshot.owners.expression, 'idle')
+  assert.equal(snapshot.leases.length, 1)
+  assert.equal(snapshot.leases[0]?.leaseId, panel.leaseId)
+})
+
+test('snapshots never expose owner tokens', () => {
+  const coordinator = new RigMotionCoordinator()
+  const handle = coordinator.claim('music', ['headBody'], { nowMs: 0 })
+  assert.ok(handle)
+  assert.ok(handle.ownerToken)
+  const [lease] = coordinator.snapshot(0).leases
+  assert.ok(lease)
+  assert.equal('ownerToken' in lease, false)
+})
+
+test('renew refreshes TTL on the same lease id', () => {
+  const coordinator = new RigMotionCoordinator()
+  const first = coordinator.claim('music', ['headBody'], {
+    nowMs: 0,
+    ttlMs: 50,
+  })
+  assert.ok(first)
+  const renewed = coordinator.renew(first, ['mouth', 'headBody'], {
+    nowMs: 40,
+    ttlMs: 50,
+  })
+  assert.ok(renewed)
+  assert.equal(renewed.leaseId, first.leaseId)
+  assert.equal(renewed.ownerToken, first.ownerToken)
+  assert.ok(renewed.generation > first.generation)
+  assert.equal(coordinator.owner('headBody', 80), 'music')
+  coordinator.tick(90)
+  assert.equal(coordinator.owner('headBody', 90), 'idle')
 })

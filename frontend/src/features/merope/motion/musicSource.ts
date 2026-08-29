@@ -1,7 +1,7 @@
 import type { SpeechArticulation } from '../rig/articulation'
 import type { SingingSpectrumDrive } from '../singing/singingGroove'
 import type { SingingCue } from '../singing/singingTimeline'
-import type { RigMotionCoordinator } from './coordinator'
+import type { MotionLeaseHandle, RigMotionCoordinator } from './coordinator'
 import type { SingingApply } from './singingApply'
 import {
   restSingingArticulation,
@@ -73,6 +73,7 @@ export class MusicMotionSource {
   private pageVisible = true
   private unsubscribeVisibility: (() => void) | null = null
   private lastFrame: SingingFrame | null = null
+  private musicLease: MotionLeaseHandle | null = null
 
   constructor(
     coordinator: RigMotionCoordinator,
@@ -156,12 +157,9 @@ export class MusicMotionSource {
     }
 
     if (gap === 'stop' || holdExpired) {
-      this.coordinator.release('music')
+      this.releaseMusic()
     } else {
-      this.coordinator.claim('music', ['mouth', 'headBody'], {
-        nowMs,
-        ttlMs: MUSIC_LEASE_TTL_MS,
-      })
+      this.holdMusic(nowMs)
     }
 
     const snapshot = this.coordinator.snapshot(nowMs)
@@ -231,7 +229,7 @@ export class MusicMotionSource {
     }
     this.holdUntil = 0
     if (release) {
-      this.coordinator.release('music')
+      this.releaseMusic()
       const frame: SingingFrame = {
         apply: {
           release: true,
@@ -253,5 +251,22 @@ export class MusicMotionSource {
     this.unsubscribeVisibility = null
     this.connected = false
     this.lastFrame = null
+  }
+
+  private holdMusic(nowMs: number): void {
+    this.musicLease =
+      this.coordinator.renew(this.musicLease, ['mouth', 'headBody'], {
+        nowMs,
+        ttlMs: MUSIC_LEASE_TTL_MS,
+      }) ??
+      this.coordinator.claim('music', ['mouth', 'headBody'], {
+        nowMs,
+        ttlMs: MUSIC_LEASE_TTL_MS,
+      })
+  }
+
+  private releaseMusic(): void {
+    this.coordinator.release(this.musicLease)
+    this.musicLease = null
   }
 }
