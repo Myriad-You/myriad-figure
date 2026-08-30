@@ -39,6 +39,8 @@ export class MotionRuntime {
   private capabilities: string[] = []
   private recentIntents: PerformanceCue['intent'][] = []
   private motionStyle: RigMotionStyle = 'even'
+  private previewClock: ReturnType<typeof setTimeout> | null = null
+  private previewClockActive = false
 
   constructor(
     coordinator: RigMotionCoordinator,
@@ -73,12 +75,15 @@ export class MotionRuntime {
           this.musicFrame = frame
           this.emit()
         })
+      } else {
+        this.startPreviewClock()
       }
     }
     return () => {
       this.retains -= 1
       if (this.retains > 0) return
       this.retains = 0
+      this.stopPreviewClock()
       this.speech.stop()
       this.performance.stop()
       this.mood.release()
@@ -132,6 +137,29 @@ export class MotionRuntime {
   private emit(): void {
     const frame = this.frame()
     for (const listener of this.listeners) listener(frame)
+  }
+
+  private startPreviewClock(): void {
+    if (this.previewClockActive) return
+    this.previewClockActive = true
+    const step = () => {
+      if (!this.previewClockActive) return
+      const now =
+        typeof performance !== 'undefined' ? performance.now() : Date.now()
+      this.coordinator.tick(now)
+      this.emit()
+      const timer = setTimeout(step, 16)
+      if (typeof timer === 'object' && 'unref' in timer) timer.unref()
+      this.previewClock = timer
+    }
+    step()
+  }
+
+  private stopPreviewClock(): void {
+    this.previewClockActive = false
+    if (this.previewClock == null) return
+    clearTimeout(this.previewClock)
+    this.previewClock = null
   }
 }
 

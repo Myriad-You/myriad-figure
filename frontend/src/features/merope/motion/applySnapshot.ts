@@ -41,12 +41,12 @@ export function applySingingWrite(
         ? false
         : null,
   }
-  if (apply.release && !apply.writeGroove) {
-    rig.setSinging(false)
-    rig.setSingingSpectrum(null)
-  } else if (apply.writeGroove) {
+  if (apply.writeGroove) {
     rig.setSinging(true)
     rig.setSingingSpectrum(drive.spectrum)
+  } else {
+    rig.setSinging(false)
+    rig.setSingingSpectrum(null)
   }
   if (apply.writeMouth) {
     rig.setSpeechActive(true)

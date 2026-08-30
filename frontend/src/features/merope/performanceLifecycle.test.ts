@@ -54,6 +54,29 @@ test('stops the mounted rig when the lifecycle owner is disposed', () => {
   assert.equal(stopped, 1)
 })
 
+test('a normal speech end releases the plan the same way cancel does', () => {
+  let stopped = 0
+  const controller = new PerformanceLifecycleController({
+    playMotionPlan: () => true,
+    stopMotionPlan: () => {
+      stopped += 1
+    },
+  })
+  controller.handle({
+    text: 'reply',
+    source: 'reply',
+    messageId: 'message-1',
+    performance,
+  })
+  controller.handleSpeech({
+    phase: 'end',
+    source: 'reply',
+    messageId: 'message-1',
+    utteranceId: 'utt-1',
+  })
+  assert.equal(stopped, 1)
+})
+
 test('cancels only the transient plan owned by the interrupted message', () => {
   const played: (typeof performance)[] = []
   let stopped = 0

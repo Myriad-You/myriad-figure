@@ -1,16 +1,24 @@
 import type { PerformanceDirective } from '../../../services/agent/types'
 import type { MotionLeaseHandle, RigMotionCoordinator } from './coordinator'
 import { scheduleBodyCues } from '../anime25drig/performanceMotion'
-import { cueOccupiesHeadBody } from './performanceChannels'
+import {
+  cueOccupiesHeadBody,
+  performanceOccupiedChannels,
+} from './performanceChannels'
+
+/** Baseline-only plans have no cue clock; they still must expire. */
+export const PERFORMANCE_BASELINE_HOLD_MS = 2400
 
 export interface PerformanceLeaseWindows {
+  expressionBaselineUntilMs: number
   expressionCueUntilMs: number | null
   headBodyCueUntilMs: number | null
 }
 
 /**
- * Timed windows for a Lite plan. Expression baseline lasts until stop;
- * cue leases expire when the last occupying cue ends so music can resume.
+ * Timed windows for a Lite plan. Expression baseline expires with the last
+ * cue, or after a short hold when the plan is baseline-only. Open posture
+ * occupies head/body for that same window so music can yield and return.
  */
 export function performanceLeaseWindows(
   directive: PerformanceDirective,
@@ -31,7 +39,19 @@ export function performanceLeaseWindows(
           : Math.max(headBodyCueUntilMs, item.endMs)
     }
   }
-  return { expressionCueUntilMs, headBodyCueUntilMs }
+  const expressionBaselineUntilMs =
+    expressionCueUntilMs ?? originMs + PERFORMANCE_BASELINE_HOLD_MS
+  if (performanceOccupiedChannels(directive).includes('headBody')) {
+    headBodyCueUntilMs =
+      headBodyCueUntilMs === null
+        ? expressionBaselineUntilMs
+        : Math.max(headBodyCueUntilMs, expressionBaselineUntilMs)
+  }
+  return {
+    expressionBaselineUntilMs,
+    expressionCueUntilMs,
+    headBodyCueUntilMs,
+  }
 }
 
 /**
@@ -50,7 +70,10 @@ export class PerformanceMotionLeases {
     this.expressionBaseline = this.ensure(
       this.expressionBaseline,
       ['expression'],
-      { nowMs },
+      {
+        nowMs,
+        ttlMs: Math.max(1, windows.expressionBaselineUntilMs - nowMs),
+      },
     )
     this.expressionCue = this.syncTimed(
       this.expressionCue,

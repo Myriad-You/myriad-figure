@@ -4,9 +4,11 @@ import test from 'node:test'
 import { cueDurationMs } from '../anime25drig/performanceMotion'
 import { RigMotionCoordinator } from './coordinator'
 import {
+  PERFORMANCE_BASELINE_HOLD_MS,
   performanceLeaseWindows,
   PerformanceMotionLeases,
 } from './performanceLeases'
+import { allowsCoSpeechExpression } from './policy'
 
 function cue(
   intent: PerformanceDirective['plan']['cues'][number]['intent'],
@@ -42,7 +44,7 @@ function directive(
   }
 }
 
-test('open posture without a body cue does not open a head/body window', () => {
+test('open posture without a body cue occupies head/body for the baseline hold', () => {
   const windows = performanceLeaseWindows(
     directive({
       baseline: {
@@ -54,7 +56,8 @@ test('open posture without a body cue does not open a head/body window', () => {
     }),
     0,
   )
-  assert.equal(windows.headBodyCueUntilMs, null)
+  assert.equal(windows.headBodyCueUntilMs, PERFORMANCE_BASELINE_HOLD_MS)
+  assert.equal(windows.expressionBaselineUntilMs, PERFORMANCE_BASELINE_HOLD_MS)
   assert.equal(windows.expressionCueUntilMs, null)
 })
 
@@ -74,7 +77,7 @@ test('think stays on expression and never takes the singing body', () => {
   assert.equal(windows.headBodyCueUntilMs, null)
 })
 
-test('body cue lease expires and music groove resumes; baseline expression stays', () => {
+test('body cue lease expires and music groove resumes; baseline expression expires with the plan', () => {
   const coordinator = new RigMotionCoordinator()
   coordinator.claim('music', ['mouth', 'headBody'], { nowMs: 0 })
   const leases = new PerformanceMotionLeases(coordinator)
@@ -86,9 +89,58 @@ test('body cue lease expires and music groove resumes; baseline expression stays
   const end = cueDurationMs(greet)
   coordinator.tick(end)
   assert.equal(coordinator.owner('headBody', end), 'music')
-  assert.equal(coordinator.owner('expression', end), 'performance')
+  assert.notEqual(coordinator.owner('expression', end), 'performance')
+})
+
+test('open posture plus a face cue holds head/body then returns it to music', () => {
+  const coordinator = new RigMotionCoordinator()
+  coordinator.claim('music', ['headBody'], { nowMs: 0 })
+  const leases = new PerformanceMotionLeases(coordinator)
+  const think = cue('think')
+  leases.apply(
+    directive({
+      baseline: {
+        expression: 'warm',
+        posture: 'open',
+        motionEnergy: 1,
+        attention: 1,
+      },
+      cues: [think],
+    }),
+    0,
+  )
+  assert.equal(coordinator.owner('headBody', 0), 'performance')
+  const end = cueDurationMs(think)
+  coordinator.tick(end)
+  assert.equal(coordinator.owner('headBody', end), 'music')
+})
+
+test('a finished Chat speech end releases expression so co-speech may resume', () => {
+  const coordinator = new RigMotionCoordinator()
+  const leases = new PerformanceMotionLeases(coordinator)
+  leases.apply(directive(), 0)
+  assert.equal(coordinator.owner('expression', 0), 'performance')
+  assert.equal(allowsCoSpeechExpression(coordinator.owner('expression', 0)), false)
   leases.releaseAll()
-  assert.equal(coordinator.owner('expression', end), 'idle')
+  assert.equal(coordinator.owner('expression', 0), 'idle')
+  assert.equal(allowsCoSpeechExpression(coordinator.owner('expression', 0)), true)
+})
+
+test('baseline hold expiry returns expression without a cancel event', () => {
+  const coordinator = new RigMotionCoordinator()
+  const leases = new PerformanceMotionLeases(coordinator)
+  leases.apply(directive(), 0)
+  coordinator.tick(PERFORMANCE_BASELINE_HOLD_MS)
+  assert.equal(
+    coordinator.owner('expression', PERFORMANCE_BASELINE_HOLD_MS),
+    'idle',
+  )
+  assert.equal(
+    allowsCoSpeechExpression(
+      coordinator.owner('expression', PERFORMANCE_BASELINE_HOLD_MS),
+    ),
+    true,
+  )
 })
 
 test('cancel or unmount releases every performance lease, not someone else', () => {

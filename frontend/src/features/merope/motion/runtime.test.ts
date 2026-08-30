@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { RigMotionCoordinator } from './coordinator'
-import { MotionRuntime } from './runtime'
+import { createPreviewMotionRuntime, MotionRuntime } from './runtime'
 
 test('two consumers see the same speech intent; one unmount does not stop the source', () => {
   const runtime = new MotionRuntime(new RigMotionCoordinator())
@@ -29,6 +29,22 @@ test('two consumers see the same speech intent; one unmount does not stop the so
   unsubB()
   releaseB()
   assert.equal(runtime.frame().snapshot.owners.mouth, 'idle')
+})
+
+test('preview runtime ticks timed leases without a music sampler', async () => {
+  const runtime = createPreviewMotionRuntime()
+  const release = runtime.retain()
+  const now = performance.now()
+  runtime.coordinator.claim('performance', ['headBody'], {
+    nowMs: now,
+    ttlMs: 40,
+  })
+  assert.equal(runtime.coordinator.owner('headBody', now), 'performance')
+  await new Promise((resolve) => setTimeout(resolve, 80))
+  const after = runtime.coordinator.owner('headBody')
+  assert.notEqual(after, 'performance')
+  assert.ok(after === 'idle' || after === 'ambient')
+  release()
 })
 
 test('mood claims expression below co-speech', () => {

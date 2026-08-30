@@ -31,8 +31,8 @@ export class PerformanceLifecycleController {
   }
 
   handleSpeech(event: MeropeSpeechEventDetail): void {
-    if (event.phase !== 'cancel') return
-    this.rememberCancellation(event.messageId)
+    if (event.phase !== 'cancel' && event.phase !== 'end') return
+    if (event.phase === 'cancel') this.rememberCancellation(event.messageId)
     if (event.messageId !== this.activeMessageId) return
     this.activeMessageId = null
     this.activePlanKey = null
