@@ -44,6 +44,10 @@ function directive(
   }
 }
 
+test('lease tail is not a multi-second visual return to idle', () => {
+  assert.ok(PERFORMANCE_BASELINE_HOLD_MS < 2400)
+})
+
 test('open posture without a body cue occupies head/body for the baseline hold', () => {
   const windows = performanceLeaseWindows(
     directive({
@@ -122,16 +126,10 @@ test('open posture plus a face cue holds head/body then returns it to music', ()
   assert.equal(coordinator.owner('headBody', end), 'music')
 })
 
-test('releasing performance leases returns expression so co-speech may resume', () => {
+test('a baseline-only plan does not exclusive-claim expression', () => {
   const coordinator = new RigMotionCoordinator()
   const leases = new PerformanceMotionLeases(coordinator)
   leases.apply(directive(), 0)
-  assert.equal(coordinator.owner('expression', 0), 'performance')
-  assert.equal(
-    allowsCoSpeechExpression(coordinator.owner('expression', 0)),
-    false,
-  )
-  leases.releaseAll()
   assert.equal(coordinator.owner('expression', 0), 'idle')
   assert.equal(
     allowsCoSpeechExpression(coordinator.owner('expression', 0)),
@@ -139,19 +137,17 @@ test('releasing performance leases returns expression so co-speech may resume', 
   )
 })
 
-test('baseline hold expiry returns expression without a cancel event', () => {
+test('cue lease expiry returns expression without a cancel event', () => {
   const coordinator = new RigMotionCoordinator()
   const leases = new PerformanceMotionLeases(coordinator)
-  leases.apply(directive(), 0)
-  coordinator.tick(PERFORMANCE_BASELINE_HOLD_MS)
+  const think = cue('think')
+  leases.apply(directive({ cues: [think] }), 0)
+  assert.equal(coordinator.owner('expression', 0), 'performance')
+  const settled = cueDurationMs(think) + PERFORMANCE_BASELINE_HOLD_MS
+  coordinator.tick(settled)
+  assert.equal(coordinator.owner('expression', settled), 'idle')
   assert.equal(
-    coordinator.owner('expression', PERFORMANCE_BASELINE_HOLD_MS),
-    'idle',
-  )
-  assert.equal(
-    allowsCoSpeechExpression(
-      coordinator.owner('expression', PERFORMANCE_BASELINE_HOLD_MS),
-    ),
+    allowsCoSpeechExpression(coordinator.owner('expression', settled)),
     true,
   )
 })

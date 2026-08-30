@@ -3,7 +3,10 @@ import type { Anime25DTorsoShellRotation } from './torsoDeformation'
 import type { Anime25DPlaybackLayer, Anime25DTorsoShellProfile } from './types'
 import { localToAtlasUv } from './atlasUv'
 import { anime25DTorsoShellOffsetX } from './torsoDeformation'
-import { createIndexedDeformableMesh } from './webglRuntime'
+import {
+  createIndexedDeformableMesh,
+  disposeIndexedDeformableMesh,
+} from './webglRuntime'
 
 export const BODY_HEAD_FOLLOW = 0.16
 export const HIGH_COLLAR_NECK_FOLLOW_POWER = 3
@@ -34,9 +37,9 @@ export interface CollarMotionPose {
   headRotationSine: number
   bodyBreathOffset: number
   headBreathOffset: number
-  torsoProfile?: Readonly<Anime25DTorsoShellProfile> | null
-  torsoShellRotation?: Readonly<Anime25DTorsoShellRotation> | null
-  torsoShellBlend?: number
+  torsoProfile: Readonly<Anime25DTorsoShellProfile>
+  torsoShellRotation: Readonly<Anime25DTorsoShellRotation>
+  torsoShellBlend: number
 }
 
 export function collarNeckHeadBlend(
@@ -192,14 +195,12 @@ export function deformCollarClipMesh(
       clip.deformed,
       index,
     )
-    if (pose.torsoProfile && pose.torsoShellRotation) {
-      clip.deformed[index] += anime25DTorsoShellOffsetX(
-        clip.deformed[index],
-        pose.torsoProfile,
-        pose.torsoShellRotation,
-        (pose.torsoShellBlend ?? 0) * (1 - headBlend),
-      )
-    }
+    clip.deformed[index] += anime25DTorsoShellOffsetX(
+      clip.deformed[index],
+      pose.torsoProfile,
+      pose.torsoShellRotation,
+      pose.torsoShellBlend * (1 - headBlend),
+    )
   }
 }
 
@@ -209,6 +210,18 @@ export function uploadCollarClipMesh(
 ): void {
   gl.bindBuffer(gl.ARRAY_BUFFER, clip.vertexBuffer)
   gl.bufferSubData(gl.ARRAY_BUFFER, 0, clip.deformed)
+}
+
+export function disposeCollarClipMesh(
+  gl: WebGL2RenderingContext,
+  clip: Readonly<CollarClipMesh>,
+): void {
+  disposeIndexedDeformableMesh(gl, {
+    vao: clip.vao,
+    positionBuffer: clip.vertexBuffer,
+    uvBuffer: clip.uvBuffer,
+    indexBuffer: clip.indexBuffer,
+  })
 }
 
 function smoothstep(value: number): number {

@@ -1,6 +1,7 @@
 import type { Anime25DPlaybackBuildLayer } from './playback'
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import { analyzeAnime25DMouthProfile } from './mouthProfile'
 import { buildAnime25DPlayback, remapRiggerAnchors } from './playback'
 import { isAnime25DPlayback } from './types'
 
@@ -51,12 +52,22 @@ function anchorsFor(width: number, height: number) {
   }
 }
 
+function mouthProfileFor(width: number, height: number) {
+  const anchors = anchorsFor(width, height)
+  return analyzeAnime25DMouthProfile(
+    [],
+    { x: 0, y: 0, width, height },
+    anchors.mouth,
+  )
+}
+
 describe('Anime2.5DRig playback', () => {
   it('builds a credited playback document from face-rig layers', () => {
     const playback = buildAnime25DPlayback({
       frameWidth: 768,
       frameHeight: 1024,
       anchors: anchorsFor(768, 1024),
+      mouthProfile: mouthProfileFor(768, 1024),
       layers: [
         layer({
           id: 'face',
@@ -93,14 +104,15 @@ describe('Anime2.5DRig playback', () => {
     assert.equal(playback.anchors.eyeL?.closeY, 168)
     assert.equal(playback.anchors.bodyPivot.y, 1024)
     assert.ok(playback.anchors.faceScale > 0)
-    assert.equal(playback.version, 6)
-    assert.equal(playback.shellProfile?.version, 1)
-    assert.equal(playback.shellProfile?.source, 'anchor-derived')
-    assert.equal(playback.shellProfile?.hair.hairlinePin.enabled, true)
-    assert.equal(playback.shellProfile?.torso?.enabled, true)
-    assert.equal(playback.shellProfile?.torso?.centerX, 384)
-    assert.equal(playback.shellProfile?.torso?.radiusX, 308 * 0.95)
-    assert.equal(playback.shellProfile?.torso?.radiusZ, 308 * 0.55)
+    assert.equal(playback.version, 7)
+    assert.equal(playback.shellProfile.version, 1)
+    assert.equal(playback.shellProfile.source, 'anchor-derived')
+    assert.equal(playback.shellProfile.hair.hairlinePin.enabled, true)
+    assert.equal(playback.shellProfile.torso.enabled, true)
+    assert.equal(playback.shellProfile.torso.centerX, 384)
+    assert.equal(playback.shellProfile.torso.radiusX, 308 * 0.95)
+    assert.equal(playback.shellProfile.torso.radiusZ, 308 * 0.55)
+    assert.equal(playback.chestProfile.source, 'geometry-fallback')
   })
 
   it('keeps independent front and rear hair layers', () => {
@@ -108,6 +120,7 @@ describe('Anime2.5DRig playback', () => {
       frameWidth: 768,
       frameHeight: 1024,
       anchors: anchorsFor(768, 1024),
+      mouthProfile: mouthProfileFor(768, 1024),
       layers: [
         layer({
           id: 'back-hair',
@@ -160,6 +173,7 @@ describe('Anime2.5DRig playback', () => {
       frameWidth: 768,
       frameHeight: 1024,
       anchors: anchorsFor(768, 1024),
+      mouthProfile: mouthProfileFor(768, 1024),
       layers: [
         layer({
           id: 'face',
@@ -185,6 +199,7 @@ describe('Anime2.5DRig playback', () => {
       frameWidth: 768,
       frameHeight: 1024,
       anchors: anchorsFor(768, 1024),
+      mouthProfile: mouthProfileFor(768, 1024),
       layers: [
         layer({
           id: 'face',
@@ -210,6 +225,7 @@ describe('Anime2.5DRig playback', () => {
       frameWidth: 768,
       frameHeight: 1024,
       anchors: anchorsFor(768, 1024),
+      mouthProfile: mouthProfileFor(768, 1024),
       layers: [
         layer({
           id: 'face',

@@ -1,4 +1,4 @@
-import type { Anime25DChestProfile } from './types'
+import type { Anime25DChestProfile, Anime25DPlayback } from './types'
 
 const CHEST_BONE_ID = 'a25d-chest'
 const TOPWEAR_PART_ID = 'a25d-topwear'
@@ -23,12 +23,6 @@ const SIZE_BOOST_END = 0.65
 const MAX_SIZE_TRANSMISSION_BOOST = 0.75
 const MIN_GARMENT_TRANSMISSION = 0.35
 const MIN_RESPONSE_GARMENT_TRANSMISSION = 0.55
-const AI_MIN_RADIUS_X_BASE = 0.48
-const AI_MIN_RADIUS_X_SIZE = 0.25
-const AI_MIN_RADIUS_Y_BASE = 0.26
-const AI_MIN_RADIUS_Y_SIZE = 0.14
-const AI_MIN_CENTER_Y_BASE = 0.44
-const AI_MIN_CENTER_Y_SIZE = 0.2
 const AI_LOBE_CENTER = 0.58
 const AI_LOBE_RADIUS = 0.62
 const AI_CENTER_BRIDGE = 0.68
@@ -82,20 +76,10 @@ export interface ChestDeformationRegion {
   radiusY: number
 }
 
-export interface ChestRegionContext {
-  faceWidth: number
-  faceHeight: number
-  neckBottom: number
-  fallbackCenterX: number
-  fallbackCenterY: number
-  fallbackRadiusX: number
-  fallbackRadiusY: number
-}
-
 type ChestWeightProfile = Pick<Anime25DChestProfile, 'enabled' | 'source'>
 type ChestRegionProfile = Pick<
   Anime25DChestProfile,
-  'source' | 'centerX' | 'centerY' | 'radiusX' | 'radiusY' | 'visibleScale'
+  'centerX' | 'centerY' | 'radiusX' | 'radiusY'
 >
 type ChestMotionProfile = Pick<
   Anime25DChestProfile,
@@ -123,51 +107,87 @@ export interface ChestDynamicsTuning {
 }
 
 /**
- * AI vision already authors the complete two-dimensional deformation region.
- * Intersecting it with the older vertical bone field can erase the AI-selected
- * centre. Geometry fallback still needs that field to retain legacy behavior.
+ * AI vision authors the complete two-dimensional deformation region. Geometry
+ * profiles use the rig's authored chest weights instead.
  */
 export function chestProfileUsesGeometryWeights(
-  profile: ChestWeightProfile | null | undefined,
+  profile: ChestWeightProfile,
 ): boolean {
-  return profile?.enabled !== false && profile?.source !== 'ai-vision'
+  return profile.enabled && profile.source !== 'ai-vision'
 }
 
-/**
- * Treat an AI ellipse as the envelope of the paired volume, not a small patch
- * around the cleavage. The import-time analyzer applies the same lower bounds;
- * resolving them again here also repairs already persisted v2 profiles.
- */
 export function resolveChestDeformationRegion(
-  profile: ChestRegionProfile | null | undefined,
-  context: ChestRegionContext,
+  profile: ChestRegionProfile,
 ): ChestDeformationRegion {
-  const region = {
-    centerX: profile?.centerX ?? context.fallbackCenterX,
-    centerY: profile?.centerY ?? context.fallbackCenterY,
-    radiusX: profile?.radiusX ?? context.fallbackRadiusX,
-    radiusY: profile?.radiusY ?? context.fallbackRadiusY,
+  return {
+    centerX: profile.centerX,
+    centerY: profile.centerY,
+    radiusX: profile.radiusX,
+    radiusY: profile.radiusY,
   }
-  if (profile?.source !== 'ai-vision') return region
+}
 
-  const visibleScale = clamp(profile.visibleScale, 0, 1)
-  region.centerY = Math.max(
-    region.centerY,
-    context.neckBottom +
-      context.faceHeight *
-        (AI_MIN_CENTER_Y_BASE + AI_MIN_CENTER_Y_SIZE * visibleScale),
+/** Creates the complete current profile before optional AI refinement. */
+export function deriveGeometryChestProfile(
+  playback: Readonly<
+    Pick<Anime25DPlayback, 'pixelCanvas' | 'layers' | 'anchors'>
+  >,
+): Anime25DChestProfile {
+  const { width, height } = playback.pixelCanvas
+  const faceWidth = Math.max(
+    1,
+    Math.abs(playback.anchors.face.x1 - playback.anchors.face.x0),
   )
-  region.radiusX = Math.max(
-    region.radiusX,
-    context.faceWidth *
-      (AI_MIN_RADIUS_X_BASE + AI_MIN_RADIUS_X_SIZE * visibleScale),
+  const faceHeight = Math.max(
+    1,
+    Math.abs(playback.anchors.face.y1 - playback.anchors.face.y0),
   )
-  region.radiusY = Math.max(
-    region.radiusY,
-    context.faceHeight *
-      (AI_MIN_RADIUS_Y_BASE + AI_MIN_RADIUS_Y_SIZE * visibleScale),
+  const topwear = playback.layers.find((layer) => layer.role === 'topwear')
+  let centerX = clamp(playback.anchors.neckPivot.x, 0, width)
+  let centerY = clamp(
+    playback.anchors.neckBottom + faceHeight * 0.5,
+    0,
+    height,
   )
-  return region
+  if (topwear && topwear.w > 0 && topwear.h > 0) {
+    centerX = clamp(
+      centerX,
+      topwear.x + topwear.w * 0.15,
+      topwear.x + topwear.w * 0.85,
+    )
+    const minimumY = clamp(
+      Math.max(
+        topwear.y + topwear.h * 0.2,
+        playback.anchors.neckBottom + faceHeight * 0.12,
+      ),
+      0,
+      height,
+    )
+    const maximumY = clamp(
+      Math.min(
+        topwear.y + topwear.h * 0.62,
+        playback.anchors.neckBottom + faceHeight * 0.78,
+      ),
+      minimumY,
+      height,
+    )
+    centerY = clamp(centerY, minimumY, maximumY)
+  }
+  return {
+    version: 2,
+    enabled: true,
+    source: 'geometry-fallback',
+    centerX,
+    centerY,
+    radiusX: clamp(faceWidth * 0.6, 1, width * 0.5),
+    radiusY: clamp(faceHeight * 0.32, 1, height * 0.22),
+    visibleScale: 0.5,
+    motionScale: 1,
+    frequencyScale: 1,
+    supportScale: DEFAULT_SUPPORT_SCALE,
+    garmentMotionScale: DEFAULT_GARMENT_MOTION_SCALE,
+    confidence: 0,
+  }
 }
 
 /**
@@ -177,7 +197,7 @@ export function resolveChestDeformationRegion(
  * matching the previous hot-path cost.
  */
 export function chestDeformationWeight(
-  source: Anime25DChestProfile['source'] | undefined,
+  source: Anime25DChestProfile['source'],
   normalizedX: number,
   normalizedY: number,
   skinWeight: number,
@@ -201,11 +221,11 @@ export function chestDeformationWeight(
  * `min` preserves the more conservative of the authored and derived limits.
  */
 export function resolveChestMotionScale(
-  profile: ChestMotionProfile | null | undefined,
+  profile: ChestMotionProfile,
 ): number {
-  if (profile?.enabled === false) return 0
-  const authoredScale = clamp(profile?.motionScale ?? 1, 0, 1.25)
-  if (profile?.source !== 'ai-vision') return authoredScale
+  if (!profile.enabled) return 0
+  const authoredScale = clamp(profile.motionScale, 0, 1.25)
+  if (profile.source !== 'ai-vision') return authoredScale
   const visibleScale = clamp(profile.visibleScale, 0, 1)
   const progress = clamp(
     (visibleScale - AI_MOTION_RAMP_START) /
@@ -225,9 +245,9 @@ export function resolveChestMotionScale(
  * of the tissue response reaches the visible topwear surface.
  */
 export function resolveChestDynamics(
-  profile: ChestDynamicsProfile | null | undefined,
+  profile: ChestDynamicsProfile,
 ): ChestDynamicsTuning {
-  if (profile?.enabled === false) {
+  if (!profile.enabled) {
     return {
       followScale: 0,
       responseScale: 0,
@@ -235,12 +255,8 @@ export function resolveChestDynamics(
       dampingScale: 1,
     }
   }
-  const support = clamp(profile?.supportScale ?? DEFAULT_SUPPORT_SCALE, 0, 1)
-  const garmentMotion = clamp(
-    profile?.garmentMotionScale ?? DEFAULT_GARMENT_MOTION_SCALE,
-    0,
-    1,
-  )
+  const support = clamp(profile.supportScale, 0, 1)
+  const garmentMotion = clamp(profile.garmentMotionScale, 0, 1)
   // Visual estimates near the restrained end must not erase the authored
   // motion. A perceptual curve preserves strong differentiation while leaving
   // a small visible response even through rigid or heavily layered clothing.
@@ -264,7 +280,7 @@ export function resolveChestDynamics(
         sizeTransmission,
     ),
     frequencyScale: clamp(
-      (profile?.frequencyScale ?? 1) * (0.94 + support * 0.08),
+      profile.frequencyScale * (0.94 + support * 0.08),
       0.7,
       1.45,
     ),
@@ -278,9 +294,9 @@ export function resolveChestDynamics(
  * threshold, while medium and large regions converge to the authored response.
  */
 function resolveChestSizeTransmission(
-  profile: ChestDynamicsProfile | null | undefined,
+  profile: ChestDynamicsProfile,
 ): number {
-  if (profile?.source !== 'ai-vision') return 1
+  if (profile.source !== 'ai-vision') return 1
   const progress = clamp(
     (profile.visibleScale - AI_MOTION_RAMP_START) /
       (AI_MOTION_RAMP_END - AI_MOTION_RAMP_START),

@@ -35,6 +35,7 @@ test('keeps collar CPU deformation separate from its GPU upload', () => {
     headRotationSine: Math.sin(0.13),
     bodyBreathOffset: 1.1,
     headBreathOffset: 0.4,
+    ...neutralTorsoPose(),
   }
   let binds = 0
   let uploads = 0
@@ -76,6 +77,7 @@ test('applies the collar torso shell to the neck aperture mesh', () => {
     headRotationSine: Math.sin(0.13),
     bodyBreathOffset: 1.1,
     headBreathOffset: 0.4,
+    ...neutralTorsoPose(),
   }
   deformCollarClipMesh(baseline, pose, 0.95)
 
@@ -183,6 +185,23 @@ function clipMesh(rest: Float32Array): CollarClipMesh {
     uvBuffer: {} as WebGLBuffer,
     indexBuffer: {} as WebGLBuffer,
     indexCount: 6,
+  }
+}
+
+function neutralTorsoPose(): Pick<
+  CollarMotionPose,
+  'torsoProfile' | 'torsoShellRotation' | 'torsoShellBlend'
+> {
+  return {
+    torsoProfile: {
+      enabled: false,
+      blend: 0,
+      centerX: 100,
+      radiusX: 80,
+      radiusZ: 48,
+    },
+    torsoShellRotation: { active: false, yawCosine: 1, yawSine: 0 },
+    torsoShellBlend: 0,
   }
 }
 

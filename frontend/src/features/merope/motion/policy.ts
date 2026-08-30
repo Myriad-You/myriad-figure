@@ -14,7 +14,7 @@ export const IDLE_MOTION_POLICY: MotionChannelPolicy = {
   headBody: 'idle',
 }
 
-/** Ambient and thinking may run on an unclaimed or ambient-owned channel. */
+/** Lease helper: who may *claim* ambient. Visual mix uses occupancy, not this gate. */
 export function allowsAmbientMotion(owner: MotionSourceId): boolean {
   return owner === 'idle' || owner === 'ambient'
 }

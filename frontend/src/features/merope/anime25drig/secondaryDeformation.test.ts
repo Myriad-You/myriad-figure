@@ -335,9 +335,7 @@ function highCollarFrame(): Anime25DSecondaryDeformationFrame {
   frame.headBreathOffset = 0
   frame.specialHeadOffset = 0
   frame.highCollar = true
-  frame.torsoProfile = undefined
   frame.torsoShellBlend = 0
-  frame.torsoShellRotation = undefined
   return frame
 }
 
@@ -525,9 +523,20 @@ function secondaryFrame(
     chestProfileSource:
       frameIndex % 3 === 0
         ? 'ai-vision'
-        : frameIndex % 3 === 1
-          ? 'geometry-fallback'
-          : undefined,
+        : 'geometry-fallback',
+    shellProfile: shellProfile(),
+    shellBlend: 0,
+    shellActivation: 0,
+    shellRotation: {
+      active: false,
+      yawCosine: 1,
+      yawSine: 0,
+      pitchCosine: 1,
+      pitchSine: 0,
+    },
+    torsoProfile: shellProfile().torso,
+    torsoShellBlend: 0,
+    torsoShellRotation: { active: false, yawCosine: 1, yawSine: 0 },
   }
 }
 

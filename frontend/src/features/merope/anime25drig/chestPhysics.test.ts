@@ -8,6 +8,7 @@ import {
   chestProfileUsesGeometryWeights,
   chestResponseMix,
   createChestSpringState,
+  deriveGeometryChestProfile,
   resolveChestDeformationRegion,
   resolveChestDynamics,
   resolveChestMotionScale,
@@ -16,7 +17,7 @@ import {
   topwearMotionAtChest,
 } from './chestPhysics'
 
-test('repairs a cleavage-sized AI region into a paired volume envelope', () => {
+test('uses the import-authored deformation region without runtime repair', () => {
   const region = resolveChestDeformationRegion(
     {
       source: 'ai-vision',
@@ -26,19 +27,51 @@ test('repairs a cleavage-sized AI region into a paired volume envelope', () => {
       radiusY: 84,
       visibleScale: 0.55,
     },
-    {
-      faceWidth: 335,
-      faceHeight: 451,
-      neckBottom: 799,
-      fallbackCenterX: 546,
-      fallbackCenterY: 1069,
-      fallbackRadiusX: 201,
-      fallbackRadiusY: 203,
-    },
   )
-  assert.ok(region.centerY > 1046)
-  assert.ok(region.radiusX > 206)
-  assert.ok(region.radiusY > 151)
+  assert.deepEqual(region, {
+    centerX: 542,
+    centerY: 1014,
+    radiusX: 102,
+    radiusY: 84,
+  })
+})
+
+test('authors a complete deterministic geometry profile before AI refinement', () => {
+  const profile = deriveGeometryChestProfile({
+    pixelCanvas: { width: 768, height: 1024 },
+    anchors: {
+      face: { x0: 230, y0: 92, x1: 538, y1: 368, cx: 384, cy: 246 },
+      neckPivot: { x: 384, y: 390 },
+      neckTop: 368,
+      neckBottom: 428,
+      bodyPivot: { x: 384, y: 1024 },
+      mouth: { x0: 350, y0: 300, x1: 418, y1: 330, cx: 384, cy: 315 },
+      faceScale: 308 / 333,
+    },
+    layers: [
+      {
+        name: 'topwear',
+        role: 'topwear',
+        z: 0,
+        depth: 0.9,
+        group: 'body',
+        phys: null,
+        fade: null,
+        side: null,
+        x: 138.24,
+        y: 368.64,
+        w: 491.52,
+        h: 655.36,
+        atlas: { x: 0, y: 0, w: 1, h: 1 },
+        strands: [],
+      },
+    ],
+  })
+  assert.equal(profile.version, 2)
+  assert.equal(profile.source, 'geometry-fallback')
+  assert.equal(profile.centerX, 384)
+  assert.equal(profile.radiusX, 308 * 0.6)
+  assert.equal(profile.radiusY, 276 * 0.32)
 })
 
 test('AI deformation peaks on the paired lobes instead of the sternum', () => {
@@ -69,7 +102,6 @@ test('uses one authoritative chest region instead of intersecting AI with geomet
     }),
     false,
   )
-  assert.equal(chestProfileUsesGeometryWeights(undefined), true)
 })
 
 test('restrains small AI profiles with a smooth size cap', () => {

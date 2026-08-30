@@ -5,7 +5,7 @@ import { requiredUniform } from './webglRuntime'
 
 export interface Anime25DRenderableLayer {
   source: Anime25DPlaybackLayer
-  vao: WebGLVertexArrayObject
+  vao: WebGLVertexArrayObject | null
   indexCount: number
   layerTransform: Float32Array
   frameOpacity: number
@@ -15,6 +15,13 @@ export interface Anime25DRenderableLayer {
 }
 
 export type Anime25DRenderKind = 'ordinary' | 'neck' | 'eyewhite' | 'iris'
+
+export function anime25DLayerUsesOwnGeometry(
+  renderKind: Anime25DRenderKind,
+  hasCollarClip: boolean,
+): boolean {
+  return renderKind !== 'neck' || !hasCollarClip
+}
 
 export interface Anime25DRendererBindings {
   view: WebGLUniformLocation
@@ -90,9 +97,14 @@ export function drawAnime25DFrame(
   for (const layer of layers) {
     const opacity = layer.frameOpacity
     if (opacity < 0.004 && !layer.retainWhenHidden) continue
+    const usesOwnGeometry = anime25DLayerUsesOwnGeometry(
+      layer.renderKind,
+      Boolean(collarClip),
+    )
+    if (usesOwnGeometry && !layer.vao) continue
     if (work) {
       work.drawnLayers += 1
-      work.drawCalls += layer.renderKind === 'neck' && collarClip ? 2 : 1
+      work.drawCalls += usesOwnGeometry ? 1 : 2
     }
     gl.uniformMatrix3fv(bindings.layerTransform, false, layer.layerTransform)
     gl.uniform1f(bindings.opacity, opacity)
@@ -104,10 +116,12 @@ export function drawAnime25DFrame(
       layer.source.atlas.w,
       layer.source.atlas.h,
     )
-    gl.bindVertexArray(layer.vao)
-    if (layer.renderKind === 'neck' && collarClip) {
+    if (!usesOwnGeometry && collarClip) {
       drawCollarMaskedLayer(gl, bindings, collarClip, opacity)
-    } else if (layer.renderKind === 'eyewhite') {
+      continue
+    }
+    gl.bindVertexArray(layer.vao)
+    if (layer.renderKind === 'eyewhite') {
       gl.enable(gl.STENCIL_TEST)
       gl.stencilFunc(gl.ALWAYS, 1, 255)
       gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)

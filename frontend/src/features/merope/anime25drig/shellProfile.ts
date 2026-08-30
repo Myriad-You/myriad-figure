@@ -17,35 +17,6 @@ const DEFAULT_CURVE: readonly Anime25DShellCurvePoint[] = [
 
 type ShellProfileSource = Pick<Anime25DPlayback, 'anchors' | 'layers'>
 
-/**
- * Resolves the optional v6 extension without mutating the immutable asset.
- * Existing assets therefore gain the same deterministic profile as new imports.
- */
-export function resolveAnime25DShellProfile(
-  playback: Readonly<ShellProfileSource> &
-    Partial<Pick<Anime25DPlayback, 'shellProfile'>>,
-): Anime25DShellProfile {
-  const persisted = playback.shellProfile
-  if (!persisted) return deriveAnime25DShellProfile(playback)
-  const pinMode =
-    persisted.hair.hairlinePin.mode ??
-    (persisted.source === 'anchor-derived' ? 'strand-roots' : 'rectangle')
-  if (persisted.torso && persisted.hair.hairlinePin.mode === pinMode) {
-    return persisted
-  }
-  return {
-    ...persisted,
-    hair: {
-      ...persisted.hair,
-      hairlinePin: {
-        ...persisted.hair.hairlinePin,
-        mode: pinMode,
-      },
-    },
-    torso: persisted.torso ?? deriveAnime25DTorsoShellProfile(playback),
-  }
-}
-
 export function deriveAnime25DShellProfile(
   playback: Readonly<ShellProfileSource>,
 ): Anime25DShellProfile {

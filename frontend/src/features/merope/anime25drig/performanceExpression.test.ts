@@ -115,6 +115,9 @@ test('maps semantic baselines and cues to conservative expression offsets', () =
     'anger',
     'angleY',
     'angleZ',
+    'armPos',
+    'armY',
+    'body',
     'brow',
     'browAngSym',
     'eyeCry',
@@ -163,6 +166,9 @@ test('adds to manual channels without flattening left-right eye differences', ()
     irisScale: 0.01,
     angleY: -0.03,
     angleZ: 0.02,
+    body: 0,
+    armY: 0,
+    armPos: 0,
   })
 
   assert.ok(Math.abs(target.eyeOpenL - 0.68) < 1e-12)
@@ -206,6 +212,9 @@ test('never reopens an authored closed eye or closed-eye smile', () => {
     irisScale: 0,
     angleY: 0,
     angleZ: 0,
+    body: 0,
+    armY: 0,
+    armPos: 0,
   })
 
   assert.equal(wink.eyeOpenL, 0)
@@ -258,6 +267,9 @@ test('eases baseline changes without a first-frame jump or frame allocation', ()
       irisScale: 0,
       angleY: 0,
       angleZ: 0,
+      body: 0,
+      armY: 0,
+      armPos: 0,
       anger: 0,
       speechless: 0,
       maniac: 0,
@@ -445,6 +457,9 @@ test('does not resume an older cue after a replacement finishes', () => {
       irisScale: 0,
       angleY: 0,
       angleZ: 0,
+      body: 0,
+      armY: 0,
+      armPos: 0,
       anger: 0,
       speechless: 0,
       maniac: 0,
@@ -560,4 +575,37 @@ test('releases the semantic baseline smoothly when stopped', () => {
   assert.equal(atStop, beforeStop)
   assert.ok(released > 0)
   assert.ok(released < 0.001)
+})
+
+test('face and body of one cue peak in the same envelope window', () => {
+  const expression = new PerformanceExpressionController()
+  expression.play(directive('delivery', 1, 'steady', [cue('greet')]), 0)
+  const fadeIn = 0.1
+  const holdMid = fadeIn + 0.36
+  const peak = expression.sample(holdMid)
+  assert.ok(peak.brow > 0.01)
+  assert.ok(peak.body > 0.04)
+  assert.ok(peak.armY > 0.05)
+  const after = expression.sample(2.5)
+  assert.ok(Math.abs(after.body) < 0.001)
+  assert.ok(Math.abs(after.armY) < 0.001)
+})
+
+test('replacing a cue releases face and body together', () => {
+  const expression = new PerformanceExpressionController()
+  expression.play(directive('delivery', 1, 'steady', [cue('greet')]), 0)
+  const greetPeak = expression.sample(0.4)
+  assert.ok(greetPeak.body > 0.04)
+  expression.play(
+    directive('delivery', 1, 'steady', [cue('emphasize', 'replace', 0)]),
+    0.4,
+  )
+  const handingOff = expression.sample(0.41)
+  assert.ok(handingOff.body > 0)
+  for (let frame = 1; frame <= 48; frame += 1) {
+    expression.sample(0.4 + frame / 60)
+  }
+  const landed = expression.sample(1.2)
+  assert.ok(landed.body > 0.1)
+  assert.ok(Math.abs(landed.armY) < 0.02)
 })

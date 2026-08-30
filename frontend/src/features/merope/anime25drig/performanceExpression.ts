@@ -5,6 +5,12 @@ import type {
   PerformancePhase,
 } from '../../../services/agent/types'
 import { performanceCuePriority } from '../performanceContract'
+import {
+  cueDriverPatch,
+  cueIsSticker,
+  cueVisualEnvelope,
+  MIN_STICKER_FADE_OUT,
+} from './performanceMotion'
 
 export interface PerformanceExpressionOffset {
   brow: number
@@ -19,6 +25,9 @@ export interface PerformanceExpressionOffset {
   irisScale: number
   angleY: number
   angleZ: number
+  body: number
+  armY: number
+  armPos: number
   anger?: number
   speechless?: number
   maniac?: number
@@ -40,6 +49,9 @@ export interface PerformanceExpressionTarget {
   irisScale: number
   angleY: number
   angleZ: number
+  body?: number
+  armY?: number
+  armPos?: number
   anger?: number
   speechless?: number
   maniac?: number
@@ -72,6 +84,9 @@ const OFFSET_KEYS = [
   'irisScale',
   'angleY',
   'angleZ',
+  'body',
+  'armY',
+  'armPos',
   'anger',
   'speechless',
   'maniac',
@@ -92,6 +107,9 @@ const ZERO_OFFSET: PerformanceExpressionOffset = {
   irisScale: 0,
   angleY: 0,
   angleZ: 0,
+  body: 0,
+  armY: 0,
+  armPos: 0,
   anger: 0,
   speechless: 0,
   maniac: 0,
@@ -264,15 +282,7 @@ export class PerformanceExpressionController {
         }
       }
       const sticker = cueIsSticker(cue.intent)
-      const fadeIn = Math.max(
-        cue.fadeInMs / 1_000,
-        sticker ? MIN_STICKER_FADE_IN : 0,
-      )
-      const hold = Math.max(0.24, 0.72 / clamp(cue.tempo, 0.5, 1.6))
-      const fadeOut = Math.max(
-        cue.fadeOutMs / 1_000,
-        sticker ? MIN_STICKER_FADE_OUT : 0,
-      )
+      const { fadeIn, hold, fadeOut } = cueVisualEnvelope(cue)
       const priority = expressionCuePriority(cue)
       if (cue.interrupt !== 'queue') {
         const active = this.selectedCueAt(start)
@@ -425,6 +435,10 @@ export function expressionCueOffset(
     lovestruck: { lovestruck: amount },
   }
   Object.assign(output, patches[cue.intent])
+  const body = cueDriverPatch(cue)
+  if (typeof body.body === 'number') output.body = body.body
+  if (typeof body.armY === 'number') output.armY = body.armY
+  if (typeof body.armPos === 'number') output.armPos = body.armPos
   return output
 }
 
@@ -494,6 +508,33 @@ export function applyPerformanceExpressionOffset(
     1,
     0,
   )
+  if (typeof target.body === 'number') {
+    target.body = mixBoundedExpressionChannel(
+      target.body,
+      offset.body,
+      -1,
+      1,
+      0,
+    )
+  }
+  if (typeof target.armY === 'number') {
+    target.armY = mixBoundedExpressionChannel(
+      target.armY,
+      offset.armY,
+      -1,
+      1,
+      0,
+    )
+  }
+  if (typeof target.armPos === 'number') {
+    target.armPos = mixBoundedExpressionChannel(
+      target.armPos,
+      offset.armPos,
+      -1,
+      1,
+      0,
+    )
+  }
   target.anger = mixBoundedExpressionChannel(
     target.anger ?? 0,
     offset.anger ?? 0,
@@ -606,6 +647,15 @@ function writeBaselineOffset(
     warm: { brow: 0.055, mouthForm: 0.12, irisScale: 0.015 },
   }
   Object.assign(output, patches[baseline.expression])
+  const posture: Record<
+    PerformanceBaseline['posture'],
+    Partial<PerformanceExpressionOffset>
+  > = {
+    closed: { body: -0.16, armY: -0.14, armPos: -0.18 },
+    neutral: {},
+    open: { body: 0.12, armY: 0.16, armPos: 0.2 },
+  }
+  Object.assign(output, posture[baseline.posture])
 }
 
 function ambientScaleForAttention(attention: number): number {
@@ -617,21 +667,6 @@ function expressionCuePriority(cue: PerformanceCue): number {
 }
 
 const MIN_CUE_RELEASE = 0.06
-const MIN_STICKER_FADE_IN = 0.18
-const MIN_STICKER_FADE_OUT = 0.42
-const STICKER_INTENTS = new Set<PerformanceCue['intent']>([
-  'dizzy',
-  'cry',
-  'angry',
-  'speechless',
-  'maniac',
-  'silly',
-  'lovestruck',
-])
-
-function cueIsSticker(intent: PerformanceCue['intent']): boolean {
-  return STICKER_INTENTS.has(intent)
-}
 
 function releaseScheduledCue(cue: ScheduledExpressionCue, at: number): void {
   if (at <= cue.start || at >= cue.end) {

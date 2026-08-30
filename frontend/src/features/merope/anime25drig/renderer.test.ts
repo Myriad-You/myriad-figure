@@ -7,7 +7,7 @@ import type { Anime25DPlaybackLayer } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createAnime25DFrameWork } from './performanceTelemetry'
-import { drawAnime25DFrame } from './renderer'
+import { anime25DLayerUsesOwnGeometry, drawAnime25DFrame } from './renderer'
 
 test('renderer preserves collar and eye stencil order while skipping hidden art', () => {
   const calls: string[] = []
@@ -27,6 +27,7 @@ test('renderer preserves collar and eye stencil order while skipping hidden art'
     renderLayer('face', 'face', 1, 18),
     renderLayer('hidden_accent', 'accent', 0, 6),
   ]
+  layers[0].vao = null
   const collarClip = {
     vao: 'clip',
     indexCount: 6,
@@ -68,8 +69,15 @@ test('renderer preserves collar and eye stencil order while skipping hidden art'
     ['stencilFunc:20', 'stencilFunc:21', 'stencilFunc:20', 'stencilFunc:21'],
   )
   assert.equal(calls.at(-1), 'bindVao:none')
+  assert.equal(calls.includes('bindVao:neck'), false)
   assert.equal(work.drawnLayers, 4)
   assert.equal(work.drawCalls, 5)
+})
+
+test('collar clip is the sole geometry source for a replaced neck', () => {
+  assert.equal(anime25DLayerUsesOwnGeometry('neck', true), false)
+  assert.equal(anime25DLayerUsesOwnGeometry('neck', false), true)
+  assert.equal(anime25DLayerUsesOwnGeometry('ordinary', true), true)
 })
 
 test('renderer clears the frame but submits no layers before atlas readiness', () => {

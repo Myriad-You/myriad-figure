@@ -154,23 +154,49 @@ export function createIndexedDeformableMesh(
   const uvBuffer = gl.createBuffer()
   const indexBuffer = gl.createBuffer()
   if (!vao || !positionBuffer || !uvBuffer || !indexBuffer) {
+    if (positionBuffer) gl.deleteBuffer(positionBuffer)
+    if (uvBuffer) gl.deleteBuffer(uvBuffer)
+    if (indexBuffer) gl.deleteBuffer(indexBuffer)
+    if (vao) gl.deleteVertexArray(vao)
     throw new Error(currentCopy().merope.anime25dPlaybackFailed)
   }
-  const position = gl.getAttribLocation(program, 'a_pos')
-  const uv = gl.getAttribLocation(program, 'a_uv')
-  gl.bindVertexArray(vao)
-  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer)
-  gl.bufferData(gl.ARRAY_BUFFER, positions, gl.DYNAMIC_DRAW)
-  gl.enableVertexAttribArray(position)
-  gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0)
-  gl.bindBuffer(gl.ARRAY_BUFFER, uvBuffer)
-  gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW)
-  gl.enableVertexAttribArray(uv)
-  gl.vertexAttribPointer(uv, 2, gl.FLOAT, false, 0, 0)
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
-  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW)
-  gl.bindVertexArray(null)
-  return { vao, positionBuffer, uvBuffer, indexBuffer }
+  const mesh = { vao, positionBuffer, uvBuffer, indexBuffer }
+  try {
+    const position = gl.getAttribLocation(program, 'a_pos')
+    const uv = gl.getAttribLocation(program, 'a_uv')
+    gl.bindVertexArray(vao)
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer)
+    gl.bufferData(gl.ARRAY_BUFFER, positions, gl.DYNAMIC_DRAW)
+    gl.enableVertexAttribArray(position)
+    gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0)
+    gl.bindBuffer(gl.ARRAY_BUFFER, uvBuffer)
+    gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW)
+    gl.enableVertexAttribArray(uv)
+    gl.vertexAttribPointer(uv, 2, gl.FLOAT, false, 0, 0)
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW)
+    gl.bindVertexArray(null)
+    return mesh
+  } catch (error) {
+    gl.bindVertexArray(null)
+    disposeIndexedDeformableMesh(gl, mesh)
+    throw error
+  }
+}
+
+export function disposeIndexedDeformableMesh(
+  gl: WebGL2RenderingContext,
+  mesh: Readonly<{
+    vao: WebGLVertexArrayObject | null
+    positionBuffer: WebGLBuffer | null
+    uvBuffer: WebGLBuffer | null
+    indexBuffer: WebGLBuffer | null
+  }>,
+): void {
+  if (mesh.positionBuffer) gl.deleteBuffer(mesh.positionBuffer)
+  if (mesh.uvBuffer) gl.deleteBuffer(mesh.uvBuffer)
+  if (mesh.indexBuffer) gl.deleteBuffer(mesh.indexBuffer)
+  if (mesh.vao) gl.deleteVertexArray(mesh.vao)
 }
 
 export function readLayerPixels(
@@ -204,30 +230,51 @@ export function createAtlasTexture(
 ): WebGLTexture {
   const texture = gl.createTexture()
   if (!texture) throw new Error(currentCopy().merope.anime25dPlaybackFailed)
-  gl.bindTexture(gl.TEXTURE_2D, texture)
-  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, atlas)
-  return texture
+  try {
+    gl.bindTexture(gl.TEXTURE_2D, texture)
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, atlas)
+    return texture
+  } catch (error) {
+    gl.deleteTexture(texture)
+    throw error
+  }
 }
 
 export function compileProgram(gl: WebGL2RenderingContext): WebGLProgram {
   const vertex = compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER)
-  const fragment = compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER)
+  let fragment: WebGLShader
+  try {
+    fragment = compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER)
+  } catch (error) {
+    gl.deleteShader(vertex)
+    throw error
+  }
   const program = gl.createProgram()
-  if (!program) throw new Error(currentCopy().merope.anime25dPlaybackFailed)
-  gl.attachShader(program, vertex)
-  gl.attachShader(program, fragment)
-  gl.linkProgram(program)
-  gl.deleteShader(vertex)
-  gl.deleteShader(fragment)
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+  if (!program) {
+    gl.deleteShader(vertex)
+    gl.deleteShader(fragment)
     throw new Error(currentCopy().merope.anime25dPlaybackFailed)
   }
-  return program
+  try {
+    gl.attachShader(program, vertex)
+    gl.attachShader(program, fragment)
+    gl.linkProgram(program)
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      throw new Error(currentCopy().merope.anime25dPlaybackFailed)
+    }
+    return program
+  } catch (error) {
+    gl.deleteProgram(program)
+    throw error
+  } finally {
+    gl.deleteShader(vertex)
+    gl.deleteShader(fragment)
+  }
 }
 
 function compileShader(
@@ -256,12 +303,39 @@ export function requiredUniform(
   return location
 }
 
-export function loadImage(url: string): Promise<HTMLImageElement> {
+export function loadImage(
+  url: string,
+  signal?: AbortSignal,
+): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image()
+    let settled = false
+    const cleanup = () => signal?.removeEventListener('abort', abort)
+    const finish = (result: () => void) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      image.onload = null
+      image.onerror = null
+      result()
+    }
+    const abort = () => {
+      finish(() => {
+        image.src = ''
+        const error = new Error('Anime2.5DRig atlas load aborted')
+        error.name = 'AbortError'
+        reject(error)
+      })
+    }
     image.crossOrigin = 'anonymous'
-    image.onload = () => resolve(image)
-    image.onerror = () => reject(new Error('Anime2.5DRig atlas failed to load'))
+    image.onload = () => finish(() => resolve(image))
+    image.onerror = () =>
+      finish(() => reject(new Error('Anime2.5DRig atlas failed to load')))
+    if (signal?.aborted) {
+      abort()
+      return
+    }
+    signal?.addEventListener('abort', abort, { once: true })
     image.src = url
   })
 }

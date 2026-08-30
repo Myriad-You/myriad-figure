@@ -9,7 +9,7 @@ import type {
 } from './types'
 import { currentCopy } from '../../../i18n/localeCopy'
 import { ANIME25D_LAYER_DEPTH, anime25DLayerFade } from '../rig/anime25d'
-import { fallbackAnime25DMouthProfile } from './mouthProfile'
+import { deriveGeometryChestProfile } from './chestPhysics'
 import { deriveAnime25DShellProfile } from './shellProfile'
 import { anime25DPlaybackSource } from './types'
 
@@ -55,7 +55,7 @@ export interface Anime25DPlaybackBuildInput {
   frameHeight: number
   layers: Anime25DPlaybackBuildLayer[]
   anchors: Anime25DPlaybackAnchors
-  mouthProfile?: Anime25DMouthProfile
+  mouthProfile: Anime25DMouthProfile
 }
 
 /** Translate Anime2.5DRig document anchors into the 3:4 content frame. */
@@ -122,16 +122,18 @@ export function buildAnime25DPlayback(
     toPlaybackLayer(layer, width, index),
   )
   requiredLayer(layers, 'face')
-  const playback: Anime25DPlayback = {
+  const source = {
     ...anime25DPlaybackSource(),
     pixelCanvas: { width, height },
     layers,
     anchors: input.anchors,
-    mouthProfile:
-      input.mouthProfile ?? fallbackAnime25DMouthProfile(input.anchors.mouth),
   }
-  playback.shellProfile = deriveAnime25DShellProfile(playback)
-  return playback
+  return {
+    ...source,
+    mouthProfile: input.mouthProfile,
+    chestProfile: deriveGeometryChestProfile(source),
+    shellProfile: deriveAnime25DShellProfile(source),
+  }
 }
 
 function toPlaybackLayer(

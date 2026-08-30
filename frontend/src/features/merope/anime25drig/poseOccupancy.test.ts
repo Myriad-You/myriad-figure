@@ -91,6 +91,27 @@ test('occupancy eases when the situation flips and does not step the weights', (
   assert.ok(Math.abs(previous.glance - GLANCE_SPEAKING) < 0.02)
 })
 
+test('speech end lets idle glance rise without a 2400ms baseline hold', () => {
+  const occupancy = new PoseOccupancyController()
+  occupancy.sample(0, { ...idle, speaking: true })
+  let current = occupancy.sample(0, { ...idle, speaking: false })
+  for (let frame = 1; frame <= 36; frame += 1) {
+    current = occupancy.sample(1 / 60, idle)
+  }
+  assert.ok(current.glance > GLANCE_SPEAKING)
+  assert.ok(Math.abs(current.glance - 1) < 0.08)
+  assert.ok(36 / 60 < 2.4)
+})
+
+test('occupancy does not consult a motion-policy owner to return glance', () => {
+  const occupancy = occupancyTargets(idle)
+  assert.equal(occupancy.glance, 1)
+  assert.equal(occupancy.random, 1)
+  const singing = occupancyTargets({ ...idle, singing: true })
+  assert.ok(singing.glance > 0.12)
+  assert.equal(singing.groove, GROOVE_SINGING)
+})
+
 test('compositor keeps singing groove and idle glance visible together', () => {
   const mixed = composeOccupancyOffsets([
     {

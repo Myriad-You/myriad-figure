@@ -107,12 +107,43 @@ export function cuePriority(cue: PerformanceCue): number {
   return performanceCuePriority(cue.intent)
 }
 
+export const MIN_STICKER_FADE_IN = 0.18
+export const MIN_STICKER_FADE_OUT = 0.42
+
+const STICKER_INTENTS = new Set<PerformanceCue['intent']>([
+  'dizzy',
+  'cry',
+  'angry',
+  'speechless',
+  'maniac',
+  'silly',
+  'lovestruck',
+])
+
+export function cueIsSticker(intent: PerformanceCue['intent']): boolean {
+  return STICKER_INTENTS.has(intent)
+}
+
+/** Face and body share this envelope so they peak and release together. */
+export function cueVisualEnvelope(cue: PerformanceCue): {
+  fadeIn: number
+  hold: number
+  fadeOut: number
+} {
+  const sticker = cueIsSticker(cue.intent)
+  return {
+    fadeIn: Math.max(cue.fadeInMs / 1_000, sticker ? MIN_STICKER_FADE_IN : 0),
+    hold: Math.max(0.24, 0.72 / clamp(cue.tempo, 0.5, 1.6)),
+    fadeOut: Math.max(
+      cue.fadeOutMs / 1_000,
+      sticker ? MIN_STICKER_FADE_OUT : 0,
+    ),
+  }
+}
+
 export function cueDurationMs(cue: PerformanceCue): number {
-  return Math.round(
-    cue.fadeInMs +
-      Math.max(240, 720 / clamp(cue.tempo, 0.5, 1.6)) +
-      cue.fadeOutMs,
-  )
+  const envelope = cueVisualEnvelope(cue)
+  return Math.round((envelope.fadeIn + envelope.hold + envelope.fadeOut) * 1_000)
 }
 
 /**

@@ -46,6 +46,7 @@ import {
 } from '../singing/singingGroove'
 import { noteTurnTraceFrame } from '../turnTrace'
 import { AmbientMotionController } from './ambientMotion'
+import { applyIdleBreath } from './idleBreath'
 import { PoseOccupancyController } from './poseOccupancy'
 import {
   buildChestWeightField,
@@ -512,18 +513,14 @@ export class Anime25DPlayer {
 
   playPerformance(
     directive: PerformanceDirective,
-    cueOriginSeconds?: number,
+    _cueOriginSeconds?: number,
   ): boolean {
-    const now = this.performanceClockSeconds()
-    return this.performanceExpression.play(
-      directive,
-      now,
-      cueOriginSeconds ?? now,
-    )
+    const now = this.time
+    return this.performanceExpression.play(directive, now, now)
   }
 
   stopPerformance(): void {
-    this.performanceExpression.stop(this.performanceClockSeconds())
+    this.performanceExpression.stop(this.time)
   }
 
   debugSnapshot(): Anime25DDebugSnapshot {
@@ -679,9 +676,7 @@ export class Anime25DPlayer {
       pointer,
       t,
     )
-    const semanticExpression = this.performanceExpression.sample(
-      this.performanceClockSeconds(),
-    )
+    const semanticExpression = this.performanceExpression.sample(t)
     const stylizedTargets = resolveAnime25DStylizedTargets(
       this.stylizedTargets,
       tgt,
@@ -737,6 +732,7 @@ export class Anime25DPlayer {
       randomAction.ambientScale *
       stylized.ambientScale
     applyAnime25DAmbientMotion(tgt, ambient, ambientScale, 1)
+    applyIdleBreath(tgt, occupancy.glance, t)
     applyAnime25DActionMotion(
       tgt,
       randomAction,
@@ -799,10 +795,6 @@ export class Anime25DPlayer {
       dt,
       this.torsoShellRotation,
     )
-  }
-
-  private performanceClockSeconds(): number {
-    return performance.now() / 1_000
   }
 
   private updateSprings(dt: number): void {

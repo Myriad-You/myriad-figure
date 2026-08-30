@@ -132,11 +132,10 @@ export interface Anime25DShellEllipsoid {
 export interface Anime25DHairlinePinProfile {
   enabled: boolean
   /**
-   * Authored assets keep the fork's calibrated rectangle. Automatically
-   * migrated assets follow their strand roots instead of inheriting demo
-   * dimensions. Missing values hydrate from the parent profile source.
+   * Imported assets follow their strand roots unless an authored profile uses
+   * the fork's calibrated rectangle.
    */
-  mode?: 'rectangle' | 'strand-roots'
+  mode: 'rectangle' | 'strand-roots'
   /** Centre and half extents expressed in head-radius units. */
   centerX: number
   centerY: number
@@ -155,7 +154,6 @@ export interface Anime25DTorsoShellProfile {
   radiusZ: number
 }
 
-/** Optional v6 extension. Missing profiles are derived from existing anchors. */
 export interface Anime25DShellProfile {
   version: 1
   source: 'anchor-derived' | 'authored'
@@ -175,8 +173,7 @@ export interface Anime25DShellProfile {
     crownRound: number
     hairlinePin: Anime25DHairlinePinProfile
   }
-  /** Optional so early v1 shell profiles hydrate without a contract bump. */
-  torso?: Anime25DTorsoShellProfile
+  torso: Anime25DTorsoShellProfile
 }
 
 export type Anime25DMouthMaterial =
@@ -219,7 +216,7 @@ export interface Anime25DMouthProfile {
 
 export interface Anime25DPlayback {
   kind: typeof ANIME25D_PLAYBACK_KIND
-  version: number
+  version: typeof ANIME25D_PLAYBACK_VERSION
   engine: typeof ANIME25D_PROJECT_NAME
   engineUrl: typeof ANIME25D_PROJECT_URL
   license: typeof ANIME25D_LICENSE
@@ -228,8 +225,8 @@ export interface Anime25DPlayback {
   layers: Anime25DPlaybackLayer[]
   anchors: Anime25DPlaybackAnchors
   mouthProfile: Anime25DMouthProfile
-  chestProfile?: Anime25DChestProfile
-  shellProfile?: Anime25DShellProfile
+  chestProfile: Anime25DChestProfile
+  shellProfile: Anime25DShellProfile
 }
 
 export function anime25DPlaybackSource(): Pick<
@@ -266,10 +263,8 @@ export function isAnime25DPlayback(value: unknown): value is Anime25DPlayback {
     Boolean(record.anchors) &&
     typeof record.anchors === 'object' &&
     isAnime25DMouthProfile(mouthProfile, canvas.width, canvas.height) &&
-    (chestProfile === undefined ||
-      isAnime25DChestProfile(chestProfile, canvas.width, canvas.height)) &&
-    (shellProfile === undefined ||
-      isAnime25DShellProfile(shellProfile, canvas.width, canvas.height))
+    isAnime25DChestProfile(chestProfile, canvas.width, canvas.height) &&
+    isAnime25DShellProfile(shellProfile, canvas.width, canvas.height)
   )
 }
 
@@ -304,20 +299,17 @@ export function isAnime25DShellProfile(
     !numberInRange(hair?.backDepth, 0, 1) ||
     !numberInRange(hair?.crownRound, 0, 1) ||
     typeof pin?.enabled !== 'boolean' ||
-    (pin.mode !== undefined &&
-      pin.mode !== 'rectangle' &&
-      pin.mode !== 'strand-roots') ||
+    (pin.mode !== 'rectangle' && pin.mode !== 'strand-roots') ||
     !numberInRange(pin.centerX, -1.5, 1.5) ||
     !numberInRange(pin.centerY, -1.5, 1.5) ||
     !numberInRange(pin.halfWidth, 0.01, 2) ||
     !numberInRange(pin.halfHeight, 0.01, 2) ||
     !numberInRange(pin.feather, 0, 0.5) ||
-    (torso !== undefined &&
-      (typeof torso.enabled !== 'boolean' ||
-        !numberInRange(torso.blend, 0, 1) ||
-        !numberInRange(torso.centerX, 0, canvasWidth) ||
-        !numberInRange(torso.radiusX, 1, canvasWidth) ||
-        !numberInRange(torso.radiusZ, 1, canvasWidth)))
+    typeof torso?.enabled !== 'boolean' ||
+    !numberInRange(torso?.blend, 0, 1) ||
+    !numberInRange(torso?.centerX, 0, canvasWidth) ||
+    !numberInRange(torso?.radiusX, 1, canvasWidth) ||
+    !numberInRange(torso?.radiusZ, 1, canvasWidth)
   ) {
     return false
   }

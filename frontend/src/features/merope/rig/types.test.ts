@@ -1,8 +1,9 @@
 import type { MeropeRigManifest } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { deriveGeometryChestProfile } from '../anime25drig/chestPhysics'
 import { ANIME25D_PLAYBACK_VERSION } from '../anime25drig/credit'
-import { fallbackAnime25DMouthProfile } from '../anime25drig/mouthProfile'
+import { analyzeAnime25DMouthProfile } from '../anime25drig/mouthProfile'
 import { deriveAnime25DShellProfile } from '../anime25drig/shellProfile'
 import { RIG_IR_VERSION } from './contract'
 import { isLiveMeropeManifest, isRigManifest } from './types'
@@ -74,7 +75,7 @@ test('only treats a layered Anime2.5D package as a live site face', () => {
     cx: 0.5,
     cy: 0.45,
   }
-  live.anime25dPlayback = {
+  const playbackSource = {
     kind: 'anime-2.5d-rig',
     version: ANIME25D_PLAYBACK_VERSION,
     engine: 'Anime2.5DRig',
@@ -108,23 +109,42 @@ test('only treats a layered Anime2.5D package as a live site face', () => {
       mouth,
       faceScale: 1,
     },
-    mouthProfile: fallbackAnime25DMouthProfile(mouth),
+    mouthProfile: analyzeAnime25DMouthProfile(
+      [],
+      { x: 0, y: 0, width: 1152, height: 1536 },
+      mouth,
+    ),
   }
-  assert.equal(isLiveMeropeManifest(live), true)
-  const shellProfile = deriveAnime25DShellProfile(live.anime25dPlayback)
+  const shellProfile = deriveAnime25DShellProfile(playbackSource)
   shellProfile.head.radiusX = 1
   shellProfile.head.radiusY = 1
   shellProfile.head.radiusZ = 1
   shellProfile.hair.radiusX = 1
   shellProfile.hair.radiusY = 1
   shellProfile.hair.radiusZ = 1
-  live.anime25dPlayback.shellProfile = shellProfile
+  live.anime25dPlayback = {
+    ...playbackSource,
+    chestProfile: deriveGeometryChestProfile(playbackSource),
+    shellProfile,
+  }
   assert.equal(isLiveMeropeManifest(live), true)
+  const missingChestProfile = structuredClone(live) as unknown as {
+    anime25dPlayback: Record<string, unknown>
+  }
+  delete missingChestProfile.anime25dPlayback.chestProfile
+  assert.equal(isLiveMeropeManifest(missingChestProfile), false)
+  const missingShellProfile = structuredClone(live) as unknown as {
+    anime25dPlayback: Record<string, unknown>
+  }
+  delete missingShellProfile.anime25dPlayback.shellProfile
+  assert.equal(isLiveMeropeManifest(missingShellProfile), false)
+  live.anime25dPlayback.version = 6 as typeof ANIME25D_PLAYBACK_VERSION
+  assert.equal(isLiveMeropeManifest(live), false)
+  live.anime25dPlayback.version = ANIME25D_PLAYBACK_VERSION
   live.anime25dPlayback.shellProfile.hair.frontGap = 0.7
   assert.equal(isLiveMeropeManifest(live), false)
   live.anime25dPlayback.shellProfile.hair.frontGap = 0.18
   assert.equal(isLiveMeropeManifest(live), true)
-  assert.ok(live.anime25dPlayback.shellProfile.torso)
   live.anime25dPlayback.shellProfile.torso.radiusZ = 0
   assert.equal(isLiveMeropeManifest(live), false)
   live.anime25dPlayback.shellProfile.torso.radiusZ = 1

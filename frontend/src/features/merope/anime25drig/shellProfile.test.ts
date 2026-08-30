@@ -7,10 +7,7 @@ import {
   sampleAnime25DHairlinePinWeights,
   writeAnime25DShellRotation,
 } from './shellDeformation'
-import {
-  deriveAnime25DShellProfile,
-  resolveAnime25DShellProfile,
-} from './shellProfile'
+import { deriveAnime25DShellProfile } from './shellProfile'
 
 const faceLayer: Anime25DPlaybackLayer = {
   name: 'face',
@@ -55,7 +52,7 @@ const topwearLayer: Anime25DPlaybackLayer = {
   h: 632,
 }
 
-const legacyPlayback = {
+const playbackSource = {
   anchors: {
     face: { x0: 230, y0: 92, x1: 538, y1: 405, cx: 384, cy: 248 },
     eyeL: {
@@ -86,11 +83,10 @@ const legacyPlayback = {
   layers: [faceLayer, frontHairLayer, topwearLayer],
 } satisfies Pick<Anime25DPlayback, 'anchors' | 'layers'>
 
-test('hydrates old v6 assets deterministically without mutating them', () => {
-  const first = resolveAnime25DShellProfile(legacyPlayback)
-  const second = resolveAnime25DShellProfile(legacyPlayback)
+test('derives a complete deterministic shell profile at import time', () => {
+  const first = deriveAnime25DShellProfile(playbackSource)
+  const second = deriveAnime25DShellProfile(playbackSource)
   assert.deepEqual(first, second)
-  assert.equal('shellProfile' in legacyPlayback, false)
   assert.equal(first.version, 1)
   assert.equal(first.source, 'anchor-derived')
   assert.equal(first.hair.hairlinePin.enabled, true)
@@ -104,67 +100,8 @@ test('hydrates old v6 assets deterministically without mutating them', () => {
   })
 })
 
-test('hydrates an early v1 shell profile with torso data without mutating it', () => {
-  const fullProfile = deriveAnime25DShellProfile(legacyPlayback)
-  const { torso: _torso, ...earlyProfile } = fullProfile
-  earlyProfile.source = 'authored'
-  earlyProfile.blend = 0.37
-
-  const hydrated = resolveAnime25DShellProfile({
-    ...legacyPlayback,
-    shellProfile: earlyProfile,
-  })
-
-  assert.notEqual(hydrated, earlyProfile)
-  assert.equal('torso' in earlyProfile, false)
-  assert.equal(hydrated.source, 'authored')
-  assert.equal(hydrated.blend, 0.37)
-  assert.deepEqual(hydrated.torso, fullProfile.torso)
-})
-
-test('keeps an explicitly persisted profile as the source of truth', () => {
-  const explicit = deriveAnime25DShellProfile(legacyPlayback)
-  explicit.source = 'authored'
-  explicit.blend = 0.37
-  explicit.hair.hairlinePin.mode = 'rectangle'
-  assert.equal(
-    resolveAnime25DShellProfile({ ...legacyPlayback, shellProfile: explicit }),
-    explicit,
-  )
-})
-
-test('hydrates legacy automatic pins into strand-root mode without mutation', () => {
-  const persisted = deriveAnime25DShellProfile(legacyPlayback)
-  const { mode: _mode, ...legacyPin } = persisted.hair.hairlinePin
-  persisted.hair.hairlinePin = legacyPin
-
-  const hydrated = resolveAnime25DShellProfile({
-    ...legacyPlayback,
-    shellProfile: persisted,
-  })
-
-  assert.notEqual(hydrated, persisted)
-  assert.equal(persisted.hair.hairlinePin.mode, undefined)
-  assert.equal(hydrated.hair.hairlinePin.mode, 'strand-roots')
-})
-
-test('hydrates legacy authored pins as calibrated rectangles', () => {
-  const persisted = deriveAnime25DShellProfile(legacyPlayback)
-  persisted.source = 'authored'
-  const { mode: _mode, ...legacyPin } = persisted.hair.hairlinePin
-  persisted.hair.hairlinePin = legacyPin
-
-  const hydrated = resolveAnime25DShellProfile({
-    ...legacyPlayback,
-    shellProfile: persisted,
-  })
-
-  assert.equal(persisted.hair.hairlinePin.mode, undefined)
-  assert.equal(hydrated.hair.hairlinePin.mode, 'rectangle')
-})
-
 test('shell projection is an exact neutral identity and finite at bounded turns', () => {
-  const profile = deriveAnime25DShellProfile(legacyPlayback)
+  const profile = deriveAnime25DShellProfile(playbackSource)
   const rotation = {
     active: false,
     yawCosine: 1,
@@ -194,7 +131,7 @@ test('shell projection is an exact neutral identity and finite at bounded turns'
 })
 
 test('hairline pin stays full inside its scalp rectangle and fades outside', () => {
-  const profile = deriveAnime25DShellProfile(legacyPlayback)
+  const profile = deriveAnime25DShellProfile(playbackSource)
   const pin = profile.hair.hairlinePin
   const centerX = profile.head.centerX + pin.centerX * profile.head.radiusX
   const centerY = profile.head.centerY + pin.centerY * profile.head.radiusY
@@ -210,7 +147,7 @@ test('hairline pin stays full inside its scalp rectangle and fades outside', () 
 })
 
 test('automatic hairline attachment releases monotonically across two mesh rows', () => {
-  const profile = deriveAnime25DShellProfile(legacyPlayback)
+  const profile = deriveAnime25DShellProfile(playbackSource)
   const source: Anime25DPlaybackLayer = {
     ...frontHairLayer,
     x: 260,

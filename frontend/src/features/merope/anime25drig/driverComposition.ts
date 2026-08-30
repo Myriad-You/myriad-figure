@@ -59,7 +59,7 @@ export function prepareAnime25DWorkingTarget(
   output: Anime25DDriver,
   authored: Readonly<Anime25DDriver>,
   pointer: Readonly<Anime25DPointerPose>,
-  timeSeconds: number,
+  _timeSeconds: number,
 ): Anime25DDriver {
   Object.assign(output, authored)
   if (authored.mouse && pointer.inside) {
@@ -67,13 +67,6 @@ export function prepareAnime25DWorkingTarget(
     output.angleY = clamp(-pointer.y * 0.7, -1, 1)
     output.eyeX = clamp(pointer.x * 1.2, -1, 1)
     output.eyeY = clamp(-pointer.y * 0.8, -1, 1)
-  }
-  if (authored.idle) {
-    output.angleX +=
-      0.13 * Math.sin(timeSeconds * 0.42) + 0.05 * Math.sin(timeSeconds * 1.13)
-    output.angleY += 0.08 * Math.sin(timeSeconds * 0.31 + 1.7)
-    output.angleZ += 0.07 * Math.sin(timeSeconds * 0.23 + 0.5)
-    output.body += 0.1 * Math.sin(timeSeconds * 0.19 + 2.1)
   }
   return output
 }

@@ -65,14 +65,14 @@ export interface Anime25DSecondaryDeformationFrame {
   inverseChestRadiusY: number
   chestOffsetX: number
   chestOffsetY: number
-  chestProfileSource: Anime25DChestProfile['source'] | undefined
-  shellProfile?: Readonly<Anime25DShellProfile>
-  shellBlend?: number
-  shellActivation?: number
-  shellRotation?: Readonly<Anime25DShellRotation>
-  torsoProfile?: Readonly<Anime25DTorsoShellProfile>
-  torsoShellBlend?: number
-  torsoShellRotation?: Readonly<Anime25DTorsoShellRotation>
+  chestProfileSource: Anime25DChestProfile['source']
+  shellProfile: Readonly<Anime25DShellProfile>
+  shellBlend: number
+  shellActivation: number
+  shellRotation: Readonly<Anime25DShellRotation>
+  torsoProfile: Readonly<Anime25DTorsoShellProfile>
+  torsoShellBlend: number
+  torsoShellRotation: Readonly<Anime25DTorsoShellRotation>
 }
 
 export interface Anime25DSecondaryDeformationBinding {
@@ -210,7 +210,7 @@ export function deformAnime25DSecondaryPoint(
       point.x += (rotatedX - rotationX) * headFollow
       point.y += (rotatedY - rotationY) * headFollow
       const authoredPinWeight = binding.hairlinePinWeights?.[vertex] ?? 0
-      const shellActivation = frame.shellActivation ?? 0
+      const shellActivation = frame.shellActivation
       const pinWeight = authoredPinWeight * shellActivation
       let depthOffset =
         (source.depth - 1) *
@@ -235,8 +235,7 @@ export function deformAnime25DSecondaryPoint(
               0.05)
       if (
         binding.shellMode &&
-        frame.shellProfile?.enabled &&
-        frame.shellRotation
+        frame.shellProfile.enabled
       ) {
         deformAnime25DShellPoint(
           point,
@@ -247,9 +246,8 @@ export function deformAnime25DSecondaryPoint(
           source.depth,
           pinWeight,
         )
-        const shellBlend = frame.shellBlend ?? frame.shellProfile.blend
-        point.x = legacyX + (point.x - legacyX) * shellBlend
-        point.y = legacyY + (point.y - legacyY) * shellBlend
+        point.x = legacyX + (point.x - legacyX) * frame.shellBlend
+        point.y = legacyY + (point.y - legacyY) * frame.shellBlend
       } else {
         point.x = legacyX
         point.y = legacyY
@@ -310,18 +308,14 @@ export function deformAnime25DSecondaryPoint(
     point.x += frame.chestOffsetX * chestWeight
     point.y += frame.chestOffsetY * chestWeight
   }
-  if (
-    binding.torsoShellMode &&
-    frame.torsoProfile &&
-    frame.torsoShellRotation
-  ) {
+  if (binding.torsoShellMode) {
     const torsoWeight =
       binding.torsoShellMode === 'collar' ? collarBodyWeight : 1
     deformAnime25DTorsoShellPoint(
       point,
       frame.torsoProfile,
       frame.torsoShellRotation,
-      (frame.torsoShellBlend ?? 0) * torsoWeight,
+      frame.torsoShellBlend * torsoWeight,
     )
   }
   if (binding.handwear) {
@@ -346,7 +340,7 @@ export function deformAnime25DHairPoint(
 ): void {
   const alongStrand = binding.alongStrand
   const authoredPinWeight = binding.hairlinePinWeights?.[vertex] ?? 0
-  const shellActivation = frame.shellActivation ?? 0
+  const shellActivation = frame.shellActivation
   const pinWeight = authoredPinWeight * shellActivation
   const motionScale = 1 - pinWeight
   if (binding.bangWeights && alongStrand) {

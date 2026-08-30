@@ -1,8 +1,5 @@
 import type { Anime25DMouthMaterial, Anime25DMouthProfile } from './types'
-import {
-  ANIME25D_MOUTH_MATERIALS,
-  baseMouthBridgeProfile,
-} from './mouthProfile'
+import { ANIME25D_MOUTH_MATERIALS } from './mouthProfile'
 
 export type SpeechMouthMaterial = Anime25DMouthMaterial
 
@@ -56,25 +53,13 @@ export class MouthTransitionController {
 
   private activeIndex = 0
 
-  constructor(profile?: Readonly<Anime25DMouthProfile>) {
-    for (let first = 0; first < MATERIALS.length; first += 1) {
-      for (let second = 0; second < MATERIALS.length; second += 1) {
-        const index = pairIndex(first, second)
-        if (first === second) {
-          this.widthScales[index] = 1
-          this.heightScales[index] = 1
-          continue
-        }
-        const fallback = baseMouthBridgeProfile(
-          MATERIALS[first],
-          MATERIALS[second],
-        )
-        this.widthScales[index] = fallback.widthScale
-        this.heightScales[index] = fallback.heightScale
-        this.neutralizations[index] = fallback.neutralization
-      }
+  constructor(profile: Readonly<Anime25DMouthProfile>) {
+    for (let material = 0; material < MATERIALS.length; material += 1) {
+      const index = pairIndex(material, material)
+      this.widthScales[index] = 1
+      this.heightScales[index] = 1
     }
-    for (const bridge of profile?.bridges ?? []) {
+    for (const bridge of profile.bridges) {
       const first = MATERIALS.indexOf(bridge.first)
       const second = MATERIALS.indexOf(bridge.second)
       if (first < 0 || second < 0 || first === second) continue

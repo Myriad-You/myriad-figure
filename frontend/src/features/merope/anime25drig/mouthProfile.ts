@@ -76,35 +76,6 @@ export function analyzeAnime25DMouthProfile(
   }
 }
 
-export function fallbackAnime25DMouthProfile(
-  mouth: Anime25DPlaybackAnchors['mouth'],
-): Anime25DMouthProfile {
-  const analyzed = ANIME25D_MOUTH_MATERIALS.map((material) =>
-    fallbackSilhouette(material, mouth),
-  )
-  return {
-    version: 1,
-    source: 'bounds-fallback',
-    silhouettes: analyzed.map((entry) => entry.silhouette),
-    bridges: buildBridges(analyzed),
-  }
-}
-
-export function baseMouthBridgeProfile(
-  first: Anime25DMouthMaterial,
-  second: Anime25DMouthMaterial,
-): Pick<
-  Anime25DMouthBridgeTuning,
-  'widthScale' | 'heightScale' | 'neutralization'
-> {
-  const profile = baseBridge(first, second)
-  return {
-    widthScale: profile.widthScale,
-    heightScale: profile.heightScale,
-    neutralization: profile.neutralization,
-  }
-}
-
 function analyzeSilhouette(
   layer: Readonly<MouthRasterLayer>,
   material: Anime25DMouthMaterial,

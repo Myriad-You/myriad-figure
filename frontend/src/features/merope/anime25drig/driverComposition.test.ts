@@ -39,15 +39,12 @@ test('working target preparation reuses its output and preserves legacy math', (
   )
 
   assert.equal(actual, output)
-  assert.equal(
-    actual.angleX,
-    0.46 * 0.9 + 0.13 * Math.sin(time * 0.42) + 0.05 * Math.sin(time * 1.13),
-  )
-  assert.equal(actual.angleY, 0.33 * 0.7 + 0.08 * Math.sin(time * 0.31 + 1.7))
-  assert.equal(actual.angleZ, 0.15 + 0.07 * Math.sin(time * 0.23 + 0.5))
+  assert.equal(actual.angleX, 0.46 * 0.9)
+  assert.equal(actual.angleY, 0.33 * 0.7)
+  assert.equal(actual.angleZ, 0.15)
   assert.equal(actual.eyeX, 0.46 * 1.2)
   assert.equal(actual.eyeY, 0.33 * 0.8)
-  assert.equal(actual.body, 0.25 + 0.1 * Math.sin(time * 0.19 + 2.1))
+  assert.equal(actual.body, 0.25)
 })
 
 test('stylized target resolution reuses output and keeps special-eye blocking', () => {

@@ -6,8 +6,8 @@ import {
   performanceOccupiedChannels,
 } from './performanceChannels'
 
-/** After the last cue fades out, keep the landing baseline before idle. */
-export const PERFORMANCE_BASELINE_HOLD_MS = 2400
+/** Lease tail after the last cue. Occupancy, not this delay, returns idle motion. */
+export const PERFORMANCE_BASELINE_HOLD_MS = 400
 
 export interface PerformanceLeaseWindows {
   expressionBaselineUntilMs: number
@@ -70,14 +70,19 @@ export class PerformanceMotionLeases {
     nowMs: number,
   ): PerformanceLeaseWindows {
     const windows = performanceLeaseWindows(directive, nowMs)
-    this.expressionBaseline = this.ensure(
-      this.expressionBaseline,
-      ['expression'],
-      {
-        nowMs,
-        ttlMs: Math.max(1, windows.expressionBaselineUntilMs - nowMs),
-      },
-    )
+    if (directive.plan.cues.length === 0) {
+      this.coordinator.release(this.expressionBaseline)
+      this.expressionBaseline = null
+    } else {
+      this.expressionBaseline = this.ensure(
+        this.expressionBaseline,
+        ['expression'],
+        {
+          nowMs,
+          ttlMs: Math.max(1, windows.expressionBaselineUntilMs - nowMs),
+        },
+      )
+    }
     this.expressionCue = this.syncTimed(
       this.expressionCue,
       ['expression'],
