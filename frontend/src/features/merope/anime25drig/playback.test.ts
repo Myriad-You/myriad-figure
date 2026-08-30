@@ -72,6 +72,14 @@ describe('Anime2.5DRig playback', () => {
           textureBounds: { x: 0.2, y: 0, width: 0.2, height: 0.2 },
           strands: [{ x: 0.4, rootY: 0.1, tipY: 0.28 }],
         }),
+        layer({
+          id: 'topwear',
+          role: 'topwear',
+          side: null,
+          group: 'body',
+          bounds: { x: 0.18, y: 0.36, width: 0.64, height: 0.64 },
+          textureBounds: { x: 0.4, y: 0, width: 0.2, height: 0.2 },
+        }),
       ],
     })
     assert.equal(isAnime25DPlayback(playback), true)
@@ -85,6 +93,14 @@ describe('Anime2.5DRig playback', () => {
     assert.equal(playback.anchors.eyeL?.closeY, 168)
     assert.equal(playback.anchors.bodyPivot.y, 1024)
     assert.ok(playback.anchors.faceScale > 0)
+    assert.equal(playback.version, 6)
+    assert.equal(playback.shellProfile?.version, 1)
+    assert.equal(playback.shellProfile?.source, 'anchor-derived')
+    assert.equal(playback.shellProfile?.hair.hairlinePin.enabled, true)
+    assert.equal(playback.shellProfile?.torso?.enabled, true)
+    assert.equal(playback.shellProfile?.torso?.centerX, 384)
+    assert.equal(playback.shellProfile?.torso?.radiusX, 308 * 0.95)
+    assert.equal(playback.shellProfile?.torso?.radiusZ, 308 * 0.55)
   })
 
   it('keeps independent front and rear hair layers', () => {

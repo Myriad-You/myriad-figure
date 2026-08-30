@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ANIME25D_PLAYBACK_VERSION } from '../anime25drig/credit'
 import { fallbackAnime25DMouthProfile } from '../anime25drig/mouthProfile'
+import { deriveAnime25DShellProfile } from '../anime25drig/shellProfile'
 import { RIG_IR_VERSION } from './contract'
 import { isLiveMeropeManifest, isRigManifest } from './types'
 
@@ -109,6 +110,24 @@ test('only treats a layered Anime2.5D package as a live site face', () => {
     },
     mouthProfile: fallbackAnime25DMouthProfile(mouth),
   }
+  assert.equal(isLiveMeropeManifest(live), true)
+  const shellProfile = deriveAnime25DShellProfile(live.anime25dPlayback)
+  shellProfile.head.radiusX = 1
+  shellProfile.head.radiusY = 1
+  shellProfile.head.radiusZ = 1
+  shellProfile.hair.radiusX = 1
+  shellProfile.hair.radiusY = 1
+  shellProfile.hair.radiusZ = 1
+  live.anime25dPlayback.shellProfile = shellProfile
+  assert.equal(isLiveMeropeManifest(live), true)
+  live.anime25dPlayback.shellProfile.hair.frontGap = 0.7
+  assert.equal(isLiveMeropeManifest(live), false)
+  live.anime25dPlayback.shellProfile.hair.frontGap = 0.18
+  assert.equal(isLiveMeropeManifest(live), true)
+  assert.ok(live.anime25dPlayback.shellProfile.torso)
+  live.anime25dPlayback.shellProfile.torso.radiusZ = 0
+  assert.equal(isLiveMeropeManifest(live), false)
+  live.anime25dPlayback.shellProfile.torso.radiusZ = 1
   assert.equal(isLiveMeropeManifest(live), true)
   live.anime25dPlayback.chestProfile = {
     version: 2,

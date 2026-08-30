@@ -1,6 +1,8 @@
 import type { FrontCollarContactModel } from './collarContact'
-import type { Anime25DPlaybackLayer } from './types'
-import { COLLAR_ATTACHMENT_NECK } from './collarContact'
+import type { Anime25DTorsoShellRotation } from './torsoDeformation'
+import type { Anime25DPlaybackLayer, Anime25DTorsoShellProfile } from './types'
+import { localToAtlasUv } from './atlasUv'
+import { anime25DTorsoShellOffsetX } from './torsoDeformation'
 import { createIndexedDeformableMesh } from './webglRuntime'
 
 export const BODY_HEAD_FOLLOW = 0.16
@@ -32,38 +34,15 @@ export interface CollarMotionPose {
   headRotationSine: number
   bodyBreathOffset: number
   headBreathOffset: number
+  torsoProfile?: Readonly<Anime25DTorsoShellProfile> | null
+  torsoShellRotation?: Readonly<Anime25DTorsoShellRotation> | null
+  torsoShellBlend?: number
 }
 
-export function updateFrontCollarTargets(
-  model: FrontCollarContactModel,
-  collarDepth: number,
-  neckDepth: number,
-  pose: CollarMotionPose,
-): void {
-  for (let handle = 0; handle < model.attachments.length; handle += 1) {
-    const index = handle * 2
-    const restX = model.handles[index]
-    const restY = model.handles[index + 1]
-    const attachedToNeck = model.attachments[handle] === COLLAR_ATTACHMENT_NECK
-    const neckHeadBlend = attachedToNeck ? collarNeckHeadBlend(restY, pose) : 0
-    const headFollow = attachedToNeck
-      ? BODY_HEAD_FOLLOW + (1 - BODY_HEAD_FOLLOW) * neckHeadBlend
-      : BODY_HEAD_FOLLOW
-    transformCollarPoint(
-      restX,
-      restY,
-      headFollow,
-      attachedToNeck ? neckDepth : collarDepth,
-      neckHeadBlend,
-      attachedToNeck,
-      pose,
-      model.targets,
-      index,
-    )
-  }
-}
-
-function collarNeckHeadBlend(y: number, pose: CollarMotionPose): number {
+export function collarNeckHeadBlend(
+  y: number,
+  pose: Pick<CollarMotionPose, 'neckFollowTop' | 'neckFollowSpan'>,
+): number {
   const progress = clamp(
     (pose.neckFollowTop + pose.neckFollowSpan - y) / pose.neckFollowSpan,
     0,
@@ -150,9 +129,27 @@ export function createCollarClipMesh(
       model.handles[rightIndex + 1],
     )
   }
+  const lastContactY = restValues.at(-1) ?? transitionY
+  if (model.closurePoint && model.closurePoint.y > lastContactY) {
+    restValues.push(
+      model.closurePoint.x - seamAllowance,
+      model.closurePoint.y,
+      model.closurePoint.x + seamAllowance,
+      model.closurePoint.y,
+    )
+  }
   const rest = Float32Array.from(restValues)
   const deformed = rest.slice()
   const uvs = new Float32Array(rest.length)
+  for (let index = 0; index < rest.length; index += 2) {
+    const [u, v] = localToAtlasUv(
+      neck.atlas,
+      (rest[index] - neck.x) / Math.max(1, neck.w),
+      (rest[index + 1] - neck.y) / Math.max(1, neck.h),
+    )
+    uvs[index] = u
+    uvs[index + 1] = v
+  }
   const rowCount = rest.length / 4
   const indices = new Uint16Array((rowCount - 1) * 6)
   for (let row = 0; row < rowCount - 1; row += 1) {
@@ -195,6 +192,14 @@ export function deformCollarClipMesh(
       clip.deformed,
       index,
     )
+    if (pose.torsoProfile && pose.torsoShellRotation) {
+      clip.deformed[index] += anime25DTorsoShellOffsetX(
+        clip.deformed[index],
+        pose.torsoProfile,
+        pose.torsoShellRotation,
+        (pose.torsoShellBlend ?? 0) * (1 - headBlend),
+      )
+    }
   }
 }
 

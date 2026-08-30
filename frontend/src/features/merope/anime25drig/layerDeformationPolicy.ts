@@ -17,6 +17,7 @@ const LOCAL_ROLE_DEFORMATION = new Set([
   'topwear',
   'handwear',
   'neck',
+  'collar_back',
   'collar_front',
 ])
 
@@ -38,6 +39,8 @@ export type Anime25DLayerDeformationExtension =
   | 'geometry-weighted-chest'
   | 'length-scaled-hair-physics'
   | 'front-hair-depth-release'
+  | 'ellipsoid-shell'
+  | 'elliptic-torso-shell'
 
 /** Mirrors the explicit local-deformation branches owned by Anime25DPlayer. */
 export function resolveAnime25DLayerDeformationPolicy(input: {
@@ -47,13 +50,18 @@ export function resolveAnime25DLayerDeformationPolicy(input: {
   hasBangWeights: boolean
   hasFrontHairParallax: boolean
   hasCollarContact: boolean
+  shellDeformation?: boolean
+  torsoShellDeformation?: boolean
 }): Anime25DLayerDeformationPolicy {
   const coupled =
+    input.shellDeformation ||
+    input.torsoShellDeformation ||
     input.hasCollarContact ||
     input.hasFrontHairParallax ||
     input.hairPhysics ||
     input.hasBangWeights ||
     input.baseRole === 'neck' ||
+    input.baseRole === 'collar_back' ||
     input.baseRole === 'collar_front' ||
     input.baseRole === 'topwear' ||
     input.baseRole === 'handwear'
@@ -73,6 +81,8 @@ function deformationExtensions(input: {
   hairPhysics: boolean
   hasFrontHairParallax: boolean
   hasCollarContact: boolean
+  shellDeformation?: boolean
+  torsoShellDeformation?: boolean
 }): Anime25DLayerDeformationExtension[] {
   const extensions: Anime25DLayerDeformationExtension[] = []
   const mouthDeformation = resolveAnime25DMouthDeformation(input.fade)
@@ -103,11 +113,17 @@ function deformationExtensions(input: {
   }
   if (input.baseRole === 'nose') extensions.push('stylized-nose-lift')
   if (input.hasCollarContact) extensions.push('collar-contact')
-  if (input.baseRole === 'neck' || input.baseRole === 'collar_front') {
+  if (
+    input.baseRole === 'neck' ||
+    input.baseRole === 'collar_back' ||
+    input.baseRole === 'collar_front'
+  ) {
     extensions.push('neck-collar-continuity')
   }
   if (input.baseRole === 'topwear') extensions.push('geometry-weighted-chest')
   if (input.hairPhysics) extensions.push('length-scaled-hair-physics')
   if (input.hasFrontHairParallax) extensions.push('front-hair-depth-release')
+  if (input.shellDeformation) extensions.push('ellipsoid-shell')
+  if (input.torsoShellDeformation) extensions.push('elliptic-torso-shell')
   return extensions
 }

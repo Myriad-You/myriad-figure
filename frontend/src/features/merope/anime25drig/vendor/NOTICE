@@ -15,3 +15,12 @@ bind, deform, and fade math follows the upstream runtime. Myriad supplies its
 own bounded ambient and text-free preview speech timing.
 
 The surrounding Myriad page, overlay, and settings chrome are not from that project.
+
+Ellipsoid head/scalp projection, side-profile shaping, feathered hairline-pin,
+and delayed topwear/bottomwear cylinder projection behavior were adapted from
+the MIT-licensed research fork at
+https://github.com/izumix77/Anime2.5DRig, revision
+1644759cd451ab82065e2bf57b21fe806e2be334. Myriad reimplements those behaviors
+inside its versioned asset contract and bounded motion runtime; the fork's demo
+UI, breast-curve and silhouette tuning, localStorage tuning, camera input, and
+recording paths are not included.

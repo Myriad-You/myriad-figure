@@ -3,7 +3,7 @@ import type {
   Anime25DSecondaryDeformationBinding,
   Anime25DSecondaryDeformationFrame,
 } from './secondaryDeformation'
-import type { Anime25DPlaybackLayer } from './types'
+import type { Anime25DPlaybackLayer, Anime25DShellProfile } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { chestDeformationWeight } from './chestPhysics'
@@ -20,6 +20,8 @@ import {
   deformAnime25DHairPoint,
   deformAnime25DSecondaryPoint,
 } from './secondaryDeformation'
+import { writeAnime25DShellRotation } from './shellDeformation'
+import { deformAnime25DTorsoShellPoint } from './torsoDeformation'
 
 const VERTEX_COUNT = 48
 
@@ -32,6 +34,10 @@ test('binds stable secondary roles and optional geometry fields once', () => {
   const collar = secondaryBinding('collar_front', 'body', false, true)
   assert.equal(collar.frontCollar, true)
   assert.equal(collar.collarContact, true)
+
+  const rearCollar = secondaryBinding('collar_back', 'body', false)
+  assert.equal(rearCollar.rearCollar, true)
+  assert.equal(rearCollar.frontCollar, false)
 
   const hair = secondaryBinding('front hair', 'head', false, false, true)
   assert.equal(hair.head, true)
@@ -84,19 +90,265 @@ test('secondary and hair stages match the frozen player branches', () => {
   }
 })
 
+test('ramps the shell into the secondary deformation path from exact legacy output', () => {
+  const binding = {
+    ...secondaryBinding('face', 'head', false),
+    shellMode: 'head' as const,
+  }
+  const frame = secondaryFrame(0.46, 17)
+  frame.expression = { ...frame.expression, angleX: 0.8 }
+  frame.headAngleY = -0.35
+  frame.headRotationCosine = 1
+  frame.headRotationSine = 0
+  frame.bodyBreathOffset = 0
+  frame.headBreathOffset = 0
+  frame.specialHeadOffset = 0
+  frame.shellProfile = shellProfile()
+  frame.shellRotation = {
+    active: false,
+    yawCosine: 1,
+    yawSine: 0,
+    pitchCosine: 1,
+    pitchSine: 0,
+  }
+  writeAnime25DShellRotation(
+    frame.expression.angleX,
+    frame.headAngleY,
+    frame.shellRotation,
+  )
+
+  const restX = 124
+  const restY = 132
+  const legacy = { x: restX, y: restY }
+  legacyDeformSecondaryPoint(legacy, restX, restY, 0, binding, frame)
+
+  frame.shellActivation = 0
+  frame.shellBlend = 0
+  const rampStart = { x: restX, y: restY }
+  deformAnime25DSecondaryPoint(rampStart, restX, restY, 0, binding, frame)
+  assert.deepEqual(rampStart, legacy)
+
+  frame.shellActivation = 1
+  frame.shellBlend = frame.shellProfile.blend
+  const active = { x: restX, y: restY }
+  deformAnime25DSecondaryPoint(active, restX, restY, 0, binding, frame)
+  assert.equal(Number.isFinite(active.x), true)
+  assert.equal(Number.isFinite(active.y), true)
+  assert.notDeepEqual(active, legacy)
+  assert.ok(Math.hypot(active.x - legacy.x, active.y - legacy.y) < 80)
+})
+
+test('fully pinned hairline vertices reject bang and spring displacement', () => {
+  const unpinned = secondaryBinding('front hair', 'head', false, false, true)
+  const hairlinePinWeights = new Float32Array(VERTEX_COUNT)
+  hairlinePinWeights[VERTEX_COUNT - 1] = 1
+  const pinned = { ...unpinned, hairlinePinWeights }
+  const frame = secondaryFrame(0.63, 21)
+  frame.shellActivation = 1
+  const vertex = VERTEX_COUNT - 1
+  const rest = { x: 132, y: 98 }
+  const moving = { ...rest }
+  const fixed = { ...rest }
+
+  deformAnime25DHairPoint(moving, vertex, unpinned, frame)
+  deformAnime25DHairPoint(fixed, vertex, pinned, frame)
+
+  assert.notDeepEqual(moving, rest)
+  assert.deepEqual(fixed, rest)
+})
+
+test('composes torso volume after existing topwear chest deformation', () => {
+  const binding = {
+    ...secondaryBinding('topwear', 'body', false),
+    torsoShellMode: 'full' as const,
+  }
+  const frame = secondaryFrame(0.58, 23)
+  const profile = shellProfile().torso
+  assert.ok(profile)
+  frame.torsoProfile = profile
+  frame.torsoShellBlend = 0.25
+  frame.torsoShellRotation = {
+    active: true,
+    yawCosine: Math.cos(0.24),
+    yawSine: Math.sin(0.24),
+  }
+  const restX = 151
+  const restY = 126
+  const vertex = 19
+  const expected = { x: restX, y: restY }
+  legacyDeformSecondaryPoint(expected, restX, restY, vertex, binding, frame)
+  deformAnime25DTorsoShellPoint(
+    expected,
+    profile,
+    frame.torsoShellRotation,
+    frame.torsoShellBlend,
+  )
+
+  const actual = { x: restX, y: restY }
+  deformAnime25DSecondaryPoint(actual, restX, restY, vertex, binding, frame)
+  assert.deepEqual(actual, expected)
+  assert.notEqual(actual.x, restX)
+})
+
+test('fades fallback front-collar torso motion from body edge to neck seam', () => {
+  const binding = {
+    ...secondaryBinding('collar_front', 'body', false),
+    torsoShellMode: 'collar' as const,
+  }
+  const frame = secondaryFrame(0.58, 23)
+  const profile = shellProfile().torso
+  assert.ok(profile)
+  frame.torsoProfile = profile
+  frame.torsoShellBlend = 0.25
+  frame.torsoShellRotation = {
+    active: true,
+    yawCosine: Math.cos(0.24),
+    yawSine: Math.sin(0.24),
+  }
+
+  const neckSeamRest = { x: 117, y: 70 }
+  const neckSeamLegacy = { ...neckSeamRest }
+  legacyDeformSecondaryPoint(
+    neckSeamLegacy,
+    neckSeamRest.x,
+    neckSeamRest.y,
+    0,
+    binding,
+    frame,
+  )
+  const neckSeamActual = { ...neckSeamRest }
+  deformAnime25DSecondaryPoint(
+    neckSeamActual,
+    neckSeamRest.x,
+    neckSeamRest.y,
+    0,
+    binding,
+    frame,
+  )
+  assert.deepEqual(neckSeamActual, neckSeamLegacy)
+
+  const bodyEdgeRest = { x: 54, y: 224 }
+  const bodyEdgeLegacy = { ...bodyEdgeRest }
+  legacyDeformSecondaryPoint(
+    bodyEdgeLegacy,
+    bodyEdgeRest.x,
+    bodyEdgeRest.y,
+    0,
+    binding,
+    frame,
+  )
+  const bodyEdgeActual = { ...bodyEdgeRest }
+  deformAnime25DSecondaryPoint(
+    bodyEdgeActual,
+    bodyEdgeRest.x,
+    bodyEdgeRest.y,
+    0,
+    binding,
+    frame,
+  )
+  assert.notDeepEqual(bodyEdgeActual, bodyEdgeLegacy)
+})
+
+test('keeps narrow contact-collar rows coherent at the allowed yaw limit', () => {
+  const binding = secondaryBinding('collar_front', 'body', false, true)
+  const frame = highCollarFrame()
+  const leftOuter = deformSecondary({ x: 498, y: 635.17 }, binding, frame)
+  const leftInner = deformSecondary({ x: 500, y: 635.17 }, binding, frame)
+  const rightInner = deformSecondary({ x: 599, y: 635.17 }, binding, frame)
+  const rightOuter = deformSecondary({ x: 604, y: 635.17 }, binding, frame)
+
+  assert.ok(Math.abs(leftInner.x - leftOuter.x - 2) < 1e-9)
+  assert.ok(Math.abs(rightOuter.x - rightInner.x - 5) < 1e-9)
+  assert.equal(leftOuter.y, leftInner.y)
+  assert.equal(rightInner.y, rightOuter.y)
+})
+
+test('front and rear high-collar layers share the same vertical motion field', () => {
+  const front = secondaryBinding('collar_front', 'body', false, true)
+  const rear = secondaryBinding('collar_back', 'body', false)
+  const frame = highCollarFrame()
+  const rest = { x: 552, y: 652.17 }
+
+  assert.deepEqual(
+    deformSecondary(rest, front, frame),
+    deformSecondary(rest, rear, frame),
+  )
+})
+
+test('fades split-collar torso volume with the inverse neck-follow field', () => {
+  const binding = {
+    ...secondaryBinding('collar_front', 'body', false, true),
+    torsoShellMode: 'collar' as const,
+  }
+  const withoutTorso = highCollarFrame()
+  const withTorso = highCollarFrame()
+  const profile = shellProfile().torso
+  assert.ok(profile)
+  withTorso.torsoProfile = profile
+  withTorso.torsoShellBlend = 0.25
+  withTorso.torsoShellRotation = {
+    active: true,
+    yawCosine: Math.cos(0.24),
+    yawSine: Math.sin(0.24),
+  }
+
+  const top = { x: 604, y: withTorso.neckFollowTop }
+  assert.deepEqual(
+    deformSecondary(top, binding, withTorso),
+    deformSecondary(top, binding, withoutTorso),
+  )
+
+  const bottom = { x: 604, y: withTorso.neckBottom }
+  assert.notDeepEqual(
+    deformSecondary(bottom, binding, withTorso),
+    deformSecondary(bottom, binding, withoutTorso),
+  )
+})
+
 function secondaryBindings(): Anime25DSecondaryDeformationBinding[] {
   return [
     secondaryBinding('face', 'head', false),
     secondaryBinding('body', 'body', false),
     secondaryBinding('neck', 'body', false),
     secondaryBinding('collar_front', 'body', false),
-    secondaryBinding('collar_front', 'body', false, true),
     secondaryBinding('topwear', 'body', false),
     secondaryBinding('handwear', 'body', false),
     secondaryBinding('front hair', 'head', false, false, true),
     secondaryBinding('back hair', 'head', false, false, true, false),
     secondaryBinding('accessory', 'head', true),
   ]
+}
+
+function highCollarFrame(): Anime25DSecondaryDeformationFrame {
+  const frame = secondaryFrame(0.58, 24)
+  frame.expression = { ...frame.expression, angleX: 0.38 }
+  frame.faceScale = 1.156156
+  frame.headAngleY = 0
+  frame.headRotationCosine = 1
+  frame.headRotationSine = 0
+  frame.neckPivotX = 548.9295
+  frame.neckPivotY = 684.9667
+  frame.neckBottom = 711.6667
+  frame.neckFollowTop = 628.44745
+  frame.neckFollowSpan = 83.21925
+  frame.bodyBreathOffset = 0
+  frame.headBreathOffset = 0
+  frame.specialHeadOffset = 0
+  frame.highCollar = true
+  frame.torsoProfile = undefined
+  frame.torsoShellBlend = 0
+  frame.torsoShellRotation = undefined
+  return frame
+}
+
+function deformSecondary(
+  rest: { x: number; y: number },
+  binding: Anime25DSecondaryDeformationBinding,
+  frame: Anime25DSecondaryDeformationFrame,
+): { x: number; y: number } {
+  const point = { ...rest }
+  deformAnime25DSecondaryPoint(point, rest.x, rest.y, 0, binding, frame)
+  return point
 }
 
 function secondaryBinding(
@@ -117,15 +369,10 @@ function secondaryBinding(
     h: 154,
   }
   const alongStrand = hair ? new Float32Array(VERTEX_COUNT) : null
-  const frontHairParallaxScale = hair
-    ? new Float32Array(VERTEX_COUNT)
-    : null
-  const bangWeights = hair && frontHair
-    ? new Float32Array(VERTEX_COUNT * 3)
-    : null
-  const strandWeights = hair
-    ? new Float32Array(VERTEX_COUNT * 3)
-    : null
+  const frontHairParallaxScale = hair ? new Float32Array(VERTEX_COUNT) : null
+  const bangWeights =
+    hair && frontHair ? new Float32Array(VERTEX_COUNT * 3) : null
+  const strandWeights = hair ? new Float32Array(VERTEX_COUNT * 3) : null
   for (let vertex = 0; vertex < VERTEX_COUNT; vertex += 1) {
     const progress = vertex / (VERTEX_COUNT - 1)
     if (alongStrand) alongStrand[vertex] = progress
@@ -165,11 +412,61 @@ function secondaryBinding(
 }
 
 function hairSprings(): Anime25DLayerSpringBinding[] {
-  return [
-    spring(-2.6, 1.4),
-    spring(0.8, -1.1),
-    spring(3.2, 1.9),
-  ]
+  return [spring(-2.6, 1.4), spring(0.8, -1.1), spring(3.2, 1.9)]
+}
+
+function shellProfile(): Anime25DShellProfile {
+  return {
+    version: 1,
+    source: 'authored',
+    enabled: true,
+    blend: 0.5,
+    head: {
+      centerX: 117,
+      centerY: 139,
+      radiusX: 74,
+      radiusY: 96,
+      radiusZ: 58,
+    },
+    faceProfile: {
+      enabled: true,
+      startY: 74,
+      endY: 206,
+      points: [
+        { v: 0, z: 0 },
+        { v: 0.25, z: 0.12 },
+        { v: 0.5, z: 0.22 },
+        { v: 0.75, z: 0.1 },
+        { v: 1, z: 0 },
+      ],
+    },
+    hair: {
+      centerX: 117,
+      centerY: 139,
+      radiusX: 82,
+      radiusY: 106,
+      radiusZ: 62,
+      frontGap: 0.18,
+      frontBulge: 1,
+      backDepth: 0.35,
+      crownRound: 1,
+      hairlinePin: {
+        enabled: true,
+        centerX: 0,
+        centerY: -0.45,
+        halfWidth: 1.1,
+        halfHeight: 0.32,
+        feather: 0.06,
+      },
+    },
+    torso: {
+      enabled: true,
+      blend: 0.5,
+      centerX: 117,
+      radiusX: 92,
+      radiusZ: 54,
+    },
+  }
 }
 
 function spring(stiffDx: number, softDx: number): Anime25DLayerSpringBinding {
@@ -255,8 +552,7 @@ function legacyDeformSecondaryPoint(
     const neckFollowInput = frame.highCollar
       ? neckFollowProgress ** HIGH_COLLAR_NECK_FOLLOW_POWER
       : neckFollowProgress
-    const neckHeadBlend =
-      baseRole === 'neck' ? smoothstep(neckFollowInput) : 0
+    const neckHeadBlend = baseRole === 'neck' ? smoothstep(neckFollowInput) : 0
     const frontCollarProgress =
       isFrontCollar && !binding.collarContact
         ? clamp(
@@ -270,8 +566,7 @@ function legacyDeformSecondaryPoint(
     const frontCollarLocalX =
       isFrontCollar && !binding.collarContact
         ? Math.abs(
-            (restX - (source.x + source.w / 2)) /
-              Math.max(1, source.w / 2),
+            (restX - (source.x + source.w / 2)) / Math.max(1, source.w / 2),
           )
         : 1
     const frontCollarInnerWeight =
@@ -282,14 +577,9 @@ function legacyDeformSecondaryPoint(
       smoothstep(frontCollarProgress) *
       frontCollarInnerWeight *
       FRONT_COLLAR_HEAD_FOLLOW
-    let headFollow = isHead
-      ? 1
-      : source.group === 'body'
-        ? BODY_HEAD_FOLLOW
-        : 0
+    let headFollow = isHead ? 1 : source.group === 'body' ? BODY_HEAD_FOLLOW : 0
     if (baseRole === 'neck') {
-      headFollow =
-        BODY_HEAD_FOLLOW + (1 - BODY_HEAD_FOLLOW) * neckHeadBlend
+      headFollow = BODY_HEAD_FOLLOW + (1 - BODY_HEAD_FOLLOW) * neckHeadBlend
     } else if (isFrontCollar && !binding.collarContact) {
       headFollow =
         BODY_HEAD_FOLLOW + (1 - BODY_HEAD_FOLLOW) * frontCollarHeadBlend
@@ -306,8 +596,7 @@ function legacyDeformSecondaryPoint(
       point.x += (rotatedX - rotationX) * headFollow
       point.y += (rotatedY - rotationY) * headFollow
       let depthOffset =
-        (source.depth - 1) *
-        (binding.frontHairParallaxScale?.[vertex] ?? 1)
+        (source.depth - 1) * (binding.frontHairParallaxScale?.[vertex] ?? 1)
       if (baseRole === 'neck') depthOffset *= 1 - neckHeadBlend
       else if (isFrontCollar) depthOffset *= 1 - frontCollarHeadBlend
       point.x +=
@@ -319,10 +608,7 @@ function legacyDeformSecondaryPoint(
         headFollow *
         frame.faceScale *
         (-frame.headAngleY * (9 + 30 * depthOffset) -
-          frame.headAngleY *
-            depthOffset *
-            (point.y - frame.faceCenterY) *
-            0.05)
+          frame.headAngleY * depthOffset * (point.y - frame.faceCenterY) * 0.05)
     }
     if (!binding.collarContact && frame.specialHeadOffset !== 0) {
       const specialHeadFollow = isHead
@@ -363,8 +649,7 @@ function legacyDeformSecondaryPoint(
       (point.x - frame.neckPivotX) * (1 + frame.breath * 0.003)
   }
   if (isTopwear && (frame.chestOffsetX !== 0 || frame.chestOffsetY !== 0)) {
-    const normalizedX =
-      (restX - frame.chestCenterX) * frame.inverseChestRadiusX
+    const normalizedX = (restX - frame.chestCenterX) * frame.inverseChestRadiusX
     const normalizedY =
       (restY - frame.chestMotionCenterY) * frame.inverseChestRadiusY
     const skinWeight = binding.chestWeights?.[vertex] ?? 1
@@ -378,9 +663,7 @@ function legacyDeformSecondaryPoint(
     point.y += frame.chestOffsetY * chestWeight
   }
   if (baseRole === 'handwear') {
-    const sleeveWeight = smoothstep(
-      ((point.y - source.y) / source.h) * 1.15,
-    )
+    const sleeveWeight = smoothstep(((point.y - source.y) / source.h) * 1.15)
     point.y -= frame.expression.armY * 30 * frame.faceScale * sleeveWeight
     point.y += frame.expression.armPos * 40 * frame.faceScale
     point.x +=
@@ -421,9 +704,7 @@ function legacyDeformHairPoint(
   const easedAlong = binding.frontHair ? Math.min(1, along * 1.6) : along
   const amplitude =
     easedAlong ** (binding.frontHair ? 1.8 : 2.1) *
-    (binding.frontHair
-      ? frame.expression.fhAmp
-      : frame.expression.physAmp)
+    (binding.frontHair ? frame.expression.fhAmp : frame.expression.physAmp)
   const softMix =
     easedAlong ** 1.2 *
     (binding.frontHair ? frame.expression.fhSoft : frame.expression.soft)
@@ -433,8 +714,7 @@ function legacyDeformHairPoint(
     if (weight < 0.001) continue
     const spring = binding.springs[strand]
     offsetX +=
-      weight *
-      (spring.stiff.dx * (1 - softMix) + spring.soft.dx * softMix)
+      weight * (spring.stiff.dx * (1 - softMix) + spring.soft.dx * softMix)
   }
   const offset = offsetX * amplitude
   point.x += offset

@@ -31,8 +31,13 @@ import type {
 } from './performanceTelemetry'
 import type { Anime25DRendererBindings, Anime25DRenderFrame } from './renderer'
 import type { Anime25DSecondaryDeformationFrame } from './secondaryDeformation'
+import type { Anime25DShellRotation } from './shellDeformation'
 import type { StylizedExpressionMotion } from './stylizedExpressionMotion'
-import type { Anime25DPlayback } from './types'
+import type {
+  Anime25DTorsoShellRotation,
+  Anime25DTorsoYawState,
+} from './torsoDeformation'
+import type { Anime25DPlayback, Anime25DShellProfile } from './types'
 import { currentCopy } from '../../../i18n/localeCopy'
 import {
   allowsAmbientMotion,
@@ -59,11 +64,9 @@ import {
   stepChestSpring,
   topwearMotionAtChest,
 } from './chestPhysics'
-import { deformRigidMlsPoint } from './collarContact'
 import {
   BODY_HEAD_FOLLOW,
   deformCollarClipMesh,
-  updateFrontCollarTargets,
   uploadCollarClipMesh,
 } from './collarRuntime'
 import { cryTearHorizontalOffset, cryTearVerticalOffset } from './cryMotion'
@@ -126,10 +129,13 @@ import {
   deformAnime25DHairPoint,
   deformAnime25DSecondaryPoint,
 } from './secondaryDeformation'
+import { writeAnime25DShellRotation } from './shellDeformation'
+import { resolveAnime25DShellProfile } from './shellProfile'
 import { CoSpeechExpressionController } from './speechExpression'
 import { AutoSpeechController } from './speechMotion'
 import { StylizedExpressionMotionController } from './stylizedExpressionMotion'
 import { ThinkingMotionController } from './thinkingMotion'
+import { stepAnime25DTorsoShellRotation } from './torsoDeformation'
 import { compileProgram, createAtlasTexture, loadImage } from './webglRuntime'
 
 interface SecondaryMotionPose {
@@ -171,6 +177,7 @@ export interface Anime25DDebugSnapshot {
 export class Anime25DPlayer {
   private readonly gl: WebGL2RenderingContext
   private readonly playback: Anime25DPlayback
+  private readonly shellProfile: Anime25DShellProfile
   private readonly program: WebGLProgram
   private readonly rendererBindings: Anime25DRendererBindings
   private readonly renderFrame: Anime25DRenderFrame = {
@@ -227,6 +234,24 @@ export class Anime25DPlayer {
     Anime25DExpressionDeformationFrame
 
   private readonly secondaryDeformationFrame: Anime25DSecondaryDeformationFrame
+
+  private readonly shellRotation: Anime25DShellRotation = {
+    active: false,
+    yawCosine: 1,
+    yawSine: 0,
+    pitchCosine: 1,
+    pitchSine: 0,
+  }
+
+  private readonly torsoYaw: Anime25DTorsoYawState = { value: 0 }
+
+  private readonly torsoShellRotation: Anime25DTorsoShellRotation = {
+    active: false,
+    yawCosine: 1,
+    yawSine: 0,
+  }
+
+  private shellActivation = 0
   private readonly collarMotion: CollarMotionPose
   private readonly hairSpringFrame: Anime25DHairSpringFrame
 
@@ -298,6 +323,7 @@ export class Anime25DPlayer {
     if (!gl) throw new Error(currentCopy().merope.anime25dWebglFailed)
     this.gl = gl
     this.playback = playback
+    this.shellProfile = resolveAnime25DShellProfile(playback)
     this.highCollar = playback.layers.some(
       (layer) => layer.role === 'collar-back' || layer.role === 'collar-front',
     )
@@ -365,6 +391,9 @@ export class Anime25DPlayer {
       faceCenterY: anchors.face.cy,
       bodyBreathOffset: 0,
       headBreathOffset: 0,
+      torsoProfile: this.shellProfile.torso ?? undefined,
+      torsoShellRotation: this.torsoShellRotation,
+      torsoShellBlend: 0,
       specialHeadOffset: 0,
       highCollar: this.highCollar,
       breath: 0,
@@ -377,6 +406,10 @@ export class Anime25DPlayer {
       chestOffsetX: 0,
       chestOffsetY: 0,
       chestProfileSource: playback.chestProfile?.source,
+      shellProfile: this.shellProfile,
+      shellBlend: 0,
+      shellActivation: 0,
+      shellRotation: this.shellRotation,
     }
     this.collarMotion = {
       neckPivotX: anchors.neckPivot.x,
@@ -391,6 +424,9 @@ export class Anime25DPlayer {
       headRotationSine: 0,
       bodyBreathOffset: 0,
       headBreathOffset: 0,
+      torsoProfile: this.shellProfile.torso,
+      torsoShellBlend: 0,
+      torsoShellRotation: this.torsoShellRotation,
     }
     this.hairSpringFrame = {
       enabled: true,
@@ -413,6 +449,7 @@ export class Anime25DPlayer {
       this.gl,
       this.program,
       this.playback,
+      this.shellProfile,
       this.current,
       this.chestWeightField,
       image,
@@ -641,6 +678,7 @@ export class Anime25DPlayer {
   }
 
   private smoothDriver(dt: number): void {
+    this.shellActivation = Math.min(1, this.shellActivation + dt * 8)
     const t = this.time
     const pointer =
       this.target.mouse && allowsPointerGaze(this.policy.gaze)
@@ -714,7 +752,9 @@ export class Anime25DPlayer {
         stylizedTargets.lovestruck <= 0.03,
     )
     const ambientScale = headBodyAmbient
-      ? performanceMotionScale * randomAction.ambientScale * stylized.ambientScale
+      ? performanceMotionScale *
+        randomAction.ambientScale *
+        stylized.ambientScale
       : 0
     const headKeep = 1 - 0.88 * this.singingDeform
     applyAnime25DAmbientMotion(tgt, ambient, ambientScale, headKeep)
@@ -757,7 +797,11 @@ export class Anime25DPlayer {
       smoothAnime25DUnit(stylizedTargets.silly) * this.sillyMouthShare,
     )
     captureAnime25DSecondaryMotion(this.secondaryTarget, tgt)
-    applyExpressiveMotionEnvelope(tgt, semanticExpression, gatedSpeechExpression)
+    applyExpressiveMotionEnvelope(
+      tgt,
+      semanticExpression,
+      gatedSpeechExpression,
+    )
     stepAnime25DBlink(
       tgt,
       this.blinkState,
@@ -773,6 +817,13 @@ export class Anime25DPlayer {
       this.secondaryCurrent,
       this.secondaryTarget,
       dt,
+    )
+    stepAnime25DTorsoShellRotation(
+      this.torsoYaw,
+      this.current.angleX,
+      this.current.body,
+      dt,
+      this.torsoShellRotation,
     )
   }
 
@@ -878,6 +929,7 @@ export class Anime25DPlayer {
     deformationFrame.stylizedMotion = this.stylizedMotion
     const deformationPoint = this.deformationPoint
     const secondaryDeformationFrame = this.secondaryDeformationFrame
+    writeAnime25DShellRotation(e.angleX, ay, this.shellRotation)
     secondaryDeformationFrame.headAngleY = ay
     secondaryDeformationFrame.headRotationCosine = cz
     secondaryDeformationFrame.headRotationSine = sz
@@ -890,6 +942,15 @@ export class Anime25DPlayer {
     secondaryDeformationFrame.inverseChestRadiusY = inverseChestRy
     secondaryDeformationFrame.chestOffsetX = chestOffsetX
     secondaryDeformationFrame.chestOffsetY = chestOffsetY
+    secondaryDeformationFrame.shellBlend =
+      this.shellProfile.blend * this.shellActivation
+    secondaryDeformationFrame.shellActivation = this.shellActivation
+    secondaryDeformationFrame.torsoShellBlend =
+      this.shellProfile.enabled && this.shellProfile.torso?.enabled
+        ? this.shellProfile.blend *
+          this.shellProfile.torso.blend *
+          this.shellActivation
+        : 0
     writeAnime25DOpacityFrame(
       this.opacityFrame,
       e,
@@ -914,6 +975,8 @@ export class Anime25DPlayer {
     collarMotion.headRotationSine = sz
     collarMotion.bodyBreathOffset = secondaryDeformationFrame.bodyBreathOffset
     collarMotion.headBreathOffset = secondaryDeformationFrame.headBreathOffset
+    collarMotion.torsoShellBlend =
+      secondaryDeformationFrame.torsoShellBlend ?? 0
     if (this.collarClip) {
       deformCollarClipMesh(this.collarClip, collarMotion, this.neckDepth)
       if (work) {
@@ -990,14 +1053,6 @@ export class Anime25DPlayer {
         ? cryTearHorizontalOffset(t, source.side, e.eyeCry, fs)
         : 0
       const mouthDeformation = layer.mouthDeformation
-      if (layer.collarContact) {
-        updateFrontCollarTargets(
-          layer.collarContact,
-          source.depth,
-          this.neckDepth,
-          collarMotion,
-        )
-      }
       let geometryChanged = false
       for (let vertex = 0; vertex < vertexCount; vertex += 1) {
         const index = vertex * 2
@@ -1050,18 +1105,6 @@ export class Anime25DPlayer {
           )
           x = deformationPoint.x
           y = deformationPoint.y
-        }
-        if (layer.collarContact) {
-          deformRigidMlsPoint(
-            rest[index],
-            rest[index + 1],
-            layer.collarContact.handles,
-            layer.collarContact.targets,
-            deformed,
-            index,
-          )
-          x = deformed[index]
-          y = deformed[index + 1]
         }
         deformationPoint.x = x
         deformationPoint.y = y

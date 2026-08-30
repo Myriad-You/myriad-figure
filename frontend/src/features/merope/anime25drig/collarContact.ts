@@ -1,6 +1,3 @@
-export const COLLAR_ATTACHMENT_BODY = 0
-export const COLLAR_ATTACHMENT_NECK = 1
-
 interface LayerBounds {
   x: number
   y: number
@@ -18,11 +15,10 @@ interface ContactRow {
 
 export interface FrontCollarContactModel {
   handles: Float32Array
-  attachments: Uint8Array
-  targets: Float32Array
   contactPairs: Uint16Array
   gridX: readonly number[]
   gridY: readonly number[]
+  closurePoint: { x: number; y: number } | null
 }
 
 const ALPHA_THRESHOLD = 18
@@ -82,7 +78,6 @@ export function buildFrontCollarContactModel(
   if (samples.length < 4) return null
 
   const handles: number[] = []
-  const attachments: number[] = []
   const contactPairs: number[] = []
   const gridX: number[] = []
   const gridY: number[] = []
@@ -96,15 +91,28 @@ export function buildFrontCollarContactModel(
     const outerRight = source.x + (sample.outerRight + 1) * scaleX
     const firstHandle = handles.length / 2
     handles.push(outerLeft, y, innerLeft, y, innerRight, y, outerRight, y)
-    attachments.push(
-      COLLAR_ATTACHMENT_BODY,
-      COLLAR_ATTACHMENT_NECK,
-      COLLAR_ATTACHMENT_NECK,
-      COLLAR_ATTACHMENT_BODY,
-    )
     contactPairs.push(firstHandle + 1, firstHandle + 2)
     gridX.push(outerLeft, innerLeft, innerRight, outerRight)
     gridY.push(y)
+  }
+
+  const closure = findContactClosure(
+    rgba,
+    pixelWidth,
+    pixelHeight,
+    rows.at(-1)?.y ?? maximumY,
+    centerX,
+    ALPHA_THRESHOLD,
+  )
+  const closurePoint = closure
+    ? {
+        x: source.x + (closure.x + 0.5) * scaleX,
+        y: source.y + (closure.y + 0.5) * scaleY,
+      }
+    : null
+  if (closurePoint) {
+    gridX.push(closurePoint.x)
+    gridY.push(closurePoint.y)
   }
 
   const bottomY = source.y + source.h
@@ -116,100 +124,36 @@ export function buildFrontCollarContactModel(
     source.x + source.w,
     bottomY,
   )
-  attachments.push(
-    COLLAR_ATTACHMENT_BODY,
-    COLLAR_ATTACHMENT_BODY,
-    COLLAR_ATTACHMENT_BODY,
-  )
   gridX.push(source.x, source.x + source.w / 2, source.x + source.w)
   gridY.push(bottomY)
 
   const restHandles = Float32Array.from(handles)
   return {
     handles: restHandles,
-    attachments: Uint8Array.from(attachments),
-    targets: restHandles.slice(),
     contactPairs: Uint16Array.from(contactPairs),
     gridX,
     gridY,
+    closurePoint,
   }
 }
 
-/**
- * Rigid moving-least-squares deformation. Each output point gets a local
- * best-fit rotation and translation from the collar's body/neck handles.
- */
-export function deformRigidMlsPoint(
-  x: number,
-  y: number,
-  handles: Float32Array,
-  targets: Float32Array,
-  output: Float32Array,
-  outputIndex: number,
-): void {
-  const handleCount = handles.length / 2
-  let weightSum = 0
-  let restCenterX = 0
-  let restCenterY = 0
-  let targetCenterX = 0
-  let targetCenterY = 0
-
-  for (let handle = 0; handle < handleCount; handle += 1) {
-    const index = handle * 2
-    const dx = x - handles[index]
-    const dy = y - handles[index + 1]
-    const distanceSquared = dx * dx + dy * dy
-    if (distanceSquared < 1e-5) {
-      output[outputIndex] = targets[index]
-      output[outputIndex + 1] = targets[index + 1]
-      return
-    }
-    const softenedDistance = distanceSquared + 1
-    const weight = 1 / (softenedDistance * Math.sqrt(softenedDistance))
-    weightSum += weight
-    restCenterX += handles[index] * weight
-    restCenterY += handles[index + 1] * weight
-    targetCenterX += targets[index] * weight
-    targetCenterY += targets[index + 1] * weight
+function findContactClosure(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  lastContactY: number,
+  centerX: number,
+  threshold: number,
+): { x: number; y: number } | null {
+  const centerLeft = Math.floor(centerX)
+  const centerRight = Math.ceil(centerX)
+  const maximumY = Math.min(height - 1, Math.ceil(height * 0.75))
+  for (let y = lastContactY + 1; y <= maximumY; y += 1) {
+    const leftOpaque = alphaAt(rgba, width, centerLeft, y) > threshold
+    const rightOpaque = alphaAt(rgba, width, centerRight, y) > threshold
+    if (leftOpaque || rightOpaque) return { x: centerX, y }
   }
-  if (weightSum <= 1e-8) {
-    output[outputIndex] = x
-    output[outputIndex + 1] = y
-    return
-  }
-
-  restCenterX /= weightSum
-  restCenterY /= weightSum
-  targetCenterX /= weightSum
-  targetCenterY /= weightSum
-  let cosineTerm = 0
-  let sineTerm = 0
-  for (let handle = 0; handle < handleCount; handle += 1) {
-    const index = handle * 2
-    const dx = x - handles[index]
-    const dy = y - handles[index + 1]
-    const softenedDistance = dx * dx + dy * dy + 1
-    const weight = 1 / (softenedDistance * Math.sqrt(softenedDistance))
-    const restX = handles[index] - restCenterX
-    const restY = handles[index + 1] - restCenterY
-    const targetX = targets[index] - targetCenterX
-    const targetY = targets[index + 1] - targetCenterY
-    cosineTerm += weight * (restX * targetX + restY * targetY)
-    sineTerm += weight * (restX * targetY - restY * targetX)
-  }
-
-  const rotationLength = Math.hypot(cosineTerm, sineTerm)
-  if (rotationLength <= 1e-8) {
-    output[outputIndex] = x + targetCenterX - restCenterX
-    output[outputIndex + 1] = y + targetCenterY - restCenterY
-    return
-  }
-  const cosine = cosineTerm / rotationLength
-  const sine = sineTerm / rotationLength
-  const localX = x - restCenterX
-  const localY = y - restCenterY
-  output[outputIndex] = targetCenterX + localX * cosine - localY * sine
-  output[outputIndex + 1] = targetCenterY + localX * sine + localY * cosine
+  return null
 }
 
 function alphaContactRow(

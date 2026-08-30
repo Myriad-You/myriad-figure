@@ -1,17 +1,29 @@
 import type { Anime25DDriver } from './driver'
 import type { Anime25DLayerSpringBinding } from './layerBinding'
 import type {
+  Anime25DShellMode,
+  Anime25DShellRotation,
+} from './shellDeformation'
+import type {
+  Anime25DTorsoShellMode,
+  Anime25DTorsoShellRotation,
+} from './torsoDeformation'
+import type {
   Anime25DChestProfile,
   Anime25DPlaybackLayer,
+  Anime25DShellProfile,
+  Anime25DTorsoShellProfile,
 } from './types'
 import { chestDeformationWeight } from './chestPhysics'
 import {
   BODY_HEAD_FOLLOW,
+  collarNeckHeadBlend,
   FRONT_COLLAR_FLEX_REGION,
   FRONT_COLLAR_HEAD_FOLLOW,
   FRONT_COLLAR_INNER_REGION,
-  HIGH_COLLAR_NECK_FOLLOW_POWER,
 } from './collarRuntime'
+import { deformAnime25DShellPoint } from './shellDeformation'
+import { deformAnime25DTorsoShellPoint } from './torsoDeformation'
 
 type SecondaryDeformationDriver = Pick<
   Anime25DDriver,
@@ -54,6 +66,13 @@ export interface Anime25DSecondaryDeformationFrame {
   chestOffsetX: number
   chestOffsetY: number
   chestProfileSource: Anime25DChestProfile['source'] | undefined
+  shellProfile?: Readonly<Anime25DShellProfile>
+  shellBlend?: number
+  shellActivation?: number
+  shellRotation?: Readonly<Anime25DShellRotation>
+  torsoProfile?: Readonly<Anime25DTorsoShellProfile>
+  torsoShellBlend?: number
+  torsoShellRotation?: Readonly<Anime25DTorsoShellRotation>
 }
 
 export interface Anime25DSecondaryDeformationBinding {
@@ -67,6 +86,7 @@ export interface Anime25DSecondaryDeformationBinding {
   head: boolean
   topwear: boolean
   frontCollar: boolean
+  rearCollar: boolean
   handwear: boolean
   frontHair: boolean
   frontHairParallaxScale: Float32Array | null
@@ -75,6 +95,9 @@ export interface Anime25DSecondaryDeformationBinding {
   strandWeights: Float32Array | null
   alongStrand: Float32Array | null
   springs: Anime25DLayerSpringBinding[] | null
+  shellMode: Anime25DShellMode | null
+  hairlinePinWeights: Float32Array | null
+  torsoShellMode: Anime25DTorsoShellMode | null
 }
 
 export interface Anime25DMutableSecondaryPoint {
@@ -94,13 +117,20 @@ export function createAnime25DSecondaryDeformationBinding(input: {
   strandWeights: Float32Array | null
   alongStrand: Float32Array | null
   springs: Anime25DLayerSpringBinding[] | null
+  shellMode?: Anime25DShellMode | null
+  hairlinePinWeights?: Float32Array | null
+  torsoShellMode?: Anime25DTorsoShellMode | null
 }): Anime25DSecondaryDeformationBinding {
   return {
     ...input,
     head: input.source.group === 'head',
     topwear: input.baseRole === 'topwear',
     frontCollar: input.baseRole === 'collar_front',
+    rearCollar: input.baseRole === 'collar_back',
     handwear: input.baseRole === 'handwear',
+    shellMode: input.shellMode ?? null,
+    hairlinePinWeights: input.hairlinePinWeights ?? null,
+    torsoShellMode: input.torsoShellMode ?? null,
   }
 }
 
@@ -114,16 +144,20 @@ export function deformAnime25DSecondaryPoint(
   frame: Readonly<Anime25DSecondaryDeformationFrame>,
 ): void {
   const { source } = binding
+  let collarBodyWeight = 1
   if (!binding.shaderGlobalTransform) {
-    const neckFollowProgress =
-      binding.baseRole === 'neck'
-        ? clamp((frame.neckBottom - restY) / frame.neckFollowSpan, 0, 1)
-        : 0
-    const neckFollowInput = frame.highCollar
-      ? neckFollowProgress ** HIGH_COLLAR_NECK_FOLLOW_POWER
-      : neckFollowProgress
+    const contourCollar =
+      binding.rearCollar || (binding.frontCollar && binding.collarContact)
+    const verticalNeckFollow = binding.baseRole === 'neck' || contourCollar
+    const neckFollowProgress = verticalNeckFollow
+      ? clamp((frame.neckBottom - restY) / frame.neckFollowSpan, 0, 1)
+      : 0
     const neckHeadBlend =
-      binding.baseRole === 'neck' ? smoothstep(neckFollowInput) : 0
+      verticalNeckFollow && frame.highCollar
+        ? collarNeckHeadBlend(restY, frame)
+        : verticalNeckFollow
+          ? smoothstep(neckFollowProgress)
+          : 0
     const frontCollarProgress =
       binding.frontCollar && !binding.collarContact
         ? clamp(
@@ -137,31 +171,34 @@ export function deformAnime25DSecondaryPoint(
     const frontCollarLocalX =
       binding.frontCollar && !binding.collarContact
         ? Math.abs(
-            (restX - (source.x + source.w / 2)) /
-              Math.max(1, source.w / 2),
+            (restX - (source.x + source.w / 2)) / Math.max(1, source.w / 2),
           )
         : 1
     const frontCollarInnerWeight =
       binding.frontCollar && !binding.collarContact
         ? smoothstep((1 - frontCollarLocalX) / FRONT_COLLAR_INNER_REGION)
         : 0
+    const frontCollarNeckWeight =
+      smoothstep(frontCollarProgress) * frontCollarInnerWeight
     const frontCollarHeadBlend =
-      smoothstep(frontCollarProgress) *
-      frontCollarInnerWeight *
-      FRONT_COLLAR_HEAD_FOLLOW
+      frontCollarNeckWeight * FRONT_COLLAR_HEAD_FOLLOW
+    if (contourCollar) {
+      collarBodyWeight = 1 - neckHeadBlend
+    } else if (binding.frontCollar) {
+      collarBodyWeight = 1 - frontCollarNeckWeight
+    }
     let headFollow = binding.head
       ? 1
       : source.group === 'body'
         ? BODY_HEAD_FOLLOW
         : 0
-    if (binding.baseRole === 'neck') {
-      headFollow =
-        BODY_HEAD_FOLLOW + (1 - BODY_HEAD_FOLLOW) * neckHeadBlend
+    if (verticalNeckFollow) {
+      headFollow = BODY_HEAD_FOLLOW + (1 - BODY_HEAD_FOLLOW) * neckHeadBlend
     } else if (binding.frontCollar && !binding.collarContact) {
       headFollow =
         BODY_HEAD_FOLLOW + (1 - BODY_HEAD_FOLLOW) * frontCollarHeadBlend
     }
-    if (!binding.collarContact && headFollow > 0) {
+    if (headFollow > 0) {
       const rotationX = point.x - frame.neckPivotX
       const rotationY = point.y - frame.neckPivotY
       const rotatedX =
@@ -172,24 +209,51 @@ export function deformAnime25DSecondaryPoint(
         rotationY * frame.headRotationCosine
       point.x += (rotatedX - rotationX) * headFollow
       point.y += (rotatedY - rotationY) * headFollow
+      const authoredPinWeight = binding.hairlinePinWeights?.[vertex] ?? 0
+      const shellActivation = frame.shellActivation ?? 0
+      const pinWeight = authoredPinWeight * shellActivation
       let depthOffset =
         (source.depth - 1) *
-        (binding.frontHairParallaxScale?.[vertex] ?? 1)
-      if (binding.baseRole === 'neck') depthOffset *= 1 - neckHeadBlend
+        (binding.frontHairParallaxScale?.[vertex] ?? 1) *
+        (1 - pinWeight)
+      if (verticalNeckFollow) depthOffset *= 1 - neckHeadBlend
       else if (binding.frontCollar) depthOffset *= 1 - frontCollarHeadBlend
-      point.x +=
+      const legacyX =
+        point.x +
         headFollow *
-        frame.faceScale *
-        (frame.expression.angleX * (14 + 40 * depthOffset) +
-          frame.expression.angleX * (frame.neckPivotY - point.y) * 0.028)
-      point.y +=
+          frame.faceScale *
+          (frame.expression.angleX * (14 + 40 * depthOffset) +
+            frame.expression.angleX * (frame.neckPivotY - point.y) * 0.028)
+      const legacyY =
+        point.y +
         headFollow *
-        frame.faceScale *
-        (-frame.headAngleY * (9 + 30 * depthOffset) -
-          frame.headAngleY *
-            depthOffset *
-            (point.y - frame.faceCenterY) *
-            0.05)
+          frame.faceScale *
+          (-frame.headAngleY * (9 + 30 * depthOffset) -
+            frame.headAngleY *
+              depthOffset *
+              (point.y - frame.faceCenterY) *
+              0.05)
+      if (
+        binding.shellMode &&
+        frame.shellProfile?.enabled &&
+        frame.shellRotation
+      ) {
+        deformAnime25DShellPoint(
+          point,
+          restY,
+          binding.shellMode,
+          frame.shellProfile,
+          frame.shellRotation,
+          source.depth,
+          pinWeight,
+        )
+        const shellBlend = frame.shellBlend ?? frame.shellProfile.blend
+        point.x = legacyX + (point.x - legacyX) * shellBlend
+        point.y = legacyY + (point.y - legacyY) * shellBlend
+      } else {
+        point.x = legacyX
+        point.y = legacyY
+      }
     }
     if (!binding.collarContact && frame.specialHeadOffset !== 0) {
       const specialHeadFollow = binding.head
@@ -201,10 +265,10 @@ export function deformAnime25DSecondaryPoint(
             : 0
       point.y += frame.specialHeadOffset * specialHeadFollow
     }
-    if (!binding.collarContact) {
+    if (!binding.collarContact || contourCollar) {
       const breathOffset = binding.head
         ? frame.headBreathOffset
-        : binding.baseRole === 'neck'
+        : verticalNeckFollow
           ? frame.bodyBreathOffset +
             (frame.headBreathOffset - frame.bodyBreathOffset) * neckHeadBlend
           : binding.frontCollar
@@ -233,8 +297,7 @@ export function deformAnime25DSecondaryPoint(
     binding.topwear &&
     (frame.chestOffsetX !== 0 || frame.chestOffsetY !== 0)
   ) {
-    const normalizedX =
-      (restX - frame.chestCenterX) * frame.inverseChestRadiusX
+    const normalizedX = (restX - frame.chestCenterX) * frame.inverseChestRadiusX
     const normalizedY =
       (restY - frame.chestMotionCenterY) * frame.inverseChestRadiusY
     const skinWeight = binding.chestWeights?.[vertex] ?? 1
@@ -247,10 +310,22 @@ export function deformAnime25DSecondaryPoint(
     point.x += frame.chestOffsetX * chestWeight
     point.y += frame.chestOffsetY * chestWeight
   }
-  if (binding.handwear) {
-    const sleeveWeight = smoothstep(
-      ((point.y - source.y) / source.h) * 1.15,
+  if (
+    binding.torsoShellMode &&
+    frame.torsoProfile &&
+    frame.torsoShellRotation
+  ) {
+    const torsoWeight =
+      binding.torsoShellMode === 'collar' ? collarBodyWeight : 1
+    deformAnime25DTorsoShellPoint(
+      point,
+      frame.torsoProfile,
+      frame.torsoShellRotation,
+      (frame.torsoShellBlend ?? 0) * torsoWeight,
     )
+  }
+  if (binding.handwear) {
+    const sleeveWeight = smoothstep(((point.y - source.y) / source.h) * 1.15)
     point.y -= frame.expression.armY * 30 * frame.faceScale * sleeveWeight
     point.y += frame.expression.armPos * 40 * frame.faceScale
     point.x +=
@@ -270,6 +345,10 @@ export function deformAnime25DHairPoint(
   frame: Readonly<Anime25DSecondaryDeformationFrame>,
 ): void {
   const alongStrand = binding.alongStrand
+  const authoredPinWeight = binding.hairlinePinWeights?.[vertex] ?? 0
+  const shellActivation = frame.shellActivation ?? 0
+  const pinWeight = authoredPinWeight * shellActivation
+  const motionScale = 1 - pinWeight
   if (binding.bangWeights && alongStrand) {
     const along = alongStrand[vertex]
     const amplitude = along ** 1.4 * 22 * frame.faceScale
@@ -277,7 +356,8 @@ export function deformAnime25DHairPoint(
       (frame.expression.bangL * binding.bangWeights[vertex * 3] +
         frame.expression.bangC * binding.bangWeights[vertex * 3 + 1] +
         frame.expression.bangR * binding.bangWeights[vertex * 3 + 2]) *
-      amplitude
+      amplitude *
+      motionScale
   }
   const springs = binding.springs
   const strandWeights = binding.strandWeights
@@ -293,9 +373,7 @@ export function deformAnime25DHairPoint(
   const easedAlong = binding.frontHair ? Math.min(1, along * 1.6) : along
   const amplitude =
     easedAlong ** (binding.frontHair ? 1.8 : 2.1) *
-    (binding.frontHair
-      ? frame.expression.fhAmp
-      : frame.expression.physAmp)
+    (binding.frontHair ? frame.expression.fhAmp : frame.expression.physAmp)
   const softMix =
     easedAlong ** 1.2 *
     (binding.frontHair ? frame.expression.fhSoft : frame.expression.soft)
@@ -305,10 +383,9 @@ export function deformAnime25DHairPoint(
     if (weight < 0.001) continue
     const spring = springs[strand]
     offsetX +=
-      weight *
-      (spring.stiff.dx * (1 - softMix) + spring.soft.dx * softMix)
+      weight * (spring.stiff.dx * (1 - softMix) + spring.soft.dx * softMix)
   }
-  const offset = offsetX * amplitude
+  const offset = offsetX * amplitude * motionScale
   point.x += offset
   point.y += Math.abs(offset) * 0.12
 }

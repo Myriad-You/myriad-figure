@@ -1,0 +1,107 @@
+import type { Anime25DTorsoShellProfile } from './types'
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import {
+  anime25DLayerUsesTorsoShell,
+  anime25DTorsoShellModeForLayer,
+  deformAnime25DTorsoShellPoint,
+  stepAnime25DTorsoShellRotation,
+} from './torsoDeformation'
+
+const profile: Anime25DTorsoShellProfile = {
+  enabled: true,
+  blend: 0.5,
+  centerX: 384,
+  radiusX: 292.6,
+  radiusZ: 169.4,
+}
+
+test('binds body garments fully and both split-collar layers through one field', () => {
+  for (const role of ['topwear', 'bottomwear'] as const) {
+    const source = { group: 'body' as const, role }
+    assert.equal(anime25DTorsoShellModeForLayer(source), 'full')
+    assert.equal(anime25DLayerUsesTorsoShell(source), true)
+  }
+  for (const role of ['collar-front', 'collar-back'] as const) {
+    const source = { group: 'body' as const, role }
+    assert.equal(anime25DTorsoShellModeForLayer(source), 'collar')
+    assert.equal(anime25DLayerUsesTorsoShell(source), true)
+  }
+  for (const source of [
+    { group: 'body', role: 'neck' },
+    { group: 'body', role: 'handwear' },
+    { group: 'head', role: 'topwear' },
+  ] as const) {
+    assert.equal(anime25DTorsoShellModeForLayer(source), null)
+    assert.equal(anime25DLayerUsesTorsoShell(source), false)
+  }
+})
+
+test('matches the fork low-pass torso yaw response', () => {
+  const state = { value: 0 }
+  const rotation = { active: false, yawCosine: 1, yawSine: 0 }
+  stepAnime25DTorsoShellRotation(state, 1, 0, 0.05, rotation)
+  const expectedYaw = 0.45 * (0.05 * 2.5)
+  assert.equal(state.value, expectedYaw)
+  assert.equal(rotation.active, true)
+  assert.equal(rotation.yawCosine, Math.cos(expectedYaw))
+  assert.equal(rotation.yawSine, Math.sin(expectedYaw))
+
+  stepAnime25DTorsoShellRotation(state, 1, -0.5, 0, rotation)
+  assert.equal(state.value, expectedYaw)
+})
+
+test('keeps the frontal pose exact and matches the fork cylinder projection', () => {
+  const neutral = { x: 417.25, y: 612.5 }
+  deformAnime25DTorsoShellPoint(
+    neutral,
+    profile,
+    { active: true, yawCosine: 1, yawSine: 0 },
+    0.25,
+  )
+  assert.deepEqual(neutral, { x: 417.25, y: 612.5 })
+
+  const yaw = 0.31
+  const turned = { x: 521.4, y: 731.2 }
+  const expectedX = forkTorsoProjectionX(turned.x, yaw, 0.25)
+  deformAnime25DTorsoShellPoint(
+    turned,
+    profile,
+    {
+      active: true,
+      yawCosine: Math.cos(yaw),
+      yawSine: Math.sin(yaw),
+    },
+    0.25,
+  )
+  assert.equal(turned.x, expectedX)
+  assert.equal(turned.y, 731.2)
+})
+
+test('stays finite outside the fitted torso silhouette', () => {
+  const rotation = {
+    active: true,
+    yawCosine: Math.cos(-0.8),
+    yawSine: Math.sin(-0.8),
+  }
+  for (const x of [-2_000, 0, 384, 768, 2_000]) {
+    const point = { x, y: 820 }
+    deformAnime25DTorsoShellPoint(point, profile, rotation, 0.25)
+    assert.equal(Number.isFinite(point.x), true)
+    assert.equal(point.y, 820)
+  }
+})
+
+function forkTorsoProjectionX(x: number, yaw: number, blend: number): number {
+  const localX = x - profile.centerX
+  const normalizedX = localX / profile.radiusX
+  const z =
+    Math.sqrt(Math.max(0, 1 - Math.min(1, normalizedX * normalizedX))) *
+    profile.radiusZ
+  const rotatedX = localX * Math.cos(yaw) + z * Math.sin(yaw)
+  const rotatedZ = -localX * Math.sin(yaw) + z * Math.cos(yaw)
+  const focalLength = profile.radiusZ * 6
+  const rotatedScale = focalLength / Math.max(1, focalLength - rotatedZ * 0.5)
+  const restScale = focalLength / Math.max(1, focalLength - z * 0.5)
+  return x + (rotatedX * rotatedScale - localX * restScale) * blend
+}

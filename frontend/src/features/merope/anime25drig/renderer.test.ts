@@ -57,7 +57,7 @@ test('renderer preserves collar and eye stencil order while skipping hidden art'
     calls.filter((call) => call.startsWith('draw:')),
     [
       'draw:clip:6',
-      'draw:neck:12',
+      'draw:clip:6',
       'draw:eyewhite_L:9',
       'draw:irides_L:9',
       'draw:face:18',

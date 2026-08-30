@@ -10,7 +10,7 @@ import type { Anime25DLayerDeformationExtension } from './layerDeformationPolicy
 import type { Anime25DMouthDeformationKind } from './mouthDeformation'
 import type { Anime25DRenderableLayer } from './renderer'
 import type { Anime25DSecondaryDeformationBinding } from './secondaryDeformation'
-import type { Anime25DPlayback } from './types'
+import type { Anime25DPlayback, Anime25DShellProfile } from './types'
 import { sampleChestWeight } from './chestPhysics'
 import { buildFrontCollarContactModel } from './collarContact'
 import { createCollarClipMesh } from './collarRuntime'
@@ -25,6 +25,11 @@ import { resolveAnime25DLayerDeformationPolicy } from './layerDeformationPolicy'
 import { writeIdentityLayerTransform } from './layerTransform'
 import { resolveAnime25DMouthDeformation } from './mouthDeformation'
 import { createAnime25DSecondaryDeformationBinding } from './secondaryDeformation'
+import {
+  anime25DShellModeForLayer,
+  sampleAnime25DHairlinePinWeights,
+} from './shellDeformation'
+import { anime25DTorsoShellModeForLayer } from './torsoDeformation'
 import { createIndexedDeformableMesh, readLayerPixels } from './webglRuntime'
 
 export interface Anime25DGpuLayer extends Anime25DRenderableLayer {
@@ -65,6 +70,7 @@ export function compileAnime25DGpuLayers(
   gl: WebGL2RenderingContext,
   program: WebGLProgram,
   playback: Readonly<Anime25DPlayback>,
+  shellProfile: Readonly<Anime25DShellProfile>,
   current: Anime25DDriver,
   chestWeightField: ChestWeightField | null,
   atlasImage: HTMLImageElement,
@@ -129,6 +135,12 @@ export function compileAnime25DGpuLayers(
         : null
     const baseRole = anime25DLayerBaseName(source.role)
     const renderKind = anime25DRenderKind(source)
+    const shellMode = anime25DShellModeForLayer(source)
+    const torsoShellMode = anime25DTorsoShellModeForLayer(source)
+    const hairlinePinWeights =
+      shellMode === 'front-hair' && source.role === 'front-hair'
+        ? sampleAnime25DHairlinePinWeights(rest, source, rows, shellProfile)
+        : null
     const deformationPolicy = resolveAnime25DLayerDeformationPolicy({
       baseRole,
       fade: source.fade,
@@ -136,6 +148,16 @@ export function compileAnime25DGpuLayers(
       hasBangWeights: Boolean(hair.bangWeights),
       hasFrontHairParallax: Boolean(hair.frontHairParallaxScale),
       hasCollarContact: Boolean(collarContact),
+      shellDeformation: Boolean(
+        shellMode && shellProfile.enabled && shellProfile.blend > 0,
+      ),
+      torsoShellDeformation: Boolean(
+        torsoShellMode &&
+        shellProfile.enabled &&
+        shellProfile.blend > 0 &&
+        shellProfile.torso?.enabled &&
+        shellProfile.torso.blend > 0,
+      ),
     })
     const eye =
       source.side === 'L'
@@ -187,6 +209,9 @@ export function compileAnime25DGpuLayers(
       strandWeights: hair.strandWeights,
       alongStrand: hair.alongStrand,
       springs: hair.springs,
+      shellMode,
+      hairlinePinWeights,
+      torsoShellMode,
     })
     const layerTransform = new Float32Array(9)
     writeIdentityLayerTransform(layerTransform)

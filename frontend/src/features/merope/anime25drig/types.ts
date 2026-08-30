@@ -114,6 +114,71 @@ export interface Anime25DChestProfile {
   confidence: number
 }
 
+export interface Anime25DShellCurvePoint {
+  /** Vertical progress from forehead (0) to chin (1). */
+  v: number
+  /** Additional normalized depth outside the base ellipsoid. */
+  z: number
+}
+
+export interface Anime25DShellEllipsoid {
+  centerX: number
+  centerY: number
+  radiusX: number
+  radiusY: number
+  radiusZ: number
+}
+
+export interface Anime25DHairlinePinProfile {
+  enabled: boolean
+  /**
+   * Authored assets keep the fork's calibrated rectangle. Automatically
+   * migrated assets follow their strand roots instead of inheriting demo
+   * dimensions. Missing values hydrate from the parent profile source.
+   */
+  mode?: 'rectangle' | 'strand-roots'
+  /** Centre and half extents expressed in head-radius units. */
+  centerX: number
+  centerY: number
+  halfWidth: number
+  halfHeight: number
+  feather: number
+}
+
+export interface Anime25DTorsoShellProfile {
+  enabled: boolean
+  /** Local share multiplied by the parent shell blend. */
+  blend: number
+  /** Vertical elliptic-cylinder axis and radii in playback pixels. */
+  centerX: number
+  radiusX: number
+  radiusZ: number
+}
+
+/** Optional v6 extension. Missing profiles are derived from existing anchors. */
+export interface Anime25DShellProfile {
+  version: 1
+  source: 'anchor-derived' | 'authored'
+  enabled: boolean
+  blend: number
+  head: Anime25DShellEllipsoid
+  faceProfile: {
+    enabled: boolean
+    startY: number
+    endY: number
+    points: Anime25DShellCurvePoint[]
+  }
+  hair: Anime25DShellEllipsoid & {
+    frontGap: number
+    frontBulge: number
+    backDepth: number
+    crownRound: number
+    hairlinePin: Anime25DHairlinePinProfile
+  }
+  /** Optional so early v1 shell profiles hydrate without a contract bump. */
+  torso?: Anime25DTorsoShellProfile
+}
+
 export type Anime25DMouthMaterial =
   | 'mouthClose'
   | 'mouthOpen'
@@ -164,6 +229,7 @@ export interface Anime25DPlayback {
   anchors: Anime25DPlaybackAnchors
   mouthProfile: Anime25DMouthProfile
   chestProfile?: Anime25DChestProfile
+  shellProfile?: Anime25DShellProfile
 }
 
 export function anime25DPlaybackSource(): Pick<
@@ -185,6 +251,7 @@ export function isAnime25DPlayback(value: unknown): value is Anime25DPlayback {
   const record = value as Record<string, unknown>
   const canvas = record.pixelCanvas as Record<string, unknown> | undefined
   const chestProfile = record.chestProfile
+  const shellProfile = record.shellProfile
   const mouthProfile = record.mouthProfile
   return (
     record.kind === ANIME25D_PLAYBACK_KIND &&
@@ -200,7 +267,88 @@ export function isAnime25DPlayback(value: unknown): value is Anime25DPlayback {
     typeof record.anchors === 'object' &&
     isAnime25DMouthProfile(mouthProfile, canvas.width, canvas.height) &&
     (chestProfile === undefined ||
-      isAnime25DChestProfile(chestProfile, canvas.width, canvas.height))
+      isAnime25DChestProfile(chestProfile, canvas.width, canvas.height)) &&
+    (shellProfile === undefined ||
+      isAnime25DShellProfile(shellProfile, canvas.width, canvas.height))
+  )
+}
+
+export function isAnime25DShellProfile(
+  value: unknown,
+  canvasWidth: number,
+  canvasHeight: number,
+): value is Anime25DShellProfile {
+  if (!value || typeof value !== 'object') return false
+  const profile = value as Record<string, unknown>
+  const head = profile.head as Record<string, unknown> | undefined
+  const faceProfile = profile.faceProfile as Record<string, unknown> | undefined
+  const hair = profile.hair as Record<string, unknown> | undefined
+  const pin = hair?.hairlinePin as Record<string, unknown> | undefined
+  const torso = profile.torso as Record<string, unknown> | undefined
+  const points = faceProfile?.points
+  if (
+    profile.version !== 1 ||
+    (profile.source !== 'anchor-derived' && profile.source !== 'authored') ||
+    typeof profile.enabled !== 'boolean' ||
+    !numberInRange(profile.blend, 0, 1) ||
+    !isShellEllipsoid(head, canvasWidth, canvasHeight) ||
+    typeof faceProfile?.enabled !== 'boolean' ||
+    !numberInRange(faceProfile.startY, 0, canvasHeight) ||
+    !numberInRange(faceProfile.endY, 0, canvasHeight * 1.2) ||
+    (faceProfile.endY as number) <= (faceProfile.startY as number) ||
+    !Array.isArray(points) ||
+    points.length !== 5 ||
+    !isShellEllipsoid(hair, canvasWidth, canvasHeight) ||
+    !numberInRange(hair?.frontGap, 0, 0.6) ||
+    !numberInRange(hair?.frontBulge, 0, 1.5) ||
+    !numberInRange(hair?.backDepth, 0, 1) ||
+    !numberInRange(hair?.crownRound, 0, 1) ||
+    typeof pin?.enabled !== 'boolean' ||
+    (pin.mode !== undefined &&
+      pin.mode !== 'rectangle' &&
+      pin.mode !== 'strand-roots') ||
+    !numberInRange(pin.centerX, -1.5, 1.5) ||
+    !numberInRange(pin.centerY, -1.5, 1.5) ||
+    !numberInRange(pin.halfWidth, 0.01, 2) ||
+    !numberInRange(pin.halfHeight, 0.01, 2) ||
+    !numberInRange(pin.feather, 0, 0.5) ||
+    (torso !== undefined &&
+      (typeof torso.enabled !== 'boolean' ||
+        !numberInRange(torso.blend, 0, 1) ||
+        !numberInRange(torso.centerX, 0, canvasWidth) ||
+        !numberInRange(torso.radiusX, 1, canvasWidth) ||
+        !numberInRange(torso.radiusZ, 1, canvasWidth)))
+  ) {
+    return false
+  }
+  let previousV = -1
+  for (const point of points) {
+    if (!point || typeof point !== 'object') return false
+    const curvePoint = point as Record<string, unknown>
+    if (
+      !numberInRange(curvePoint.v, 0, 1) ||
+      !numberInRange(curvePoint.z, -0.4, 0.8) ||
+      (curvePoint.v as number) <= previousV
+    ) {
+      return false
+    }
+    previousV = curvePoint.v as number
+  }
+  return true
+}
+
+function isShellEllipsoid(
+  value: Record<string, unknown> | undefined,
+  canvasWidth: number,
+  canvasHeight: number,
+): boolean {
+  return Boolean(
+    value &&
+    numberInRange(value.centerX, 0, canvasWidth) &&
+    numberInRange(value.centerY, 0, canvasHeight) &&
+    numberInRange(value.radiusX, 1, canvasWidth) &&
+    numberInRange(value.radiusY, 1, canvasHeight) &&
+    numberInRange(value.radiusZ, 1, canvasWidth),
   )
 }
 

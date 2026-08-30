@@ -61,6 +61,50 @@ test('moves global eye motion to the shader without skipping local eye work', ()
   )
 })
 
+test('moves shell-projected head layers onto the nonlinear geometry path', () => {
+  assert.deepEqual(
+    resolveAnime25DLayerDeformationPolicy({
+      ...base,
+      baseRole: 'accessory',
+      shellDeformation: true,
+    }),
+    {
+      shaderGlobalTransform: false,
+      localDynamic: true,
+      deformationExtensions: ['ellipsoid-shell'],
+    },
+  )
+})
+
+test('moves torso-shell clothing and rear collars onto the nonlinear path', () => {
+  assert.deepEqual(
+    resolveAnime25DLayerDeformationPolicy({
+      ...base,
+      baseRole: 'collar_back',
+      torsoShellDeformation: true,
+    }),
+    {
+      shaderGlobalTransform: false,
+      localDynamic: true,
+      deformationExtensions: ['neck-collar-continuity', 'elliptic-torso-shell'],
+    },
+  )
+})
+
+test('keeps rear collars on the shared neck-continuity path without torso projection', () => {
+  assert.deepEqual(
+    resolveAnime25DLayerDeformationPolicy({
+      ...base,
+      baseRole: 'collar_back',
+    }),
+    {
+      shaderGlobalTransform: false,
+      localDynamic: true,
+      deformationExtensions: ['neck-collar-continuity'],
+    },
+  )
+})
+
 test('names every intentional geometry replacement at the policy boundary', () => {
   assert.deepEqual(
     resolveAnime25DLayerDeformationPolicy({

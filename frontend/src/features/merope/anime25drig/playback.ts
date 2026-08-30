@@ -10,6 +10,7 @@ import type {
 import { currentCopy } from '../../../i18n/localeCopy'
 import { ANIME25D_LAYER_DEPTH, anime25DLayerFade } from '../rig/anime25d'
 import { fallbackAnime25DMouthProfile } from './mouthProfile'
+import { deriveAnime25DShellProfile } from './shellProfile'
 import { anime25DPlaybackSource } from './types'
 
 export interface Anime25DPlaybackBuildLayer {
@@ -121,7 +122,7 @@ export function buildAnime25DPlayback(
     toPlaybackLayer(layer, width, index),
   )
   requiredLayer(layers, 'face')
-  return {
+  const playback: Anime25DPlayback = {
     ...anime25DPlaybackSource(),
     pixelCanvas: { width, height },
     layers,
@@ -129,6 +130,8 @@ export function buildAnime25DPlayback(
     mouthProfile:
       input.mouthProfile ?? fallbackAnime25DMouthProfile(input.anchors.mouth),
   }
+  playback.shellProfile = deriveAnime25DShellProfile(playback)
+  return playback
 }
 
 function toPlaybackLayer(

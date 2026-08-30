@@ -106,7 +106,7 @@ export function drawAnime25DFrame(
     )
     gl.bindVertexArray(layer.vao)
     if (layer.renderKind === 'neck' && collarClip) {
-      drawCollarMaskedLayer(gl, bindings, layer, collarClip, opacity)
+      drawCollarMaskedLayer(gl, bindings, collarClip, opacity)
     } else if (layer.renderKind === 'eyewhite') {
       gl.enable(gl.STENCIL_TEST)
       gl.stencilFunc(gl.ALWAYS, 1, 255)
@@ -133,7 +133,6 @@ export function drawAnime25DFrame(
 function drawCollarMaskedLayer(
   gl: WebGL2RenderingContext,
   bindings: Readonly<Anime25DRendererBindings>,
-  layer: Readonly<Anime25DRenderableLayer>,
   collarClip: Readonly<CollarClipMesh>,
   opacity: number,
 ): void {
@@ -152,8 +151,8 @@ function drawCollarMaskedLayer(
   gl.stencilFunc(gl.EQUAL, 1, 255)
   gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP)
   gl.uniform1f(bindings.opacity, opacity)
-  gl.bindVertexArray(layer.vao)
-  gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
+  gl.bindVertexArray(collarClip.vao)
+  gl.drawElements(gl.TRIANGLES, collarClip.indexCount, gl.UNSIGNED_SHORT, 0)
   gl.stencilMask(255)
   gl.disable(gl.STENCIL_TEST)
 }
