@@ -39,19 +39,14 @@ import type {
 } from './torsoDeformation'
 import type { Anime25DPlayback, Anime25DShellProfile } from './types'
 import { currentCopy } from '../../../i18n/localeCopy'
-import {
-  allowsAmbientMotion,
-  allowsCoSpeechExpression,
-  allowsCoSpeechHead,
-  allowsPointerGaze,
-  IDLE_MOTION_POLICY,
-} from '../motion/policy'
+import { allowsPointerGaze, IDLE_MOTION_POLICY } from '../motion/policy'
 import {
   singingDriveAmount,
   SingingGrooveController,
 } from '../singing/singingGroove'
 import { noteTurnTraceFrame } from '../turnTrace'
 import { AmbientMotionController } from './ambientMotion'
+import { PoseOccupancyController } from './poseOccupancy'
 import {
   buildChestWeightField,
   chestFollowMix,
@@ -266,6 +261,7 @@ export class Anime25DPlayer {
   }
 
   private readonly ambientMotion = new AmbientMotionController()
+  private readonly occupancy = new PoseOccupancyController()
   private readonly randomAction = new RandomActionController()
   private readonly singingGroove = new SingingGrooveController()
   private singingDrive: SingingSpectrumDrive | null = null
@@ -711,53 +707,44 @@ export class Anime25DPlayer {
       ((singing ? 1 : 0) - this.singingDeform) *
       (1 - Math.exp(-(singing ? 5.5 : 1.05) * dt))
     const groove = this.singingGroove.sample(t, singing, this.singingDrive)
-    const headBodyAmbient = allowsAmbientMotion(this.policy.headBody)
-    // Speech and sticker faces yield idle clips. Ambient must disable too, or
-    // it keeps wandering at scale 0 and snaps back when the lease drops.
-    const actionBlocked =
-      (this.speechActive && !singing) ||
-      stylizedTargets.anger > 0.03 ||
-      stylizedTargets.speechless > 0.03 ||
-      stylizedTargets.maniac > 0.03 ||
-      stylizedTargets.silly > 0.03 ||
-      stylizedTargets.lovestruck > 0.03
+    const sticker = Math.max(
+      stylizedTargets.anger,
+      stylizedTargets.speechless,
+      stylizedTargets.maniac,
+      stylizedTargets.silly,
+      stylizedTargets.lovestruck,
+    )
+    const occupancy = this.occupancy.sample(dt, {
+      speaking,
+      singing,
+      thinking: this.target.thinking,
+      pointerDriven,
+      automation: this.target.rand,
+      sticker,
+    })
     const randomAction = this.randomAction.sample(
       t,
-      this.target.rand && !pointerDriven && (singing || headBodyAmbient),
-      actionBlocked,
+      this.target.rand,
+      false,
       singing ? 'excited' : 'idle',
       this.singingDrive ? singingDriveAmount(this.singingDrive) : 1,
     )
-    const ambient = this.ambientMotion.sample(
-      t,
-      this.target.rand &&
-        !pointerDriven &&
-        headBodyAmbient &&
-        (!speaking || singing),
-    )
-    const thinking = this.thinkingMotion.sample(
-      t,
-      this.target.thinking &&
-        headBodyAmbient &&
-        !pointerDriven &&
-        !speaking &&
-        stylizedTargets.anger <= 0.03 &&
-        stylizedTargets.speechless <= 0.03 &&
-        stylizedTargets.maniac <= 0.03 &&
-        stylizedTargets.silly <= 0.03 &&
-        stylizedTargets.lovestruck <= 0.03,
-    )
+    const ambient = this.ambientMotion.sample(t, this.target.rand)
+    const thinking = this.thinkingMotion.sample(t, this.target.thinking)
     const ambientScale =
-      performanceMotionScale * randomAction.ambientScale * stylized.ambientScale
-    const headKeep = 1 - 0.88 * this.singingDeform
-    applyAnime25DAmbientMotion(tgt, ambient, ambientScale, headKeep)
+      occupancy.glance *
+      performanceMotionScale *
+      randomAction.ambientScale *
+      stylized.ambientScale
+    applyAnime25DAmbientMotion(tgt, ambient, ambientScale, 1)
     applyAnime25DActionMotion(
       tgt,
       randomAction,
-      performanceMotionScale * stylized.ambientScale,
+      occupancy.random * performanceMotionScale * stylized.ambientScale,
       groove,
-      this.singingDeform,
+      occupancy.groove,
       thinking,
+      occupancy.thinking,
     )
     applyAnime25DStylizedMotion(tgt, semanticExpression, stylized, speaking)
     applyAnime25DCryMouth(tgt, this.current.eyeCry, t, dt, this.cryMouth)
@@ -770,15 +757,9 @@ export class Anime25DPlayer {
       speech.headAccent,
     )
     const gatedSpeechExpression = {
-      brow: allowsCoSpeechExpression(this.policy.expression)
-        ? speechExpression.brow
-        : 0,
-      eyeOpen: allowsCoSpeechExpression(this.policy.expression)
-        ? speechExpression.eyeOpen
-        : 0,
-      angleY: allowsCoSpeechHead(this.policy.headBody)
-        ? speechExpression.angleY
-        : 0,
+      brow: speechExpression.brow * occupancy.coSpeech,
+      eyeOpen: speechExpression.eyeOpen * occupancy.coSpeech,
+      angleY: speechExpression.angleY * occupancy.coSpeech,
     }
     applyAnime25DSpeechMotion(tgt, speech, gatedSpeechExpression)
     // The omega mouth only takes over once the character has stopped talking;

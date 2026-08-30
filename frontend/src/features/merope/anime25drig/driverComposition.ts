@@ -162,68 +162,70 @@ export function applyAnime25DActionMotion(
   groove: Readonly<SingingGroovePose>,
   singingAmount: number,
   thinking: Readonly<ThinkingMotionPose>,
+  thinkingAmount = 1,
 ): void {
   applyRandomActionFrame(target, randomAction, randomActionScale)
   applySingingGroove(target, groove, singingAmount)
+  const think = clamp(thinkingAmount, 0, 1)
   target.angleX = mixBoundedExpressionChannel(
     target.angleX,
-    thinking.angleX,
+    thinking.angleX * think,
     -1,
     1,
     0,
   )
   target.angleY = mixBoundedExpressionChannel(
     target.angleY,
-    thinking.angleY,
+    thinking.angleY * think,
     -1,
     1,
     0,
   )
   target.angleZ = mixBoundedExpressionChannel(
     target.angleZ,
-    thinking.angleZ,
+    thinking.angleZ * think,
     -1,
     1,
     0,
   )
   target.eyeX = mixBoundedExpressionChannel(
     target.eyeX,
-    thinking.eyeX,
+    thinking.eyeX * think,
     -1,
     1,
     0,
   )
   target.eyeY = mixBoundedExpressionChannel(
     target.eyeY,
-    thinking.eyeY,
+    thinking.eyeY * think,
     -1,
     1,
     0,
   )
   target.brow = mixBoundedExpressionChannel(
     target.brow,
-    thinking.brow,
+    thinking.brow * think,
     -1,
     1,
     0,
   )
   target.mouthCY = mixBoundedExpressionChannel(
     target.mouthCY,
-    thinking.mouthCY,
+    thinking.mouthCY * think,
     -1,
     1,
     0,
   )
   target.mouthCAng = mixBoundedExpressionChannel(
     target.mouthCAng,
-    thinking.mouthCAng,
+    thinking.mouthCAng * think,
     -1,
     1,
     0,
   )
   target.mouthScale = mixBoundedExpressionChannel(
     target.mouthScale,
-    thinking.mouthScale,
+    thinking.mouthScale * think,
     0.5,
     1.5,
     1,
