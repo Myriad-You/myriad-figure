@@ -94,12 +94,14 @@ export class SpeechMotionSource {
     this.mouth.release()
     this.releaseCoSpeech()
     this.listening = false
+    this.queuedText = []
+    this.textSeq = 0
     this.intent = {
       active: false,
       autoSpeech: false,
       energy: null,
       articulation: REST,
-      queuedText: this.queuedText,
+      queuedText: [],
     }
     this.flush()
   }

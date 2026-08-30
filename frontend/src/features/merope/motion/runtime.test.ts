@@ -3,6 +3,28 @@ import test from 'node:test'
 import { RigMotionCoordinator } from './coordinator'
 import { createPreviewMotionRuntime, MotionRuntime } from './runtime'
 
+test('stopping speech drops queued viseme text so a remount does not replay it', () => {
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const release = runtime.retain()
+  runtime.speech.handleForTest({
+    phase: 'start',
+    messageId: 'message-1',
+    utteranceId: 'stream-1',
+    source: 'reply',
+  })
+  runtime.speech.handleForTest({
+    phase: 'chunk',
+    messageId: 'message-1',
+    utteranceId: 'stream-1',
+    source: 'reply',
+    text: '你好',
+  })
+  assert.ok((runtime.frame().speech?.queuedText.length ?? 0) > 0)
+  runtime.speech.stop()
+  assert.deepEqual(runtime.frame().speech?.queuedText ?? [], [])
+  release()
+})
+
 test('two consumers see the same speech intent; one unmount does not stop the source', () => {
   const runtime = new MotionRuntime(new RigMotionCoordinator())
   const releaseA = runtime.retain()
