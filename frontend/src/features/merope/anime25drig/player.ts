@@ -648,13 +648,6 @@ export class Anime25DPlayer {
     })
   }
 
-  captureFrame(): string | null {
-    const canvas = this.gl.canvas
-    return canvas instanceof HTMLCanvasElement
-      ? canvas.toDataURL('image/png')
-      : null
-  }
-
   dispose(): void {
     this.disposed = true
     const { gl } = this
