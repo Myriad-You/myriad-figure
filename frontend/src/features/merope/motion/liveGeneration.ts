@@ -1,3 +1,5 @@
+import { noteTurnTraceDrop } from '../turnTrace'
+
 /**
  * In-memory Chat generation seen by speech and motion producers.
  * Preview / proactive events omit generation and still apply.
@@ -15,6 +17,14 @@ export function liveMotionGeneration(): number {
 export function isLiveMotionGeneration(generation: number | undefined): boolean {
   if (generation == null || generation <= 0) return true
   return generation === liveGeneration
+}
+
+export function acceptLiveMotionGeneration(
+  generation: number | undefined,
+): boolean {
+  if (isLiveMotionGeneration(generation)) return true
+  noteTurnTraceDrop('stale_generation')
+  return false
 }
 
 export function newMotionIntentId(): string {

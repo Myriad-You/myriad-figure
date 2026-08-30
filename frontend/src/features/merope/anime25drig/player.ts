@@ -45,6 +45,7 @@ import {
   singingDriveAmount,
   SingingGrooveController,
 } from '../singing/singingGroove'
+import { noteTurnTraceFrame } from '../turnTrace'
 import { AmbientMotionController } from './ambientMotion'
 import {
   buildChestWeightField,
@@ -572,6 +573,7 @@ export class Anime25DPlayer {
 
   tick(deltaSeconds: number): void {
     if (this.disposed || this.layers.length === 0) return
+    const dropped = deltaSeconds > 0.05
     const dt = Math.min(0.05, Math.max(0.001, deltaSeconds))
     this.time += dt
     if (!this.performanceTelemetry.shouldSample()) {
@@ -580,6 +582,7 @@ export class Anime25DPlayer {
       this.deform()
       this.uploadGeometry()
       this.draw()
+      if (dropped) noteTurnTraceFrame({ dropped: true })
       return
     }
     const work = createAnime25DFrameWork()
@@ -601,6 +604,10 @@ export class Anime25DPlayer {
       springsMs: springsFinished - driverFinished,
       deformMs: deformFinished - springsFinished,
       drawSubmitMs: drawFinished - deformFinished,
+    })
+    noteTurnTraceFrame({
+      dropped,
+      cpuMs: drawFinished - frameStarted,
     })
   }
 

@@ -1,6 +1,7 @@
 import type { SpeechArticulation } from './rig/articulation'
 import type { MeropeSpeechEventDetail } from './speechEvents'
 import { isLiveMotionGeneration } from './motion/liveGeneration'
+import { noteTurnTraceDrop } from './turnTrace'
 
 export interface SpeechLifecycleTarget {
   setSpeechActive: (active: boolean) => void
@@ -70,7 +71,10 @@ export class SpeechLifecycleController {
       return
     }
 
-    if (!isLiveMotionGeneration(event.generation)) return
+    if (!isLiveMotionGeneration(event.generation)) {
+      if (event.phase === 'start') noteTurnTraceDrop('stale_generation')
+      return
+    }
 
     if (event.phase === 'start') {
       this.start(event.messageId, event.utteranceId)

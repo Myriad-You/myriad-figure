@@ -1,7 +1,7 @@
 import type { PerformanceDirective } from '../../services/agent/types'
 import type { MeropePerformanceEventDetail } from './performanceEvents'
 import type { MeropeSpeechEventDetail } from './speechEvents'
-import { isLiveMotionGeneration } from './motion/liveGeneration'
+import { acceptLiveMotionGeneration } from './motion/liveGeneration'
 
 export interface PerformanceLifecycleTarget {
   playMotionPlan: (performance: PerformanceDirective) => boolean
@@ -19,7 +19,7 @@ export class PerformanceLifecycleController {
 
   handle(event: MeropePerformanceEventDetail): void {
     if (!event.performance) return
-    if (!isLiveMotionGeneration(event.generation)) return
+    if (!acceptLiveMotionGeneration(event.generation)) return
     if (event.messageId && this.cancelledMessageIds.has(event.messageId)) return
     const planKey =
       event.motionIntentId ||
