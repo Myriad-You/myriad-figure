@@ -21,6 +21,8 @@ export interface SpeechIntent {
 export interface PerformanceIntent {
   directive: PerformanceDirective | null
   startedAtMs: number
+  motionIntentId?: string | null
+  generation?: number
 }
 
 export interface MoodIntent {

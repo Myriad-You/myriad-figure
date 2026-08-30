@@ -1,6 +1,7 @@
 import type { PerformanceDirective } from '../../services/agent/types'
 import type { MeropePerformanceEventDetail } from './performanceEvents'
 import type { MeropeSpeechEventDetail } from './speechEvents'
+import { isLiveMotionGeneration } from './motion/liveGeneration'
 
 export interface PerformanceLifecycleTarget {
   playMotionPlan: (performance: PerformanceDirective) => boolean
@@ -10,6 +11,7 @@ export interface PerformanceLifecycleTarget {
 /** Forwards bounded semantic plans to the mounted rig; text stays speech-owned. */
 export class PerformanceLifecycleController {
   private activeMessageId: string | null = null
+  private activePlanKey: string | null = null
   private readonly cancelledMessageIds = new Set<string>()
   private readonly cancellationOrder: string[] = []
 
@@ -17,9 +19,15 @@ export class PerformanceLifecycleController {
 
   handle(event: MeropePerformanceEventDetail): void {
     if (!event.performance) return
+    if (!isLiveMotionGeneration(event.generation)) return
     if (event.messageId && this.cancelledMessageIds.has(event.messageId)) return
+    const planKey =
+      event.motionIntentId ||
+      `${event.messageId ?? ''}:${event.performance.phase}:${event.performance.plan.cues.length}`
+    if (planKey && planKey === this.activePlanKey) return
     if (!this.target.playMotionPlan(event.performance)) return
     this.activeMessageId = event.messageId ?? null
+    this.activePlanKey = planKey
   }
 
   handleSpeech(event: MeropeSpeechEventDetail): void {
@@ -27,11 +35,13 @@ export class PerformanceLifecycleController {
     this.rememberCancellation(event.messageId)
     if (event.messageId !== this.activeMessageId) return
     this.activeMessageId = null
+    this.activePlanKey = null
     this.target.stopMotionPlan()
   }
 
   dispose(): void {
     this.activeMessageId = null
+    this.activePlanKey = null
     this.target.stopMotionPlan()
   }
 

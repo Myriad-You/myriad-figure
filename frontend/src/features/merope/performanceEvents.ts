@@ -18,6 +18,8 @@ export interface MeropePerformanceEventDetail {
   text: string
   source: 'reply' | 'proactive' | 'interaction' | 'preview'
   messageId?: string
+  generation?: number
+  motionIntentId?: string
   performance?: PerformanceDirective
 }
 
@@ -53,10 +55,22 @@ export function meropePerformanceEventDetail(
     typeof value.messageId === 'string'
       ? value.messageId.trim().slice(0, 160)
       : ''
+  const generation =
+    typeof value.generation === 'number' &&
+    Number.isFinite(value.generation) &&
+    value.generation > 0
+      ? Math.min(1_000_000_000, Math.trunc(value.generation))
+      : 0
+  const motionIntentId =
+    typeof value.motionIntentId === 'string'
+      ? value.motionIntentId.trim().slice(0, 160)
+      : ''
   return {
     text,
     source,
     ...(messageId ? { messageId } : {}),
+    ...(generation ? { generation } : {}),
+    ...(motionIntentId ? { motionIntentId } : {}),
     ...(performance ? { performance } : {}),
   }
 }

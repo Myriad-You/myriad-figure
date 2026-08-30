@@ -10,6 +10,7 @@ interface SpeechEventBase {
   source: MeropeSpeechSource
   utteranceId: string
   locale?: string
+  generation?: number
 }
 
 export type MeropeSpeechEventDetail =
@@ -31,6 +32,7 @@ export interface SpeechUtteranceInput {
   text: string
   utteranceId: string
   locale?: string
+  generation?: number
 }
 
 const SOURCES: readonly MeropeSpeechSource[] = [
@@ -69,6 +71,9 @@ export function dispatchMeropeSpeechUtterance(
     source: utterance.source,
     utteranceId: utterance.utteranceId,
     ...(utterance.locale ? { locale: utterance.locale } : {}),
+    ...(utterance.generation && utterance.generation > 0
+      ? { generation: utterance.generation }
+      : {}),
   }
   dispatchMeropeSpeech({ ...base, phase: 'start' })
   dispatchMeropeSpeech({ ...base, phase: 'chunk', text })
@@ -87,6 +92,7 @@ export function meropeSpeechEventDetail(
     : 'reply'
   const utteranceId = boundedId(value.utteranceId)
   const locale = boundedLocale(value.locale)
+  const generation = boundedGeneration(value.generation)
 
   if (phase === 'cancel') {
     return {
@@ -95,6 +101,7 @@ export function meropeSpeechEventDetail(
       source,
       ...(locale ? { locale } : {}),
       ...(utteranceId ? { utteranceId } : {}),
+      ...(generation ? { generation } : {}),
     }
   }
   if (!utteranceId) return null
@@ -103,6 +110,7 @@ export function meropeSpeechEventDetail(
     source,
     utteranceId,
     ...(locale ? { locale } : {}),
+    ...(generation ? { generation } : {}),
   }
   if (phase === 'start' || phase === 'end') return { ...base, phase }
   if (phase === 'chunk') {
@@ -156,9 +164,15 @@ function boundedId(value: unknown): string {
   return typeof value === 'string' ? value.trim().slice(0, 160) : ''
 }
 
+function boundedGeneration(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.min(1_000_000_000, Math.trunc(value))
+    : 0
+}
+
 function boundedLocale(value: unknown): string {
   return typeof value === 'string' &&
-    /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/.test(value)
+    /^[A-Z]{2,3}(?:-[A-Z0-9]{2,8})?$/i.test(value)
     ? value.slice(0, 24)
     : ''
 }

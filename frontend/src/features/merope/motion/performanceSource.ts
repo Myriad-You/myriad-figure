@@ -7,6 +7,10 @@ import {
 } from '../performanceEvents'
 import { PerformanceLifecycleController } from '../performanceLifecycle'
 import { MEROPE_SPEECH_EVENT, meropeSpeechEventDetail } from '../speechEvents'
+import {
+  liveMotionGeneration,
+  newMotionIntentId,
+} from './liveGeneration'
 import { PerformanceMotionLeases } from './performanceLeases'
 
 /**
@@ -16,7 +20,12 @@ import { PerformanceMotionLeases } from './performanceLeases'
 export class PerformanceMotionSource {
   private readonly leases: PerformanceMotionLeases
   private controller: PerformanceLifecycleController | null = null
-  private intent: PerformanceIntent = { directive: null, startedAtMs: 0 }
+  private intent: PerformanceIntent = {
+    directive: null,
+    startedAtMs: 0,
+    motionIntentId: null,
+  }
+
   private listening = false
 
   constructor(
@@ -61,14 +70,19 @@ export class PerformanceMotionSource {
   private publish(performance: PerformanceDirective): boolean {
     const startedAtMs = globalThis.performance.now()
     this.leases.apply(performance, startedAtMs)
-    this.intent = { directive: performance, startedAtMs }
+    this.intent = {
+      directive: performance,
+      startedAtMs,
+      motionIntentId: newMotionIntentId(),
+      generation: liveMotionGeneration() || undefined,
+    }
     this.onChange(this.intent)
     return true
   }
 
   private clear(): void {
     this.leases.releaseAll()
-    this.intent = { directive: null, startedAtMs: 0 }
+    this.intent = { directive: null, startedAtMs: 0, motionIntentId: null }
     this.onChange(this.intent)
   }
 

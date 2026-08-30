@@ -145,3 +145,42 @@ test('does not transfer cancellation ownership to a plan rejected by the rig', (
   })
   assert.equal(stopped, 1)
 })
+
+test('drops an older generation plan and ignores a replay of the active plan', async () => {
+  const { setLiveMotionGeneration } = await import('./motion/liveGeneration')
+  setLiveMotionGeneration(2)
+  const played: (typeof performance)[] = []
+  const controller = new PerformanceLifecycleController({
+    playMotionPlan: (value) => {
+      played.push(value as typeof performance)
+      return true
+    },
+    stopMotionPlan: () => undefined,
+  })
+  controller.handle({
+    text: 'stale',
+    source: 'reply',
+    messageId: 'message-old',
+    generation: 1,
+    performance,
+  })
+  assert.equal(played.length, 0)
+  controller.handle({
+    text: 'now',
+    source: 'reply',
+    messageId: 'message-now',
+    generation: 2,
+    motionIntentId: 'motion-1',
+    performance,
+  })
+  controller.handle({
+    text: 'now',
+    source: 'reply',
+    messageId: 'message-now',
+    generation: 2,
+    motionIntentId: 'motion-1',
+    performance,
+  })
+  assert.equal(played.length, 1)
+  setLiveMotionGeneration(0)
+})
