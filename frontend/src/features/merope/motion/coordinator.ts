@@ -3,10 +3,7 @@ import type {
   MotionChannel,
   MotionSourceId,
 } from './channels'
-import {
-  noteTurnTraceDrop,
-  noteTurnTraceLeaseExpiry,
-} from '../turnTrace'
+import { noteTurnTraceLeaseExpiry } from '../turnTrace'
 import { channelPriority, isExclusiveChannel } from './channels'
 
 export interface MotionLeaseHandle {
@@ -63,9 +60,6 @@ export class RigMotionCoordinator {
     if (unique.length === 0) return null
     const nowMs = options.nowMs ?? this.clockMs
     this.clockMs = nowMs
-    if (this.conflictsWith(source, unique, nowMs)) {
-      noteTurnTraceDrop('lease_conflict')
-    }
     this.generation += 1
     const leaseId = `lease-${this.nextLeaseSeq}`
     this.nextLeaseSeq += 1
@@ -197,22 +191,6 @@ export class RigMotionCoordinator {
       physics,
       leases: publicLeases,
     }
-  }
-
-  private conflictsWith(
-    source: MotionSourceId,
-    channels: readonly MotionChannel[],
-    nowMs: number,
-  ): boolean {
-    for (const lease of this.leases.values()) {
-      if (lease.source === source) continue
-      if (lease.expiresAtMs !== null && lease.expiresAtMs <= nowMs) continue
-      for (const channel of channels) {
-        if (!isExclusiveChannel(channel)) continue
-        if (lease.channels.includes(channel)) return true
-      }
-    }
-    return false
   }
 
   private authenticated(handle: MotionLeaseHandle): PrivateLease | null {

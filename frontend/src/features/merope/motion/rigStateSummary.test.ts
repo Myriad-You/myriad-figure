@@ -33,6 +33,12 @@ test('summary keeps only semantic fields and drops drivers', () => {
   assert.equal(encoded.includes('mouthOpen'), false)
   assert.equal(summary?.owners.mouth, 'speech')
   assert.equal(summary?.owners.headBody, 'music')
+  assert.equal(
+    sanitizeRigStateSummary({
+      owners: { mouth: 'angleX', expression: {}, gaze: 'ambient', headBody: 'music' },
+    })?.owners.mouth,
+    'idle',
+  )
   assert.deepEqual(summary?.capabilities, ['dizzy-eye', 'head-body'])
   assert.deepEqual(summary?.recentIntents, ['delight'])
 })

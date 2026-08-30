@@ -15,11 +15,12 @@ test('channel table matches the live-face control order', () => {
       channelPriority('expression', 'music'),
   )
   assert.ok(
-    channelPriority('expression', 'music') >
-      channelPriority('expression', 'mood'),
+    channelPriority('expression', 'coSpeech') >
+      channelPriority('expression', 'music'),
   )
   assert.ok(
-    channelPriority('gaze', 'pointer') > channelPriority('gaze', 'performance'),
+    channelPriority('expression', 'music') >
+      channelPriority('expression', 'mood'),
   )
   assert.ok(
     channelPriority('headBody', 'performance') >
@@ -50,7 +51,7 @@ test('channel table matches the live-face control order', () => {
       channelPriority('expression', 'mood'),
   )
   assert.ok(
-    channelPriority('gaze', 'pointer') > channelPriority('gaze', 'autonomy'),
+    channelPriority('gaze', 'preview') > channelPriority('gaze', 'performance'),
   )
 })
 

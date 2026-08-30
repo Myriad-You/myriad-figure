@@ -42,6 +42,7 @@ export type ExclusiveMotionChannel = (typeof EXCLUSIVE_CHANNELS)[number]
 /**
  * Higher number wins. Missing source is idle.
  * autonomy is reserved: future self-motion publishes intents, never writes a rig.
+ * Pointer gaze is a local overlay (`allowsPointerGaze`), not a lease.
  */
 export const CHANNEL_PRIORITY: Record<
   ExclusiveMotionChannel,
@@ -56,13 +57,12 @@ export const CHANNEL_PRIORITY: Record<
     preview: 100,
     performance: 80,
     autonomy: 70,
-    coSpeech: 50,
-    music: 50,
+    coSpeech: 55,
+    music: 45,
     mood: 20,
   },
   gaze: {
     preview: 100,
-    pointer: 80,
     performance: 60,
     autonomy: 50,
     ambient: 20,

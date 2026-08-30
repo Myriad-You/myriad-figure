@@ -9,9 +9,11 @@ import type {
 } from '../../../services/agent/types'
 import type { MeropeRigManifest } from '../rig/types'
 import type { SingingSpectrumDrive } from '../singing/singingGroove'
+import type { MotionSourceId } from './channels'
 import type { MotionRuntime } from './runtime'
 import { scheduleBodyCues } from '../anime25drig/performanceMotion'
 import { hasAnime25DCapability } from '../rig/anime25dCapabilities'
+import { MOTION_SOURCES } from './channels'
 
 const EXPRESSIONS: readonly PerformanceBaseline['expression'][] = [
   'withdrawn',
@@ -85,15 +87,15 @@ export function captureRigStateSummary(
   const spectrum = frame.music?.spectrum ?? null
   const singing = Boolean(frame.music?.apply.writeGroove)
   const musicPlaying = singing || Boolean(frame.music && !frame.music.apply.release)
-  return {
+  const summary: RigStateSummary = {
     expression: allowExpression(baseline?.expression) ?? 'steady',
     posture: allowPosture(baseline?.posture) ?? 'neutral',
     acting,
     owners: {
-      mouth: frame.snapshot.owners.mouth,
-      expression: frame.snapshot.owners.expression,
-      gaze: frame.snapshot.owners.gaze,
-      headBody: frame.snapshot.owners.headBody,
+      mouth: allowOwner(frame.snapshot.owners.mouth),
+      expression: allowOwner(frame.snapshot.owners.expression),
+      gaze: allowOwner(frame.snapshot.owners.gaze),
+      headBody: allowOwner(frame.snapshot.owners.headBody),
     },
     speaking: Boolean(frame.speech?.active),
     singing,
@@ -108,6 +110,7 @@ export function captureRigStateSummary(
       typeof document === 'undefined' ? true : document.visibilityState !== 'hidden',
     faceVisible: facts.faceVisible,
   }
+  return sanitizeRigStateSummary(summary) ?? summary
 }
 
 export function sanitizeRigStateSummary(value: unknown): RigStateSummary | null {
@@ -141,10 +144,10 @@ export function sanitizeRigStateSummary(value: unknown): RigStateSummary | null 
       remainingMs: clampMs(acting.remainingMs),
     },
     owners: {
-      mouth: String(owners.mouth ?? 'idle'),
-      expression: String(owners.expression ?? 'idle'),
-      gaze: String(owners.gaze ?? 'idle'),
-      headBody: String(owners.headBody ?? 'idle'),
+      mouth: allowOwner(owners.mouth),
+      expression: allowOwner(owners.expression),
+      gaze: allowOwner(owners.gaze),
+      headBody: allowOwner(owners.headBody),
     },
     speaking: value.speaking === true,
     singing: value.singing === true,
@@ -223,6 +226,12 @@ function allowPosture(value: unknown): PerformanceBaseline['posture'] | null {
   return POSTURES.includes(value as PerformanceBaseline['posture'])
     ? (value as PerformanceBaseline['posture'])
     : null
+}
+
+function allowOwner(value: unknown): MotionSourceId {
+  return MOTION_SOURCES.includes(value as MotionSourceId)
+    ? (value as MotionSourceId)
+    : 'idle'
 }
 
 function isCueIntent(value: unknown): value is PerformanceCue['intent'] {
