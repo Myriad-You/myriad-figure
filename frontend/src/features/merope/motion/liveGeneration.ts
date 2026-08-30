@@ -27,8 +27,9 @@ export function acceptLiveMotionGeneration(
   return false
 }
 
+let intentSeq = 0
+
 export function newMotionIntentId(): string {
-  const now =
-    typeof performance === 'undefined' ? Date.now() : performance.now()
-  return `motion-${Math.round(now)}-${liveGeneration}`
+  intentSeq += 1
+  return `motion-${liveGeneration}-${intentSeq}`
 }
