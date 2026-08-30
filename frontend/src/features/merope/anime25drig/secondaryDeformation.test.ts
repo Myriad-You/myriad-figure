@@ -172,6 +172,13 @@ test('composes torso volume after existing topwear chest deformation', () => {
     yawCosine: Math.cos(0.24),
     yawSine: Math.sin(0.24),
   }
+  frame.torsoChestShape = {
+    centerX: 151,
+    centerY: 126,
+    radiusX: 60,
+    radiusY: 48,
+    scale: 0.8,
+  }
   const restX = 151
   const restY = 126
   const vertex = 19
@@ -182,12 +189,46 @@ test('composes torso volume after existing topwear chest deformation', () => {
     profile,
     frame.torsoShellRotation,
     frame.torsoShellBlend,
+    frame.torsoChestShape,
   )
 
   const actual = { x: restX, y: restY }
   deformAnime25DSecondaryPoint(actual, restX, restY, vertex, binding, frame)
   assert.deepEqual(actual, expected)
   assert.notEqual(actual.x, restX)
+})
+
+test('keeps chest volume off collar layers', () => {
+  const binding = {
+    ...secondaryBinding('collar_front', 'body', false),
+    torsoShellMode: 'collar' as const,
+  }
+  const withoutChest = secondaryFrame(0.58, 23)
+  const withChest = secondaryFrame(0.58, 23)
+  const profile = shellProfile().torso
+  assert.ok(profile)
+  for (const frame of [withoutChest, withChest]) {
+    frame.torsoProfile = profile
+    frame.torsoShellBlend = 0.25
+    frame.torsoShellRotation = {
+      active: true,
+      yawCosine: Math.cos(0.24),
+      yawSine: Math.sin(0.24),
+    }
+  }
+  withChest.torsoChestShape = {
+    centerX: 151,
+    centerY: 126,
+    radiusX: 60,
+    radiusY: 48,
+    scale: 0.8,
+  }
+
+  const rest = { x: 151, y: 126 }
+  assert.deepEqual(
+    deformSecondary({ ...rest }, binding, withChest),
+    deformSecondary({ ...rest }, binding, withoutChest),
+  )
 })
 
 test('fades fallback front-collar torso motion from body edge to neck seam', () => {
@@ -521,9 +562,7 @@ function secondaryFrame(
     chestOffsetX: frameIndex % 11 === 0 ? 0 : Math.sin(progress * 7.2) * 5,
     chestOffsetY: frameIndex % 11 === 0 ? 0 : Math.cos(progress * 6.4) * 7,
     chestProfileSource:
-      frameIndex % 3 === 0
-        ? 'ai-vision'
-        : 'geometry-fallback',
+      frameIndex % 3 === 0 ? 'ai-vision' : 'geometry-fallback',
     shellProfile: shellProfile(),
     shellBlend: 0,
     shellActivation: 0,
@@ -535,6 +574,7 @@ function secondaryFrame(
       pitchSine: 0,
     },
     torsoProfile: shellProfile().torso,
+    torsoChestShape: null,
     torsoShellBlend: 0,
     torsoShellRotation: { active: false, yawCosine: 1, yawSine: 0 },
   }

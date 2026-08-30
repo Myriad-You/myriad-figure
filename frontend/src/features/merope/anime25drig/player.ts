@@ -46,8 +46,6 @@ import {
 } from '../singing/singingGroove'
 import { noteTurnTraceFrame } from '../turnTrace'
 import { AmbientMotionController } from './ambientMotion'
-import { applyIdleBreath } from './idleBreath'
-import { PoseOccupancyController } from './poseOccupancy'
 import {
   buildChestWeightField,
   chestFollowMix,
@@ -90,6 +88,7 @@ import {
 import { deformAnime25DExpressionPoint } from './expressionDeformation'
 import { applyExpressiveMotionEnvelope } from './expressiveMotionEnvelope'
 import { stepAnime25DHairLayerSprings } from './hairPhysics'
+import { applyIdleBreath } from './idleBreath'
 import {
   createJawMotionState,
   jawMotionTarget,
@@ -118,6 +117,7 @@ import {
   Anime25DPerformanceTelemetry,
   createAnime25DFrameWork,
 } from './performanceTelemetry'
+import { PoseOccupancyController } from './poseOccupancy'
 import { RandomActionController } from './randomAction'
 import { createAnime25DRendererBindings, drawAnime25DFrame } from './renderer'
 import { resolveAnime25DRenderSurface } from './runtimePolicy'
@@ -126,12 +126,14 @@ import {
   deformAnime25DSecondaryPoint,
 } from './secondaryDeformation'
 import { writeAnime25DShellRotation } from './shellDeformation'
-import { resolveAnime25DShellProfile } from './shellProfile'
 import { CoSpeechExpressionController } from './speechExpression'
 import { AutoSpeechController } from './speechMotion'
 import { StylizedExpressionMotionController } from './stylizedExpressionMotion'
 import { ThinkingMotionController } from './thinkingMotion'
-import { stepAnime25DTorsoShellRotation } from './torsoDeformation'
+import {
+  resolveAnime25DTorsoChestShape,
+  stepAnime25DTorsoShellRotation,
+} from './torsoDeformation'
 import { compileProgram, createAtlasTexture, loadImage } from './webglRuntime'
 
 interface SecondaryMotionPose {
@@ -320,7 +322,7 @@ export class Anime25DPlayer {
     if (!gl) throw new Error(currentCopy().merope.anime25dWebglFailed)
     this.gl = gl
     this.playback = playback
-    this.shellProfile = resolveAnime25DShellProfile(playback)
+    this.shellProfile = playback.shellProfile
     this.highCollar = playback.layers.some(
       (layer) => layer.role === 'collar-back' || layer.role === 'collar-front',
     )
@@ -343,18 +345,7 @@ export class Anime25DPlayer {
     this.jawTravel = jawTravelPixels(playback)
     this.chestDynamics = resolveChestDynamics(playback.chestProfile)
     const anchors = playback.anchors
-    const faceWidth = anchors.face.x1 - anchors.face.x0
-    const faceHeight = anchors.face.y1 - anchors.face.y0
-    const legacyChestY = anchors.neckBottom + faceHeight * 0.6
-    this.chestRegion = resolveChestDeformationRegion(playback.chestProfile, {
-      faceWidth,
-      faceHeight,
-      neckBottom: anchors.neckBottom,
-      fallbackCenterX: anchors.neckPivot.x,
-      fallbackCenterY: legacyChestY,
-      fallbackRadiusX: faceWidth * 0.6,
-      fallbackRadiusY: faceHeight * 0.45,
-    })
+    this.chestRegion = resolveChestDeformationRegion(playback.chestProfile)
     this.chestGeometry = {
       faceScale: anchors.faceScale,
       faceCenterY: anchors.face.cy,
@@ -389,6 +380,7 @@ export class Anime25DPlayer {
       bodyBreathOffset: 0,
       headBreathOffset: 0,
       torsoProfile: this.shellProfile.torso ?? undefined,
+      torsoChestShape: resolveAnime25DTorsoChestShape(playback.chestProfile),
       torsoShellRotation: this.torsoShellRotation,
       torsoShellBlend: 0,
       specialHeadOffset: 0,
@@ -450,7 +442,6 @@ export class Anime25DPlayer {
       this.current,
       this.chestWeightField,
       image,
-      this.collarClip,
     )
     this.layers = compiled.layers
     this.collarClip = compiled.collarClip

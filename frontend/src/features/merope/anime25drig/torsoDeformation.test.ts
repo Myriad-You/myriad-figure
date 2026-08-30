@@ -1,10 +1,11 @@
-import type { Anime25DTorsoShellProfile } from './types'
+import type { Anime25DChestProfile, Anime25DTorsoShellProfile } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   anime25DLayerUsesTorsoShell,
   anime25DTorsoShellModeForLayer,
   deformAnime25DTorsoShellPoint,
+  resolveAnime25DTorsoChestShape,
   stepAnime25DTorsoShellRotation,
 } from './torsoDeformation'
 
@@ -14,6 +15,22 @@ const profile: Anime25DTorsoShellProfile = {
   centerX: 384,
   radiusX: 292.6,
   radiusZ: 169.4,
+}
+
+const chestProfile: Anime25DChestProfile = {
+  version: 2,
+  enabled: true,
+  source: 'ai-vision',
+  centerX: 384,
+  centerY: 612.5,
+  radiusX: 140,
+  radiusY: 90,
+  visibleScale: 0.8,
+  motionScale: 1.1,
+  frequencyScale: 0.94,
+  supportScale: 0.2,
+  garmentMotionScale: 1,
+  confidence: 0.9,
 }
 
 test('binds body garments fully and both split-collar layers through one field', () => {
@@ -52,12 +69,15 @@ test('matches the fork low-pass torso yaw response', () => {
 })
 
 test('keeps the frontal pose exact and matches the fork cylinder projection', () => {
+  const chestShape = resolveAnime25DTorsoChestShape(chestProfile)
+  assert.ok(chestShape)
   const neutral = { x: 417.25, y: 612.5 }
   deformAnime25DTorsoShellPoint(
     neutral,
     profile,
     { active: true, yawCosine: 1, yawSine: 0 },
     0.25,
+    chestShape,
   )
   assert.deepEqual(neutral, { x: 417.25, y: 612.5 })
 
@@ -76,6 +96,53 @@ test('keeps the frontal pose exact and matches the fork cylinder projection', ()
   )
   assert.equal(turned.x, expectedX)
   assert.equal(turned.y, 731.2)
+})
+
+test('adds bounded paired chest volume and near-side silhouette only while turning', () => {
+  const softShape = resolveAnime25DTorsoChestShape(chestProfile)
+  const structuredShape = resolveAnime25DTorsoChestShape({
+    ...chestProfile,
+    garmentMotionScale: 0,
+  })
+  assert.ok(softShape)
+  assert.ok(structuredShape)
+  const yaw = 0.31
+  const rightX = chestProfile.centerX + chestProfile.radiusX * 0.58
+  const leftX = chestProfile.centerX - chestProfile.radiusX * 0.58
+  const baseRight = projectedX(rightX, chestProfile.centerY, yaw, null)
+  const baseLeft = projectedX(leftX, chestProfile.centerY, yaw, null)
+  const softRight = projectedX(rightX, chestProfile.centerY, yaw, softShape)
+  const softLeft = projectedX(leftX, chestProfile.centerY, yaw, softShape)
+  const structuredRight = projectedX(
+    rightX,
+    chestProfile.centerY,
+    yaw,
+    structuredShape,
+  )
+  const rightGain = softRight - baseRight
+  const leftGain = softLeft - baseLeft
+
+  assert.ok(rightGain > leftGain)
+  assert.ok(leftGain > 0)
+  assert.ok(softRight - baseRight > structuredRight - baseRight)
+  assert.equal(
+    projectedX(
+      rightX,
+      chestProfile.centerY + chestProfile.radiusY * 2,
+      yaw,
+      softShape,
+    ),
+    projectedX(
+      rightX,
+      chestProfile.centerY + chestProfile.radiusY * 2,
+      yaw,
+      null,
+    ),
+  )
+  assert.equal(
+    resolveAnime25DTorsoChestShape({ ...chestProfile, enabled: false }),
+    null,
+  )
 })
 
 test('stays finite outside the fitted torso silhouette', () => {
@@ -104,4 +171,25 @@ function forkTorsoProjectionX(x: number, yaw: number, blend: number): number {
   const rotatedScale = focalLength / Math.max(1, focalLength - rotatedZ * 0.5)
   const restScale = focalLength / Math.max(1, focalLength - z * 0.5)
   return x + (rotatedX * rotatedScale - localX * restScale) * blend
+}
+
+function projectedX(
+  x: number,
+  y: number,
+  yaw: number,
+  chestShape: ReturnType<typeof resolveAnime25DTorsoChestShape>,
+): number {
+  const point = { x, y }
+  deformAnime25DTorsoShellPoint(
+    point,
+    profile,
+    {
+      active: true,
+      yawCosine: Math.cos(yaw),
+      yawSine: Math.sin(yaw),
+    },
+    0.25,
+    chestShape,
+  )
+  return point.x
 }

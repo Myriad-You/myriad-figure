@@ -7,7 +7,10 @@ import {
   sampleAnime25DHairlinePinWeights,
   writeAnime25DShellRotation,
 } from './shellDeformation'
-import { deriveAnime25DShellProfile } from './shellProfile'
+import {
+  deriveAnime25DShellProfile,
+  resolveAnime25DShellProfile,
+} from './shellProfile'
 
 const faceLayer: Anime25DPlaybackLayer = {
   name: 'face',
@@ -82,6 +85,20 @@ const playbackSource = {
   },
   layers: [faceLayer, frontHairLayer, topwearLayer],
 } satisfies Pick<Anime25DPlayback, 'anchors' | 'layers'>
+
+test('resolves a missing profile the same way player used to at load time', () => {
+  const derived = deriveAnime25DShellProfile(playbackSource)
+  assert.deepEqual(resolveAnime25DShellProfile(playbackSource), derived)
+  const { torso, ...withoutTorso } = derived
+  assert.ok(torso)
+  assert.deepEqual(
+    resolveAnime25DShellProfile({
+      ...playbackSource,
+      shellProfile: withoutTorso as typeof derived,
+    }).torso,
+    torso,
+  )
+})
 
 test('derives a complete deterministic shell profile at import time', () => {
   const first = deriveAnime25DShellProfile(playbackSource)

@@ -5,6 +5,7 @@ import type {
   Anime25DShellRotation,
 } from './shellDeformation'
 import type {
+  Anime25DTorsoChestShape,
   Anime25DTorsoShellMode,
   Anime25DTorsoShellRotation,
 } from './torsoDeformation'
@@ -71,6 +72,7 @@ export interface Anime25DSecondaryDeformationFrame {
   shellActivation: number
   shellRotation: Readonly<Anime25DShellRotation>
   torsoProfile: Readonly<Anime25DTorsoShellProfile>
+  torsoChestShape: Readonly<Anime25DTorsoChestShape> | null
   torsoShellBlend: number
   torsoShellRotation: Readonly<Anime25DTorsoShellRotation>
 }
@@ -233,10 +235,7 @@ export function deformAnime25DSecondaryPoint(
               depthOffset *
               (point.y - frame.faceCenterY) *
               0.05)
-      if (
-        binding.shellMode &&
-        frame.shellProfile.enabled
-      ) {
+      if (binding.shellMode && frame.shellProfile.enabled) {
         deformAnime25DShellPoint(
           point,
           restY,
@@ -316,6 +315,7 @@ export function deformAnime25DSecondaryPoint(
       frame.torsoProfile,
       frame.torsoShellRotation,
       frame.torsoShellBlend * torsoWeight,
+      binding.topwear ? frame.torsoChestShape : null,
     )
   }
   if (binding.handwear) {
