@@ -63,8 +63,12 @@ export class PerformanceMotionSource {
     this.listening = false
   }
 
-  handleForTest(performance: PerformanceDirective): boolean {
+  apply(performance: PerformanceDirective): boolean {
     return this.publish(performance)
+  }
+
+  handleForTest(performance: PerformanceDirective): boolean {
+    return this.apply(performance)
   }
 
   private publish(performance: PerformanceDirective): boolean {
