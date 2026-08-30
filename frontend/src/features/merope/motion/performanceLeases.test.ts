@@ -66,6 +66,10 @@ test('a greet cue times the head/body lease to its actual duration', () => {
   const windows = performanceLeaseWindows(directive({ cues: [greet] }), 0)
   assert.equal(windows.headBodyCueUntilMs, cueDurationMs(greet))
   assert.equal(windows.expressionCueUntilMs, cueDurationMs(greet))
+  assert.equal(
+    windows.expressionBaselineUntilMs,
+    cueDurationMs(greet) + PERFORMANCE_BASELINE_HOLD_MS,
+  )
 })
 
 test('think stays on expression and never takes the singing body', () => {
@@ -77,7 +81,7 @@ test('think stays on expression and never takes the singing body', () => {
   assert.equal(windows.headBodyCueUntilMs, null)
 })
 
-test('body cue lease expires and music groove resumes; baseline expression expires with the plan', () => {
+test('body cue lease expires and music groove resumes; landing baseline outlives the cue', () => {
   const coordinator = new RigMotionCoordinator()
   coordinator.claim('music', ['mouth', 'headBody'], { nowMs: 0 })
   const leases = new PerformanceMotionLeases(coordinator)
@@ -89,7 +93,10 @@ test('body cue lease expires and music groove resumes; baseline expression expir
   const end = cueDurationMs(greet)
   coordinator.tick(end)
   assert.equal(coordinator.owner('headBody', end), 'music')
-  assert.notEqual(coordinator.owner('expression', end), 'performance')
+  assert.equal(coordinator.owner('expression', end), 'performance')
+  const settled = end + PERFORMANCE_BASELINE_HOLD_MS
+  coordinator.tick(settled)
+  assert.notEqual(coordinator.owner('expression', settled), 'performance')
 })
 
 test('open posture plus a face cue holds head/body then returns it to music', () => {
@@ -115,15 +122,21 @@ test('open posture plus a face cue holds head/body then returns it to music', ()
   assert.equal(coordinator.owner('headBody', end), 'music')
 })
 
-test('a finished Chat speech end releases expression so co-speech may resume', () => {
+test('releasing performance leases returns expression so co-speech may resume', () => {
   const coordinator = new RigMotionCoordinator()
   const leases = new PerformanceMotionLeases(coordinator)
   leases.apply(directive(), 0)
   assert.equal(coordinator.owner('expression', 0), 'performance')
-  assert.equal(allowsCoSpeechExpression(coordinator.owner('expression', 0)), false)
+  assert.equal(
+    allowsCoSpeechExpression(coordinator.owner('expression', 0)),
+    false,
+  )
   leases.releaseAll()
   assert.equal(coordinator.owner('expression', 0), 'idle')
-  assert.equal(allowsCoSpeechExpression(coordinator.owner('expression', 0)), true)
+  assert.equal(
+    allowsCoSpeechExpression(coordinator.owner('expression', 0)),
+    true,
+  )
 })
 
 test('baseline hold expiry returns expression without a cancel event', () => {

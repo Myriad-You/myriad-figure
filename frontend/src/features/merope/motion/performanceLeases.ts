@@ -6,7 +6,7 @@ import {
   performanceOccupiedChannels,
 } from './performanceChannels'
 
-/** Baseline-only plans have no cue clock; they still must expire. */
+/** After the last cue fades out, keep the landing baseline before idle. */
 export const PERFORMANCE_BASELINE_HOLD_MS = 2400
 
 export interface PerformanceLeaseWindows {
@@ -16,9 +16,9 @@ export interface PerformanceLeaseWindows {
 }
 
 /**
- * Timed windows for a Lite plan. Expression baseline expires with the last
- * cue, or after a short hold when the plan is baseline-only. Open posture
- * occupies head/body for that same window so music can yield and return.
+ * Timed windows for a Lite plan. The landing baseline outlives the last cue
+ * so the face can settle. Body occupancy stays on the cue clock so music can
+ * return; open posture without a body cue still uses the baseline hold.
  */
 export function performanceLeaseWindows(
   directive: PerformanceDirective,
@@ -40,12 +40,12 @@ export function performanceLeaseWindows(
     }
   }
   const expressionBaselineUntilMs =
-    expressionCueUntilMs ?? originMs + PERFORMANCE_BASELINE_HOLD_MS
-  if (performanceOccupiedChannels(directive).includes('headBody')) {
-    headBodyCueUntilMs =
-      headBodyCueUntilMs === null
-        ? expressionBaselineUntilMs
-        : Math.max(headBodyCueUntilMs, expressionBaselineUntilMs)
+    (expressionCueUntilMs ?? originMs) + PERFORMANCE_BASELINE_HOLD_MS
+  if (
+    headBodyCueUntilMs === null &&
+    performanceOccupiedChannels(directive).includes('headBody')
+  ) {
+    headBodyCueUntilMs = expressionCueUntilMs ?? expressionBaselineUntilMs
   }
   return {
     expressionBaselineUntilMs,
@@ -65,7 +65,10 @@ export class PerformanceMotionLeases {
 
   constructor(private readonly coordinator: RigMotionCoordinator) {}
 
-  apply(directive: PerformanceDirective, nowMs: number): void {
+  apply(
+    directive: PerformanceDirective,
+    nowMs: number,
+  ): PerformanceLeaseWindows {
     const windows = performanceLeaseWindows(directive, nowMs)
     this.expressionBaseline = this.ensure(
       this.expressionBaseline,
@@ -87,6 +90,7 @@ export class PerformanceMotionLeases {
       windows.headBodyCueUntilMs,
       nowMs,
     )
+    return windows
   }
 
   releaseAll(): void {

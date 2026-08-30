@@ -189,9 +189,9 @@ export class PerformanceExpressionController {
     if (acceptance === 'reject') return false
     this.pruneExpiredCues(now)
     if (acceptance === 'supersede') {
-      // Delivery/outcome supersedes pending reaction/delivery beats from the
-      // same turn. This also makes arrival order deterministic.
-      this.cues.length = 0
+      // Later phases of the same turn replace pending beats, but an active
+      // face must release instead of vanishing on the first new sample.
+      this.releaseActiveCues(now)
     }
     if (!Number.isFinite(this.lastTime)) this.lastTime = now
     if (directive.plan.baseline) {
@@ -205,9 +205,10 @@ export class PerformanceExpressionController {
   }
 
   stop(timeSeconds: number): void {
-    this.lastTime = finiteTime(timeSeconds)
+    const now = finiteTime(timeSeconds)
+    this.lastTime = now
     this.gate.reset()
-    this.cues.length = 0
+    this.releaseActiveCues(now)
     writeZero(this.target)
     this.ambientScaleTarget = 1
   }
@@ -229,13 +230,13 @@ export class PerformanceExpressionController {
     }
 
     this.pruneExpiredCues(now)
-    const selected = this.selectedCueAt(now)
-
-    if (selected) {
-      const envelope = cueEnvelope(selected, now)
+    for (const cue of this.cues) {
+      if (now < cue.start || now >= cue.end) continue
+      const envelope = cueEnvelope(cue, now)
+      if (envelope <= 0) continue
       for (const key of OFFSET_KEYS) {
         this.output[key] =
-          (this.output[key] ?? 0) + (selected.offset[key] ?? 0) * envelope
+          (this.output[key] ?? 0) + (cue.offset[key] ?? 0) * envelope
       }
     }
     return this.output
@@ -277,7 +278,7 @@ export class PerformanceExpressionController {
             scheduled.end > start &&
             (cue.interrupt === 'replace' || scheduled.priority < priority)
           ) {
-            scheduled.end = start
+            releaseScheduledCue(scheduled, start)
           }
         }
       }
@@ -311,6 +312,18 @@ export class PerformanceExpressionController {
       }
     }
     return selected
+  }
+
+  private releaseActiveCues(now: number): void {
+    let write = 0
+    for (const cue of this.cues) {
+      if (cue.end <= now || cue.start > now) continue
+      releaseScheduledCue(cue, now)
+      if (cue.end <= now) continue
+      this.cues[write] = cue
+      write += 1
+    }
+    this.cues.length = write
   }
 
   private pruneExpiredCues(now: number): void {
@@ -591,10 +604,45 @@ function expressionCuePriority(cue: PerformanceCue): number {
   return performanceCuePriority(cue.intent)
 }
 
+const MIN_CUE_RELEASE = 0.06
+
+function releaseScheduledCue(cue: ScheduledExpressionCue, at: number): void {
+  if (at <= cue.start || at >= cue.end) {
+    cue.end = Math.min(cue.end, at)
+    return
+  }
+  const fadeOut = Math.max(cue.fadeOut, MIN_CUE_RELEASE)
+  const local = at - cue.start
+  if (local < cue.fadeIn) {
+    scaleOffset(cue.offset, cueEnvelope(cue, at))
+    cue.fadeIn = local
+    cue.hold = 0
+    cue.fadeOut = fadeOut
+    cue.end = at + fadeOut
+    return
+  }
+  cue.hold = local - cue.fadeIn
+  cue.fadeOut = fadeOut
+  cue.end = at + fadeOut
+}
+
+function scaleOffset(
+  offset: PerformanceExpressionOffset,
+  amount: number,
+): void {
+  for (const key of OFFSET_KEYS) {
+    offset[key] = (offset[key] ?? 0) * amount
+  }
+}
+
 function cueEnvelope(cue: ScheduledExpressionCue, now: number): number {
   const elapsed = now - cue.start
-  if (elapsed < cue.fadeIn) return smootherstep(elapsed / cue.fadeIn)
+  if (elapsed < 0) return 0
+  if (cue.fadeIn > 0 && elapsed < cue.fadeIn) {
+    return smootherstep(elapsed / cue.fadeIn)
+  }
   if (elapsed < cue.fadeIn + cue.hold) return 1
+  if (cue.fadeOut <= 0) return 0
   return 1 - smootherstep((elapsed - cue.fadeIn - cue.hold) / cue.fadeOut)
 }
 

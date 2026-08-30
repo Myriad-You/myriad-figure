@@ -54,7 +54,7 @@ test('stops the mounted rig when the lifecycle owner is disposed', () => {
   assert.equal(stopped, 1)
 })
 
-test('a normal speech end releases the plan the same way cancel does', () => {
+test('a normal speech end keeps the landing plan; cancel dumps it', () => {
   let stopped = 0
   const controller = new PerformanceLifecycleController({
     playMotionPlan: () => true,
@@ -73,6 +73,18 @@ test('a normal speech end releases the plan the same way cancel does', () => {
     source: 'reply',
     messageId: 'message-1',
     utteranceId: 'utt-1',
+  })
+  assert.equal(stopped, 0)
+  controller.handle({
+    text: 'next',
+    source: 'reply',
+    messageId: 'message-2',
+    performance,
+  })
+  controller.handleSpeech({
+    phase: 'cancel',
+    source: 'reply',
+    messageId: 'message-2',
   })
   assert.equal(stopped, 1)
 })

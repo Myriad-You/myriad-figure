@@ -7,10 +7,7 @@ import {
 } from '../performanceEvents'
 import { PerformanceLifecycleController } from '../performanceLifecycle'
 import { MEROPE_SPEECH_EVENT, meropeSpeechEventDetail } from '../speechEvents'
-import {
-  liveMotionGeneration,
-  newMotionIntentId,
-} from './liveGeneration'
+import { liveMotionGeneration, newMotionIntentId } from './liveGeneration'
 import { PerformanceMotionLeases } from './performanceLeases'
 
 /**
@@ -20,6 +17,7 @@ import { PerformanceMotionLeases } from './performanceLeases'
 export class PerformanceMotionSource {
   private readonly leases: PerformanceMotionLeases
   private controller: PerformanceLifecycleController | null = null
+  private settleTimer: ReturnType<typeof setTimeout> | null = null
   private intent: PerformanceIntent = {
     directive: null,
     startedAtMs: 0,
@@ -73,21 +71,40 @@ export class PerformanceMotionSource {
 
   private publish(performance: PerformanceDirective): boolean {
     const startedAtMs = globalThis.performance.now()
-    this.leases.apply(performance, startedAtMs)
+    const windows = this.leases.apply(performance, startedAtMs)
     this.intent = {
       directive: performance,
       startedAtMs,
       motionIntentId: newMotionIntentId(),
       generation: liveMotionGeneration() || undefined,
     }
+    this.armSettle(windows.expressionBaselineUntilMs - startedAtMs)
     this.onChange(this.intent)
     return true
   }
 
   private clear(): void {
+    this.clearSettle()
     this.leases.releaseAll()
     this.intent = { directive: null, startedAtMs: 0, motionIntentId: null }
     this.onChange(this.intent)
+  }
+
+  private armSettle(delayMs: number): void {
+    this.clearSettle()
+    const wait = Math.max(1, delayMs)
+    const timer = setTimeout(() => {
+      this.settleTimer = null
+      this.clear()
+    }, wait)
+    this.settleTimer = timer
+    if (typeof timer === 'object' && 'unref' in timer) timer.unref()
+  }
+
+  private clearSettle(): void {
+    if (this.settleTimer == null) return
+    clearTimeout(this.settleTimer)
+    this.settleTimer = null
   }
 
   private readonly onPerformance = (event: Event): void => {

@@ -36,7 +36,8 @@ export class PerformanceLifecycleController {
     if (event.messageId !== this.activeMessageId) return
     this.activeMessageId = null
     this.activePlanKey = null
-    this.target.stopMotionPlan()
+    // A finished utterance keeps the landing baseline; only cancel dumps it.
+    if (event.phase === 'cancel') this.target.stopMotionPlan()
   }
 
   dispose(): void {

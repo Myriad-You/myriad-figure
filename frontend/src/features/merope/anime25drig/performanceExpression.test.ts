@@ -481,6 +481,68 @@ test('rejects stale phases and duplicate plans but accepts independent proactive
   assert.equal(performancePhaseRank('mood'), null)
 })
 
+test('replacing a cue crossfades instead of cutting the active face', () => {
+  const expression = new PerformanceExpressionController()
+  expression.play(
+    directive('delivery', 1, 'steady', [
+      cue('maniac'),
+      cue('silly', 'replace', 200),
+    ]),
+    0,
+  )
+  const duringHold = expression.sample(0.15)
+  assert.ok((duringHold.maniac ?? 0) > 0.9)
+  assert.equal(duringHold.silly ?? 0, 0)
+  const crossing = expression.sample(0.25)
+  assert.ok((crossing.maniac ?? 0) > 0.3)
+  assert.ok((crossing.silly ?? 0) > 0)
+  const afterRelease = expression.sample(0.5)
+  assert.ok((afterRelease.maniac ?? 0) < 0.05)
+  assert.ok((afterRelease.silly ?? 0) > 0.9)
+})
+
+test('stopping an active sticker releases it into the resting baseline', () => {
+  const expression = new PerformanceExpressionController()
+  expression.play(directive('delivery', 1, 'warm', [cue('maniac')]), 0)
+  for (let frame = 1; frame <= 12; frame += 1) {
+    expression.sample(frame / 60)
+  }
+  const beforeStop = expression.sample(0.2)
+  const beforeManiac = beforeStop.maniac ?? 0
+  const beforeMouth = beforeStop.mouthForm
+  assert.ok(beforeManiac > 0.9)
+  expression.stop(0.2)
+  const atStop = expression.sample(0.2)
+  assert.equal(atStop.maniac ?? 0, beforeManiac)
+  assert.ok(atStop.mouthForm > 0)
+  assert.equal(atStop.mouthForm, beforeMouth)
+  const midManiac = expression.sample(0.28).maniac ?? 0
+  assert.ok(midManiac > 0)
+  assert.ok(midManiac < beforeManiac)
+  for (let frame = 1; frame <= 60; frame += 1) {
+    expression.sample(0.2 + frame / 60)
+  }
+  const settled = expression.sample(1.2)
+  assert.ok((settled.maniac ?? 0) < 0.001)
+  assert.ok(settled.mouthForm < 0.001)
+})
+
+test('a later phase of the same turn releases the live face instead of dropping it', () => {
+  const expression = new PerformanceExpressionController()
+  expression.play(directive('reaction', 2, 'steady', [cue('maniac')]), 0)
+  const live = expression.sample(0.15)
+  assert.ok((live.maniac ?? 0) > 0.9)
+  expression.play(directive('delivery', 2, 'warm'), 0.15)
+  const handingOff = expression.sample(0.16)
+  assert.ok((handingOff.maniac ?? 0) > 0.5)
+  for (let frame = 1; frame <= 60; frame += 1) {
+    expression.sample(0.15 + frame / 60)
+  }
+  const landed = expression.sample(1.15)
+  assert.ok((landed.maniac ?? 0) < 0.001)
+  assert.ok(landed.mouthForm > 0)
+})
+
 test('releases the semantic baseline smoothly when stopped', () => {
   const expression = new PerformanceExpressionController()
   expression.play(directive('delivery', 1, 'warm'), 0)
