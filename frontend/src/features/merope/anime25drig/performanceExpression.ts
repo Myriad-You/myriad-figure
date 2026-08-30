@@ -55,6 +55,7 @@ interface ScheduledExpressionCue {
   end: number
   interrupt: PerformanceCue['interrupt']
   priority: number
+  sticker: boolean
   offset: PerformanceExpressionOffset
 }
 
@@ -219,7 +220,10 @@ export class PerformanceExpressionController {
       ? clamp(now - this.lastTime, 0, 0.05)
       : 0
     this.lastTime = now
-    const baselineRate = 1 - Math.exp(-7.5 * dt)
+    const releasing =
+      Math.abs(this.ambientScaleTarget - 1) < 1e-6 &&
+      OFFSET_KEYS.every((key) => Math.abs(this.target[key] ?? 0) < 1e-6)
+    const baselineRate = 1 - Math.exp(-(releasing ? 5.2 : 7.5) * dt)
     this.ambientScale +=
       (this.ambientScaleTarget - this.ambientScale) * baselineRate
     for (const key of OFFSET_KEYS) {
@@ -259,9 +263,16 @@ export class PerformanceExpressionController {
           if (scheduled.end > start) start = scheduled.end
         }
       }
-      const fadeIn = cue.fadeInMs / 1_000
+      const sticker = cueIsSticker(cue.intent)
+      const fadeIn = Math.max(
+        cue.fadeInMs / 1_000,
+        sticker ? MIN_STICKER_FADE_IN : 0,
+      )
       const hold = Math.max(0.24, 0.72 / clamp(cue.tempo, 0.5, 1.6))
-      const fadeOut = cue.fadeOutMs / 1_000
+      const fadeOut = Math.max(
+        cue.fadeOutMs / 1_000,
+        sticker ? MIN_STICKER_FADE_OUT : 0,
+      )
       const priority = expressionCuePriority(cue)
       if (cue.interrupt !== 'queue') {
         const active = this.selectedCueAt(start)
@@ -290,6 +301,7 @@ export class PerformanceExpressionController {
         end: start + fadeIn + hold + fadeOut,
         interrupt: cue.interrupt,
         priority,
+        sticker,
         offset: expressionCueOffset(cue),
       })
     }
@@ -605,13 +617,31 @@ function expressionCuePriority(cue: PerformanceCue): number {
 }
 
 const MIN_CUE_RELEASE = 0.06
+const MIN_STICKER_FADE_IN = 0.18
+const MIN_STICKER_FADE_OUT = 0.42
+const STICKER_INTENTS = new Set<PerformanceCue['intent']>([
+  'dizzy',
+  'cry',
+  'angry',
+  'speechless',
+  'maniac',
+  'silly',
+  'lovestruck',
+])
+
+function cueIsSticker(intent: PerformanceCue['intent']): boolean {
+  return STICKER_INTENTS.has(intent)
+}
 
 function releaseScheduledCue(cue: ScheduledExpressionCue, at: number): void {
   if (at <= cue.start || at >= cue.end) {
     cue.end = Math.min(cue.end, at)
     return
   }
-  const fadeOut = Math.max(cue.fadeOut, MIN_CUE_RELEASE)
+  const fadeOut = Math.max(
+    cue.fadeOut,
+    cue.sticker ? MIN_STICKER_FADE_OUT : MIN_CUE_RELEASE,
+  )
   const local = at - cue.start
   if (local < cue.fadeIn) {
     scaleOffset(cue.offset, cueEnvelope(cue, at))

@@ -153,6 +153,15 @@ export function dominantMouthMaterial(
   return MATERIALS[strongest]
 }
 
+/** Regular viseme under a maniac mix, so the laugh can fade into speech or rest. */
+export function regularMouthMaterial(
+  input: MouthTransitionInput,
+  active: SpeechMouthMaterial | undefined,
+): SpeechMouthMaterial {
+  if (active && active !== 'mouthManiac') return active
+  return dominantMouthMaterial({ ...input, maniac: 0 })
+}
+
 function resolveMouthMaterialScores(
   input: MouthTransitionInput,
   output: Float32Array,

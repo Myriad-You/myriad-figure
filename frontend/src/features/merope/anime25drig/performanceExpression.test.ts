@@ -490,13 +490,13 @@ test('replacing a cue crossfades instead of cutting the active face', () => {
     ]),
     0,
   )
-  const duringHold = expression.sample(0.15)
+  const duringHold = expression.sample(0.19)
   assert.ok((duringHold.maniac ?? 0) > 0.9)
   assert.equal(duringHold.silly ?? 0, 0)
-  const crossing = expression.sample(0.25)
+  const crossing = expression.sample(0.35)
   assert.ok((crossing.maniac ?? 0) > 0.3)
   assert.ok((crossing.silly ?? 0) > 0)
-  const afterRelease = expression.sample(0.5)
+  const afterRelease = expression.sample(0.7)
   assert.ok((afterRelease.maniac ?? 0) < 0.05)
   assert.ok((afterRelease.silly ?? 0) > 0.9)
 })

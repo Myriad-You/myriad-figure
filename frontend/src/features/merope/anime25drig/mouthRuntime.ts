@@ -4,7 +4,7 @@ import type {
   SpeechMouthMaterial,
 } from './mouthTransition'
 import type { Anime25DPlayback, Anime25DPlaybackLayer } from './types'
-import { dominantMouthMaterial } from './mouthTransition'
+import { regularMouthMaterial } from './mouthTransition'
 
 export interface MouthMorphState {
   centerX: number
@@ -43,6 +43,7 @@ export interface Anime25DOpacityFrame {
   lovestruckHeartL: number
   lovestruckHeartR: number
   activeMouthMaterial: SpeechMouthMaterial
+  mouthUnderlay: SpeechMouthMaterial
 }
 
 /** Resolves stable mouth artwork references once instead of scanning per frame. */
@@ -264,8 +265,15 @@ export function fadeOpacity(
     layer.fade === 'mouthClose' ||
     layer.fade === 'mouthManiac'
   ) {
-    const selected = activeMouthMaterial ?? dominantMouthMaterial(driver)
-    return (layer.fade === selected ? 1 : 0) * (1 - mouthCry) * (1 - sillyMouth)
+    return (
+      mouthLayerMix(
+        layer.fade,
+        maniac,
+        regularMouthMaterial(driver, activeMouthMaterial),
+      ) *
+      (1 - mouthCry) *
+      (1 - sillyMouth)
+    )
   }
   return 1
 }
@@ -288,6 +296,7 @@ export function createAnime25DOpacityFrame(): Anime25DOpacityFrame {
     lovestruckHeartL: 0,
     lovestruckHeartR: 0,
     activeMouthMaterial: 'mouthClose',
+    mouthUnderlay: 'mouthClose',
   }
 }
 
@@ -339,9 +348,12 @@ export function writeAnime25DOpacityFrame(
   output.symbolBlocker = symbolBlocker
   output.eyeOpenL = eyeOpenL
   output.eyeOpenR = eyeOpenR
-  output.lovestruckHeartL = lovestruck * smoothstep((driver.eyeOpenL - 0.12) / 0.28)
-  output.lovestruckHeartR = lovestruck * smoothstep((driver.eyeOpenR - 0.12) / 0.28)
+  output.lovestruckHeartL =
+    lovestruck * smoothstep((driver.eyeOpenL - 0.12) / 0.28)
+  output.lovestruckHeartR =
+    lovestruck * smoothstep((driver.eyeOpenR - 0.12) / 0.28)
   output.activeMouthMaterial = activeMouthMaterial
+  output.mouthUnderlay = regularMouthMaterial(driver, activeMouthMaterial)
 }
 
 /** Resolves one preclassified layer from the shared frame weights. */
@@ -355,9 +367,7 @@ export function fadeOpacityFromFrame(
   if (fade === 'eyeCry') return frame.cry * (1 - frame.dizzy)
   if (fade === 'eyeSilly') return frame.silly
   if (fade === 'lovestruckHeart') {
-    return layer.side === 'L'
-      ? frame.lovestruckHeartL
-      : frame.lovestruckHeartR
+    return layer.side === 'L' ? frame.lovestruckHeartL : frame.lovestruckHeartR
   }
   if (fade === 'lovestruckFace' || fade === 'lovestruckDrool') {
     return frame.lovestruck
@@ -402,7 +412,7 @@ export function fadeOpacityFromFrame(
     fade === 'mouthManiac'
   ) {
     return (
-      (fade === frame.activeMouthMaterial ? 1 : 0) *
+      mouthLayerMix(fade, frame.maniac, frame.mouthUnderlay) *
       (1 - frame.mouthCry) *
       (1 - frame.sillyMouth)
     )
@@ -416,6 +426,15 @@ export function shouldDeformLayer(
   opacity: number,
 ): boolean {
   return opacity >= 0.004 || layer.name.startsWith('eyewhite')
+}
+
+function mouthLayerMix(
+  fade: string,
+  maniac: number,
+  underlay: SpeechMouthMaterial,
+): number {
+  if (fade === 'mouthManiac') return maniac
+  return fade === underlay ? 1 - maniac : 0
 }
 
 function smoothstep(value: number): number {

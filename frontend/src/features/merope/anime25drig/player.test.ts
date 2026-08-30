@@ -47,12 +47,18 @@ test('clamps all external driver writes at the runtime boundary', () => {
 })
 
 test('precompiled mouth sources retain the first authored variant', () => {
-  const closed = { fade: 'mouthClose', name: 'closed-first' } as Anime25DPlaybackLayer
+  const closed = {
+    fade: 'mouthClose',
+    name: 'closed-first',
+  } as Anime25DPlaybackLayer
   const duplicate = {
     fade: 'mouthClose',
     name: 'closed-second',
   } as Anime25DPlaybackLayer
-  const ordinary = { fade: 'mouthOpen', name: 'ordinary' } as Anime25DPlaybackLayer
+  const ordinary = {
+    fade: 'mouthOpen',
+    name: 'ordinary',
+  } as Anime25DPlaybackLayer
   const sources = compileAnime25DMouthMorphSources([
     closed,
     duplicate,
@@ -207,6 +213,13 @@ test('special mouths replace normal speaking and closed artwork without stacking
   assert.equal(fadeOpacity(layer('mouthManiac'), maniac), 1)
   assert.equal(fadeOpacity(layer('mouthOpen'), maniac), 0)
   assert.equal(fadeOpacity(layer('mouthClose'), maniac), 0)
+
+  const handingOff = { ...IDENTITY_DRIVER, maniac: 0.5, mouthOpen: 1 }
+  const laugh = fadeOpacity(layer('mouthManiac'), handingOff)
+  const speak = fadeOpacity(layer('mouthOpen'), handingOff)
+  assert.ok(laugh > 0.2 && laugh < 0.8)
+  assert.ok(speak > 0.2 && speak < 0.8)
+  assert.ok(Math.abs(laugh + speak - 1) < 1e-6)
 })
 
 test('vacant-stare artwork owns both eyes and the mouth while it is up', () => {
