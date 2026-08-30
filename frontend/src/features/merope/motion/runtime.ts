@@ -178,6 +178,14 @@ export class MotionRuntime {
   }
 }
 
+/** Production faces: music may occupy the body; idle autonomy may pulse the face. */
+export function createLiveMotionRuntime(
+  coordinator: RigMotionCoordinator,
+  musicSource: MusicMotionSource | null,
+): MotionRuntime {
+  return new MotionRuntime(coordinator, musicSource, true)
+}
+
 export function createPreviewMotionRuntime(): MotionRuntime {
   return new MotionRuntime(new RigMotionCoordinator())
 }

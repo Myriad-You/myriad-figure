@@ -1,7 +1,27 @@
+import type { MusicMotionSource, SingingFrame } from './musicSource'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { RigMotionCoordinator } from './coordinator'
-import { createPreviewMotionRuntime, MotionRuntime } from './runtime'
+import {
+  createLiveMotionRuntime,
+  createPreviewMotionRuntime,
+  MotionRuntime,
+} from './runtime'
+
+function stubMusic(): MusicMotionSource & { listeners: number } {
+  const listeners = new Set<(frame: SingingFrame) => void>()
+  return {
+    listeners: 0,
+    subscribe(listener: (frame: SingingFrame) => void) {
+      listeners.add(listener)
+      this.listeners = listeners.size
+      return () => {
+        listeners.delete(listener)
+        this.listeners = listeners.size
+      }
+    },
+  } as MusicMotionSource & { listeners: number }
+}
 
 test('stopping speech drops queued viseme text so a remount does not replay it', () => {
   const runtime = new MotionRuntime(new RigMotionCoordinator())
@@ -69,11 +89,13 @@ test('preview runtime ticks timed leases without a music sampler', async () => {
   release()
 })
 
-test('live autonomy starts on retain; preview runtime stays still', () => {
+test('live runtime attaches music and starts autonomy; preview stays still', () => {
   const coordinator = new RigMotionCoordinator()
   coordinator.claim('music', ['mouth', 'headBody'], { nowMs: 0 })
-  const live = new MotionRuntime(coordinator, null, true)
+  const music = stubMusic()
+  const live = createLiveMotionRuntime(coordinator, music)
   const release = live.retain()
+  assert.equal(music.listeners, 1)
   live.autonomy.consider(0)
   assert.equal(live.frame().snapshot.owners.expression, 'autonomy')
   assert.equal(live.frame().snapshot.owners.mouth, 'music')
@@ -81,6 +103,7 @@ test('live autonomy starts on retain; preview runtime stays still', () => {
   assert.ok(live.frame().autonomy?.directive)
   release()
   assert.equal(live.frame().autonomy, null)
+  assert.equal(music.listeners, 0)
 
   const preview = createPreviewMotionRuntime()
   const previewRelease = preview.retain()
