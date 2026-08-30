@@ -99,7 +99,9 @@ const NEUTRAL_FRAME: RandomActionFrame = {
   ambientScale: 1,
 }
 
-const RELEASE_DURATION = 0.32
+const RELEASE_DURATION = 0.38
+const RESUME_DELAY_MIN = 0.24
+const RESUME_DELAY_MAX = 0.42
 
 /**
  * Plays complete, low-frequency idle action clips independently from ambient
@@ -149,7 +151,7 @@ export class RandomActionController {
       }
       this.energy = energy
       this.lastIndex = -1
-      if (available) this.scheduleFirstAction(now)
+      if (available) this.scheduleResumeAction(now)
     }
 
     if (!available) {
@@ -164,7 +166,7 @@ export class RandomActionController {
 
     if (!this.available) {
       this.available = true
-      this.scheduleFirstAction(now)
+      this.scheduleResumeAction(now)
     }
 
     if (this.releasing) this.resolveRelease(now)
@@ -201,6 +203,14 @@ export class RandomActionController {
         : this.randomRange(1.2, 2))
   }
 
+  private scheduleResumeAction(now: number): void {
+    this.nextActionAt =
+      now +
+      (this.energy === 'excited'
+        ? this.randomRange(0.28, 0.8)
+        : this.randomRange(RESUME_DELAY_MIN, RESUME_DELAY_MAX))
+  }
+
   private beginAction(now: number): void {
     this.releasing = false
     this.activeIndex = this.nextActionIndex()
@@ -223,11 +233,7 @@ export class RandomActionController {
       (this.energy === 'excited'
         ? this.randomRange(0.45, 1.15)
         : this.randomRange(3.8, 6.5))
-    if (this.energy === 'excited') {
-      copyFrame(this.actionFrom, this.output)
-    } else {
-      writeNeutral(this.output)
-    }
+    copyFrame(this.actionFrom, this.output)
   }
 
   private nextActionIndex(): number {
@@ -368,9 +374,9 @@ export class RandomActionController {
         this.output.ambientScale = 1 - 0.08 * face
         break
     }
-    if (this.energy === 'excited') {
-      this.blendFromPrevious(smootherstep(progress / 0.34))
-    }
+    this.blendFromPrevious(
+      smootherstep(progress / (this.energy === 'excited' ? 0.34 : 0.28)),
+    )
     return this.output
   }
 

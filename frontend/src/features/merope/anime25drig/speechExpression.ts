@@ -4,6 +4,8 @@ export interface CoSpeechExpressionOffset {
   angleY: number
 }
 
+const RELEASE_RATE = 6.2
+
 /** Keeps authored audio/viseme input on the same visual-prosody path. */
 export class CoSpeechExpressionController {
   private readonly output: CoSpeechExpressionOffset = {
@@ -12,9 +14,17 @@ export class CoSpeechExpressionController {
     angleY: 0,
   }
 
+  private readonly targetOffset: CoSpeechExpressionOffset = {
+    brow: 0,
+    eyeOpen: 0,
+    angleY: 0,
+  }
+
   private previousEnergy = 0
   private accentStartedAt = Number.NEGATIVE_INFINITY
   private nextAccentAt = 0
+  private lastTime = Number.NaN
+  private initialized = false
 
   sample(
     timeSeconds: number,
@@ -25,6 +35,10 @@ export class CoSpeechExpressionController {
     headAccent: number,
   ): Readonly<CoSpeechExpressionOffset> {
     const now = Number.isFinite(timeSeconds) ? Math.max(0, timeSeconds) : 0
+    const dt = Number.isFinite(this.lastTime)
+      ? clamp(now - this.lastTime, 0, 0.05)
+      : 0
+    this.lastTime = now
     const energy = authoredEnergy == null ? 0 : unitInterval(authoredEnergy)
     if (
       active &&
@@ -39,7 +53,7 @@ export class CoSpeechExpressionController {
 
     if (active && authoredEnergy != null) {
       this.previousEnergy = energy
-    } else {
+    } else if (!active) {
       this.previousEnergy = 0
       this.accentStartedAt = Number.NEGATIVE_INFINITY
       this.nextAccentAt = now
@@ -54,12 +68,35 @@ export class CoSpeechExpressionController {
     const authoredHead = active
       ? attackReleasePulse(elapsed, 0.045, 0.1, 0.22)
       : 0
-    return writeOffset(
-      this.output,
+    writeOffset(
+      this.targetOffset,
       Math.max(phraseActivity, authoredActivity),
       Math.max(browAccent, authoredBrow),
       Math.max(headAccent, authoredHead),
     )
+    if (!this.initialized) {
+      this.initialized = true
+      this.output.brow = this.targetOffset.brow
+      this.output.eyeOpen = this.targetOffset.eyeOpen
+      this.output.angleY = this.targetOffset.angleY
+      return this.output
+    }
+    this.output.brow = stepRelease(
+      this.output.brow,
+      this.targetOffset.brow,
+      dt,
+    )
+    this.output.eyeOpen = stepRelease(
+      this.output.eyeOpen,
+      this.targetOffset.eyeOpen,
+      dt,
+    )
+    this.output.angleY = stepRelease(
+      this.output.angleY,
+      this.targetOffset.angleY,
+      dt,
+    )
+    return this.output
   }
 }
 
@@ -78,9 +115,18 @@ function writeOffset(
   return output
 }
 
+function stepRelease(current: number, target: number, dt: number): number {
+  if (Math.abs(target) >= Math.abs(current) - 1e-6) return target
+  return current + (target - current) * (1 - Math.exp(-RELEASE_RATE * dt))
+}
+
 function unitInterval(value: number): number {
   if (!Number.isFinite(value)) return 0
   return Math.max(0, Math.min(1, value))
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.max(minimum, Math.min(maximum, value))
 }
 
 function attackReleasePulse(

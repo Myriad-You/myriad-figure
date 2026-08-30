@@ -167,7 +167,7 @@ test('switching into singing releases the idle clip before grooving', () => {
   )
 })
 
-test('speech or another owner releases an action and delays the next one', () => {
+test('speech or another owner releases an action and resumes without a long freeze', () => {
   const controller = new RandomActionController(() => 0.5)
   controller.sample(0, true, false)
   controller.sample(1.61, true, false)
@@ -177,13 +177,34 @@ test('speech or another owner releases an action and delays the next one', () =>
   const releaseStart = { ...controller.sample(2.25, true, true) }
   assert.deepEqual(releaseStart, active)
   assert.ok(magnitude(controller.sample(2.4, true, true)) < magnitude(active))
-  assert.equal(magnitude(controller.sample(2.6, true, true)), 0)
+  assert.ok(magnitude(controller.sample(2.64, true, true)) < 1e-6)
   assert.equal(controller.getActiveAction(), null)
 
-  assert.equal(magnitude(controller.sample(2.6, true, false)), 0)
-  assert.equal(magnitude(controller.sample(4.19, true, false)), 0)
-  controller.sample(4.21, true, false)
+  assert.equal(magnitude(controller.sample(2.64, true, false)), 0)
+  assert.equal(magnitude(controller.sample(2.96, true, false)), 0)
+  controller.sample(2.98, true, false)
   assert.notEqual(controller.getActiveAction(), null)
+})
+
+test('resuming after speech does not snap the head or hands', () => {
+  const controller = new RandomActionController(() => 0.5)
+  controller.sample(0, true, false)
+  controller.sample(1.61, true, false)
+  controller.sample(2.25, true, true)
+  let previous = { ...controller.sample(2.64, true, false) }
+  let largestStep = 0
+  for (let frame = 1; frame <= 60; frame += 1) {
+    const current = controller.sample(2.64 + frame / 60, true, false)
+    largestStep = Math.max(
+      largestStep,
+      Math.abs(current.angleX - previous.angleX),
+      Math.abs(current.angleY - previous.angleY),
+      Math.abs(current.angleZ - previous.angleZ),
+      Math.abs(current.armY - previous.armY),
+    )
+    previous = { ...current }
+  }
+  assert.ok(largestStep < 0.025)
 })
 
 test('composes expressions and gestures without reopening authored closed eyes', () => {

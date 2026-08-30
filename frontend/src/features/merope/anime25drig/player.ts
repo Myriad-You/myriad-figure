@@ -712,8 +712,8 @@ export class Anime25DPlayer {
       (1 - Math.exp(-(singing ? 5.5 : 1.05) * dt))
     const groove = this.singingGroove.sample(t, singing, this.singingDrive)
     const headBodyAmbient = allowsAmbientMotion(this.policy.headBody)
-    // Agent speech suppresses idle actions; singing keeps the excited face
-    // catalog. Ambient/thinking yield when another source owns head/body.
+    // Speech and sticker faces yield idle clips. Ambient must disable too, or
+    // it keeps wandering at scale 0 and snaps back when the lease drops.
     const actionBlocked =
       (this.speechActive && !singing) ||
       stylizedTargets.anger > 0.03 ||
@@ -730,7 +730,10 @@ export class Anime25DPlayer {
     )
     const ambient = this.ambientMotion.sample(
       t,
-      this.target.rand && !pointerDriven,
+      this.target.rand &&
+        !pointerDriven &&
+        headBodyAmbient &&
+        (!speaking || singing),
     )
     const thinking = this.thinkingMotion.sample(
       t,
@@ -744,11 +747,8 @@ export class Anime25DPlayer {
         stylizedTargets.silly <= 0.03 &&
         stylizedTargets.lovestruck <= 0.03,
     )
-    const ambientScale = headBodyAmbient
-      ? performanceMotionScale *
-        randomAction.ambientScale *
-        stylized.ambientScale
-      : 0
+    const ambientScale =
+      performanceMotionScale * randomAction.ambientScale * stylized.ambientScale
     const headKeep = 1 - 0.88 * this.singingDeform
     applyAnime25DAmbientMotion(tgt, ambient, ambientScale, headKeep)
     applyAnime25DActionMotion(

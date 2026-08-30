@@ -16,6 +16,8 @@ export interface AutoSpeechPose {
 
 type RandomSource = () => number
 
+const REST_RELEASE = 0.2
+
 const ZERO_SPEECH: AutoSpeechPose = {
   mouthOpen: 0,
   mouthWide: 0,
@@ -72,6 +74,10 @@ export class AutoSpeechController {
   private toRound = 0
   private fromNarrow = 0
   private toNarrow = 0
+  private fromPhrase = 0
+  private fromBrow = 0
+  private fromHead = 0
+  private restRelease = false
   private textMode = false
   private textCues: TextVisemeCue[] = []
   private textCueIndex = 0
@@ -88,7 +94,7 @@ export class AutoSpeechController {
     const now = Number.isFinite(timeSeconds) ? Math.max(0, timeSeconds) : 0
     this.initialized = true
     this.enabled = false
-    this.reset(now)
+    this.beginRestRelease(now)
   }
 
   enqueueText(text: string, locale?: string): void {
@@ -127,13 +133,14 @@ export class AutoSpeechController {
     if (enabled !== this.enabled) {
       this.enabled = enabled
       if (!enabled) {
-        this.reset(now)
-        return this.output
+        this.beginRestRelease(now)
+        return this.resolveRest(now)
       }
+      this.restRelease = false
       this.nextEventAt = now + this.randomRange(0.08, 0.16)
     }
 
-    if (!this.enabled) return this.output
+    if (!this.enabled) return this.resolveRest(now)
 
     if (this.textMode) return this.sampleText(now)
 
@@ -371,7 +378,10 @@ export class AutoSpeechController {
     return smootherstep(sinceStart / 0.16) * smootherstep(untilEnd / 0.22)
   }
 
-  private reset(now: number): void {
+  private beginRestRelease(now: number): void {
+    this.fromPhrase = this.output.phraseActivity
+    this.fromBrow = this.output.browAccent
+    this.fromHead = this.output.headAccent
     this.speaking = false
     this.nextEventAt = Number.POSITIVE_INFINITY
     this.phraseStartedAt = now
@@ -380,17 +390,6 @@ export class AutoSpeechController {
     this.syllablesRemaining = 0
     this.emphasisCooldown = 0
     this.emphasisStartedAt = Number.NEGATIVE_INFINITY
-    this.transitionStartedAt = now
-    this.fromOpen = 0
-    this.toOpen = 0
-    this.fromForm = 0
-    this.toForm = 0
-    this.fromWide = 0
-    this.toWide = 0
-    this.fromRound = 0
-    this.toRound = 0
-    this.fromNarrow = 0
-    this.toNarrow = 0
     this.textMode = false
     this.textCues = []
     this.textCueIndex = 0
@@ -400,15 +399,21 @@ export class AutoSpeechController {
     this.nextTextAccentAt = 0
     this.textGeneration += 1
     this.textCompilation = Promise.resolve()
-    this.output.mouthOpen = 0
-    this.output.mouthWide = 0
-    this.output.mouthRound = 0
-    this.output.mouthNarrow = 0
-    this.output.mouthSeal = 0
-    this.output.mouthForm = 0
-    this.output.phraseActivity = 0
-    this.output.browAccent = 0
-    this.output.headAccent = 0
+    this.restRelease = true
+    this.beginTransition(now, 0, 0, 0, 0, 0, REST_RELEASE)
+  }
+
+  private resolveRest(now: number): Readonly<AutoSpeechPose> {
+    this.resolve(now)
+    if (!this.restRelease) return this.output
+    const progress = smootherstep(
+      (now - this.transitionStartedAt) / this.transitionDuration,
+    )
+    this.output.phraseActivity = this.fromPhrase * (1 - progress)
+    this.output.browAccent = this.fromBrow * (1 - progress)
+    this.output.headAccent = this.fromHead * (1 - progress)
+    if (progress >= 1) this.restRelease = false
+    return this.output
   }
 
   private randomInteger(minimum: number, maximum: number): number {

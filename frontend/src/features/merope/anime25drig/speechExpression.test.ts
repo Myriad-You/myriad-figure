@@ -56,8 +56,16 @@ test('derives a delayed visual beat from authored energy without frame allocatio
   assert.ok(browLead.brow > 0.04)
   assert.equal(browLead.angleY, 0)
   assert.ok(headFollow.angleY > 0)
-  assert.deepEqual(
-    { ...expression.sample(0.2, false, null, 0, 0, 0) },
-    { brow: 0, eyeOpen: 0, angleY: 0 },
-  )
+  const releaseStart = { ...expression.sample(0.2, false, null, 0, 0, 0) }
+  assert.ok(releaseStart.brow > 0)
+  assert.ok(releaseStart.brow <= headFollow.brow + 1e-6)
+  const mid = { ...expression.sample(0.32, false, null, 0, 0, 0) }
+  assert.ok(mid.brow < releaseStart.brow)
+  let rest = mid
+  for (let frame = 1; frame <= 48; frame += 1) {
+    rest = { ...expression.sample(0.32 + frame / 60, false, null, 0, 0, 0) }
+  }
+  assert.ok(Math.abs(rest.brow) < 1e-3)
+  assert.ok(Math.abs(rest.eyeOpen) < 1e-3)
+  assert.ok(Math.abs(rest.angleY) < 1e-3)
 })

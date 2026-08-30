@@ -95,25 +95,34 @@ test('keeps preview speech bounded and frame-continuous', () => {
   assert.ok(largestOpenStep < 0.16)
 })
 
-test('stops contributing immediately when preview speech is disabled', () => {
+test('clearing speech drops queued visemes but keeps the current mouth for a rest release', () => {
   const speech = new AutoSpeechController(() => 0.5)
   speech.sample(0, true)
   const active = { ...speech.sample(0.3, true) }
   assert.ok(active.mouthOpen > 0)
-  assert.deepEqual(
-    { ...speech.sample(0.3, false) },
-    {
-      mouthOpen: 0,
-      mouthWide: 0,
-      mouthRound: 0,
-      mouthNarrow: 0,
-      mouthSeal: 0,
-      mouthForm: 0,
-      phraseActivity: 0,
-      browAccent: 0,
-      headAccent: 0,
-    },
-  )
+  speech.clear(0.3)
+  const onset = { ...speech.sample(0.3, false) }
+  assert.ok(onset.mouthOpen > active.mouthOpen * 0.85)
+  const rest = { ...speech.sample(0.52, false) }
+  assert.ok(rest.mouthOpen < 1e-6)
+})
+
+test('releases to rest without a hard cut when preview speech is disabled', () => {
+  const speech = new AutoSpeechController(() => 0.5)
+  speech.sample(0, true)
+  const active = { ...speech.sample(0.3, true) }
+  assert.ok(active.mouthOpen > 0)
+  const onset = { ...speech.sample(0.3, false) }
+  assert.ok(onset.mouthOpen > active.mouthOpen * 0.85)
+  assert.ok(onset.phraseActivity > active.phraseActivity * 0.85)
+  const mid = { ...speech.sample(0.4, false) }
+  assert.ok(mid.mouthOpen < onset.mouthOpen)
+  assert.ok(mid.phraseActivity < onset.phraseActivity)
+  const rest = { ...speech.sample(0.52, false) }
+  assert.ok(rest.mouthOpen < 1e-6)
+  assert.ok(rest.phraseActivity < 1e-6)
+  assert.ok(rest.browAccent < 1e-6)
+  assert.ok(rest.headAccent < 1e-6)
 })
 
 test('leads an emphasized syllable with the brow before the head nod', () => {
