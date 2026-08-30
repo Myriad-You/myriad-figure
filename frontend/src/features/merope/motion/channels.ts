@@ -41,7 +41,7 @@ export type ExclusiveMotionChannel = (typeof EXCLUSIVE_CHANNELS)[number]
 
 /**
  * Higher number wins. Missing source is idle.
- * autonomy is reserved: future self-motion publishes intents, never writes a rig.
+ * autonomy publishes intents through the coordinator; it never writes a rig.
  * Pointer gaze is a local overlay (`allowsPointerGaze`), not a lease.
  */
 export const CHANNEL_PRIORITY: Record<

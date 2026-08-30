@@ -40,4 +40,5 @@ export interface MotionFrame {
   performance: PerformanceIntent | null
   music: SingingFrame | null
   mood: MoodIntent | null
+  autonomy: PerformanceIntent | null
 }

@@ -69,6 +69,27 @@ test('preview runtime ticks timed leases without a music sampler', async () => {
   release()
 })
 
+test('live autonomy starts on retain; preview runtime stays still', () => {
+  const coordinator = new RigMotionCoordinator()
+  coordinator.claim('music', ['mouth', 'headBody'], { nowMs: 0 })
+  const live = new MotionRuntime(coordinator, null, true)
+  const release = live.retain()
+  live.autonomy.consider(0)
+  assert.equal(live.frame().snapshot.owners.expression, 'autonomy')
+  assert.equal(live.frame().snapshot.owners.mouth, 'music')
+  assert.equal(live.frame().snapshot.owners.headBody, 'music')
+  assert.ok(live.frame().autonomy?.directive)
+  release()
+  assert.equal(live.frame().autonomy, null)
+
+  const preview = createPreviewMotionRuntime()
+  const previewRelease = preview.retain()
+  preview.autonomy.consider(0)
+  assert.equal(preview.frame().autonomy, null)
+  assert.notEqual(preview.frame().snapshot.owners.expression, 'autonomy')
+  previewRelease()
+})
+
 test('mood claims expression below co-speech', () => {
   const coordinator = new RigMotionCoordinator()
   const runtime = new MotionRuntime(coordinator)

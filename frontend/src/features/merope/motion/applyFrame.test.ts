@@ -42,6 +42,7 @@ function frame(
     performance: null,
     music: null,
     mood: null,
+    autonomy: null,
     ...extra,
   }
 }
@@ -122,4 +123,43 @@ test('clearing the performance intent stops the plan once', () => {
     state,
   )
   assert.equal(host.calls.filter((call) => call === 'stop').length, 1)
+})
+
+test('autonomy plays only while it owns expression or gaze', () => {
+  const coordinator = new RigMotionCoordinator()
+  const handle = coordinator.claim('autonomy', ['expression', 'gaze'], {
+    nowMs: 1,
+  })
+  const host = recordingRig()
+  const state = createMotionApplyState()
+  const autonomy = { directive, startedAtMs: 20 }
+  applyMotionFrame(host.rig, frame(coordinator, 1, { autonomy }), state)
+  applyMotionFrame(host.rig, frame(coordinator, 2, { autonomy }), state)
+  assert.equal(host.calls.filter((call) => call === 'play').length, 1)
+
+  coordinator.release(handle)
+  applyMotionFrame(host.rig, frame(coordinator, 3, { autonomy }), state)
+  assert.equal(host.calls.filter((call) => call === 'stop').length, 1)
+})
+
+test('a live performance plan takes the rig from an autonomy pulse', () => {
+  const coordinator = new RigMotionCoordinator()
+  coordinator.claim('autonomy', ['expression', 'gaze'], { nowMs: 1 })
+  const host = recordingRig()
+  const state = createMotionApplyState()
+  applyMotionFrame(
+    host.rig,
+    frame(coordinator, 1, { autonomy: { directive, startedAtMs: 20 } }),
+    state,
+  )
+  applyMotionFrame(
+    host.rig,
+    frame(coordinator, 2, {
+      performance: { directive, startedAtMs: 30 },
+      autonomy: { directive, startedAtMs: 20 },
+    }),
+    state,
+  )
+  assert.equal(host.calls.filter((call) => call === 'stop').length, 1)
+  assert.equal(host.calls.filter((call) => call === 'play').length, 2)
 })

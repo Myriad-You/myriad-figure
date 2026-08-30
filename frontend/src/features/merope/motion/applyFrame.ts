@@ -1,3 +1,4 @@
+import type { PerformanceDirective } from '../../../services/agent/types'
 import type { RigCharacterHandle } from '../rig/RigCharacter'
 import type { MotionFrame } from './intents'
 import { applySingingWrite } from './applySnapshot'
@@ -5,14 +6,16 @@ import { policyFromOwners } from './policy'
 
 export interface MotionApplyState {
   speechTextSeq: number
-  performanceStartedAtMs: number | null
+  directedKind: 'performance' | 'autonomy' | null
+  directedStartedAtMs: number | null
   speechOwnedMouth: boolean
 }
 
 export function createMotionApplyState(): MotionApplyState {
   return {
     speechTextSeq: 0,
-    performanceStartedAtMs: null,
+    directedKind: null,
+    directedStartedAtMs: null,
     speechOwnedMouth: false,
   }
 }
@@ -40,7 +43,7 @@ export function applyMotionFrame(
 ): MotionApplyState {
   rig.setMotionPolicy(policyFromOwners(frame.snapshot.owners))
   applySpeech(rig, frame, state)
-  applyPerformance(rig, frame, state)
+  applyDirectedPlan(rig, frame, state)
   applyMusic(rig, frame)
   return state
 }
@@ -79,23 +82,55 @@ function applySpeech(
   }
 }
 
-function applyPerformance(
+function applyDirectedPlan(
   rig: Pick<RigCharacterHandle, 'playMotionPlan' | 'stopMotionPlan'>,
   frame: MotionFrame,
   state: MotionApplyState,
 ): void {
-  const directive = frame.performance?.directive ?? null
-  const startedAtMs = frame.performance?.startedAtMs ?? 0
-  if (directive) {
-    if (state.performanceStartedAtMs !== startedAtMs) {
-      rig.playMotionPlan(directive, startedAtMs)
-      state.performanceStartedAtMs = startedAtMs
+  const next = directedPlan(frame)
+  if (next) {
+    if (
+      state.directedKind !== next.kind ||
+      state.directedStartedAtMs !== next.startedAtMs
+    ) {
+      if (state.directedKind != null && state.directedKind !== next.kind) {
+        rig.stopMotionPlan()
+      }
+      rig.playMotionPlan(next.directive, next.startedAtMs)
+      state.directedKind = next.kind
+      state.directedStartedAtMs = next.startedAtMs
     }
     return
   }
-  if (state.performanceStartedAtMs != null) {
+  if (state.directedKind != null) {
     rig.stopMotionPlan()
-    state.performanceStartedAtMs = null
+    state.directedKind = null
+    state.directedStartedAtMs = null
+  }
+}
+
+function directedPlan(frame: MotionFrame): {
+  kind: 'performance' | 'autonomy'
+  directive: PerformanceDirective
+  startedAtMs: number
+} | null {
+  const performance = frame.performance?.directive ?? null
+  if (performance) {
+    return {
+      kind: 'performance',
+      directive: performance,
+      startedAtMs: frame.performance?.startedAtMs ?? 0,
+    }
+  }
+  const owners = frame.snapshot.owners
+  const autonomyOwns =
+    owners.expression === 'autonomy' || owners.gaze === 'autonomy'
+  const autonomy = autonomyOwns ? frame.autonomy?.directive ?? null : null
+  if (!autonomy) return null
+  return {
+    kind: 'autonomy',
+    directive: autonomy,
+    startedAtMs: frame.autonomy?.startedAtMs ?? 0,
   }
 }
 

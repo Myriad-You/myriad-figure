@@ -2,6 +2,7 @@ import type { PerformanceCue, RigMotionStyle } from '../../../services/agent/typ
 import type { MoodIntent, MotionFrame, PerformanceIntent, SpeechIntent } from './intents'
 import type { MusicMotionSource, SingingFrame } from './musicSource'
 import { AmbientMotionSource } from './ambientSource'
+import { AutonomyMotionSource } from './autonomySource'
 import { RigMotionCoordinator } from './coordinator'
 import { MoodMotionSource } from './moodSource'
 import { PerformanceMotionSource } from './performanceSource'
@@ -28,6 +29,7 @@ export class MotionRuntime {
   readonly performance: PerformanceMotionSource
   readonly mood: MoodMotionSource
   readonly ambient: AmbientMotionSource
+  readonly autonomy: AutonomyMotionSource
   private readonly musicSource: MusicMotionSource | null
   private readonly listeners = new Set<MotionFrameListener>()
   private retains = 0
@@ -36,6 +38,7 @@ export class MotionRuntime {
   private performanceIntent: PerformanceIntent | null = null
   private musicFrame: SingingFrame | null = null
   private moodIntent: MoodIntent | null = null
+  private autonomyIntent: PerformanceIntent | null = null
   private capabilities: string[] = []
   private recentIntents: PerformanceCue['intent'][] = []
   private motionStyle: RigMotionStyle = 'even'
@@ -45,6 +48,7 @@ export class MotionRuntime {
   constructor(
     coordinator: RigMotionCoordinator,
     musicSource: MusicMotionSource | null = null,
+    private readonly liveAutonomy = false,
   ) {
     this.coordinator = coordinator
     this.musicSource = musicSource
@@ -62,6 +66,14 @@ export class MotionRuntime {
       this.emit()
     })
     this.ambient = new AmbientMotionSource(coordinator)
+    this.autonomy = new AutonomyMotionSource(
+      coordinator,
+      (intent) => {
+        this.autonomyIntent = intent
+        this.emit()
+      },
+      () => Boolean(this.speechIntent?.active),
+    )
   }
 
   retain(): () => void {
@@ -70,6 +82,7 @@ export class MotionRuntime {
       this.speech.start()
       this.performance.start()
       this.ambient.claim()
+      if (this.liveAutonomy) this.autonomy.start()
       if (this.musicSource) {
         this.unsubMusic = this.musicSource.subscribe((frame) => {
           this.musicFrame = frame
@@ -86,6 +99,7 @@ export class MotionRuntime {
       this.stopPreviewClock()
       this.speech.stop()
       this.performance.stop()
+      this.autonomy.stop()
       this.mood.release()
       this.ambient.release()
       this.unsubMusic?.()
@@ -118,6 +132,7 @@ export class MotionRuntime {
       performance: this.performanceIntent,
       music: this.musicFrame,
       mood: this.moodIntent,
+      autonomy: this.autonomyIntent,
     }
   }
 
