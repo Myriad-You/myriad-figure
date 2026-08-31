@@ -168,3 +168,35 @@ test('music renews one lease instead of stacking a new claim every sample', () =
     .leases.filter((lease) => lease.source === 'music')
   assert.equal(leases.length, 1)
 })
+
+test('reconnects the analyser when the player swaps its audio element', () => {
+  const connected: object[] = []
+  let current: { paused: boolean; currentTime: number } = {
+    paused: false,
+    currentTime: 1.2,
+  }
+  const audio: MusicMotionAudio = {
+    getCurrentAudio: () => current,
+    getSpectrumBands: () => [0.4, 0.5, 0.3, 0.1, 0, 0, 0, 0],
+    connectAudioToAnalyser: (element) => {
+      connected.push(element)
+      return true
+    },
+  }
+  const source = new MusicMotionSource(
+    new RigMotionCoordinator(),
+    fakeClock(),
+    audio,
+    visible,
+  )
+  source.setPlayback(true, false)
+  source.sampleNow(10)
+  source.sampleNow(20)
+  assert.equal(connected.length, 1)
+
+  // The player rebuilt its element; the analyser must follow it there.
+  current = { paused: false, currentTime: 0 }
+  source.sampleNow(30)
+  assert.equal(connected.length, 2)
+  assert.equal(connected[1], current)
+})

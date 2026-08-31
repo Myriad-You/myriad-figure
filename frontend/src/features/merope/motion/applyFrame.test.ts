@@ -163,3 +163,29 @@ test('a live performance plan takes the rig from an autonomy pulse', () => {
   assert.equal(host.calls.filter((call) => call === 'stop').length, 1)
   assert.equal(host.calls.filter((call) => call === 'play').length, 2)
 })
+
+test('a plan the player refused is retried on the next frame', () => {
+  const coordinator = new RigMotionCoordinator()
+  coordinator.claim('performance', ['expression'], { nowMs: 1 })
+  const host = recordingRig()
+  const calls = host.calls
+  let accept = false
+  const rig = {
+    ...host.rig,
+    playMotionPlan: () => {
+      calls.push('play')
+      return accept
+    },
+  }
+  const state = createMotionApplyState()
+  const performance = { directive, startedAtMs: 30 }
+  applyMotionFrame(rig, frame(coordinator, 1, { performance }), state)
+  applyMotionFrame(rig, frame(coordinator, 2, { performance }), state)
+  assert.equal(calls.filter((call) => call === 'play').length, 2)
+
+  // Once the player takes it, the plan settles and stops being re-offered.
+  accept = true
+  applyMotionFrame(rig, frame(coordinator, 3, { performance }), state)
+  applyMotionFrame(rig, frame(coordinator, 4, { performance }), state)
+  assert.equal(calls.filter((call) => call === 'play').length, 3)
+})

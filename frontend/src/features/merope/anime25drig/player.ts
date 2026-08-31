@@ -6,6 +6,7 @@ import type {
   ChestDeformationRegion,
   ChestDynamicsTuning,
   ChestMotionGeometry,
+  ChestSpatialField,
   ChestWeightField,
 } from './chestPhysics'
 import type { CollarClipMesh, CollarMotionPose } from './collarRuntime'
@@ -48,6 +49,9 @@ import { noteTurnTraceFrame } from '../turnTrace'
 import { AmbientMotionController } from './ambientMotion'
 import {
   buildChestWeightField,
+  chestBodyExcitationY,
+  chestBreathResidual,
+  chestBreathTargetY,
   chestFollowMix,
   chestMotionTarget,
   chestProfileUsesGeometryWeights,
@@ -55,6 +59,7 @@ import {
   createChestSpringState,
   resolveChestDeformationRegion,
   resolveChestDynamics,
+  resolveChestSpatialField,
   stepChestSpring,
   topwearMotionAtChest,
 } from './chestPhysics'
@@ -112,7 +117,10 @@ import {
   writeAnime25DOpacityFrame,
 } from './mouthRuntime'
 import { MouthTransitionController } from './mouthTransition'
-import { PerformanceExpressionController } from './performanceExpression'
+import {
+  performanceCueOrigin,
+  PerformanceExpressionController,
+} from './performanceExpression'
 import {
   Anime25DPerformanceTelemetry,
   createAnime25DFrameWork,
@@ -293,8 +301,10 @@ export class Anime25DPlayer {
   private speechActive = false
   private readonly chest = createChestSpringState()
   private readonly chestTarget = { x: 0, y: 0 }
+  private readonly chestSpringTarget = { x: 0, y: 0 }
   private readonly chestParentTarget = { x: 0, y: 0 }
   private readonly chestDynamics: ChestDynamicsTuning
+  private readonly chestField: ChestSpatialField
   private readonly chestGeometry: ChestMotionGeometry
   private readonly chestRegion: ChestDeformationRegion
   private readonly chestWeightField: ChestWeightField | null
@@ -343,7 +353,11 @@ export class Anime25DPlayer {
       stylizedMotion: null,
     }
     this.jawTravel = jawTravelPixels(playback)
-    this.chestDynamics = resolveChestDynamics(playback.chestProfile)
+    this.chestField = resolveChestSpatialField(playback.chestProfile)
+    this.chestDynamics = resolveChestDynamics(
+      playback.chestProfile,
+      this.chestField,
+    )
     const anchors = playback.anchors
     this.chestRegion = resolveChestDeformationRegion(playback.chestProfile)
     this.chestGeometry = {
@@ -379,8 +393,11 @@ export class Anime25DPlayer {
       faceCenterY: anchors.face.cy,
       bodyBreathOffset: 0,
       headBreathOffset: 0,
-      torsoProfile: this.shellProfile.torso ?? undefined,
-      torsoChestShape: resolveAnime25DTorsoChestShape(playback.chestProfile),
+      torsoProfile: this.shellProfile.torso,
+      torsoChestShape: resolveAnime25DTorsoChestShape(
+        playback.chestProfile,
+        this.chestField,
+      ),
       torsoShellRotation: this.torsoShellRotation,
       torsoShellBlend: 0,
       specialHeadOffset: 0,
@@ -394,7 +411,8 @@ export class Anime25DPlayer {
       inverseChestRadiusY: 1 / this.chestRegion.radiusY,
       chestOffsetX: 0,
       chestOffsetY: 0,
-      chestProfileSource: playback.chestProfile?.source,
+      chestField: this.chestField,
+      chestVolumeScale: 1,
       shellProfile: this.shellProfile,
       shellBlend: 0,
       shellActivation: 0,
@@ -504,10 +522,14 @@ export class Anime25DPlayer {
 
   playPerformance(
     directive: PerformanceDirective,
-    _cueOriginSeconds?: number,
+    cueOriginSeconds?: number,
   ): boolean {
     const now = this.time
-    return this.performanceExpression.play(directive, now, now)
+    return this.performanceExpression.play(
+      directive,
+      now,
+      performanceCueOrigin(now, cueOriginSeconds),
+    )
   }
 
   stopPerformance(): void {
@@ -795,13 +817,26 @@ export class Anime25DPlayer {
     stepJawMotion(this.jaw, jawMotionTarget(e, this.jawEmphasis), dt)
     const secondary = this.secondaryCurrent
     const chestProfile = this.playback.chestProfile
-    if (chestProfile?.enabled !== false) {
+    if (chestProfile.enabled) {
       const chestTarget = chestMotionTarget(e, faceScale, this.chestTarget)
+      chestTarget.y += chestBreathTargetY(
+        chestBreathResidual(this.time),
+        faceScale,
+        this.chestDynamics.breathMotionScale,
+      )
+      this.chestSpringTarget.x = chestTarget.x
+      this.chestSpringTarget.y =
+        chestTarget.y +
+        chestBodyExcitationY(
+          e.body,
+          faceScale,
+          this.chestDynamics.bodyExcitationScale,
+        )
       topwearMotionAtChest(e, this.chestGeometry, this.chestParentTarget)
       stepChestSpring(
         this.chest,
-        chestTarget.x,
-        chestTarget.y,
+        this.chestSpringTarget.x,
+        this.chestSpringTarget.y,
         dt,
         this.chestDynamics.frequencyScale,
         this.chestDynamics.dampingScale,
@@ -821,7 +856,8 @@ export class Anime25DPlayer {
     const e = this.current
     const fs = A.faceScale
     const t = this.time
-    const breath = 0.5 + 0.5 * Math.sin((t * Math.PI * 2) / 3.4)
+    const breathResidual = chestBreathResidual(t)
+    const breath = 0.5 + breathResidual
     const breathHead = 0.5 + 0.5 * Math.sin((t * Math.PI * 2) / 3.4 - 0.6)
     const npx = A.neckPivot.x
     const npy = A.neckPivot.y
@@ -839,7 +875,6 @@ export class Anime25DPlayer {
     this.renderFrame.bodyPivotY = bpy
     this.renderFrame.bodyRotationCosine = cb
     this.renderFrame.bodyRotationSine = sb
-    const chestProfile = this.playback.chestProfile
     const chestCy = this.chestRegion.centerY
     const chestRx = this.chestRegion.radiusX
     const chestRy = this.chestRegion.radiusY
@@ -849,15 +884,13 @@ export class Anime25DPlayer {
     const chestFollow =
       chestFollowMix(e.bust, this.chestDynamics.followScale) *
       (1 - 0.7 * singingLift)
-    const chestCenterY = chestProfile
-      ? chestCy + (e.bustY - 1) * 70 * fs
-      : chestCy + e.bustY * 70 * fs
+    const chestCenterY = chestCy + (e.bustY - 1) * 70 * fs
     const chestOffsetX =
       (this.chestTarget.x - this.chestParentTarget.x) * chestFollow +
-      this.chest.offsetX * chestMotionMix
+      this.chest.offsetX * chestMotionMix * this.chestDynamics.inertiaGain
     const chestOffsetY =
       (this.chestTarget.y - this.chestParentTarget.y) * chestFollow +
-      this.chest.offsetY * chestMotionMix
+      this.chest.offsetY * chestMotionMix * this.chestDynamics.inertiaGain
     const inverseChestRx = 1 / chestRx
     const inverseChestRy = 1 / chestRy
     const jawDrop = this.jaw.value * this.jawTravel
@@ -895,15 +928,20 @@ export class Anime25DPlayer {
     secondaryDeformationFrame.specialHeadOffset = specialHeadOffset
     secondaryDeformationFrame.breath = breath
     secondaryDeformationFrame.chestMotionCenterY = chestCenterY
+    if (secondaryDeformationFrame.torsoChestShape) {
+      secondaryDeformationFrame.torsoChestShape.centerY = chestCenterY
+    }
     secondaryDeformationFrame.inverseChestRadiusX = inverseChestRx
     secondaryDeformationFrame.inverseChestRadiusY = inverseChestRy
     secondaryDeformationFrame.chestOffsetX = chestOffsetX
     secondaryDeformationFrame.chestOffsetY = chestOffsetY
+    secondaryDeformationFrame.chestVolumeScale =
+      1 + breathResidual * this.chestDynamics.breathVolumeScale
     secondaryDeformationFrame.shellBlend =
       this.shellProfile.blend * this.shellActivation
     secondaryDeformationFrame.shellActivation = this.shellActivation
     secondaryDeformationFrame.torsoShellBlend =
-      this.shellProfile.enabled && this.shellProfile.torso?.enabled
+      this.shellProfile.enabled && this.shellProfile.torso.enabled
         ? this.shellProfile.blend *
           this.shellProfile.torso.blend *
           this.shellActivation
@@ -932,8 +970,7 @@ export class Anime25DPlayer {
     collarMotion.headRotationSine = sz
     collarMotion.bodyBreathOffset = secondaryDeformationFrame.bodyBreathOffset
     collarMotion.headBreathOffset = secondaryDeformationFrame.headBreathOffset
-    collarMotion.torsoShellBlend =
-      secondaryDeformationFrame.torsoShellBlend ?? 0
+    collarMotion.torsoShellBlend = secondaryDeformationFrame.torsoShellBlend
     if (this.collarClip) {
       deformCollarClipMesh(this.collarClip, collarMotion, this.neckDepth)
       if (work) {

@@ -3,6 +3,7 @@ import type {
   Anime25DPlaybackAnchors,
   Anime25DPlaybackLayer,
   Anime25DShellCurvePoint,
+  Anime25DShellEllipsoid,
   Anime25DShellProfile,
   Anime25DTorsoShellProfile,
 } from './types'
@@ -17,32 +18,6 @@ const DEFAULT_CURVE: readonly Anime25DShellCurvePoint[] = [
 
 type ShellProfileSource = Pick<Anime25DPlayback, 'anchors' | 'layers'>
 
-/** Fill a persisted profile, or derive one for assets that never stored it. */
-export function resolveAnime25DShellProfile(
-  playback: Readonly<ShellProfileSource> &
-    Partial<Pick<Anime25DPlayback, 'shellProfile'>>,
-): Anime25DShellProfile {
-  const persisted = playback.shellProfile
-  if (!persisted) return deriveAnime25DShellProfile(playback)
-  const pinMode =
-    persisted.hair.hairlinePin.mode ??
-    (persisted.source === 'anchor-derived' ? 'strand-roots' : 'rectangle')
-  if (persisted.torso && persisted.hair.hairlinePin.mode === pinMode) {
-    return persisted
-  }
-  return {
-    ...persisted,
-    hair: {
-      ...persisted.hair,
-      hairlinePin: {
-        ...persisted.hair.hairlinePin,
-        mode: pinMode,
-      },
-    },
-    torso: persisted.torso ?? deriveAnime25DTorsoShellProfile(playback),
-  }
-}
-
 export function deriveAnime25DShellProfile(
   playback: Readonly<ShellProfileSource>,
 ): Anime25DShellProfile {
@@ -56,6 +31,7 @@ export function deriveAnime25DShellProfile(
     radiusY: faceHeight * 0.72,
     radiusZ: faceWidth * 0.45,
   }
+  const hair = deriveHairShellEllipsoid(head, layers)
   const profileStartY = anchors.face.y0
   const profileEndY = anchors.face.y1 + faceHeight * 0.12
   return {
@@ -71,15 +47,11 @@ export function deriveAnime25DShellProfile(
       points: deriveFaceCurve(anchors, layers, profileStartY, profileEndY),
     },
     hair: {
-      centerX: head.centerX,
-      centerY: head.centerY - head.radiusY * 0.06,
-      radiusX: head.radiusX * 1.1,
-      radiusY: head.radiusY * 1.1,
-      radiusZ: head.radiusZ * 1.05,
+      ...hair,
       frontGap: 0.18,
       frontBulge: 1,
       backDepth: 0.35,
-      crownRound: 0,
+      crownRound: deriveCrownRound(head, layers),
       hairlinePin: {
         enabled: layers.some((layer) => layer.role === 'front-hair'),
         mode: 'strand-roots',
@@ -92,6 +64,105 @@ export function deriveAnime25DShellProfile(
     },
     torso: deriveAnime25DTorsoShellProfile(playback),
   }
+}
+
+/**
+ * Fit the default scalp shell gently toward trustworthy hair-layer bounds.
+ * The narrow clamps intentionally keep a noisy accessory or oversized layer
+ * from changing the renderer's geometry model.
+ */
+function deriveHairShellEllipsoid(
+  head: Anime25DShellEllipsoid,
+  layers: readonly Anime25DPlaybackLayer[],
+): Anime25DShellEllipsoid {
+  const fallback = {
+    centerX: head.centerX,
+    centerY: head.centerY - head.radiusY * 0.06,
+    radiusX: head.radiusX * 1.1,
+    radiusY: head.radiusY * 1.1,
+    radiusZ: head.radiusZ * 1.05,
+  }
+  const hairLayers = layers.filter(
+    (layer) =>
+      (layer.role === 'front-hair' || layer.role === 'back-hair') &&
+      layer.w > 0 &&
+      layer.h > 0 &&
+      Number.isFinite(layer.x) &&
+      Number.isFinite(layer.y),
+  )
+  if (hairLayers.length === 0) return fallback
+  const left = Math.min(...hairLayers.map((layer) => layer.x))
+  const right = Math.max(...hairLayers.map((layer) => layer.x + layer.w))
+  const top = Math.min(...hairLayers.map((layer) => layer.y))
+  const bottom = Math.max(...hairLayers.map((layer) => layer.y + layer.h))
+  const boundedCenterX = clamp(
+    (left + right) / 2,
+    head.centerX - head.radiusX * 0.12,
+    head.centerX + head.radiusX * 0.12,
+  )
+  const boundedTop = clamp(
+    top,
+    head.centerY - head.radiusY * 1.28,
+    head.centerY - head.radiusY * 0.65,
+  )
+  const boundedBottom = clamp(
+    bottom,
+    head.centerY + head.radiusY * 0.55,
+    head.centerY + head.radiusY * 1.15,
+  )
+  const fittedRadiusX = clamp(
+    (right - left) / 2,
+    head.radiusX * 1.05,
+    head.radiusX * 1.28,
+  )
+  const fittedRadiusY = clamp(
+    (boundedBottom - boundedTop) / 2,
+    head.radiusY * 1.02,
+    head.radiusY * 1.24,
+  )
+  return {
+    centerX: mix(fallback.centerX, boundedCenterX, 0.2),
+    centerY: mix(fallback.centerY, (boundedTop + boundedBottom) / 2, 0.2),
+    radiusX: mix(fallback.radiusX, fittedRadiusX, 0.25),
+    radiusY: mix(fallback.radiusY, fittedRadiusY, 0.25),
+    radiusZ: fallback.radiusZ,
+  }
+}
+
+/**
+ * Crown wrap is enabled only when several distributed strand roots confirm
+ * that the top of the front-hair layer is actual scalp hair, not an ornament.
+ */
+function deriveCrownRound(
+  head: Anime25DShellEllipsoid,
+  layers: readonly Anime25DPlaybackLayer[],
+): number {
+  const frontHair = layers.filter(
+    (layer) => layer.role === 'front-hair' && layer.w > 0 && layer.h > 0,
+  )
+  const roots = frontHair.flatMap((layer) =>
+    layer.strands.filter(
+      (strand) =>
+        Number.isFinite(strand.x) &&
+        Number.isFinite(strand.rootY) &&
+        strand.rootY >= layer.y - head.radiusY * 0.08 &&
+        strand.rootY <= layer.y + layer.h * 0.72,
+    ),
+  )
+  if (roots.length < 4 || frontHair.length === 0) return 0
+  const rootLeft = Math.min(...roots.map((strand) => strand.x))
+  const rootRight = Math.max(...roots.map((strand) => strand.x))
+  const rootCoverage = (rootRight - rootLeft) / Math.max(1, head.radiusX * 2)
+  if (rootCoverage < 0.45) return 0
+  const frontTop = Math.min(...frontHair.map((layer) => layer.y))
+  const headTop = head.centerY - head.radiusY
+  const crownCoverage = clamp(
+    (headTop + head.radiusY * 0.18 - frontTop) / (head.radiusY * 0.3),
+    0,
+    1,
+  )
+  if (crownCoverage < 0.2) return 0
+  return clamp(0.08 + crownCoverage * 0.14, 0, 0.22)
 }
 
 export function deriveAnime25DTorsoShellProfile(
@@ -152,6 +223,10 @@ function strictlyOrdered(
     if (values[index] - values[index - 1] < minimumGap) return false
   }
   return true
+}
+
+function mix(from: number, to: number, amount: number): number {
+  return from + (to - from) * amount
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

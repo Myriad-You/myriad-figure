@@ -10,8 +10,9 @@ fork is used selectively at revision
 `1644759cd451ab82065e2bf57b21fe806e2be334`: Myriad adopts the ellipsoid
 head/hair shell, authored side-profile curve, separate front/back hair depth,
 feathered hairline pin, and the delayed vertical-cylinder projection for
-`topwear` / `bottomwear`. The fork's breast-curve editor, nipple/sternum and
-near/far silhouette controls, demo UI, local-storage model, camera, and
+`topwear` / `bottomwear`. Its chest curve and near/far response inform one
+garment-aware field derived from Myriad's existing chest profile. The fork's
+manual breast/nipple/sternum editors, demo UI, local-storage model, camera, and
 recording flow remain outside Myriad.
 
 The upstream project is MIT licensed (Copyright © 2026 hakoniwa); this isolated
@@ -62,37 +63,40 @@ contact, wrist rotation, locomotion, or gesture constraints.
   explicitly abandoned articulated gates while retaining all layered-portrait
   quality gates.
 
-### Shell-profile migration
+### Shell and chest-profile migration
 
-The playback contract remains v6. `shellProfile` is an optional, versioned
-extension: old manifests are accepted unchanged and receive a deterministic
-anchor-derived profile in memory; newly imported manifests persist that same
-profile explicitly. Neutral yaw/pitch is an exact identity, and activation is
-ramped on player startup, so enabling the shell does not rewrite or visibly
-snap an existing front-facing asset. Preview-to-commit copies the profile as
-part of the manifest transaction, keeping the reviewed preview and activated
-asset on the same geometry. Early v1 shell profiles without a `torso` child are
-hydrated in memory without mutation. The torso cylinder reuses the existing
-face width and neck pivot, follows head/body yaw through a low-pass response,
-and applies fully to `topwear` / `bottomwear`. A split high collar reuses its
-alpha contour only to place the front mesh and neck stencil. Front collar, rear
-collar, and stencil then share one row-coherent vertical field: the upper edge
-follows the neck/head, the lower edge follows the body, and the torso-shell
-weight is the exact inverse of that neck-follow field. No left/right attachment
-split or MLS fit remains, so narrow lace, trim, and bow artwork cannot shear or
-invert while both seams stay on the same motion field. The alpha-derived neck
-stencil closes at the first opaque center row, keeping the rear collar behind
-the neck through the last pixels of the aperture. That same stencil mesh carries
-the neck UVs and the collar's inverse torso-shell offset, so the aperture and
-the pixels filling it cannot diverge during yaw. Neck and handwear otherwise
-stay on their existing paths.
+The playback contract is v7 and persists both versioned profiles during import.
+Neutral yaw/pitch remains an exact identity, and activation is ramped on player
+startup, so enabling the shell does not rewrite or visibly snap the frontal
+asset. Preview-to-commit copies the profiles as part of the manifest
+transaction, keeping reviewed and activated geometry identical. The torso
+cylinder reuses the existing face width and neck pivot, follows head/body yaw
+through a low-pass response, and applies fully to `topwear` / `bottomwear`.
+A split high collar reuses its alpha contour only to place the front mesh and
+neck stencil. Front collar, rear collar, and stencil then share one row-coherent
+vertical field: the upper edge follows the neck/head, the lower edge follows
+the body, and torso-shell weight is the exact inverse of neck-follow. No
+left/right attachment split or MLS fit remains, so narrow lace, trim, and bow
+artwork cannot shear or invert while both seams stay on the same motion field.
+The alpha-derived neck stencil closes at the first opaque center row. That same
+stencil mesh carries the neck UVs and inverse torso-shell offset, so the
+aperture and its fill cannot diverge during yaw.
 
 Authored shell profiles retain the fork's per-model rectangular hairline pin.
 Anchor-derived profiles do not inherit its demo rectangle: they build a smooth
 attachment field from the imported strand roots, with a release spanning at
 least two hair-mesh rows. This keeps the crown attached to the head shell
 without clamping a horizontal band of bangs or introducing a one-cell spring
-discontinuity on migrated assets.
+discontinuity. Hair-layer bounds gently calibrate the scalp ellipsoid; crown
+wrap remains zero unless at least four sufficiently distributed strand roots
+confirm that the upper layer is scalp hair rather than an ornament.
+
+The v2 chest profile remains the only persisted chest contract. Dynamic
+topwear response and yaw-projected volume sample one asymmetric upper/peak/lower
+field, including the same geometry weights. Existing `supportScale` and
+`garmentMotionScale` derive the central bridge, near/far depth, silhouette,
+damping, and bounded breathing transmission. No nipple positions or manual
+curve points are added, so existing v7 assets require no migration.
 
 The importer regression fixture proves that See-through-style layers compile
 blink, mouth, gaze, chest, hair-strand, depth-turn, and rigid side-handwear paths

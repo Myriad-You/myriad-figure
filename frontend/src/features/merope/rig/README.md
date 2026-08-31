@@ -127,6 +127,9 @@ after the torso slows or turns. Apparent size controls the base response,
 support controls frequency and damping, and garment transmission controls the
 bounded visible blend. The deformation weights are sampled in rest-mesh space,
 preventing the active region from sliding across the clothing during a pose.
+Whole-body rotation excites only the relative spring, avoiding duplicate rigid
+travel. Flat profiles remain restrained while medium and large profiles open a
+continuous higher-gain, lower-damping inertia range.
 
 ## Runtime flow
 

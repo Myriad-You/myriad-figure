@@ -17,22 +17,21 @@ type SpeechOwnedDriver = Pick<
   'mouthForm' | 'mouthOpen' | 'talk'
 >
 
-/** Non-facial pose/secondary-motion ownership for non-manual playback. */
+/**
+ * How hard the body carries itself, from the baseline the director chose.
+ *
+ * Posture is deliberately absent: `writeBaselineOffset` already puts the same
+ * body/armY/armPos on the composed pose every frame, and duplicating it here
+ * would apply it twice. This patch owns only what the per-frame offset cannot
+ * reach — secondary motion and softness — which is the half of `motionEnergy`
+ * that never made it to the rig.
+ */
 export function baselineDriverPatch(
   baseline: PerformanceBaseline,
 ): Partial<Anime25DDriver> {
   const energy = clamp(baseline.motionEnergy, 0.2, 1.4)
   const swayEnergy = 0.7 + energy * 0.3
-  const posture: Record<
-    PerformanceBaseline['posture'],
-    Partial<Anime25DDriver>
-  > = {
-    closed: { body: -0.16, armY: -0.14, armPos: -0.18 },
-    neutral: { body: 0, armY: 0, armPos: 0 },
-    open: { body: 0.12, armY: 0.16, armPos: 0.2 },
-  }
   return {
-    ...posture[baseline.posture],
     physAmp: DEFAULT_REAR_HAIR_SWAY * swayEnergy,
     soft: 1.3 + energy * 0.6,
     fhAmp: DEFAULT_FRONT_HAIR_SWAY * swayEnergy,
@@ -40,6 +39,15 @@ export function baselineDriverPatch(
     blink: true,
     rand: true,
     phys: true,
+  }
+}
+
+/** Secondary-motion defaults, for when no baseline is installed. */
+export function restEnergyDriverPatch(): Partial<Anime25DDriver> {
+  return {
+    physAmp: DEFAULT_REAR_HAIR_SWAY,
+    soft: 2,
+    fhAmp: DEFAULT_FRONT_HAIR_SWAY,
   }
 }
 

@@ -6,7 +6,10 @@ import type {
 import type { Anime25DPlaybackLayer, Anime25DShellProfile } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { chestDeformationWeight } from './chestPhysics'
+import {
+  chestDeformationWeight,
+  resolveChestSpatialField,
+} from './chestPhysics'
 import {
   BODY_HEAD_FOLLOW,
   FRONT_COLLAR_FLEX_REGION,
@@ -178,6 +181,7 @@ test('composes torso volume after existing topwear chest deformation', () => {
     radiusX: 60,
     radiusY: 48,
     scale: 0.8,
+    field: frame.chestField,
   }
   const restX = 151
   const restY = 126
@@ -190,6 +194,8 @@ test('composes torso volume after existing topwear chest deformation', () => {
     frame.torsoShellRotation,
     frame.torsoShellBlend,
     frame.torsoChestShape,
+    binding.chestWeights?.[vertex] ?? 1,
+    frame.chestVolumeScale,
   )
 
   const actual = { x: restX, y: restY }
@@ -229,6 +235,50 @@ test('keeps chest volume off collar layers', () => {
     deformSecondary({ ...rest }, binding, withChest),
     deformSecondary({ ...rest }, binding, withoutChest),
   )
+})
+
+test('uses the live chest center for both motion and torso volume', () => {
+  const binding = {
+    ...secondaryBinding('topwear', 'body', false),
+    torsoShellMode: 'full' as const,
+  }
+  const aligned = secondaryFrame(0.58, 23)
+  const stale = secondaryFrame(0.58, 23)
+  const profile = shellProfile().torso
+  assert.ok(profile)
+  const rotation = {
+    active: true,
+    yawCosine: Math.cos(0.24),
+    yawSine: Math.sin(0.24),
+  }
+  for (const frame of [aligned, stale]) {
+    frame.torsoProfile = profile
+    frame.torsoShellBlend = 0.25
+    frame.torsoShellRotation = rotation
+    frame.chestMotionCenterY = 154
+    frame.torsoChestShape = {
+      centerX: 151,
+      centerY: 154,
+      radiusX: 60,
+      radiusY: 48,
+      scale: 0.8,
+      field: frame.chestField,
+    }
+  }
+  stale.torsoChestShape!.centerY = 106
+  const rest = { x: 151, y: 154 }
+  const alignedPoint = { ...rest }
+  const stalePoint = { ...rest }
+  deformAnime25DSecondaryPoint(
+    alignedPoint,
+    rest.x,
+    rest.y,
+    19,
+    binding,
+    aligned,
+  )
+  deformAnime25DSecondaryPoint(stalePoint, rest.x, rest.y, 19, binding, stale)
+  assert.notEqual(alignedPoint.x, stalePoint.x)
 })
 
 test('fades fallback front-collar torso motion from body edge to neck seam', () => {
@@ -561,8 +611,12 @@ function secondaryFrame(
     inverseChestRadiusY: 1 / 62,
     chestOffsetX: frameIndex % 11 === 0 ? 0 : Math.sin(progress * 7.2) * 5,
     chestOffsetY: frameIndex % 11 === 0 ? 0 : Math.cos(progress * 6.4) * 7,
-    chestProfileSource:
-      frameIndex % 3 === 0 ? 'ai-vision' : 'geometry-fallback',
+    chestField: resolveChestSpatialField({
+      source: frameIndex % 3 === 0 ? 'ai-vision' : 'geometry-fallback',
+      supportScale: 0.35,
+      garmentMotionScale: 0.8,
+    }),
+    chestVolumeScale: 1,
     shellProfile: shellProfile(),
     shellBlend: 0,
     shellActivation: 0,
@@ -703,7 +757,7 @@ function legacyDeformSecondaryPoint(
       (restY - frame.chestMotionCenterY) * frame.inverseChestRadiusY
     const skinWeight = binding.chestWeights?.[vertex] ?? 1
     const chestWeight = chestDeformationWeight(
-      frame.chestProfileSource,
+      frame.chestField,
       normalizedX,
       normalizedY,
       skinWeight,

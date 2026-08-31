@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   buildChestWeightField,
+  chestBodyExcitationY,
+  chestBreathResidual,
+  chestBreathTargetY,
   chestDeformationWeight,
   chestFollowMix,
   chestMotionTarget,
@@ -12,22 +15,22 @@ import {
   resolveChestDeformationRegion,
   resolveChestDynamics,
   resolveChestMotionScale,
+  resolveChestSpatialField,
+  sampleChestVerticalWeight,
   sampleChestWeight,
   stepChestSpring,
   topwearMotionAtChest,
 } from './chestPhysics'
 
 test('uses the import-authored deformation region without runtime repair', () => {
-  const region = resolveChestDeformationRegion(
-    {
-      source: 'ai-vision',
-      centerX: 542,
-      centerY: 1014,
-      radiusX: 102,
-      radiusY: 84,
-      visibleScale: 0.55,
-    },
-  )
+  const region = resolveChestDeformationRegion({
+    source: 'ai-vision',
+    centerX: 542,
+    centerY: 1014,
+    radiusX: 102,
+    radiusY: 84,
+    visibleScale: 0.55,
+  })
   assert.deepEqual(region, {
     centerX: 542,
     centerY: 1014,
@@ -75,12 +78,51 @@ test('authors a complete deterministic geometry profile before AI refinement', (
 })
 
 test('AI deformation peaks on the paired lobes instead of the sternum', () => {
-  const center = chestDeformationWeight('ai-vision', 0, 0, 1)
-  const left = chestDeformationWeight('ai-vision', -0.58, 0, 1)
-  const right = chestDeformationWeight('ai-vision', 0.58, 0, 1)
+  const field = resolveChestSpatialField({
+    source: 'ai-vision',
+    supportScale: 0.2,
+    garmentMotionScale: 1,
+  })
+  const center = chestDeformationWeight(field, 0, 0, 1)
+  const left = chestDeformationWeight(field, -0.58, 0, 1)
+  const right = chestDeformationWeight(field, 0.58, 0, 1)
   assert.ok(center < left)
   assert.equal(left, right)
   assert.equal(left, 1)
+})
+
+test('shares one asymmetric vertical envelope across chest consumers', () => {
+  assert.equal(sampleChestVerticalWeight(-1.2), 0)
+  assert.equal(sampleChestVerticalWeight(0), 1)
+  assert.equal(sampleChestVerticalWeight(1.35), 0)
+  assert.ok(sampleChestVerticalWeight(0.6) > sampleChestVerticalWeight(-0.6))
+  assert.equal(sampleChestVerticalWeight(Number.NaN), 0)
+})
+
+test('derives a flatter and quieter field for structured garments', () => {
+  const soft = resolveChestSpatialField({
+    source: 'ai-vision',
+    supportScale: 0.1,
+    garmentMotionScale: 1,
+  })
+  const structured = resolveChestSpatialField({
+    source: 'ai-vision',
+    supportScale: 0.95,
+    garmentMotionScale: 0.1,
+  })
+  assert.ok(soft.centerBridge > structured.centerBridge)
+  assert.ok(soft.depthRatio > structured.depthRatio)
+  assert.ok(soft.nearDepthGain > structured.nearDepthGain)
+  assert.ok(soft.silhouetteRatio > structured.silhouetteRatio)
+  assert.ok(soft.breathVolumeGain > structured.breathVolumeGain)
+})
+
+test('uses a neutral, bounded breathing signal for volume and travel', () => {
+  assert.equal(chestBreathResidual(0), 0)
+  const peakAt = 3.4 / 4
+  assert.ok(Math.abs(chestBreathResidual(peakAt) - 0.5) < 1e-12)
+  assert.ok(chestBreathTargetY(0.5, 2, 1) < 0)
+  assert.equal(chestBreathTargetY(0, 2, 1), 0)
 })
 
 test('uses one authoritative chest region instead of intersecting AI with geometry', () => {
@@ -174,6 +216,10 @@ test('combines apparent size with garment support without losing bounded control
   assert.ok(freelyVisible.followScale >= freelyVisible.responseScale)
   assert.ok(freelyVisible.frequencyScale < structured.frequencyScale)
   assert.ok(freelyVisible.dampingScale < structured.dampingScale)
+  assert.ok(freelyVisible.inertiaGain > 5)
+  assert.equal(freelyVisible.bodyExcitationScale, 1)
+  assert.equal(small.inertiaGain, 1)
+  assert.equal(small.bodyExcitationScale, 0)
   assert.ok(chestResponseMix(2.5, freelyVisible.responseScale) <= 0.94)
   assert.ok(chestFollowMix(2.5, freelyVisible.followScale) <= 1)
   assert.ok(chestResponseMix(2.5, 0.5) > 0.5)
@@ -215,6 +261,59 @@ test('maps resolved horizontal and vertical pose travel to independent chest axe
   assert.equal(vertical.y, -9)
   assert.equal(parentHorizontal.x, 4.48)
   assert.deepEqual(wholeBodyRotation, { x: 0, y: 0 })
+})
+
+test('injects whole-body motion only as size-conditioned spring excitation', () => {
+  assert.equal(chestBodyExcitationY(1, 2, 0), 0)
+  assert.equal(chestBodyExcitationY(1, 2, 1), 40)
+  assert.equal(chestBodyExcitationY(-0.5, 2, 0.5), -10)
+})
+
+test('turns a normal emphasize cue into clearly visible large-profile inertia', () => {
+  const dynamics = resolveChestDynamics({
+    enabled: true,
+    source: 'ai-vision',
+    visibleScale: 0.8,
+    motionScale: 1.14,
+    frequencyScale: 0.94,
+    supportScale: 0.15,
+    garmentMotionScale: 0.95,
+  })
+  const state = createChestSpringState()
+  const dt = 1 / 60
+  let body = 0
+  let peak = 0
+  for (let frame = 0; frame < 180; frame += 1) {
+    const time = frame * dt
+    const envelope =
+      time < 0.25
+        ? time / 0.25
+        : time < 0.8
+          ? 1
+          : time < 1.15
+            ? (1.15 - time) / 0.35
+            : 0
+    const targetBody = 0.22 * Math.max(0, envelope)
+    body += (targetBody - body) * Math.min(1, dt * 14)
+    stepChestSpring(
+      state,
+      0,
+      chestBodyExcitationY(body, 1, dynamics.bodyExcitationScale),
+      dt,
+      dynamics.frequencyScale,
+      dynamics.dampingScale,
+    )
+    peak = Math.max(
+      peak,
+      Math.abs(
+        state.offsetY *
+          chestResponseMix(2.5, dynamics.responseScale) *
+          dynamics.inertiaGain,
+      ),
+    )
+  }
+  assert.ok(peak > 8)
+  assert.ok(peak < 12)
 })
 
 test('extracts and bilinearly samples the authored chest joint weights', () => {

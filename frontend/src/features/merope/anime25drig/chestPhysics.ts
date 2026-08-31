@@ -23,9 +23,34 @@ const SIZE_BOOST_END = 0.65
 const MAX_SIZE_TRANSMISSION_BOOST = 0.75
 const MIN_GARMENT_TRANSMISSION = 0.35
 const MIN_RESPONSE_GARMENT_TRANSMISSION = 0.55
-const AI_LOBE_CENTER = 0.58
-const AI_LOBE_RADIUS = 0.62
-const AI_CENTER_BRIDGE = 0.68
+const CHEST_LOBE_CENTER = 0.58
+const CHEST_LOBE_RADIUS = 0.62
+const SOFT_CENTER_BRIDGE = 0.7
+const STRUCTURED_CENTER_BRIDGE = 0.36
+const SOFT_DEPTH_RATIO = 0.34
+const STRUCTURED_DEPTH_RATIO = 0.24
+const SOFT_NEAR_DEPTH_GAIN = 0.35
+const STRUCTURED_NEAR_DEPTH_GAIN = 0.18
+const SOFT_FAR_DEPTH_GAIN = 0.15
+const STRUCTURED_FAR_DEPTH_GAIN = 0.08
+const SOFT_SILHOUETTE_RATIO = 0.065
+const STRUCTURED_SILHOUETTE_RATIO = 0.03
+const SOFT_BREATH_VOLUME_GAIN = 0.08
+const STRUCTURED_BREATH_VOLUME_GAIN = 0.025
+const CHEST_BREATH_TRAVEL = 1.2
+const CHEST_BODY_EXCITATION_TRAVEL = 20
+const DYNAMIC_BOOST_START = 0.3
+const DYNAMIC_BOOST_END = 0.6
+const MAX_INERTIA_GAIN = 5.5
+const MAX_DAMPING_REDUCTION = 0.58
+
+const CHEST_VERTICAL_CURVE = [
+  { y: -1.2, weight: 0 },
+  { y: -0.55, weight: 0.62 },
+  { y: 0, weight: 1 },
+  { y: 0.62, weight: 0.68 },
+  { y: 1.35, weight: 0 },
+] as const
 
 interface ChestMotionDriver {
   angleX: number
@@ -76,6 +101,24 @@ export interface ChestDeformationRegion {
   radiusY: number
 }
 
+/**
+ * One immutable spatial truth shared by dynamic topwear response and the
+ * yaw-projected torso volume. It is derived entirely from the persisted v2
+ * profile, so existing assets need no contract migration.
+ */
+export interface ChestSpatialField {
+  source: Anime25DChestProfile['source']
+  lobeCenter: number
+  lobeRadius: number
+  centerBridge: number
+  depthRatio: number
+  nearDepthGain: number
+  farDepthGain: number
+  silhouetteRatio: number
+  breathVolumeGain: number
+  breathMotionGain: number
+}
+
 type ChestWeightProfile = Pick<Anime25DChestProfile, 'enabled' | 'source'>
 type ChestRegionProfile = Pick<
   Anime25DChestProfile,
@@ -97,6 +140,11 @@ type ChestDynamicsProfile = Pick<
   | 'garmentMotionScale'
 >
 
+type ChestSpatialProfile = Pick<
+  Anime25DChestProfile,
+  'source' | 'supportScale' | 'garmentMotionScale'
+>
+
 export interface ChestDynamicsTuning {
   /** Fraction of the authored chest attachment travel visible through topwear. */
   followScale: number
@@ -104,6 +152,12 @@ export interface ChestDynamicsTuning {
   responseScale: number
   frequencyScale: number
   dampingScale: number
+  /** Size-conditioned gain applied only to the spring's relative offset. */
+  inertiaGain: number
+  /** Share of whole-body motion injected into the spring, never direct travel. */
+  bodyExcitationScale: number
+  breathMotionScale: number
+  breathVolumeScale: number
 }
 
 /**
@@ -127,6 +181,45 @@ export function resolveChestDeformationRegion(
   }
 }
 
+/** Derive garment-aware shape and motion coefficients once per player. */
+export function resolveChestSpatialField(
+  profile: ChestSpatialProfile,
+): ChestSpatialField {
+  const support = clamp(profile.supportScale, 0, 1)
+  const garmentMotion = clamp(profile.garmentMotionScale, 0, 1)
+  const structure = smoothstep(
+    clamp(support * 0.65 + (1 - garmentMotion) * 0.35, 0, 1),
+  )
+  const breathTransmission =
+    (1 - structure * 0.72) * (0.55 + garmentMotion * 0.45)
+  return {
+    source: profile.source,
+    lobeCenter: CHEST_LOBE_CENTER,
+    lobeRadius: CHEST_LOBE_RADIUS,
+    centerBridge: mix(SOFT_CENTER_BRIDGE, STRUCTURED_CENTER_BRIDGE, structure),
+    depthRatio: mix(SOFT_DEPTH_RATIO, STRUCTURED_DEPTH_RATIO, structure),
+    nearDepthGain: mix(
+      SOFT_NEAR_DEPTH_GAIN,
+      STRUCTURED_NEAR_DEPTH_GAIN,
+      structure,
+    ),
+    farDepthGain: mix(
+      SOFT_FAR_DEPTH_GAIN,
+      STRUCTURED_FAR_DEPTH_GAIN,
+      structure,
+    ),
+    silhouetteRatio: mix(
+      SOFT_SILHOUETTE_RATIO,
+      STRUCTURED_SILHOUETTE_RATIO,
+      structure,
+    ),
+    breathVolumeGain:
+      mix(SOFT_BREATH_VOLUME_GAIN, STRUCTURED_BREATH_VOLUME_GAIN, structure) *
+      (0.65 + garmentMotion * 0.35),
+    breathMotionGain: breathTransmission,
+  }
+}
+
 /** Creates the complete current profile before optional AI refinement. */
 export function deriveGeometryChestProfile(
   playback: Readonly<
@@ -144,11 +237,7 @@ export function deriveGeometryChestProfile(
   )
   const topwear = playback.layers.find((layer) => layer.role === 'topwear')
   let centerX = clamp(playback.anchors.neckPivot.x, 0, width)
-  let centerY = clamp(
-    playback.anchors.neckBottom + faceHeight * 0.5,
-    0,
-    height,
-  )
+  let centerY = clamp(playback.anchors.neckBottom + faceHeight * 0.5, 0, height)
   if (topwear && topwear.w > 0 && topwear.h > 0) {
     centerX = clamp(
       centerX,
@@ -197,21 +286,61 @@ export function deriveGeometryChestProfile(
  * matching the previous hot-path cost.
  */
 export function chestDeformationWeight(
-  source: Anime25DChestProfile['source'],
+  field: Readonly<ChestSpatialField>,
   normalizedX: number,
   normalizedY: number,
   skinWeight: number,
 ): number {
-  if (source !== 'ai-vision') {
-    return skinWeight * Math.exp(-(normalizedX ** 2 + normalizedY ** 2))
+  const verticalWeight = sampleChestVerticalWeight(normalizedY)
+  if (verticalWeight <= 0) return 0
+  if (field.source !== 'ai-vision') {
+    return (
+      clamp(skinWeight, 0, 1) *
+      Math.exp(-(normalizedX * normalizedX)) *
+      verticalWeight
+    )
   }
   const absoluteX = Math.abs(normalizedX)
-  const lobeX = (absoluteX - AI_LOBE_CENTER) / AI_LOBE_RADIUS
-  const pairedWeight = Math.exp(-(lobeX * lobeX + normalizedY * normalizedY))
-  const bridgeProgress = clamp(absoluteX / AI_LOBE_CENTER, 0, 1)
-  const bridgeEased = bridgeProgress ** 2 * (3 - 2 * bridgeProgress)
+  const lobeX = (absoluteX - field.lobeCenter) / field.lobeRadius
+  const pairedWeight = Math.exp(-(lobeX * lobeX)) * verticalWeight
+  const bridgeEased = smoothstep(absoluteX / field.lobeCenter)
   return (
-    pairedWeight * (AI_CENTER_BRIDGE + (1 - AI_CENTER_BRIDGE) * bridgeEased)
+    pairedWeight * (field.centerBridge + (1 - field.centerBridge) * bridgeEased)
+  )
+}
+
+/** Sample the asymmetric upper-chest → peak → lower-chest envelope. */
+export function sampleChestVerticalWeight(normalizedY: number): number {
+  if (!Number.isFinite(normalizedY)) return 0
+  for (let index = 1; index < CHEST_VERTICAL_CURVE.length; index += 1) {
+    const left = CHEST_VERTICAL_CURVE[index - 1]
+    const right = CHEST_VERTICAL_CURVE[index]
+    if (normalizedY > right.y) continue
+    const progress = smoothstep(
+      (normalizedY - left.y) / Math.max(1e-6, right.y - left.y),
+    )
+    return mix(left.weight, right.weight, progress)
+  }
+  return 0
+}
+
+/** Zero-mean breathing signal shared by spring and projected volume. */
+export function chestBreathResidual(timeSeconds: number): number {
+  const time = Number.isFinite(timeSeconds) ? timeSeconds : 0
+  return 0.5 * Math.sin((time * Math.PI * 2) / 3.4)
+}
+
+export function chestBreathTargetY(
+  breathResidual: number,
+  faceScale: number,
+  motionScale: number,
+): number {
+  if (breathResidual === 0 || motionScale <= 0) return 0
+  return (
+    -clamp(breathResidual, -0.5, 0.5) *
+    CHEST_BREATH_TRAVEL *
+    Math.max(0.01, faceScale) *
+    clamp(motionScale, 0, 1)
   )
 }
 
@@ -220,9 +349,7 @@ export function chestDeformationWeight(
  * keeps small profiles restrained without introducing a hard size threshold;
  * `min` preserves the more conservative of the authored and derived limits.
  */
-export function resolveChestMotionScale(
-  profile: ChestMotionProfile,
-): number {
+export function resolveChestMotionScale(profile: ChestMotionProfile): number {
   if (!profile.enabled) return 0
   const authoredScale = clamp(profile.motionScale, 0, 1.25)
   if (profile.source !== 'ai-vision') return authoredScale
@@ -246,6 +373,7 @@ export function resolveChestMotionScale(
  */
 export function resolveChestDynamics(
   profile: ChestDynamicsProfile,
+  field: Readonly<ChestSpatialField> = resolveChestSpatialField(profile),
 ): ChestDynamicsTuning {
   if (!profile.enabled) {
     return {
@@ -253,6 +381,10 @@ export function resolveChestDynamics(
       responseScale: 0,
       frequencyScale: 1,
       dampingScale: 1,
+      inertiaGain: 1,
+      bodyExcitationScale: 0,
+      breathMotionScale: 0,
+      breathVolumeScale: 0,
     }
   }
   const support = clamp(profile.supportScale, 0, 1)
@@ -267,6 +399,7 @@ export function resolveChestDynamics(
     MIN_RESPONSE_GARMENT_TRANSMISSION +
     (1 - MIN_RESPONSE_GARMENT_TRANSMISSION) * garmentMotion ** 0.25
   const sizeTransmission = resolveChestSizeTransmission(profile)
+  const dynamicBoost = resolveChestDynamicBoost(profile.visibleScale)
   const followAttenuation = 1 - 0.12 * support ** 1.1
   const supportAttenuation = 1 - 0.08 * support ** 1.15
   const followScale = garmentTransmission * followAttenuation * sizeTransmission
@@ -284,8 +417,29 @@ export function resolveChestDynamics(
       0.7,
       1.45,
     ),
-    dampingScale: 0.82 + support * 0.16,
+    dampingScale: clamp(
+      (0.86 + support * 0.82 + (1 - garmentMotion) * 0.18) *
+        (1 - MAX_DAMPING_REDUCTION * dynamicBoost),
+      0.4,
+      1.9,
+    ),
+    inertiaGain: mix(1, MAX_INERTIA_GAIN, dynamicBoost),
+    bodyExcitationScale: dynamicBoost,
+    breathMotionScale: field.breathMotionGain,
+    breathVolumeScale: field.breathVolumeGain,
   }
+}
+
+/** Keep flat/minimal profiles quiet, then rapidly open the dynamic range. */
+function resolveChestDynamicBoost(visibleScale: number): number {
+  return smoothstep(
+    clamp(
+      (visibleScale - DYNAMIC_BOOST_START) /
+        (DYNAMIC_BOOST_END - DYNAMIC_BOOST_START),
+      0,
+      1,
+    ),
+  )
 }
 
 /**
@@ -293,9 +447,7 @@ export function resolveChestDynamics(
  * garment. The smooth gate strongly restrains small AI regions without a hard
  * threshold, while medium and large regions converge to the authored response.
  */
-function resolveChestSizeTransmission(
-  profile: ChestDynamicsProfile,
-): number {
+function resolveChestSizeTransmission(profile: ChestDynamicsProfile): number {
   if (profile.source !== 'ai-vision') return 1
   const progress = clamp(
     (profile.visibleScale - AI_MOTION_RAMP_START) /
@@ -389,6 +541,24 @@ export function chestMotionTarget(
   // travel target is inert in the spring but leaks into equality checks.
   target.y = 0 - driver.angleY * 4.5 * scale
   return target
+}
+
+/**
+ * Whole-body rotation is rendered globally, so it must not be added to direct
+ * chest travel. Feeding it only to the relative spring restores inertial lag
+ * without counting the rigid torso transform twice.
+ */
+export function chestBodyExcitationY(
+  body: number,
+  faceScale: number,
+  excitationScale: number,
+): number {
+  return (
+    body *
+    CHEST_BODY_EXCITATION_TRAVEL *
+    Math.max(0.01, faceScale) *
+    clamp(excitationScale, 0, 1)
+  )
 }
 
 /** Resolve the parent topwear displacement already applied by the renderer. */
@@ -510,7 +680,7 @@ export function stepChestSpring(
   const targetVelocityX = (targetX - state.previousTargetX) / dt
   const targetVelocityY = (targetY - state.previousTargetY) / dt
   const frequency = clamp(frequencyScale, 0.7, 1.45)
-  const damping = clamp(dampingScale, 0.7, 1.5)
+  const damping = clamp(dampingScale, 0.4, 2)
   const stiffnessScale = frequency * frequency
   const steps = Math.ceil(dt / MAX_SPRING_STEP_SECONDS)
   const stepSeconds = dt / steps
@@ -597,6 +767,11 @@ function interpolationSample(
 
 function mix(from: number, to: number, amount: number): number {
   return from + (to - from) * amount
+}
+
+function smoothstep(value: number): number {
+  const bounded = clamp(value, 0, 1)
+  return bounded * bounded * (3 - 2 * bounded)
 }
 
 function clamp(value: number, min: number, max: number): number {

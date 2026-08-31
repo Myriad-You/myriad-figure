@@ -1,19 +1,17 @@
+import type { ChestSpatialField } from './chestPhysics'
 import type {
   Anime25DChestProfile,
   Anime25DPlaybackLayer,
   Anime25DTorsoShellProfile,
 } from './types'
+import {
+  chestDeformationWeight,
+  resolveChestSpatialField,
+} from './chestPhysics'
 
 const HEAD_YAW_SHARE = 0.45
 const BODY_YAW_SHARE = 0.1
 const YAW_RESPONSE = 2.5
-const CHEST_LOBE_CENTER = 0.58
-const CHEST_LOBE_RADIUS = 0.62
-const CHEST_CENTER_BRIDGE = 0.58
-const CHEST_DEPTH_RATIO = 0.34
-const CHEST_NEAR_DEPTH_GAIN = 0.35
-const CHEST_FAR_DEPTH_GAIN = 0.15
-const CHEST_SILHOUETTE_RATIO = 0.065
 const MIN_GARMENT_SHAPE_TRANSMISSION = 0.4
 const CHEST_FIELD_LIMIT = 1.5
 const CHEST_FIELD_FEATHER = 0.28
@@ -36,6 +34,7 @@ export interface Anime25DTorsoChestShape {
   radiusX: number
   radiusY: number
   scale: number
+  field: Readonly<ChestSpatialField>
 }
 
 export interface Anime25DMutableTorsoPoint {
@@ -86,6 +85,8 @@ export function deformAnime25DTorsoShellPoint(
   rotation: Readonly<Anime25DTorsoShellRotation>,
   blend: number,
   chestShape: Readonly<Anime25DTorsoChestShape> | null = null,
+  chestSkinWeight = 1,
+  chestVolumeScale = 1,
 ): void {
   point.x += torsoShellOffsetX(
     point.x,
@@ -94,6 +95,8 @@ export function deformAnime25DTorsoShellPoint(
     rotation,
     blend,
     chestShape,
+    chestSkinWeight,
+    chestVolumeScale,
   )
 }
 
@@ -109,6 +112,7 @@ export function anime25DTorsoShellOffsetX(
 /** Resolve the import-time profile into one immutable runtime shape. */
 export function resolveAnime25DTorsoChestShape(
   profile: Readonly<Anime25DChestProfile>,
+  field: Readonly<ChestSpatialField> = resolveChestSpatialField(profile),
 ): Anime25DTorsoChestShape | null {
   if (!profile.enabled) return null
   const visible = smoothstep(clamp(profile.visibleScale, 0, 1))
@@ -124,6 +128,7 @@ export function resolveAnime25DTorsoChestShape(
     radiusX: Math.max(1, profile.radiusX),
     radiusY: Math.max(1, profile.radiusY),
     scale,
+    field,
   }
 }
 
@@ -134,6 +139,8 @@ function torsoShellOffsetX(
   rotation: Readonly<Anime25DTorsoShellRotation>,
   blend: number,
   chestShape: Readonly<Anime25DTorsoChestShape> | null,
+  chestSkinWeight = 1,
+  chestVolumeScale = 1,
 ): number {
   if (!profile.enabled || blend <= 0 || !rotation.active) return 0
   const x = pointX - profile.centerX
@@ -156,25 +163,22 @@ function torsoShellOffsetX(
       const fieldFade = smoothstep(
         (CHEST_FIELD_LIMIT - fieldDistance) / CHEST_FIELD_FEATHER,
       )
-      const verticalWeight = Math.exp(-normalizedChestY * normalizedChestY)
-      const lobeX =
-        (Math.abs(normalizedChestX) - CHEST_LOBE_CENTER) / CHEST_LOBE_RADIUS
-      const bridgeProgress = smoothstep(
-        Math.abs(normalizedChestX) / CHEST_LOBE_CENTER,
-      )
       const pairedWeight =
-        Math.exp(-(lobeX * lobeX)) *
-        (CHEST_CENTER_BRIDGE + (1 - CHEST_CENTER_BRIDGE) * bridgeProgress) *
-        verticalWeight *
-        fieldFade
+        chestDeformationWeight(
+          chestShape.field,
+          normalizedChestX,
+          normalizedChestY,
+          chestSkinWeight,
+        ) * fieldFade
       const sideGain =
         1 +
-        CHEST_NEAR_DEPTH_GAIN * Math.max(0, sideDirection) +
-        CHEST_FAR_DEPTH_GAIN * Math.max(0, -sideDirection)
+        chestShape.field.nearDepthGain * Math.max(0, sideDirection) +
+        chestShape.field.farDepthGain * Math.max(0, -sideDirection)
       z +=
         profile.radiusZ *
-        CHEST_DEPTH_RATIO *
+        chestShape.field.depthRatio *
         chestShape.scale *
+        clamp(chestVolumeScale, 0.9, 1.1) *
         pairedWeight *
         sideGain
 
@@ -184,9 +188,9 @@ function torsoShellOffsetX(
       silhouetteOffset =
         side *
         profile.radiusX *
-        CHEST_SILHOUETTE_RATIO *
+        chestShape.field.silhouetteRatio *
         chestShape.scale *
-        verticalWeight *
+        pairedWeight *
         fieldFade *
         Math.max(0, sideDirection) *
         edge

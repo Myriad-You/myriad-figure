@@ -159,6 +159,59 @@ test('stays finite outside the fitted torso silhouette', () => {
   }
 })
 
+test('uses the same geometry weight to suppress dynamic and yaw chest volume', () => {
+  const geometryShape = resolveAnime25DTorsoChestShape({
+    ...chestProfile,
+    source: 'geometry-fallback',
+  })
+  assert.ok(geometryShape)
+  const yaw = 0.31
+  const x = chestProfile.centerX + chestProfile.radiusX * 0.58
+  const base = projectedX(x, chestProfile.centerY, yaw, null)
+  const suppressed = { x, y: chestProfile.centerY }
+  deformAnime25DTorsoShellPoint(
+    suppressed,
+    profile,
+    {
+      active: true,
+      yawCosine: Math.cos(yaw),
+      yawSine: Math.sin(yaw),
+    },
+    0.25,
+    geometryShape,
+    0,
+  )
+  assert.equal(suppressed.x, base)
+})
+
+test('breathing modulates only projected depth and preserves frontal identity', () => {
+  const shape = resolveAnime25DTorsoChestShape(chestProfile)
+  assert.ok(shape)
+  const x = chestProfile.centerX + chestProfile.radiusX * 0.58
+  const yaw = 0.31
+  const quiet = { x, y: chestProfile.centerY }
+  const inhale = { ...quiet }
+  const frontal = { ...quiet }
+  const rotation = {
+    active: true,
+    yawCosine: Math.cos(yaw),
+    yawSine: Math.sin(yaw),
+  }
+  deformAnime25DTorsoShellPoint(quiet, profile, rotation, 0.25, shape, 1, 1)
+  deformAnime25DTorsoShellPoint(inhale, profile, rotation, 0.25, shape, 1, 1.04)
+  deformAnime25DTorsoShellPoint(
+    frontal,
+    profile,
+    { active: true, yawCosine: 1, yawSine: 0 },
+    0.25,
+    shape,
+    1,
+    1.04,
+  )
+  assert.notEqual(inhale.x, quiet.x)
+  assert.equal(frontal.x, x)
+})
+
 function forkTorsoProjectionX(x: number, yaw: number, blend: number): number {
   const localX = x - profile.centerX
   const normalizedX = localX / profile.radiusX

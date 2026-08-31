@@ -188,6 +188,28 @@ export class PerformanceDirectiveGate {
  * Base poses, workbench controls, lip sync, gaze, blinking, and body motion
  * remain separate owners and are never written back by this controller.
  */
+/**
+ * Restates a wall-clock plan origin on the player clock.
+ *
+ * `startedAtMs` travels all the way down from the coordinator, but the player
+ * runs its own accumulated clock, so the two cannot be compared directly. What
+ * transfers is the plan's age: a directive that arrived 0.4s ago starts 0.4s
+ * behind now. Without this a remount or a slow first frame replays a plan the
+ * rig state summary already considers finished.
+ */
+export function performanceCueOrigin(
+  playerTimeSeconds: number,
+  cueOriginSeconds: number | undefined,
+  nowWallSeconds: number = globalThis.performance.now() / 1_000,
+): number {
+  if (cueOriginSeconds === undefined || !Number.isFinite(cueOriginSeconds)) {
+    return playerTimeSeconds
+  }
+  const ageSeconds = nowWallSeconds - cueOriginSeconds
+  if (!Number.isFinite(ageSeconds) || ageSeconds <= 0) return playerTimeSeconds
+  return playerTimeSeconds - ageSeconds
+}
+
 export class PerformanceExpressionController {
   private readonly current: PerformanceExpressionOffset = { ...ZERO_OFFSET }
   private readonly target: PerformanceExpressionOffset = { ...ZERO_OFFSET }
@@ -219,7 +241,10 @@ export class PerformanceExpressionController {
         directive.plan.baseline.attention,
       )
     }
-    this.scheduleCues(directive.plan.cues, finiteTime(cueOriginSeconds))
+    // The origin is an age, not a clock reading: a plan that arrived while the
+    // rig was remounting legitimately starts behind the player's own zero.
+    // Flooring it here is what made a stale plan replay from the top.
+    this.scheduleCues(directive.plan.cues, finiteOrZero(cueOriginSeconds))
     return true
   }
 
@@ -383,6 +408,18 @@ export function baselineExpressionOffset(
   return output
 }
 
+/**
+ * Amplitudes are calibrated against screen pixels, not driver decimals.
+ *
+ * `layerDeformation` moves a brow point by `brow * 9 * faceScale`, and the
+ * homepage rig renders about 300px wide — roughly a third of the source atlas.
+ * The old 0.02 `greet` brow was therefore ~0.06 displayed pixels: correct in
+ * the driver and invisible on screen, while `randomAction` was ambling around
+ * in the 0.12–0.36 band the whole time. The character's own idle fidgeting
+ * read louder than anything the director said. These land the ordinary beats
+ * in that same band so a semantic cue is at least as legible as a fidget;
+ * stickers still carry the strong, rare reads.
+ */
 export function expressionCueOffset(
   cue: PerformanceCue,
 ): PerformanceExpressionOffset {
@@ -392,26 +429,26 @@ export function expressionCueOffset(
     PerformanceCue['intent'],
     Partial<PerformanceExpressionOffset>
   > = {
-    greet: { angleZ: -0.035 * amount, brow: 0.02 * amount },
-    respond: { angleY: -0.025 * amount, brow: 0.025 * amount },
+    greet: { angleZ: -0.05 * amount, brow: 0.17 * amount },
+    respond: { angleY: -0.035 * amount, brow: 0.13 * amount },
     question: {
-      angleZ: 0.055 * amount,
-      brow: 0.08 * amount,
-      eyeOpen: 0.018 * amount,
+      angleZ: 0.075 * amount,
+      brow: 0.26 * amount,
+      eyeOpen: 0.05 * amount,
     },
     delight: {
-      angleY: -0.035 * amount,
-      brow: 0.06 * amount,
+      angleY: -0.05 * amount,
+      brow: 0.22 * amount,
       eyeOpen: -0.025 * amount,
       eyeSqueeze: 0.84 * amount,
       mouthForm: 0.18 * amount,
     },
-    emphasize: { angleY: 0.04 * amount, brow: 0.05 * amount },
-    listen: { angleY: 0.03 * amount, brow: 0.025 * amount },
+    emphasize: { angleY: 0.055 * amount, brow: 0.2 * amount },
+    listen: { angleY: 0.04 * amount, brow: 0.12 * amount },
     notify: {
-      angleZ: -0.03 * amount,
-      brow: 0.06 * amount,
-      eyeOpen: 0.02 * amount,
+      angleZ: -0.045 * amount,
+      brow: 0.22 * amount,
+      eyeOpen: 0.055 * amount,
     },
     think: {
       angleZ: -0.14 * amount,
@@ -632,19 +669,19 @@ function writeBaselineOffset(
     Partial<PerformanceExpressionOffset>
   > = {
     withdrawn: {
-      brow: -0.11,
+      brow: -0.16,
       eyeOpen: -0.08,
-      mouthForm: -0.09,
+      mouthForm: -0.11,
       irisScale: -0.035,
     },
     subdued: {
-      brow: -0.055,
+      brow: -0.09,
       eyeOpen: -0.04,
-      mouthForm: -0.04,
+      mouthForm: -0.05,
       irisScale: -0.015,
     },
     steady: {},
-    warm: { brow: 0.055, mouthForm: 0.12, irisScale: 0.015 },
+    warm: { brow: 0.12, mouthForm: 0.15, irisScale: 0.015 },
   }
   Object.assign(output, patches[baseline.expression])
   const posture: Record<

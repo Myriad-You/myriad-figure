@@ -1,3 +1,4 @@
+import type { ChestSpatialField } from './chestPhysics'
 import type { Anime25DDriver } from './driver'
 import type { Anime25DLayerSpringBinding } from './layerBinding'
 import type {
@@ -10,7 +11,6 @@ import type {
   Anime25DTorsoShellRotation,
 } from './torsoDeformation'
 import type {
-  Anime25DChestProfile,
   Anime25DPlaybackLayer,
   Anime25DShellProfile,
   Anime25DTorsoShellProfile,
@@ -66,13 +66,14 @@ export interface Anime25DSecondaryDeformationFrame {
   inverseChestRadiusY: number
   chestOffsetX: number
   chestOffsetY: number
-  chestProfileSource: Anime25DChestProfile['source']
+  chestField: Readonly<ChestSpatialField>
+  chestVolumeScale: number
   shellProfile: Readonly<Anime25DShellProfile>
   shellBlend: number
   shellActivation: number
   shellRotation: Readonly<Anime25DShellRotation>
   torsoProfile: Readonly<Anime25DTorsoShellProfile>
-  torsoChestShape: Readonly<Anime25DTorsoChestShape> | null
+  torsoChestShape: Anime25DTorsoChestShape | null
   torsoShellBlend: number
   torsoShellRotation: Readonly<Anime25DTorsoShellRotation>
 }
@@ -299,7 +300,7 @@ export function deformAnime25DSecondaryPoint(
       (restY - frame.chestMotionCenterY) * frame.inverseChestRadiusY
     const skinWeight = binding.chestWeights?.[vertex] ?? 1
     const chestWeight = chestDeformationWeight(
-      frame.chestProfileSource,
+      frame.chestField,
       normalizedX,
       normalizedY,
       skinWeight,
@@ -316,6 +317,8 @@ export function deformAnime25DSecondaryPoint(
       frame.torsoShellRotation,
       frame.torsoShellBlend * torsoWeight,
       binding.topwear ? frame.torsoChestShape : null,
+      binding.topwear ? (binding.chestWeights?.[vertex] ?? 1) : 1,
+      frame.chestVolumeScale,
     )
   }
   if (binding.handwear) {

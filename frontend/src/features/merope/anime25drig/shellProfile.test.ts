@@ -7,10 +7,7 @@ import {
   sampleAnime25DHairlinePinWeights,
   writeAnime25DShellRotation,
 } from './shellDeformation'
-import {
-  deriveAnime25DShellProfile,
-  resolveAnime25DShellProfile,
-} from './shellProfile'
+import { deriveAnime25DShellProfile } from './shellProfile'
 
 const faceLayer: Anime25DPlaybackLayer = {
   name: 'face',
@@ -85,20 +82,6 @@ const playbackSource = {
   },
   layers: [faceLayer, frontHairLayer, topwearLayer],
 } satisfies Pick<Anime25DPlayback, 'anchors' | 'layers'>
-
-test('resolves a missing profile the same way player used to at load time', () => {
-  const derived = deriveAnime25DShellProfile(playbackSource)
-  assert.deepEqual(resolveAnime25DShellProfile(playbackSource), derived)
-  const { torso, ...withoutTorso } = derived
-  assert.ok(torso)
-  assert.deepEqual(
-    resolveAnime25DShellProfile({
-      ...playbackSource,
-      shellProfile: withoutTorso as typeof derived,
-    }).torso,
-    torso,
-  )
-})
 
 test('derives a complete deterministic shell profile at import time', () => {
   const first = deriveAnime25DShellProfile(playbackSource)
@@ -179,4 +162,43 @@ test('automatic hairline attachment releases monotonically across two mesh rows'
 
   assert.ok(weights)
   assert.deepEqual(Array.from(weights), [1, 1, 0.5, 0])
+})
+
+test('enables only a restrained crown fit when distributed roots confirm scalp hair', () => {
+  const rootedFrontHair = {
+    ...frontHairLayer,
+    strands: [220, 300, 468, 548].map((x, index) => ({
+      x,
+      rootY: 82 + index * 4,
+      tipY: 330,
+    })),
+  }
+  const profile = deriveAnime25DShellProfile({
+    ...playbackSource,
+    layers: [faceLayer, rootedFrontHair, topwearLayer],
+  })
+
+  assert.ok(profile.hair.crownRound >= 0.08)
+  assert.ok(profile.hair.crownRound <= 0.22)
+  assert.ok(profile.hair.radiusX >= profile.head.radiusX * 1.05)
+  assert.ok(profile.hair.radiusX <= profile.head.radiusX * 1.28)
+})
+
+test('keeps crown wrap dormant when layer bounds lack distributed strand evidence', () => {
+  const oversizedHair = {
+    ...frontHairLayer,
+    x: -1000,
+    y: -500,
+    w: 4000,
+    h: 2200,
+    strands: [],
+  }
+  const profile = deriveAnime25DShellProfile({
+    ...playbackSource,
+    layers: [faceLayer, oversizedHair, topwearLayer],
+  })
+
+  assert.equal(profile.hair.crownRound, 0)
+  assert.ok(profile.hair.radiusX <= profile.head.radiusX * 1.28)
+  assert.ok(profile.hair.radiusY <= profile.head.radiusY * 1.24)
 })

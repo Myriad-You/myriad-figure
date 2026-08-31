@@ -13,6 +13,7 @@ import {
   mixEyeOpen,
   PerformanceDirectiveGate,
   PerformanceExpressionController,
+  performanceCueOrigin,
   performancePhaseRank,
 } from './performanceExpression'
 
@@ -55,7 +56,10 @@ function directive(
   }
 }
 
-test('maps semantic baselines and cues to conservative expression offsets', () => {
+// "Conservative" is measured against the ambient random-action band the rig
+// already plays in (brow 0.12-0.36), not against zero: a semantic cue quieter
+// than the character's own idle fidgeting reads as no cue at all.
+test('maps semantic baselines and cues to legible expression offsets', () => {
   const warm = baselineExpressionOffset({
     ...steadyBaseline,
     expression: 'warm',
@@ -86,10 +90,10 @@ test('maps semantic baselines and cues to conservative expression offsets', () =
   const silly = expressionCueOffset(cue('silly'))
   const lovestruck = expressionCueOffset(cue('lovestruck'))
 
-  assert.ok(warm.mouthForm > 0 && warm.mouthForm <= 0.12)
+  assert.ok(warm.mouthForm > 0 && warm.mouthForm <= 0.16)
   assert.ok(withdrawn.eyeOpen < 0 && withdrawn.eyeOpen >= -0.08)
   assert.ok(Math.abs(delight.mouthForm) <= 0.26)
-  assert.ok(Math.abs(delight.angleY) <= 0.05)
+  assert.ok(Math.abs(delight.angleY) <= 0.08)
   assert.ok(delight.eyeSqueeze > 1.1 && delight.eyeSqueeze < 1.2)
   assert.equal(dizzy.eyeDizzy, 1)
   assert.equal(dizzy.eyeOpen, 0)
@@ -339,7 +343,7 @@ test('fades a semantic cue in and out back to its baseline', () => {
 
   assert.equal(expression.sample(0).brow, 0)
   assert.ok(expression.sample(0.05).brow > 0)
-  assert.equal(expression.sample(0.2).brow, 0.08)
+  assert.equal(expression.sample(0.2).brow, 0.26)
   assert.ok(Math.abs(expression.sample(1.03).brow) < 1e-9)
 })
 
@@ -608,4 +612,31 @@ test('replacing a cue releases face and body together', () => {
   const landed = expression.sample(1.2)
   assert.ok(landed.body > 0.1)
   assert.ok(Math.abs(landed.armY) < 0.02)
+})
+
+test('restates a plan origin as an age on the player clock', () => {
+  // The plan started 0.4s ago on the wall clock; the player is at t=12.
+  assert.ok(Math.abs(performanceCueOrigin(12, 100.6, 101) - 11.6) < 1e-9)
+  // No origin, a future origin, or a broken clock all mean "start now".
+  assert.equal(performanceCueOrigin(12, undefined, 101), 12)
+  assert.equal(performanceCueOrigin(12, 101.5, 101), 12)
+  assert.equal(performanceCueOrigin(12, Number.NaN, 101), 12)
+  assert.equal(performanceCueOrigin(12, Number.POSITIVE_INFINITY, 101), 12)
+})
+
+test('a remount resumes a plan instead of replaying it from the top', () => {
+  const fresh = new PerformanceExpressionController()
+  fresh.play(directive('delivery', 1, 'steady', [cue('question')]), 0)
+  assert.ok(fresh.sample(0.3).brow > 0)
+
+  // The same plan handed to a fresh player three seconds later. Its beat is
+  // long over, and the rig state summary already reports it as finished, so
+  // replaying it from the top would contradict what the backend was told.
+  const remounted = new PerformanceExpressionController()
+  remounted.play(
+    directive('delivery', 1, 'steady', [cue('question')]),
+    0,
+    performanceCueOrigin(0, 98, 101),
+  )
+  assert.equal(remounted.sample(0.3).brow, 0)
 })

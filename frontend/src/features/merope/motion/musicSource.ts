@@ -1,6 +1,7 @@
 import type { SpeechArticulation } from '../rig/articulation'
 import type { SingingSpectrumDrive } from '../singing/singingGroove'
 import type { SingingCue } from '../singing/singingTimeline'
+import type { MotionChannel } from './channels'
 import type { MotionLeaseHandle, RigMotionCoordinator } from './coordinator'
 import type { SingingApply } from './singingApply'
 import {
@@ -17,6 +18,19 @@ import { resolveSingingApply } from './singingApply'
 export const SINGING_SAMPLE_INTERVAL_MS = 50
 export const TRACK_SWITCH_HOLD_MS = 12_000
 export const MUSIC_LEASE_TTL_MS = 250
+
+/**
+ * singingGroove writes eyeX and brow alongside the neck, so the groove owns
+ * gaze and expression as well as mouth and head/body. Claiming only the latter
+ * two let it scribble on channels it had never taken, and left `music` in the
+ * expression priority table as a rule nothing ever exercised.
+ */
+const MUSIC_CHANNELS = [
+  'mouth',
+  'headBody',
+  'gaze',
+  'expression',
+] as const satisfies readonly MotionChannel[]
 
 export interface SingingFrame {
   apply: SingingApply
@@ -66,7 +80,7 @@ export class MusicMotionSource {
   private cues: SingingCue[] = []
   private humming = true
   private compileGeneration = 0
-  private connected = false
+  private connectedAudio: object | null = null
   private frame = 0
   private lastSample = 0
   private holdUntil = 0
@@ -152,8 +166,13 @@ export class MusicMotionSource {
 
     const audio = this.audio.getCurrentAudio()
     const audioPaused = !audio || audio.paused
-    if (audio && !this.connected) {
-      this.connected = this.audio.connectAudioToAnalyser(audio)
+    // The player rebuilds its audio element across tracks. A boolean "already
+    // connected" latched on the first one and never reconnected, leaving the
+    // analyser wired to a dead element and every band reading zero.
+    if (audio && this.connectedAudio !== audio) {
+      this.connectedAudio = this.audio.connectAudioToAnalyser(audio)
+        ? audio
+        : null
     }
 
     if (gap === 'stop' || holdExpired) {
@@ -249,17 +268,17 @@ export class MusicMotionSource {
     this.pauseLoop(true)
     this.unsubscribeVisibility?.()
     this.unsubscribeVisibility = null
-    this.connected = false
+    this.connectedAudio = null
     this.lastFrame = null
   }
 
   private holdMusic(nowMs: number): void {
     this.musicLease =
-      this.coordinator.renew(this.musicLease, ['mouth', 'headBody'], {
+      this.coordinator.renew(this.musicLease, MUSIC_CHANNELS, {
         nowMs,
         ttlMs: MUSIC_LEASE_TTL_MS,
       }) ??
-      this.coordinator.claim('music', ['mouth', 'headBody'], {
+      this.coordinator.claim('music', MUSIC_CHANNELS, {
         nowMs,
         ttlMs: MUSIC_LEASE_TTL_MS,
       })

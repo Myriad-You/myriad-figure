@@ -10,7 +10,7 @@ import {
   scheduledBodyCueRemainingDurationMs,
 } from './performanceMotion'
 
-test('keeps semantic face ownership out of the non-manual posture patch', () => {
+test('keeps semantic face ownership out of the non-manual energy patch', () => {
   const patch = baselineDriverPatch({
     expression: 'warm',
     posture: 'open',
@@ -22,7 +22,40 @@ test('keeps semantic face ownership out of the non-manual posture patch', () => 
   assert.equal(patch.mouthForm, undefined)
   assert.equal(patch.brow, undefined)
   assert.equal(patch.eyeOpenL, undefined)
-  assert.ok((patch.armPos || 0) <= 0.2)
+})
+
+// writeBaselineOffset composes posture onto the pose every frame; a second
+// copy on the driver would apply it twice.
+test('leaves posture to the per-frame pose offset', () => {
+  for (const posture of ['closed', 'neutral', 'open'] as const) {
+    const patch = baselineDriverPatch({
+      expression: 'steady',
+      posture,
+      motionEnergy: 1,
+      attention: 1,
+    })
+    assert.equal('body' in patch, false)
+    assert.equal('armY' in patch, false)
+    assert.equal('armPos' in patch, false)
+  }
+})
+
+test('carries motionEnergy into secondary motion', () => {
+  const still = baselineDriverPatch({
+    expression: 'steady',
+    posture: 'neutral',
+    motionEnergy: 0.2,
+    attention: 1,
+  })
+  const lively = baselineDriverPatch({
+    expression: 'steady',
+    posture: 'neutral',
+    motionEnergy: 1.4,
+    attention: 1,
+  })
+  assert.ok((lively.physAmp ?? 0) > (still.physAmp ?? 0))
+  assert.ok((lively.fhAmp ?? 0) > (still.fhAmp ?? 0))
+  assert.ok((lively.soft ?? 0) > (still.soft ?? 0))
 })
 
 test('centers semantic hair energy on the runtime sway defaults', () => {
@@ -61,7 +94,7 @@ test('restores performance pose without taking speech, face, or gaze ownership',
   ]) {
     assert.equal(key in patch, false)
   }
-  assert.equal(patch.body, 0.12)
+  assert.equal(patch.body, 0)
   assert.equal(performanceRestDriverPatch(null, true).body, 0)
   assert.equal(performanceRestDriverPatch(null, true).rand, false)
   assert.equal(performanceRestDriverPatch(null, true).thinking, true)

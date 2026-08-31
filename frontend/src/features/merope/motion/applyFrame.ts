@@ -96,9 +96,13 @@ function applyDirectedPlan(
       if (state.directedKind != null && state.directedKind !== next.kind) {
         rig.stopMotionPlan()
       }
-      rig.playMotionPlan(next.directive, next.startedAtMs)
-      state.directedKind = next.kind
-      state.directedStartedAtMs = next.startedAtMs
+      // The player is the last word on whether a plan can run. Recording a
+      // rejected plan as applied retires it forever: the identity check below
+      // never fires again for it, so nothing retries.
+      if (rig.playMotionPlan(next.directive, next.startedAtMs)) {
+        state.directedKind = next.kind
+        state.directedStartedAtMs = next.startedAtMs
+      }
     }
     return
   }
