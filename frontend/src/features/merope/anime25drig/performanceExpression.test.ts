@@ -8,6 +8,7 @@ import test from 'node:test'
 import {
   applyPerformanceExpressionOffset,
   baselineExpressionOffset,
+  bearingDriverPatch,
   expressionCueOffset,
   mixBoundedExpressionChannel,
   mixEyeOpen,
@@ -93,8 +94,10 @@ test('maps semantic baselines and cues to legible expression offsets', () => {
   assert.ok(warm.mouthForm > 0 && warm.mouthForm <= 0.16)
   assert.ok(withdrawn.eyeOpen < 0 && withdrawn.eyeOpen >= -0.08)
   assert.ok(Math.abs(delight.mouthForm) <= 0.26)
-  assert.ok(Math.abs(delight.angleY) <= 0.08)
+  assert.ok(Math.abs(delight.angleY) > 0.16)
+  assert.ok(Math.abs(delight.angleY) <= 0.18)
   assert.ok(delight.eyeSqueeze > 1.1 && delight.eyeSqueeze < 1.2)
+  assert.ok((delight.bust ?? 0) > 0)
   assert.equal(dizzy.eyeDizzy, 1)
   assert.equal(dizzy.eyeOpen, 0)
   assert.equal(dizzy.irisScale, 0)
@@ -124,6 +127,7 @@ test('maps semantic baselines and cues to legible expression offsets', () => {
     'body',
     'brow',
     'browAngSym',
+    'bust',
     'eyeCry',
     'eyeDizzy',
     'eyeOpen',
@@ -137,6 +141,68 @@ test('maps semantic baselines and cues to legible expression offsets', () => {
     'silly',
     'speechless',
   ])
+})
+
+test('gives every directed pose a legible low-intensity movement floor', () => {
+  for (const intent of [
+    'greet',
+    'respond',
+    'question',
+    'delight',
+    'emphasize',
+    'listen',
+    'notify',
+    'think',
+    'angry',
+    'speechless',
+    'maniac',
+    'silly',
+    'lovestruck',
+  ] as const) {
+    const offset = expressionCueOffset({
+      ...cue(intent),
+      intensity: 0.55,
+    })
+    const displacement = Math.max(
+      Math.abs(offset.angleY),
+      Math.abs(offset.angleZ),
+      Math.abs(offset.body),
+      Math.abs(offset.armY),
+      Math.abs(offset.armPos),
+      Math.abs(offset.bust ?? 0),
+    )
+    assert.ok(displacement >= 0.08, intent)
+    assert.ok(displacement <= 0.5, intent)
+  }
+
+  for (const intent of ['dizzy', 'cry'] as const) {
+    const offset = expressionCueOffset(cue(intent))
+    assert.equal(offset.angleY, 0, intent)
+    assert.equal(offset.angleZ, 0, intent)
+    assert.equal(offset.body, 0, intent)
+    assert.equal(offset.armY, 0, intent)
+    assert.equal(offset.armPos, 0, intent)
+  }
+})
+
+test('maps additive bearing offsets onto absolute driver neutrals', () => {
+  const steady = bearingDriverPatch(steadyBaseline)
+  const withdrawn = bearingDriverPatch({
+    ...steadyBaseline,
+    expression: 'withdrawn',
+  })
+  const cleared = bearingDriverPatch(null)
+
+  assert.equal(steady.eyeOpenL, 1)
+  assert.equal(steady.eyeOpenR, 1)
+  assert.equal(steady.irisScale, 1)
+  assert.equal(withdrawn.eyeOpenL, 0.92)
+  assert.equal(withdrawn.eyeOpenR, 0.92)
+  assert.equal(withdrawn.irisScale, 0.965)
+  assert.equal(cleared.eyeOpenL, 1)
+  assert.equal(cleared.irisScale, 1)
+  assert.equal('bust' in steady, false)
+  assert.equal('eyeDizzy' in steady, false)
 })
 
 test('adds to manual channels without flattening left-right eye differences', () => {
@@ -274,6 +340,7 @@ test('eases baseline changes without a first-frame jump or frame allocation', ()
       body: 0,
       armY: 0,
       armPos: 0,
+      bust: 0,
       anger: 0,
       speechless: 0,
       maniac: 0,
@@ -464,6 +531,7 @@ test('does not resume an older cue after a replacement finishes', () => {
       body: 0,
       armY: 0,
       armPos: 0,
+      bust: 0,
       anger: 0,
       speechless: 0,
       maniac: 0,

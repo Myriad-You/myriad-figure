@@ -39,11 +39,7 @@ export function applySingingWrite(
     spectrum: apply.writeGroove ? drive.spectrum : null,
     articulation: apply.writeMouth ? drive.articulation : null,
     restMouth: apply.restMouth,
-    speechActive: apply.writeMouth
-      ? true
-      : apply.release && apply.restMouth
-        ? false
-        : null,
+    speechActive: apply.writeMouth ? true : apply.restMouth ? false : null,
   }
   rig.setSingingTrack(drive.trackId)
   if (apply.writeGroove) {
@@ -58,7 +54,7 @@ export function applySingingWrite(
     rig.setSpeechArticulation(drive.articulation)
   } else if (apply.restMouth) {
     rig.setSpeechArticulation(restSingingArticulation())
-    if (apply.release) rig.setSpeechActive(false)
+    rig.setSpeechActive(false)
   }
   return write
 }

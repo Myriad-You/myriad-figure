@@ -206,6 +206,13 @@ export function applyAnime25DComposedPose(
     gate.random.expression,
   )
   applyThinkingMouth(target, sources.thinking, gate.thinking.expression)
+  target.bust = mixBoundedExpressionChannel(
+    target.bust,
+    (sources.performance.bust ?? 0) * gate.performance.headBody,
+    0,
+    4,
+    IDENTITY_DRIVER.bust,
+  )
 }
 
 function applyRandomActionExpressionExtras(
@@ -398,7 +405,7 @@ export function applyAnime25DCryMouth(
 export function applyAnime25DSpeechExtras(
   target: Anime25DDriver,
   speech: Readonly<AutoSpeechPose>,
-  expression: Readonly<CoSpeechExpressionOffset>,
+  expression: Readonly<Pick<CoSpeechExpressionOffset, 'eyeOpen'>>,
 ): void {
   if (
     speech.mouthOpen > 0 ||

@@ -104,8 +104,8 @@ test('weight keeps drifting both ways without parking', () => {
   }
   assert.ok(minZ < -0.04)
   assert.ok(maxZ > 0.04)
-  assert.ok(minBody < -0.015)
-  assert.ok(maxBody > 0.015)
+  assert.ok(minBody < -0.04)
+  assert.ok(maxBody > 0.04)
   assert.ok(longestStill < 80)
   assert.equal(harshReversals, 0)
 })

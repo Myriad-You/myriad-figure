@@ -58,12 +58,12 @@ test('compiles only transient functions and monotonic time pegs', () => {
   )
 })
 
-test('keeps a face-only cue off the head/body channel', () => {
+test('declares the head resource when an acknowledgement nods', () => {
   const value = directive()
   value.plan.baseline = undefined
   value.plan.cues[0] = { ...value.plan.cues[0]!, intent: 'respond' }
   const plan = compilePerformanceBehaviorPlan(value, 0, 'plan-b')
   const cue = plan.behaviors.find((behavior) => behavior.form.id === 'respond')
-  assert.deepEqual(cue?.channels, ['expression'])
-  assert.deepEqual(cue?.resources, ['face.expression'])
+  assert.deepEqual(cue?.channels, ['expression', 'headBody'])
+  assert.deepEqual(cue?.resources, ['face.expression', 'body.head'])
 })

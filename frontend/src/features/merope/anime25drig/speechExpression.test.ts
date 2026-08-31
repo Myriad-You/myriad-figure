@@ -22,18 +22,21 @@ function envelopeOnly(
 test('keeps co-speech expression neutral without a speech envelope', () => {
   assert.deepEqual(
     { ...envelopeOnly(new CoSpeechExpressionController(), 0, 0, 0) },
-    { brow: 0, eyeOpen: 0, angleY: 0 },
+    { brow: 0, eyeOpen: 0, angleY: 0, angleZ: 0, body: 0 },
   )
 })
 
-test('adds a small bounded expression without owning the base pose', () => {
+test('carries a speech beat through face, head, and torso', () => {
   const offset = {
     ...envelopeOnly(new CoSpeechExpressionController(), 1, 1, 1),
   }
   assert.equal(offset.brow, 0.095)
   assert.ok(offset.eyeOpen < 0)
   assert.ok(Math.abs(offset.eyeOpen) < 0.01)
-  assert.equal(offset.angleY, 0.035)
+  assert.equal(offset.angleY, 0.09)
+  assert.ok(Math.abs(offset.angleZ) > 0.01)
+  assert.ok(Math.abs(offset.body) > 0.07)
+  assert.ok(Math.abs(offset.body) < 0.15)
 })
 
 test('sanitizes unusable inputs and reuses its frame result', () => {
@@ -41,7 +44,9 @@ test('sanitizes unusable inputs and reuses its frame result', () => {
   const first = envelopeOnly(expression, Number.NaN, -1, 2)
   assert.equal(first.brow, 0)
   assert.equal(first.eyeOpen, 0)
-  assert.equal(first.angleY, 0.035)
+  assert.equal(first.angleY, 0.09)
+  assert.ok(Number.isFinite(first.angleZ))
+  assert.ok(Math.abs(first.body) > 0)
   assert.equal(first, envelopeOnly(expression, 0.5, 0.5, 0.5))
 })
 
@@ -68,6 +73,8 @@ test('derives a delayed visual beat from authored energy without frame allocatio
   assert.ok(Math.abs(rest.brow) < 1e-3)
   assert.ok(Math.abs(rest.eyeOpen) < 1e-3)
   assert.ok(Math.abs(rest.angleY) < 1e-3)
+  assert.ok(Math.abs(rest.angleZ) < 1e-3)
+  assert.ok(Math.abs(rest.body) < 0.01)
 })
 
 test('anticipates known TTS emphasis instead of waiting for the loudness edge', () => {
@@ -89,4 +96,31 @@ test('anticipates known TTS emphasis instead of waiting for the loudness edge', 
   const stroke = { ...expression.sample(0.4, true, 0.2, 0, 0, 0) }
   assert.ok(preparation.brow > 0)
   assert.ok(stroke.brow > preparation.brow)
+})
+
+test('sustained speech shifts weight smoothly instead of holding a frozen torso', () => {
+  const expression = new CoSpeechExpressionController()
+  let previous = { ...expression.sample(0, true, null, 1, 0, 0) }
+  let minimumBody = previous.body
+  let maximumBody = previous.body
+  let minimumRoll = previous.angleZ
+  let maximumRoll = previous.angleZ
+  for (let frame = 1; frame <= 60 * 12; frame += 1) {
+    const current = {
+      ...expression.sample(frame / 60, true, null, 1, 0, 0),
+    }
+    minimumBody = Math.min(minimumBody, current.body)
+    maximumBody = Math.max(maximumBody, current.body)
+    minimumRoll = Math.min(minimumRoll, current.angleZ)
+    maximumRoll = Math.max(maximumRoll, current.angleZ)
+    assert.ok(Math.abs(current.body - previous.body) < 0.01)
+    assert.ok(Math.abs(current.angleZ - previous.angleZ) < 0.01)
+    previous = current
+  }
+  assert.ok(minimumBody < -0.03)
+  assert.ok(maximumBody > 0.03)
+  assert.ok(maximumBody - minimumBody > 0.04)
+  assert.ok(minimumRoll < -0.02)
+  assert.ok(maximumRoll > 0.02)
+  assert.ok(maximumRoll - minimumRoll > 0.07)
 })

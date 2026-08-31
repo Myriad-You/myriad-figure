@@ -6,6 +6,7 @@ import type {
 } from '../../../services/agent/types'
 import type { Anime25DDriver } from './driver'
 import { performanceCuePriority } from '../performanceContract'
+import { IDENTITY_DRIVER } from './driver'
 import { cueExpressionPatch, cueIsSticker } from './performanceCueDefinitions'
 import { cueVisualEnvelope, MIN_STICKER_FADE_OUT } from './performanceMotion'
 
@@ -25,6 +26,8 @@ export interface PerformanceExpressionOffset {
   body: number
   armY: number
   armPos: number
+  /** Additive secondary-motion strength around the driver's 2.5 rest value. */
+  bust?: number
   anger?: number
   speechless?: number
   maniac?: number
@@ -84,6 +87,7 @@ const OFFSET_KEYS = [
   'body',
   'armY',
   'armPos',
+  'bust',
   'anger',
   'speechless',
   'maniac',
@@ -107,6 +111,7 @@ const ZERO_OFFSET: PerformanceExpressionOffset = {
   body: 0,
   armY: 0,
   armPos: 0,
+  bust: 0,
   anger: 0,
   speechless: 0,
   maniac: 0,
@@ -441,8 +446,19 @@ export function bearingDriverPatch(
   baseline: PerformanceBaseline | null,
 ): Partial<Anime25DDriver> {
   const offset = baseline ? baselineExpressionOffset(baseline) : ZERO_OFFSET
-  const { eyeOpen, ...driver } = offset
-  return { ...driver, eyeOpenL: eyeOpen, eyeOpenR: eyeOpen }
+  // PerformanceExpressionOffset is an additive space. Spell out the bearing's
+  // actual base-pose ownership here so non-zero-neutral driver fields are not
+  // mistaken for absolutes, and transient cue-only fields never leak into it.
+  return {
+    brow: offset.brow,
+    eyeOpenL: IDENTITY_DRIVER.eyeOpenL + offset.eyeOpen,
+    eyeOpenR: IDENTITY_DRIVER.eyeOpenR + offset.eyeOpen,
+    mouthForm: offset.mouthForm,
+    irisScale: IDENTITY_DRIVER.irisScale + offset.irisScale,
+    body: offset.body,
+    armY: offset.armY,
+    armPos: offset.armPos,
+  }
 }
 
 /**

@@ -120,7 +120,11 @@ export class SingingGrooveController {
     this.output.angleX = this.neckX.value
     this.output.angleY = this.neckY.value
     this.output.angleZ = this.neckZ.value
-    this.output.body = this.torso.value * 0.22
+    // The renderer gives singing body rotation more range than ordinary idle
+    // motion, but the old 0.22 transfer still collapsed a full lean to only a
+    // few hundredths. Preserve the slower torso spring and transmit enough of
+    // it for the upper body to visibly follow the head.
+    this.output.body = this.torso.value * 0.55
     this.output.armY = 0
     this.output.armPos = 0
     // A rhythmic controller realizes body entrainment only. Eye and brow

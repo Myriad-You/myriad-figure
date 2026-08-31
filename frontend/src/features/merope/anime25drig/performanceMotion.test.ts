@@ -134,7 +134,8 @@ test('maps cues to bounded deterministic patches and durations', () => {
     fadeOutMs: 220,
     interrupt: 'replace' as const,
   }
-  assert.ok((cueDriverPatch(cue).body || 0) < 0.35)
+  assert.ok((cueDriverPatch(cue).body || 0) > 0.5)
+  assert.ok((cueDriverPatch(cue).body || 0) < 0.6)
   assert.equal(cueDriverPatch(cue).brow, undefined)
   assert.equal(cueDriverPatch(cue).angleY, undefined)
   assert.equal(cueDurationMs(cue), 1_090)
@@ -153,6 +154,42 @@ test('maps cues to bounded deterministic patches and durations', () => {
   assert.equal(cueDriverPatch(maniac).idle, false)
   const lovestruck = { ...cue, intent: 'lovestruck' as const }
   assert.equal(cueDriverPatch(lovestruck).idle, false)
+})
+
+test('keeps directed body motion above idle scale at ordinary intensity', () => {
+  const cue = (intent: Parameters<typeof cueDriverPatch>[0]['intent']) =>
+    cueDriverPatch({
+      intent,
+      atMs: 0,
+      intensity: 0.55,
+      tempo: 1,
+      fadeInMs: 100,
+      fadeOutMs: 200,
+      interrupt: 'replace',
+    })
+
+  for (const intent of [
+    'greet',
+    'question',
+    'delight',
+    'emphasize',
+    'notify',
+    'angry',
+    'speechless',
+    'maniac',
+    'silly',
+    'lovestruck',
+  ] as const) {
+    const patch = cue(intent)
+    const displacement = Math.max(
+      Math.abs(patch.body ?? 0),
+      Math.abs(patch.armY ?? 0),
+      Math.abs(patch.armPos ?? 0),
+      Math.abs((patch.bust ?? 2.5) - 2.5),
+    )
+    assert.ok(displacement >= 0.12, intent)
+    assert.ok(displacement <= 0.5, intent)
+  }
 })
 
 test('does not replay expired body cues after a throttled timer', () => {

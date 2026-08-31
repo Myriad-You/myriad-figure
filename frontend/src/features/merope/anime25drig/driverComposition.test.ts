@@ -99,7 +99,13 @@ test('all shared pose producers land through one channel-weighted composition', 
       breath: { angleX: 0.1, angleY: 0, angleZ: 0, body: 0.08 },
       performance,
       stylized,
-      coSpeech: { brow: 0.1, eyeOpen: 0, angleY: 0.05 },
+      coSpeech: {
+        brow: 0.1,
+        eyeOpen: 0,
+        angleY: 0.05,
+        angleZ: 0.04,
+        body: 0.12,
+      },
     },
     zeroOccupancyOffset(),
   )
@@ -133,6 +139,93 @@ test('semantic and staged expression extras honor independent ownership', () => 
   assert.equal(target.eyeDizzy, 0)
   assert.equal(target.maniac, 0)
   assert.equal(target.mouthOpen, stylized.mouthOpen * 0.25)
+})
+
+test('delight realizes its claimed bust resource through head/body ownership', () => {
+  const target = { ...IDENTITY_DRIVER }
+  const full = { gaze: 1, headBody: 1, expression: 1 }
+  const none = { gaze: 0, headBody: 0, expression: 0 }
+  const performance = expressionCueOffset({
+    intent: 'delight',
+    atMs: 0,
+    intensity: 1,
+    tempo: 1,
+    fadeInMs: 80,
+    fadeOutMs: 120,
+    interrupt: 'replace',
+  })
+  const stylized = new StylizedExpressionMotionController().sample(
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+  )
+
+  applyAnime25DComposedPose(
+    target,
+    {
+      ambient: none,
+      random: none,
+      groove: none,
+      thinking: none,
+      performance: full,
+      stylized: none,
+      coSpeech: none,
+      speechMouth: 0,
+      grooveMouth: 0,
+    },
+    {
+      ambient: { angleX: 0, angleY: 0, angleZ: 0, body: 0, eyeX: 0, eyeY: 0 },
+      randomAction: {
+        angleX: 0,
+        angleY: 0,
+        angleZ: 0,
+        body: 0,
+        eyeX: 0,
+        eyeY: 0,
+        brow: 0,
+        browAngSym: 0,
+        eyeOpen: 0,
+        irisScale: 0,
+        armY: 0,
+        armPos: 0,
+        ambientScale: 1,
+      },
+      groove: {
+        angleX: 0,
+        angleY: 0,
+        angleZ: 0,
+        body: 0,
+        armY: 0,
+        armPos: 0,
+        eyeX: 0,
+        brow: 0,
+      },
+      thinking: {
+        angleX: 0,
+        angleY: 0,
+        angleZ: 0,
+        eyeX: 0,
+        eyeY: 0,
+        brow: 0,
+        mouthCY: 0,
+        mouthCAng: 0,
+        mouthScale: 0,
+      },
+      breath: { angleX: 0, angleY: 0, angleZ: 0, body: 0 },
+      performance,
+      stylized,
+      coSpeech: { brow: 0, eyeOpen: 0, angleY: 0, angleZ: 0, body: 0 },
+    },
+    zeroOccupancyOffset(),
+  )
+
+  assert.ok(
+    Math.abs(target.bust - (IDENTITY_DRIVER.bust + (performance.bust ?? 0))) <
+      1e-12,
+  )
 })
 
 test('working target preparation reuses its output and preserves legacy math', () => {

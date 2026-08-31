@@ -4,6 +4,8 @@ export interface CoSpeechExpressionOffset {
   brow: number
   eyeOpen: number
   angleY: number
+  angleZ: number
+  body: number
 }
 
 const RELEASE_RATE = 6.2
@@ -14,12 +16,16 @@ export class CoSpeechExpressionController {
     brow: 0,
     eyeOpen: 0,
     angleY: 0,
+    angleZ: 0,
+    body: 0,
   }
 
   private readonly targetOffset: CoSpeechExpressionOffset = {
     brow: 0,
     eyeOpen: 0,
     angleY: 0,
+    angleZ: 0,
+    body: 0,
   }
 
   private previousEnergy = 0
@@ -31,6 +37,8 @@ export class CoSpeechExpressionController {
   private plannedAccentIndex = 0
   private plannedUntil = Number.NEGATIVE_INFINITY
   private accentIntensity = 1
+  private previousHeadBeat = 0
+  private gestureDirection = 1
 
   setProsody(
     plan: SpeechProsodyPlan | null,
@@ -99,6 +107,7 @@ export class CoSpeechExpressionController {
       this.plannedAccents = []
       this.plannedAccentIndex = 0
       this.plannedUntil = Number.NEGATIVE_INFINITY
+      this.previousHeadBeat = 0
     }
 
     const authoredActivity =
@@ -112,17 +121,27 @@ export class CoSpeechExpressionController {
     const authoredHead = active
       ? attackReleasePulse(elapsed, 0.045, 0.1, 0.22) * this.accentIntensity
       : 0
+    const resolvedHeadAccent = Math.max(headAccent, authoredHead)
+    const headBeat = unitInterval(resolvedHeadAccent)
+    if (headBeat > 0.12 && this.previousHeadBeat <= 0.12) {
+      this.gestureDirection *= -1
+    }
+    this.previousHeadBeat = headBeat
     writeOffset(
       this.targetOffset,
       Math.max(phraseActivity, authoredActivity),
       Math.max(browAccent, authoredBrow),
-      Math.max(headAccent, authoredHead),
+      resolvedHeadAccent,
+      now,
+      this.gestureDirection,
     )
     if (!this.initialized) {
       this.initialized = true
       this.output.brow = this.targetOffset.brow
       this.output.eyeOpen = this.targetOffset.eyeOpen
       this.output.angleY = this.targetOffset.angleY
+      this.output.angleZ = this.targetOffset.angleZ
+      this.output.body = this.targetOffset.body
       return this.output
     }
     this.output.brow = stepRelease(this.output.brow, this.targetOffset.brow, dt)
@@ -136,6 +155,18 @@ export class CoSpeechExpressionController {
       this.targetOffset.angleY,
       dt,
     )
+    this.output.angleZ = stepPose(
+      this.output.angleZ,
+      this.targetOffset.angleZ,
+      dt,
+      5.2,
+    )
+    this.output.body = stepPose(
+      this.output.body,
+      this.targetOffset.body,
+      dt,
+      4.2,
+    )
     return this.output
   }
 }
@@ -145,19 +176,41 @@ function writeOffset(
   phraseActivity: number,
   browAccent: number,
   headAccent: number,
+  timeSeconds: number,
+  gestureDirection: number,
 ): Readonly<CoSpeechExpressionOffset> {
   const activity = unitInterval(phraseActivity)
   const browBeat = unitInterval(browAccent)
   const headBeat = unitInterval(headAccent)
+  // Two incommensurate, low-frequency components keep conversational weight
+  // transfer alive without a repeated left-right metronome. Accent direction
+  // alternates per beat, matching the head stroke with a small torso carry.
+  const drift =
+    Math.sin(timeSeconds * 1.17 + 0.6) * 0.62 +
+    Math.sin(timeSeconds * 0.43 + 2.1) * 0.38
+  const carry =
+    Math.sin(timeSeconds * 0.71 + 2.4) * 0.7 +
+    Math.sin(timeSeconds * 0.31 + 0.1) * 0.3
   output.brow = 0.025 * activity + 0.07 * browBeat
   output.eyeOpen = -0.018 * activity + 0.014 * browBeat
-  output.angleY = 0.035 * headBeat
+  output.angleY = 0.09 * headBeat
+  output.angleZ = 0.075 * activity * drift + 0.09 * headBeat * gestureDirection
+  output.body = 0.22 * activity * carry + 0.2 * headBeat * gestureDirection
   return output
 }
 
 function stepRelease(current: number, target: number, dt: number): number {
   if (Math.abs(target) >= Math.abs(current) - 1e-6) return target
   return current + (target - current) * (1 - Math.exp(-RELEASE_RATE * dt))
+}
+
+function stepPose(
+  current: number,
+  target: number,
+  dt: number,
+  response: number,
+): number {
+  return current + (target - current) * (1 - Math.exp(-response * dt))
 }
 
 function unitInterval(value: number): number {

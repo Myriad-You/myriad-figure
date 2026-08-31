@@ -81,12 +81,12 @@ test('if-lower follows channel priority instead of treating music specially', ()
   )
   assert.equal(samePriority.directive.plan.cues.length, 0)
   assert.equal(samePriority.decisions[0]?.reason, 'resource-busy')
-  const face = policy.select(
+  const acknowledgement = policy.select(
     directive('respond', 'replace'),
     [activeMusic()],
     0,
   )
-  assert.equal(face.directive.plan.cues.length, 1)
+  assert.equal(acknowledgement.directive.plan.cues.length, 1)
 })
 
 test('queued reactions move behind a conflicting live behavior', () => {
@@ -101,7 +101,7 @@ test('queued reactions move behind a conflicting live behavior', () => {
   assert.equal(selected.decisions[0]?.reason, 'retimed')
 })
 
-test('timeline replay keeps music continuous and avoids refinement double-takes', () => {
+test('timeline replay respects overrides and avoids refinement double-takes', () => {
   const policy = new HumanReactionPolicy()
   const replay = [
     policy.select(directive('respond'), [], 0),

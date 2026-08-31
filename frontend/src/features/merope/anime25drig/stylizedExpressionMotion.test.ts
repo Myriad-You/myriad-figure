@@ -2,28 +2,33 @@ import type { StylizedExpressionMotion } from './stylizedExpressionMotion'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  createStylizedExpressionMotion,
   SILLY_IRIS_DRIFT_LIMIT,
   StylizedExpressionMotionController,
-  writeWeightedStylizedExpressionMotion,
 } from './stylizedExpressionMotion'
 
 const STEP = 1 / 60
 const LOOP_SECONDS = 6
 
-test('weights renderer-local motion without allocating or shifting its neutral', () => {
-  const controller = new StylizedExpressionMotionController()
-  let source = controller.sample(0, 0, 0, 1, 0, 0)
-  for (let frame = 1; frame <= 60; frame += 1) {
-    source = controller.sample(frame * STEP, 0, 0, 1, 0, 0)
-  }
-  const output = createStylizedExpressionMotion()
-  const actual = writeWeightedStylizedExpressionMotion(output, source, 0.25)
+test('keeps extra artwork size intrinsic to the expression envelope', () => {
+  const anger = settledExpression(1, 0, 0, 0, 0)
+  const speechless = settledExpression(0, 1, 0, 0, 0)
+  const silly = settledExpression(0, 0, 0, 1, 0)
+  const lovestruck = settledExpression(0, 0, 0, 0, 1)
 
-  assert.equal(actual, output)
-  assert.equal(actual.maniac, source.maniac * 0.25)
-  assert.equal(actual.maniacUpperMouthPulse, source.maniacUpperMouthPulse * 0.25)
-  assert.equal(actual.ambientScale, 1 + (source.ambientScale - 1) * 0.25)
+  assert.ok(anger.angerMarkScale > 0.8, 'the anger mark reaches authored size')
+  assert.ok(
+    speechless.speechlessSweatScale > 0.9,
+    'the sweat drop reaches authored size',
+  )
+  assert.ok(silly.sillyEyeScale > 0.9, 'the vacant eyes reach authored size')
+  assert.ok(
+    lovestruck.lovestruckHeartScale > 0.85,
+    'heart pupils reach authored size',
+  )
+  assert.ok(
+    lovestruck.lovestruckFaceScale > 0.9,
+    'the face accent reaches authored size',
+  )
 })
 
 test('drifts the two silly irides on independent, unequal paths', () => {
@@ -152,6 +157,32 @@ function runSilly(seconds: number): StylizedExpressionMotion[] {
     frames.push({ ...controller.sample(frame * STEP, 0, 0, 0, 1) })
   }
   return frames
+}
+
+function settledExpression(
+  anger: number,
+  speechless: number,
+  maniac: number,
+  silly: number,
+  lovestruck: number,
+): StylizedExpressionMotion {
+  const controller = new StylizedExpressionMotionController()
+  let sample = {
+    ...controller.sample(0, anger, speechless, maniac, silly, lovestruck),
+  }
+  for (let frame = 1; frame <= 120; frame += 1) {
+    sample = {
+      ...controller.sample(
+        frame * STEP,
+        anger,
+        speechless,
+        maniac,
+        silly,
+        lovestruck,
+      ),
+    }
+  }
+  return sample
 }
 
 function burst(

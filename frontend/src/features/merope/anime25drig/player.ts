@@ -147,11 +147,7 @@ import {
 import { writeAnime25DShellRotation } from './shellDeformation'
 import { CoSpeechExpressionController } from './speechExpression'
 import { AutoSpeechController } from './speechMotion'
-import {
-  createStylizedExpressionMotion,
-  StylizedExpressionMotionController,
-  writeWeightedStylizedExpressionMotion,
-} from './stylizedExpressionMotion'
+import { StylizedExpressionMotionController } from './stylizedExpressionMotion'
 import { ThinkingMotionController } from './thinkingMotion'
 import {
   resolveAnime25DTorsoChestShape,
@@ -304,9 +300,6 @@ export class Anime25DPlayer {
   }
 
   private stylizedMotion: Readonly<StylizedExpressionMotion> | null = null
-  private rawStylizedMotion: Readonly<StylizedExpressionMotion> | null = null
-  private readonly weightedStylizedMotion = createStylizedExpressionMotion()
-  private stylizedExpressionShare = 1
   private stylizedHeadShare = 1
   private readonly performanceExpression = new PerformanceExpressionController()
   /** Reused so the per-frame pose composition never allocates. */
@@ -774,7 +767,10 @@ export class Anime25DPlayer {
       stylizedTargets.silly,
       stylizedTargets.lovestruck,
     )
-    this.rawStylizedMotion = stylized
+    // Sticker-local geometry is authored inside the expression envelope. Pose
+    // ownership controls its visibility and shared face/body contribution, but
+    // must not shrink or otherwise attenuate the artwork a second time.
+    this.stylizedMotion = stylized
     const performanceMotionScale =
       this.performanceExpression.getAmbientMotionScale()
     const pointerDriven = this.target.mouse && pointer.inside
@@ -823,17 +819,10 @@ export class Anime25DPlayer {
         randomAmbient: randomAction.ambientScale,
       }),
     )
-    this.stylizedExpressionShare +=
-      (gate.stylized.expression - this.stylizedExpressionShare) *
-      (1 - Math.exp(-8 * dt))
-    this.stylizedHeadShare +=
-      (gate.stylized.headBody - this.stylizedHeadShare) *
-      (1 - Math.exp(-8 * dt))
-    this.stylizedMotion = writeWeightedStylizedExpressionMotion(
-      this.weightedStylizedMotion,
-      stylized,
-      this.stylizedExpressionShare,
-    )
+    // PoseGateController already supplies a velocity-continuous handoff. Keep
+    // the renderer-local head pulse on that exact envelope instead of adding a
+    // second low-pass delay after arbitration.
+    this.stylizedHeadShare = gate.stylized.headBody
     applyAnime25DComposedPose(
       tgt,
       gate,
@@ -986,10 +975,10 @@ export class Anime25DPlayer {
     const inverseChestRy = 1 / chestRy
     const jawDrop = this.jaw.value * this.jawTravel
     const jawOpen = Math.max(0, this.jaw.value)
-    const specialHeadOffset = this.rawStylizedMotion
-      ? (this.rawStylizedMotion.maniacHeadPulse * 80 +
-          this.rawStylizedMotion.sillyHeadPulse * 8 +
-          this.rawStylizedMotion.lovestruckHeadPulse * 5) *
+    const specialHeadOffset = this.stylizedMotion
+      ? (this.stylizedMotion.maniacHeadPulse * 80 +
+          this.stylizedMotion.sillyHeadPulse * 8 +
+          this.stylizedMotion.lovestruckHeadPulse * 5) *
         this.stylizedHeadShare *
         fs
       : 0

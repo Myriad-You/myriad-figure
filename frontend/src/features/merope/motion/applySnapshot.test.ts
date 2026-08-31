@@ -109,3 +109,23 @@ test('stop releases groove and rests a music mouth', () => {
   assert.deepEqual(host.speechActive, [false])
   assert.deepEqual(host.tracks, [null])
 })
+
+test('pause rests a music-owned mouth without leaving speech active', () => {
+  const host = recordingRig()
+  const write = applySingingWrite(
+    host.rig,
+    resolveSingingApply({
+      gap: 'active',
+      holdExpired: false,
+      audioPaused: true,
+      mouthOwner: 'music',
+      headBodyOwner: 'music',
+    }),
+    drive,
+  )
+
+  assert.equal(write.speechActive, false)
+  assert.equal(host.articulation[0]?.viseme, 'rest')
+  assert.deepEqual(host.speechActive, [false])
+  assert.deepEqual(host.singing, [true])
+})

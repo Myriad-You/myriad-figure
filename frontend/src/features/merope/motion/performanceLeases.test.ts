@@ -69,13 +69,13 @@ test('a greet cue times the head/body lease to its actual duration', () => {
   assert.equal(windows.planUntilMs, cueDurationMs(greet))
 })
 
-test('think stays on expression and never takes the singing body', () => {
+test('think leases the head channel that its head tilt writes', () => {
   const windows = performanceLeaseWindows(
     directive({ cues: [cue('think')] }),
     0,
   )
   assert.ok((windows.expressionCueUntilMs ?? 0) > 0)
-  assert.equal(windows.headBodyCueUntilMs, null)
+  assert.equal(windows.headBodyCueUntilMs, windows.expressionCueUntilMs)
 })
 
 test('body cue lease expires and music groove resumes without a synthetic tail', () => {
@@ -93,7 +93,7 @@ test('body cue lease expires and music groove resumes without a synthetic tail',
   assert.equal(coordinator.owner('expression', end), 'idle')
 })
 
-test('open bearing plus a face cue leaves the body with music', () => {
+test('a directed head tilt temporarily takes the coarse channel from music', () => {
   const coordinator = new RigMotionCoordinator()
   coordinator.claim('music', ['headBody'], { nowMs: 0 })
   const leases = new PerformanceMotionLeases(coordinator)
@@ -110,7 +110,7 @@ test('open bearing plus a face cue leaves the body with music', () => {
     }),
     0,
   )
-  assert.equal(coordinator.owner('headBody', 0), 'music')
+  assert.equal(coordinator.owner('headBody', 0), 'performance')
   const end = cueDurationMs(think)
   coordinator.tick(end)
   assert.equal(coordinator.owner('headBody', end), 'music')
@@ -152,9 +152,10 @@ test('cancel or unmount releases every performance lease, not someone else', () 
   assert.equal(coordinator.owner('headBody', 0), 'performance')
   home.releaseAll()
   assert.equal(coordinator.owner('expression', 0), 'performance')
-  assert.equal(coordinator.owner('headBody', 0), 'idle')
+  assert.equal(coordinator.owner('headBody', 0), 'performance')
   panel.releaseAll()
   assert.equal(coordinator.owner('expression', 0), 'idle')
+  assert.equal(coordinator.owner('headBody', 0), 'idle')
 })
 
 // Both semantic and stylized eye axes use this lease. Missing either class lets
