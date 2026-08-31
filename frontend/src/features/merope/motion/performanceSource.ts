@@ -1,4 +1,7 @@
 import type { PerformanceDirective } from '../../../services/agent/types'
+import type { RigBearing } from './bearing'
+import type { BehaviorRealizerReport, BehaviorSnapshot } from './behavior'
+import type { RealizerResult } from './behaviorScheduler'
 import type { RigMotionCoordinator } from './coordinator'
 import type { PerformanceIntent } from './intents'
 import {
@@ -7,8 +10,12 @@ import {
 } from '../performanceEvents'
 import { PerformanceLifecycleController } from '../performanceLifecycle'
 import { MEROPE_SPEECH_EVENT, meropeSpeechEventDetail } from '../speechEvents'
+import { bearingFromDirective } from './bearing'
+import { BehaviorScheduler } from './behaviorScheduler'
 import { liveMotionGeneration, newMotionIntentId } from './liveGeneration'
+import { compilePerformanceBehaviorPlan } from './performanceBehaviorPlan'
 import { PerformanceMotionLeases } from './performanceLeases'
+import { HumanReactionPolicy } from './reactionPolicy'
 
 /**
  * One Lite performance producer for a coordinator. Publishes the directive
@@ -16,12 +23,17 @@ import { PerformanceMotionLeases } from './performanceLeases'
  */
 export class PerformanceMotionSource {
   private readonly leases: PerformanceMotionLeases
+  private readonly scheduler = new BehaviorScheduler()
+  private readonly reactionPolicy = new HumanReactionPolicy()
   private controller: PerformanceLifecycleController | null = null
   private settleTimer: ReturnType<typeof setTimeout> | null = null
+  private bearing: RigBearing | null = null
   private intent: PerformanceIntent = {
     directive: null,
     startedAtMs: 0,
     motionIntentId: null,
+    behaviorPlan: null,
+    behaviors: [],
   }
 
   private listening = false
@@ -29,19 +41,25 @@ export class PerformanceMotionSource {
   constructor(
     coordinator: RigMotionCoordinator,
     private readonly onChange: (intent: PerformanceIntent) => void,
+    private readonly externalBehaviors: () => readonly BehaviorSnapshot[] = () => [],
   ) {
     this.leases = new PerformanceMotionLeases(coordinator)
   }
 
-  current(): PerformanceIntent {
-    return this.intent
+  current(nowMs: number = currentNow()): PerformanceIntent {
+    if (!this.intent.behaviorPlan) return this.intent
+    return { ...this.intent, behaviors: this.scheduler.tick(nowMs) }
+  }
+
+  currentBearing(): RigBearing | null {
+    return this.bearing
   }
 
   start(): void {
     if (this.listening) return
     this.controller = new PerformanceLifecycleController({
-      playMotionPlan: (performance) => this.publish(performance),
-      stopMotionPlan: () => this.clear(),
+      applyPerformanceDirective: (performance) => this.publish(performance),
+      clearPerformanceDirective: () => this.clear(),
     })
     if (typeof window !== 'undefined') {
       window.addEventListener(MEROPE_PERFORMANCE_EVENT, this.onPerformance)
@@ -70,15 +88,35 @@ export class PerformanceMotionSource {
   }
 
   private publish(performance: PerformanceDirective): boolean {
-    const startedAtMs = globalThis.performance.now()
-    const windows = this.leases.apply(performance, startedAtMs)
-    this.intent = {
-      directive: performance,
+    const startedAtMs = currentNow()
+    this.bearing = bearingFromDirective(performance) ?? this.bearing
+    const selected = this.reactionPolicy.select(
+      performance,
+      [...this.scheduler.snapshots(startedAtMs), ...this.externalBehaviors()],
       startedAtMs,
-      motionIntentId: newMotionIntentId(),
-      generation: liveMotionGeneration() || undefined,
+    ).directive
+    if (selected.plan.cues.length === 0) {
+      this.intent = { ...this.intent, directive: selected }
+      this.onChange(this.intent)
+      return true
     }
-    this.armSettle(windows.expressionBaselineUntilMs - startedAtMs)
+    const motionIntentId = newMotionIntentId()
+    const behaviorPlan = compilePerformanceBehaviorPlan(
+      selected,
+      startedAtMs,
+      motionIntentId,
+    )
+    this.scheduler.replace(behaviorPlan, startedAtMs)
+    const windows = this.leases.apply(selected, startedAtMs, behaviorPlan)
+    this.intent = {
+      directive: selected,
+      startedAtMs,
+      motionIntentId,
+      generation: liveMotionGeneration() || undefined,
+      behaviorPlan,
+      behaviors: this.scheduler.tick(startedAtMs),
+    }
+    this.armSettle(windows.planUntilMs - startedAtMs)
     this.onChange(this.intent)
     return true
   }
@@ -86,8 +124,27 @@ export class PerformanceMotionSource {
   private clear(): void {
     this.clearSettle()
     this.leases.releaseAll()
-    this.intent = { directive: null, startedAtMs: 0, motionIntentId: null }
+    this.scheduler.clear(currentNow())
+    this.intent = {
+      directive: null,
+      startedAtMs: 0,
+      motionIntentId: null,
+      behaviorPlan: null,
+      behaviors: [],
+    }
     this.onChange(this.intent)
+  }
+
+  reportRealizer(
+    planId: string,
+    behaviorId: string,
+    result: RealizerResult,
+    nowMs: number = currentNow(),
+    reason?: BehaviorRealizerReport['reason'],
+  ): void {
+    const plan = this.intent.behaviorPlan
+    if (!plan || plan.id !== planId) return
+    this.scheduler.reportRealizer(behaviorId, result, nowMs, reason)
   }
 
   private armSettle(delayMs: number): void {
@@ -120,4 +177,8 @@ export class PerformanceMotionSource {
     )
     if (detail) this.controller?.handleSpeech(detail)
   }
+}
+
+function currentNow(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now()
 }

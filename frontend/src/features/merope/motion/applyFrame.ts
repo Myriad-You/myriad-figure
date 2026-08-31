@@ -1,14 +1,18 @@
-import type { PerformanceDirective } from '../../../services/agent/types'
-import type { RigCharacterHandle } from '../rig/RigCharacter'
+import type { RigMotionPort } from '../rig/motionPort'
+import type { RigBearing } from './bearing'
+import type { BehaviorPlan } from './behavior'
 import type { MotionFrame } from './intents'
 import { applySingingWrite } from './applySnapshot'
 import { policyFromOwners } from './policy'
 
 export interface MotionApplyState {
   speechTextSeq: number
-  directedKind: 'performance' | 'autonomy' | null
+  directedKind: 'performance' | null
   directedStartedAtMs: number | null
+  directedPlanId: string | null
+  bearing: RigBearing | null
   speechOwnedMouth: boolean
+  speechProsodyKey: string | null
 }
 
 export function createMotionApplyState(): MotionApplyState {
@@ -16,7 +20,10 @@ export function createMotionApplyState(): MotionApplyState {
     speechTextSeq: 0,
     directedKind: null,
     directedStartedAtMs: null,
+    directedPlanId: null,
+    bearing: null,
     speechOwnedMouth: false,
+    speechProsodyKey: null,
   }
 }
 
@@ -26,35 +33,61 @@ export function createMotionApplyState(): MotionApplyState {
  */
 export function applyMotionFrame(
   rig: Pick<
-    RigCharacterHandle,
+    RigMotionPort,
     | 'setMotionPolicy'
+    | 'setBearing'
+    | 'setMood'
     | 'setSpeechActive'
     | 'setAutoSpeech'
     | 'setSpeechEnergy'
     | 'setSpeechArticulation'
+    | 'setSpeechProsody'
     | 'enqueueSpeechText'
-    | 'playMotionPlan'
-    | 'stopMotionPlan'
+    | 'playBehaviorPlan'
+    | 'stopBehaviorPlan'
     | 'setSinging'
+    | 'setSingingTrack'
     | 'setSingingSpectrum'
   >,
   frame: MotionFrame,
   state: MotionApplyState,
+  onRealizer?: (feedback: MotionRealizerFeedback) => void,
 ): MotionApplyState {
   rig.setMotionPolicy(policyFromOwners(frame.snapshot.owners))
+  applyBearing(rig, frame, state)
+  if (frame.mood) rig.setMood(frame.mood.mood, frame.mood.activity)
   applySpeech(rig, frame, state)
-  applyDirectedPlan(rig, frame, state)
+  applyDirectedPlan(rig, frame, state, onRealizer)
   applyMusic(rig, frame)
   return state
 }
 
+export interface MotionRealizerFeedback {
+  planId: string
+  behaviorId: string
+  result: 'accepted' | 'rejected'
+  atMs: number
+  reason?: import('./behavior').BehaviorRealizerReport['reason']
+}
+
+function applyBearing(
+  rig: Pick<RigMotionPort, 'setBearing'>,
+  frame: MotionFrame,
+  state: MotionApplyState,
+): void {
+  if (frame.bearing === state.bearing) return
+  rig.setBearing(frame.bearing)
+  state.bearing = frame.bearing
+}
+
 function applySpeech(
   rig: Pick<
-    RigCharacterHandle,
+    RigMotionPort,
     | 'setSpeechActive'
     | 'setAutoSpeech'
     | 'setSpeechEnergy'
     | 'setSpeechArticulation'
+    | 'setSpeechProsody'
     | 'enqueueSpeechText'
   >,
   frame: MotionFrame,
@@ -67,6 +100,11 @@ function applySpeech(
     rig.setAutoSpeech(speech.autoSpeech)
     if (speech.energy != null) rig.setSpeechEnergy(speech.energy)
     if (speech.articulation) rig.setSpeechArticulation(speech.articulation)
+    const prosodyKey = speechProsodyKey(speech.prosody)
+    if (prosodyKey !== state.speechProsodyKey) {
+      rig.setSpeechProsody(speech.prosody)
+      state.speechProsodyKey = prosodyKey
+    }
     for (const chunk of speech.queuedText) {
       if (chunk.seq <= state.speechTextSeq) continue
       rig.enqueueSpeechText(chunk.text, chunk.locale)
@@ -78,70 +116,86 @@ function applySpeech(
   if (state.speechOwnedMouth && !speechOwns) {
     rig.setAutoSpeech(false)
     if (frame.snapshot.owners.mouth !== 'music') rig.setSpeechActive(false)
+    rig.setSpeechProsody(null)
+    state.speechProsodyKey = null
     state.speechOwnedMouth = false
   }
 }
 
+/** Same utterance may be revised as alignment evidence arrives. */
+function speechProsodyKey(
+  prosody: import('../speech/prosody').SpeechProsodyPlan | null,
+): string | null {
+  if (!prosody) return null
+  const accents = prosody.accents
+    .map((accent) => `${accent.offsetMs}:${accent.intensity}`)
+    .join(',')
+  return `${prosody.utteranceId}|${prosody.startedAtMs}|${prosody.durationMs}|${accents}`
+}
+
 function applyDirectedPlan(
-  rig: Pick<RigCharacterHandle, 'playMotionPlan' | 'stopMotionPlan'>,
+  rig: Pick<RigMotionPort, 'playBehaviorPlan' | 'stopBehaviorPlan'>,
   frame: MotionFrame,
   state: MotionApplyState,
+  onRealizer?: (feedback: MotionRealizerFeedback) => void,
 ): void {
   const next = directedPlan(frame)
   if (next) {
     if (
       state.directedKind !== next.kind ||
-      state.directedStartedAtMs !== next.startedAtMs
+      state.directedStartedAtMs !== next.startedAtMs ||
+      state.directedPlanId !== next.motionIntentId
     ) {
       if (state.directedKind != null && state.directedKind !== next.kind) {
-        rig.stopMotionPlan()
+        rig.stopBehaviorPlan(state.directedPlanId ?? undefined)
       }
-      // The player is the last word on whether a plan can run. Recording a
-      // rejected plan as applied retires it forever: the identity check below
-      // never fires again for it, so nothing retries.
-      if (rig.playMotionPlan(next.directive, next.startedAtMs)) {
-        state.directedKind = next.kind
-        state.directedStartedAtMs = next.startedAtMs
+      const reports = rig.playBehaviorPlan(next.plan)
+      state.directedKind = next.kind
+      state.directedStartedAtMs = next.startedAtMs
+      state.directedPlanId = next.motionIntentId
+      for (const report of reports) {
+        onRealizer?.({
+          planId: next.plan.id,
+          behaviorId: report.behaviorId,
+          result: report.result,
+          atMs: report.atMs,
+          ...(report.reason ? { reason: report.reason } : {}),
+        })
       }
     }
     return
   }
   if (state.directedKind != null) {
-    rig.stopMotionPlan()
+    rig.stopBehaviorPlan(state.directedPlanId ?? undefined)
     state.directedKind = null
     state.directedStartedAtMs = null
+    state.directedPlanId = null
   }
 }
 
 function directedPlan(frame: MotionFrame): {
-  kind: 'performance' | 'autonomy'
-  directive: PerformanceDirective
+  kind: 'performance'
+  plan: BehaviorPlan
   startedAtMs: number
+  motionIntentId: string | null
 } | null {
-  const performance = frame.performance?.directive ?? null
-  if (performance) {
+  const plan = frame.performance?.behaviorPlan ?? null
+  if (plan && plan.behaviors.length > 0) {
     return {
       kind: 'performance',
-      directive: performance,
+      plan,
       startedAtMs: frame.performance?.startedAtMs ?? 0,
+      motionIntentId: frame.performance?.motionIntentId ?? null,
     }
   }
-  const owners = frame.snapshot.owners
-  const autonomyOwns =
-    owners.expression === 'autonomy' || owners.gaze === 'autonomy'
-  const autonomy = autonomyOwns ? frame.autonomy?.directive ?? null : null
-  if (!autonomy) return null
-  return {
-    kind: 'autonomy',
-    directive: autonomy,
-    startedAtMs: frame.autonomy?.startedAtMs ?? 0,
-  }
+  return null
 }
 
 function applyMusic(
   rig: Pick<
-    RigCharacterHandle,
+    RigMotionPort,
     | 'setSinging'
+    | 'setSingingTrack'
     | 'setSingingSpectrum'
     | 'setSpeechArticulation'
     | 'setSpeechActive'
@@ -150,6 +204,7 @@ function applyMusic(
 ): void {
   if (!frame.music) return
   applySingingWrite(rig, frame.music.apply, {
+    trackId: frame.music.trackId,
     spectrum: frame.music.spectrum,
     articulation: frame.music.articulation,
   })

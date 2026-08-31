@@ -3,21 +3,8 @@ import {
   mixEyeOpen,
 } from './performanceExpression'
 
-export type RandomActionEnergy = 'idle' | 'excited'
-
 export type RandomActionName =
-  | 'acknowledge'
-  | 'curious'
-  | 'openGesture'
-  | 'pleased'
-  | 'beam'
-  | 'sparkle'
-  | 'glance'
-  | 'cheer'
-  | 'dreamy'
-  | 'coy'
-  | 'smug'
-  | 'squint'
+  'postureShift' | 'headDrift' | 'shoulderEase' | 'softBlink'
 
 export interface RandomActionFrame {
   angleX: number
@@ -61,26 +48,15 @@ interface ActionDefinition {
 type RandomSource = () => number
 
 const IDLE_ACTIONS: readonly ActionDefinition[] = [
-  { name: 'acknowledge', minimumDuration: 1.45, maximumDuration: 1.75 },
-  { name: 'curious', minimumDuration: 2, maximumDuration: 2.55 },
-  { name: 'openGesture', minimumDuration: 2, maximumDuration: 2.5 },
-  { name: 'pleased', minimumDuration: 1.8, maximumDuration: 2.3, weight: 2.4 },
-]
-
-const EXCITED_ACTIONS: readonly ActionDefinition[] = [
-  { name: 'beam', minimumDuration: 1.05, maximumDuration: 1.55, weight: 3.2 },
+  { name: 'postureShift', minimumDuration: 1.8, maximumDuration: 2.3 },
+  { name: 'headDrift', minimumDuration: 2.2, maximumDuration: 2.8 },
+  { name: 'shoulderEase', minimumDuration: 2.1, maximumDuration: 2.7 },
   {
-    name: 'sparkle',
-    minimumDuration: 0.85,
-    maximumDuration: 1.35,
+    name: 'softBlink',
+    minimumDuration: 1.6,
+    maximumDuration: 2.1,
     weight: 2.4,
   },
-  { name: 'glance', minimumDuration: 0.8, maximumDuration: 1.25, weight: 0.7 },
-  { name: 'cheer', minimumDuration: 1.15, maximumDuration: 1.7, weight: 3.2 },
-  { name: 'dreamy', minimumDuration: 1.1, maximumDuration: 1.7, weight: 0.7 },
-  { name: 'coy', minimumDuration: 0.9, maximumDuration: 1.4, weight: 2.2 },
-  { name: 'smug', minimumDuration: 0.95, maximumDuration: 1.45, weight: 1.6 },
-  { name: 'squint', minimumDuration: 0.7, maximumDuration: 1.15, weight: 0.6 },
 ]
 
 const NEUTRAL_FRAME: RandomActionFrame = {
@@ -122,8 +98,6 @@ export class RandomActionController {
   private nextActionAt = Number.POSITIVE_INFINITY
   private releaseStartedAt = 0
   private releasing = false
-  private energy: RandomActionEnergy = 'idle'
-  private drive = 1
 
   constructor(private readonly random: RandomSource = Math.random) {}
 
@@ -131,27 +105,13 @@ export class RandomActionController {
     timeSeconds: number,
     enabled: boolean,
     blocked: boolean,
-    energy: RandomActionEnergy = 'idle',
-    drive = 1,
   ): Readonly<RandomActionFrame> {
     const now = finiteTime(timeSeconds)
-    this.drive = clamp(Number.isFinite(drive) ? drive : 1, 0, 1)
     const available = enabled && !blocked
     if (!this.initialized) {
       this.initialized = true
       this.available = available
-      this.energy = energy
       if (available) this.scheduleFirstAction(now)
-    }
-
-    if (energy !== this.energy) {
-      if (this.activeIndex >= 0) {
-        this.resolveAction(now)
-        this.beginRelease(now)
-      }
-      this.energy = energy
-      this.lastIndex = -1
-      if (available) this.scheduleResumeAction(now)
     }
 
     if (!available) {
@@ -175,7 +135,7 @@ export class RandomActionController {
         return this.resolveAction(now)
       }
       this.activeIndex = -1
-      if (this.energy !== 'excited') writeNeutral(this.output)
+      writeNeutral(this.output)
     }
 
     if (now >= this.nextActionAt) {
@@ -192,23 +152,16 @@ export class RandomActionController {
   }
 
   private catalog(): readonly ActionDefinition[] {
-    return this.energy === 'excited' ? EXCITED_ACTIONS : IDLE_ACTIONS
+    return IDLE_ACTIONS
   }
 
   private scheduleFirstAction(now: number): void {
-    this.nextActionAt =
-      now +
-      (this.energy === 'excited'
-        ? this.randomRange(0.28, 0.8)
-        : this.randomRange(1.2, 2))
+    this.nextActionAt = now + this.randomRange(1.2, 2)
   }
 
   private scheduleResumeAction(now: number): void {
     this.nextActionAt =
-      now +
-      (this.energy === 'excited'
-        ? this.randomRange(0.28, 0.8)
-        : this.randomRange(RESUME_DELAY_MIN, RESUME_DELAY_MAX))
+      now + this.randomRange(RESUME_DELAY_MIN, RESUME_DELAY_MAX)
   }
 
   private beginAction(now: number): void {
@@ -223,16 +176,8 @@ export class RandomActionController {
       action.maximumDuration,
     )
     this.actionDirection = this.randomUnit() < 0.5 ? -1 : 1
-    this.actionIntensity =
-      this.energy === 'excited'
-        ? this.randomRange(0.78, 1) * mix(0.62, 1.12, this.drive)
-        : this.randomRange(0.9, 1.08)
-    this.nextActionAt =
-      now +
-      this.actionDuration +
-      (this.energy === 'excited'
-        ? this.randomRange(0.45, 1.15)
-        : this.randomRange(3.8, 6.5))
+    this.actionIntensity = this.randomRange(0.9, 1.08)
+    this.nextActionAt = now + this.actionDuration + this.randomRange(3.8, 6.5)
     copyFrame(this.actionFrom, this.output)
   }
 
@@ -261,122 +206,50 @@ export class RandomActionController {
       0,
       1,
     )
-    const hold = this.energy === 'excited'
-    const motion = stagedEnvelope(progress, hold ? 0.3 : 0.2, hold ? 1 : 0.68)
-    const face = stagedEnvelope(progress, hold ? 0.26 : 0.16, hold ? 1 : 0.7)
-    const gesture = stagedEnvelope(
-      progress,
-      hold ? 0.32 : 0.24,
-      hold ? 1 : 0.66,
-    )
+    const motion = stagedEnvelope(progress, 0.2, 0.68)
+    const face = stagedEnvelope(progress, 0.16, 0.7)
+    const gesture = stagedEnvelope(progress, 0.24, 0.66)
     const direction = this.actionDirection
     const intensity = this.actionIntensity
     writeNeutral(this.output)
 
     switch (action.name) {
-      case 'acknowledge': {
-        const nod = nodCurve(progress)
-        this.output.angleY = 0.22 * nod * intensity
-        this.output.angleZ = direction * 0.035 * motion * intensity
-        this.output.body = 0.055 * motion * intensity
-        this.output.brow = 0.12 * face * intensity
-        this.output.eyeOpen = -0.11 * face * intensity
-        this.output.ambientScale = 1 - 0.58 * Math.max(motion, nod)
+      case 'postureShift': {
+        this.output.angleY = 0.035 * motion * intensity
+        this.output.angleZ = direction * 0.05 * motion * intensity
+        this.output.body = 0.035 * motion * intensity
+        this.output.eyeOpen = -0.035 * face * intensity
+        this.output.ambientScale = 1 - 0.32 * motion
         break
       }
-      case 'curious':
-        this.output.angleX = direction * 0.08 * motion * intensity
-        this.output.angleY = -0.055 * motion * intensity
-        this.output.angleZ = direction * 0.2 * motion * intensity
-        this.output.body = -direction * 0.09 * motion * intensity
-        this.output.brow = 0.18 * face * intensity
-        this.output.browAngSym = direction * 0.1 * face * intensity
-        this.output.eyeOpen = -0.055 * face * intensity
-        this.output.irisScale = -0.035 * face * intensity
-        this.output.armY = 0.08 * gesture * intensity
-        this.output.armPos = -0.03 * gesture * intensity
-        this.output.ambientScale = 1 - 0.7 * motion
+      case 'headDrift':
+        this.output.angleX = direction * 0.045 * motion * intensity
+        this.output.angleY = -0.025 * motion * intensity
+        this.output.angleZ = direction * 0.075 * motion * intensity
+        this.output.body = -direction * 0.035 * motion * intensity
+        this.output.eyeOpen = -0.025 * face * intensity
+        this.output.ambientScale = 1 - 0.38 * motion
         break
-      case 'openGesture':
-        this.output.angleX = direction * 0.06 * motion * intensity
-        this.output.angleY = -0.07 * motion * intensity
-        this.output.angleZ = -direction * 0.08 * motion * intensity
-        this.output.body = direction * 0.13 * motion * intensity
-        this.output.brow = 0.14 * face * intensity
-        this.output.eyeOpen = -0.1 * face * intensity
-        this.output.irisScale = 0.012 * face * intensity
-        this.output.armY = 0.32 * gesture * intensity
-        this.output.armPos = -0.1 * gesture * intensity
-        this.output.ambientScale = 1 - 0.72 * motion
+      case 'shoulderEase':
+        this.output.angleX = direction * 0.035 * motion * intensity
+        this.output.angleY = -0.025 * motion * intensity
+        this.output.angleZ = -direction * 0.045 * motion * intensity
+        this.output.body = direction * 0.055 * motion * intensity
+        this.output.eyeOpen = -0.035 * face * intensity
+        this.output.armY = 0.1 * gesture * intensity
+        this.output.armPos = -0.025 * gesture * intensity
+        this.output.ambientScale = 1 - 0.4 * motion
         break
-      case 'pleased':
-        this.output.angleX = direction * 0.04 * motion * intensity
-        this.output.angleY = 0.03 * motion * intensity
-        this.output.angleZ = direction * 0.14 * motion * intensity
-        this.output.body = -direction * 0.06 * motion * intensity
-        this.output.brow = 0.18 * face * intensity
-        this.output.browAngSym = -0.08 * face * intensity
-        this.output.eyeOpen = -0.42 * face * intensity
-        this.output.irisScale = 0.02 * face * intensity
-        this.output.armY = 0.12 * gesture * intensity
-        this.output.armPos = -0.04 * gesture * intensity
-        this.output.ambientScale = 1 - 0.64 * motion
-        break
-      case 'beam':
-        this.output.brow = 0.3 * face * intensity
-        this.output.browAngSym = -0.07 * face * intensity
-        this.output.eyeOpen = -0.24 * face * intensity
-        this.output.irisScale = 0.028 * face * intensity
-        this.output.ambientScale = 1 - 0.08 * face
-        break
-      case 'sparkle':
-        this.output.brow = 0.34 * face * intensity
-        this.output.eyeOpen = 0.18 * face * intensity
-        this.output.irisScale = 0.05 * face * intensity
-        this.output.ambientScale = 1 - 0.08 * face
-        break
-      case 'glance':
-        this.output.brow = 0.16 * face * intensity
-        this.output.browAngSym = direction * 0.09 * face * intensity
-        this.output.eyeOpen = -0.05 * face * intensity
-        this.output.ambientScale = 1 - 0.08 * face
-        break
-      case 'cheer':
-        this.output.brow = 0.36 * face * intensity
-        this.output.browAngSym = -0.1 * face * intensity
-        this.output.eyeOpen = 0.14 * face * intensity
-        this.output.irisScale = 0.045 * face * intensity
-        this.output.ambientScale = 1 - 0.08 * face
-        break
-      case 'dreamy':
-        this.output.eyeOpen = -0.2 * face * intensity
-        this.output.irisScale = 0.045 * face * intensity
-        this.output.brow = 0.14 * face * intensity
-        this.output.ambientScale = 1 - 0.07 * face
-        break
-      case 'coy':
-        this.output.eyeOpen = -0.14 * face * intensity
-        this.output.brow = 0.12 * face * intensity
-        this.output.browAngSym = direction * 0.08 * face * intensity
-        this.output.ambientScale = 1 - 0.07 * face
-        break
-      case 'smug':
-        this.output.brow = 0.1 * face * intensity
-        this.output.browAngSym = direction * 0.12 * face * intensity
+      case 'softBlink':
+        this.output.angleX = direction * 0.02 * motion * intensity
+        this.output.angleZ = direction * 0.04 * motion * intensity
+        this.output.body = -direction * 0.025 * motion * intensity
         this.output.eyeOpen = -0.18 * face * intensity
-        this.output.irisScale = 0.02 * face * intensity
-        this.output.ambientScale = 1 - 0.07 * face
-        break
-      case 'squint':
-        this.output.eyeOpen = -0.34 * face * intensity
-        this.output.brow = 0.22 * face * intensity
-        this.output.irisScale = -0.02 * face * intensity
-        this.output.ambientScale = 1 - 0.08 * face
+        this.output.armY = 0.035 * gesture * intensity
+        this.output.ambientScale = 1 - 0.3 * motion
         break
     }
-    this.blendFromPrevious(
-      smootherstep(progress / (this.energy === 'excited' ? 0.34 : 0.28)),
-    )
+    this.blendFromPrevious(smootherstep(progress / 0.28))
     return this.output
   }
 
@@ -479,15 +352,6 @@ export function applyRandomActionFrame(
 
 function mixChannel(base: number, offset: number, scale: number): number {
   return mixBoundedExpressionChannel(base, offset * scale, -1, 1, 0)
-}
-
-function nodCurve(progress: number): number {
-  if (progress < 0.24) return smootherstep(progress / 0.24)
-  if (progress < 0.44)
-    return mix(1, 0.16, smootherstep((progress - 0.24) / 0.2))
-  if (progress < 0.64)
-    return mix(0.16, 0.72, smootherstep((progress - 0.44) / 0.2))
-  return mix(0.72, 0, smootherstep((progress - 0.64) / 0.36))
 }
 
 function stagedEnvelope(

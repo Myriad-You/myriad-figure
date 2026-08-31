@@ -11,9 +11,9 @@ import {
   expressionCueOffset,
   mixBoundedExpressionChannel,
   mixEyeOpen,
+  performanceCueOrigin,
   PerformanceDirectiveGate,
   PerformanceExpressionController,
-  performanceCueOrigin,
   performancePhaseRank,
 } from './performanceExpression'
 

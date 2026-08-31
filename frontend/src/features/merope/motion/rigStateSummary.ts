@@ -9,9 +9,9 @@ import type {
 } from '../../../services/agent/types'
 import type { MeropeRigManifest } from '../rig/types'
 import type { SingingSpectrumDrive } from '../singing/singingGroove'
+import type { BehaviorSnapshot } from './behavior'
 import type { MotionSourceId } from './channels'
 import type { MotionRuntime } from './runtime'
-import { scheduleBodyCues } from '../anime25drig/performanceMotion'
 import { hasAnime25DCapability } from '../rig/anime25dCapabilities'
 import { MOTION_SOURCES } from './channels'
 
@@ -34,6 +34,34 @@ const PHASES: readonly (PerformancePhase | 'idle')[] = [
   'mood',
   'idle',
 ]
+const BEHAVIOR_PHASES = [
+  'planned',
+  'preparing',
+  'committed',
+  'holding',
+  'recovering',
+  'complete',
+  'rejected',
+] as const
+const BEHAVIOR_FUNCTIONS = [
+  'orient',
+  'attend',
+  'acknowledge',
+  'understand',
+  'agree',
+  'disagree',
+  'uncertain',
+  'prepareSpeech',
+  'yieldTurn',
+  'emphasize',
+  'surprise',
+  'celebrate',
+  'relief',
+  'settle',
+  'entrain',
+  'express',
+  'idleShift',
+] as const
 const CAPABILITY_MAP = [
   ['blink', 'blink'],
   ['independent-eyes', 'independent-eyes'],
@@ -49,6 +77,22 @@ const CAPABILITY_MAP = [
   ['mouth-shapes', 'mouth-shapes'],
 ] as const
 const MAX_RECENT = 6
+const MAX_ACTIVE_BEHAVIORS = 8
+const BEHAVIOR_RESOURCES = [
+  'face.mouth',
+  'face.expression',
+  'face.gaze',
+  'body.head',
+  'body.torso',
+  'body.arm.left',
+  'body.arm.right',
+  'body.hand.left',
+  'body.hand.right',
+  'body.legs',
+  'secondary.hair',
+  'secondary.clothing',
+  'secondary.bust',
+] as const
 
 export function semanticRigCapabilities(
   manifest: MeropeRigManifest | null | undefined,
@@ -64,7 +108,11 @@ export function semanticRigCapabilities(
       id: layer.name,
       role: layer.role,
       side:
-        layer.side === 'L' ? ('left' as const) : layer.side === 'R' ? ('right' as const) : null,
+        layer.side === 'L'
+          ? ('left' as const)
+          : layer.side === 'R'
+            ? ('right' as const)
+            : null,
     })) ?? []),
   ]
   const capabilities = new Set<string>(['head-body'])
@@ -78,19 +126,25 @@ export function captureRigStateSummary(
   runtime: MotionRuntime,
   nowMs: number = currentNow(),
 ): RigStateSummary {
-  const frame = runtime.frame()
+  const frame = runtime.frame(nowMs)
   const facts = runtime.summaryFacts()
   const performance = frame.performance?.directive ?? null
-  const startedAtMs = frame.performance?.startedAtMs ?? 0
-  const baseline = performance?.plan.baseline
-  const acting = resolveActing(performance, startedAtMs, nowMs)
+  const baseline = frame.bearing
+  const behaviors = [
+    ...(frame.performance?.behaviors ?? []),
+    ...(frame.speech?.behaviors ?? []),
+    ...(frame.music?.behaviors ?? []),
+  ]
+  const acting = resolveActing(performance, behaviors)
   const spectrum = frame.music?.spectrum ?? null
   const singing = Boolean(frame.music?.apply.writeGroove)
-  const musicPlaying = singing || Boolean(frame.music && !frame.music.apply.release)
+  const musicPlaying =
+    singing || Boolean(frame.music && !frame.music.apply.release)
   const summary: RigStateSummary = {
     expression: allowExpression(baseline?.expression) ?? 'steady',
     posture: allowPosture(baseline?.posture) ?? 'neutral',
     acting,
+    activeBehaviors: activeBehaviorSummaries(behaviors),
     owners: {
       mouth: allowOwner(frame.snapshot.owners.mouth),
       expression: allowOwner(frame.snapshot.owners.expression),
@@ -107,29 +161,45 @@ export function captureRigStateSummary(
     recentIntents: facts.recentIntents,
     motionStyle: facts.motionStyle,
     pageVisible:
-      typeof document === 'undefined' ? true : document.visibilityState !== 'hidden',
+      typeof document === 'undefined'
+        ? true
+        : document.visibilityState !== 'hidden',
     faceVisible: facts.faceVisible,
   }
   return sanitizeRigStateSummary(summary) ?? summary
 }
 
-export function sanitizeRigStateSummary(value: unknown): RigStateSummary | null {
+export function sanitizeRigStateSummary(
+  value: unknown,
+): RigStateSummary | null {
   if (!isRecord(value)) return null
   const acting = isRecord(value.acting) ? value.acting : {}
   const owners = isRecord(value.owners) ? value.owners : {}
   const music = isRecord(value.music) ? value.music : null
+  const activeBehaviors = Array.isArray(value.activeBehaviors)
+    ? value.activeBehaviors
+        .map(sanitizeActiveBehavior)
+        .filter(
+          (behavior): behavior is RigStateSummary['activeBehaviors'][number] =>
+            behavior !== null,
+        )
+        .slice(0, MAX_ACTIVE_BEHAVIORS)
+    : []
   const capabilities = Array.isArray(value.capabilities)
     ? value.capabilities
         .filter((item): item is string => typeof item === 'string')
         .filter((item) =>
-          CAPABILITY_MAP.some(([, semantic]) => semantic === item || item === 'head-body'),
+          CAPABILITY_MAP.some(
+            ([, semantic]) => semantic === item || item === 'head-body',
+          ),
         )
         .slice(0, 12)
     : []
   const recentIntents = Array.isArray(value.recentIntents)
     ? value.recentIntents
-        .filter((item): item is PerformanceCue['intent'] =>
-          typeof item === 'string' && isCueIntent(item),
+        .filter(
+          (item): item is PerformanceCue['intent'] =>
+            typeof item === 'string' && isCueIntent(item),
         )
         .slice(0, MAX_RECENT)
     : []
@@ -141,8 +211,19 @@ export function sanitizeRigStateSummary(value: unknown): RigStateSummary | null 
       phase: PHASES.includes(acting.phase as PerformancePhase | 'idle')
         ? (acting.phase as PerformancePhase | 'idle')
         : 'idle',
+      function: BEHAVIOR_FUNCTIONS.includes(
+        acting.function as (typeof BEHAVIOR_FUNCTIONS)[number],
+      )
+        ? (acting.function as (typeof BEHAVIOR_FUNCTIONS)[number])
+        : null,
+      lifecycle: BEHAVIOR_PHASES.includes(
+        acting.lifecycle as (typeof BEHAVIOR_PHASES)[number],
+      )
+        ? (acting.lifecycle as (typeof BEHAVIOR_PHASES)[number])
+        : null,
       remainingMs: clampMs(acting.remainingMs),
     },
+    activeBehaviors,
     owners: {
       mouth: allowOwner(owners.mouth),
       expression: allowOwner(owners.expression),
@@ -171,30 +252,101 @@ export function sanitizeRigStateSummary(value: unknown): RigStateSummary | null 
   }
 }
 
+function activeBehaviorSummaries(
+  behaviors: readonly BehaviorSnapshot[],
+): RigStateSummary['activeBehaviors'] {
+  return behaviors
+    .filter(
+      (behavior) =>
+        behavior.phase !== 'complete' && behavior.phase !== 'rejected',
+    )
+    .slice(0, MAX_ACTIVE_BEHAVIORS)
+    .map((behavior) => ({
+      function: behavior.function,
+      lifecycle: behavior.phase,
+      source: behavior.source,
+      resources: [...behavior.resources],
+      remainingMs: clampMs(behavior.remainingMs),
+    }))
+}
+
+function sanitizeActiveBehavior(
+  value: unknown,
+): RigStateSummary['activeBehaviors'][number] | null {
+  if (!isRecord(value)) return null
+  if (
+    !BEHAVIOR_FUNCTIONS.includes(
+      value.function as (typeof BEHAVIOR_FUNCTIONS)[number],
+    ) ||
+    !BEHAVIOR_PHASES.includes(
+      value.lifecycle as (typeof BEHAVIOR_PHASES)[number],
+    ) ||
+    !MOTION_SOURCES.includes(value.source as MotionSourceId)
+  ) {
+    return null
+  }
+  const resources = Array.isArray(value.resources)
+    ? value.resources
+        .filter((resource): resource is (typeof BEHAVIOR_RESOURCES)[number] =>
+          BEHAVIOR_RESOURCES.includes(
+            resource as (typeof BEHAVIOR_RESOURCES)[number],
+          ),
+        )
+        .slice(0, 8)
+    : []
+  return {
+    function:
+      value.function as RigStateSummary['activeBehaviors'][number]['function'],
+    lifecycle:
+      value.lifecycle as RigStateSummary['activeBehaviors'][number]['lifecycle'],
+    source: value.source as string,
+    resources,
+    remainingMs: clampMs(value.remainingMs),
+  }
+}
+
 function resolveActing(
   directive: PerformanceDirective | null,
-  startedAtMs: number,
-  nowMs: number,
+  behaviors: readonly BehaviorSnapshot[],
 ): RigStateSummary['acting'] {
-  if (!directive) {
-    return { intent: null, phase: 'idle', remainingMs: 0 }
-  }
-  const phase = PHASES.includes(directive.phase) ? directive.phase : 'idle'
-  const scheduled = scheduleBodyCues(directive.plan.cues, startedAtMs)
-  if (scheduled.length === 0) {
-    return { intent: null, phase, remainingMs: 0 }
-  }
-  const lastEnd = scheduled.reduce(
-    (until, item) => Math.max(until, item.endMs),
-    scheduled[0].endMs,
+  const phase =
+    directive && PHASES.includes(directive.phase) ? directive.phase : 'idle'
+  const cues = behaviors.filter(
+    (behavior) => behavior.form.family === 'performance-cue',
   )
-  const remainingMs = Math.max(0, Math.round(lastEnd - nowMs))
-  const active = scheduled.find(
-    (item) => nowMs >= item.startMs && nowMs < item.endMs,
+  const live = behaviors.filter(
+    (behavior) =>
+      behavior.phase !== 'planned' &&
+      behavior.phase !== 'complete' &&
+      behavior.phase !== 'rejected',
   )
+  const active =
+    live.find((behavior) => behavior.form.family === 'performance-cue') ??
+    live.find((behavior) => behavior.source === 'coSpeech') ??
+    live.find((behavior) => behavior.source === 'performance') ??
+    live.find((behavior) => behavior.source === 'music') ??
+    live[0]
+  if (!active && cues.length === 0) {
+    return {
+      intent: null,
+      phase,
+      function: null,
+      lifecycle: null,
+      remainingMs: 0,
+    }
+  }
+  const timed = cues.length > 0 ? cues : active ? [active] : []
+  const remainingMs = timed.reduce(
+    (remaining, behavior) => Math.max(remaining, behavior.remainingMs ?? 0),
+    0,
+  )
+  const intent =
+    active?.form.family === 'performance-cue' ? active.form.id : null
   return {
-    intent: remainingMs === 0 ? null : (active?.cue.intent ?? null),
+    intent: intent !== null && isCueIntent(intent) ? intent : null,
     phase,
+    function: active?.function ?? null,
+    lifecycle: active?.phase ?? null,
     remainingMs,
   }
 }

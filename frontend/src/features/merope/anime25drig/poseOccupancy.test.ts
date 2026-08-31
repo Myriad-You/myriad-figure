@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { composeOccupancyOffsets } from './poseCompositor'
 import {
   COSPEECH_SPEAKING,
   GLANCE_SINGING,
@@ -9,7 +10,6 @@ import {
   PoseOccupancyController,
   RANDOM_SPEAKING,
 } from './poseOccupancy'
-import { composeOccupancyOffsets } from './poseCompositor'
 
 const idle = {
   speaking: false,
@@ -91,6 +91,17 @@ test('occupancy eases when the situation flips and does not step the weights', (
   assert.ok(Math.abs(previous.glance - GLANCE_SPEAKING) < 0.02)
 })
 
+test('a new semantic source becomes useful within the first eighty milliseconds', () => {
+  const occupancy = new PoseOccupancyController()
+  occupancy.sample(0, idle)
+  let current = occupancy.sample(1 / 60, { ...idle, speaking: true })
+  for (let frame = 2; frame <= 5; frame += 1) {
+    current = occupancy.sample(1 / 60, { ...idle, speaking: true })
+  }
+  assert.ok(current.coSpeech > COSPEECH_SPEAKING * 0.7)
+  assert.ok(current.speechMouth > 0.7)
+})
+
 test('speech end lets idle glance rise without a 2400ms baseline hold', () => {
   const occupancy = new PoseOccupancyController()
   occupancy.sample(0, { ...idle, speaking: true })
@@ -113,39 +124,36 @@ test('occupancy does not consult a motion-policy owner to return glance', () => 
 })
 
 test('compositor keeps singing groove and idle glance visible together', () => {
+  const everywhere = (amount: number) => ({
+    gaze: amount,
+    headBody: amount,
+    expression: amount,
+  })
   const mixed = composeOccupancyOffsets([
     {
-      occupancy: GLANCE_SINGING,
-      offset: {
-        angleX: 0.3,
-        angleY: 0,
-        angleZ: 0,
-        body: 0,
-        armY: 0,
-        armPos: 0,
-        eyeX: 0.4,
-        eyeY: 0,
-        brow: 0,
-      },
+      weights: everywhere(GLANCE_SINGING),
+      offset: { angleX: 0.3, eyeX: 0.4 },
     },
     {
-      occupancy: GROOVE_SINGING,
-      offset: {
-        angleX: 0,
-        angleY: 0.3,
-        angleZ: 0,
-        body: 0.2,
-        armY: 0.25,
-        armPos: 0,
-        eyeX: 0,
-        eyeY: 0,
-        brow: 0.1,
-      },
+      weights: everywhere(GROOVE_SINGING),
+      offset: { angleY: 0.3, body: 0.2, armY: 0.25, brow: 0.1 },
     },
   ])
   assert.ok(mixed.angleX > 0.1)
-  assert.ok(mixed.angleY > 0.1)
-  assert.ok(mixed.body > 0.1)
   assert.ok(mixed.eyeX > 0.1)
+  assert.ok(mixed.angleY > 0.1)
   assert.ok(mixed.armY > 0.1)
+})
+
+test('a layer that lost a channel keeps the ones it still owns', () => {
+  const composed = composeOccupancyOffsets([
+    {
+      // Music owns the body but not the eyes.
+      weights: { gaze: 0, headBody: 1, expression: 1 },
+      offset: { angleY: 0.4, eyeX: 0.5, brow: 0.2 },
+    },
+  ])
+  assert.equal(composed.eyeX, 0)
+  assert.ok(composed.angleY > 0.3)
+  assert.ok(composed.brow > 0.15)
 })

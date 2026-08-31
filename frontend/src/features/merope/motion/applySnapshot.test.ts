@@ -6,16 +6,19 @@ import { resolveSingingApply } from './singingApply'
 
 function recordingRig() {
   const singing: boolean[] = []
+  const tracks: Array<string | null> = []
   const spectrum: Array<unknown> = []
   const articulation: SpeechArticulation[] = []
   const speechActive: boolean[] = []
   return {
     singing,
+    tracks,
     spectrum,
     articulation,
     speechActive,
     rig: {
       setSinging: (value: boolean) => singing.push(value),
+      setSingingTrack: (value: string | null) => tracks.push(value),
       setSingingSpectrum: (value: unknown) => spectrum.push(value),
       setSpeechArticulation: (value: SpeechArticulation) =>
         articulation.push(value),
@@ -27,6 +30,7 @@ function recordingRig() {
 const rest: SpeechArticulation = { energy: 0, viseme: 'rest', amount: 0 }
 const sung: SpeechArticulation = { energy: 0.6, viseme: 'open', amount: 0.8 }
 const drive = {
+  trackId: 'song-a',
   spectrum: { bass: 0.4, beat: 0.5, vocal: 0.6 },
   articulation: sung,
 }
@@ -45,6 +49,7 @@ test('speech-owned mouth does not clear visemes or speechActive', () => {
     drive,
   )
   assert.deepEqual(host.singing, [true])
+  assert.deepEqual(host.tracks, ['song-a'])
   assert.deepEqual(host.spectrum, [drive.spectrum])
   assert.deepEqual(host.articulation, [])
   assert.deepEqual(host.speechActive, [])
@@ -96,10 +101,11 @@ test('stop releases groove and rests a music mouth', () => {
       mouthOwner: 'music',
       headBodyOwner: 'music',
     }),
-    { spectrum: drive.spectrum, articulation: rest },
+    { trackId: null, spectrum: drive.spectrum, articulation: rest },
   )
   assert.deepEqual(host.singing, [false])
   assert.deepEqual(host.spectrum, [null])
   assert.equal(host.articulation[0]?.viseme, 'rest')
   assert.deepEqual(host.speechActive, [false])
+  assert.deepEqual(host.tracks, [null])
 })

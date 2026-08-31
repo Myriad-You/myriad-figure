@@ -4,7 +4,7 @@ import type {
   MotionSourceId,
 } from './channels'
 import { noteTurnTraceLeaseExpiry } from '../turnTrace'
-import { channelPriority, isExclusiveChannel } from './channels'
+import { channelPriority } from './channels'
 
 export interface MotionLeaseHandle {
   leaseId: string
@@ -28,7 +28,6 @@ interface PrivateLease extends MotionLease {
 export interface MotionSnapshot {
   generation: number
   owners: Record<ExclusiveMotionChannel, MotionSourceId>
-  physics: MotionSourceId[]
   leases: readonly MotionLease[]
 }
 
@@ -42,7 +41,6 @@ const IDLE: MotionSourceId = 'idle'
 /**
  * Runtime motion leases for every mounted face. One process-wide owner;
  * each producer holds its own handle and can only release that handle.
- * Physics overlays; the rest are exclusive.
  */
 export class RigMotionCoordinator {
   private readonly leases = new Map<string, PrivateLease>()
@@ -153,6 +151,10 @@ export class RigMotionCoordinator {
     nowMs: number = this.clockMs,
   ): MotionSourceId {
     this.tick(nowMs)
+    return this.winner(channel)
+  }
+
+  private winner(channel: ExclusiveMotionChannel): MotionSourceId {
     let winner: MotionSourceId = IDLE
     let best = 0
     let bestGeneration = 0
@@ -174,21 +176,18 @@ export class RigMotionCoordinator {
   snapshot(nowMs: number = this.clockMs): MotionSnapshot {
     this.tick(nowMs)
     const owners = {
-      mouth: this.owner('mouth', nowMs),
-      expression: this.owner('expression', nowMs),
-      gaze: this.owner('gaze', nowMs),
-      headBody: this.owner('headBody', nowMs),
+      mouth: this.winner('mouth'),
+      expression: this.winner('expression'),
+      gaze: this.winner('gaze'),
+      headBody: this.winner('headBody'),
     }
-    const physics: MotionSourceId[] = []
     const publicLeases: MotionLease[] = []
     for (const lease of this.leases.values()) {
-      if (lease.channels.includes('physics')) physics.push(lease.source)
       publicLeases.push(toPublicLease(lease))
     }
     return {
       generation: this.generation,
       owners,
-      physics,
       leases: publicLeases,
     }
   }
@@ -217,7 +216,6 @@ function uniqueChannels(channels: readonly MotionChannel[]): MotionChannel[] {
   const seen = new Set<MotionChannel>()
   const unique: MotionChannel[] = []
   for (const channel of channels) {
-    if (!isExclusiveChannel(channel) && channel !== 'physics') continue
     if (seen.has(channel)) continue
     seen.add(channel)
     unique.push(channel)

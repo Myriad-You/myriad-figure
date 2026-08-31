@@ -5,6 +5,9 @@ import type {
 import type { Anime25DDriver } from './driver'
 import { performanceCuePriority } from '../performanceContract'
 import { DEFAULT_FRONT_HAIR_SWAY, DEFAULT_REAR_HAIR_SWAY } from './driver'
+import { cueIsSticker } from './performanceCueDefinitions'
+
+export { cueDriverPatch, cueIsSticker } from './performanceCueDefinitions'
 
 export interface ScheduledBodyCue {
   cue: PerformanceCue
@@ -89,48 +92,12 @@ export function idleSpeechDriverPatch(
   }
 }
 
-export function cueDriverPatch(cue: PerformanceCue): Partial<Anime25DDriver> {
-  const amount = clamp(cue.intensity, 0.2, 1.4)
-  const patches: Record<PerformanceCue['intent'], Partial<Anime25DDriver>> = {
-    greet: { body: 0.09 * amount, armY: 0.12 * amount },
-    respond: {},
-    question: { body: 0.06 * amount },
-    delight: { armPos: 0.22 * amount, bust: 2.8 },
-    emphasize: { body: 0.22 * amount },
-    listen: {},
-    notify: { body: 0.18 * amount },
-    think: {},
-    dizzy: {},
-    cry: {},
-    angry: { body: 0.1 * amount },
-    speechless: { body: -0.045 * amount, idle: false },
-    maniac: { body: 0.055 * amount, idle: false },
-    silly: { body: -0.03 * amount, idle: false },
-    lovestruck: { body: -0.025 * amount, idle: false },
-  }
-  return patches[cue.intent]
-}
-
 export function cuePriority(cue: PerformanceCue): number {
   return performanceCuePriority(cue.intent)
 }
 
 export const MIN_STICKER_FADE_IN = 0.18
 export const MIN_STICKER_FADE_OUT = 0.42
-
-const STICKER_INTENTS = new Set<PerformanceCue['intent']>([
-  'dizzy',
-  'cry',
-  'angry',
-  'speechless',
-  'maniac',
-  'silly',
-  'lovestruck',
-])
-
-export function cueIsSticker(intent: PerformanceCue['intent']): boolean {
-  return STICKER_INTENTS.has(intent)
-}
 
 /** Face and body share this envelope so they peak and release together. */
 export function cueVisualEnvelope(cue: PerformanceCue): {

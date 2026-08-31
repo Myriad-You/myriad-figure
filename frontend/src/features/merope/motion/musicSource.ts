@@ -1,9 +1,12 @@
 import type { SpeechArticulation } from '../rig/articulation'
+import type { BeatFrame } from '../singing/beatClock'
 import type { SingingSpectrumDrive } from '../singing/singingGroove'
 import type { SingingCue } from '../singing/singingTimeline'
+import type { BehaviorPlan, BehaviorSnapshot } from './behavior'
 import type { MotionChannel } from './channels'
 import type { MotionLeaseHandle, RigMotionCoordinator } from './coordinator'
 import type { SingingApply } from './singingApply'
+import { BeatClock } from '../singing/beatClock'
 import {
   restSingingArticulation,
   sampleSingingCue,
@@ -13,6 +16,7 @@ import {
 import { singingSpectrumDrive } from '../singing/singingGroove'
 import { singingPlaybackGap } from '../singing/singingHold'
 import { compileSingingTimeline } from '../singing/singingTimeline'
+import { BehaviorScheduler } from './behaviorScheduler'
 import { resolveSingingApply } from './singingApply'
 
 export const SINGING_SAMPLE_INTERVAL_MS = 50
@@ -20,22 +24,22 @@ export const TRACK_SWITCH_HOLD_MS = 12_000
 export const MUSIC_LEASE_TTL_MS = 250
 
 /**
- * singingGroove writes eyeX and brow alongside the neck, so the groove owns
- * gaze and expression as well as mouth and head/body. Claiming only the latter
- * two let it scribble on channels it had never taken, and left `music` in the
- * expression priority table as a rule nothing ever exercised.
+ * Music owns articulation and rhythmic head/body movement. Sparse facial and
+ * gaze reactions belong to the reaction planner; a groove is not permanent
+ * evidence of delight, agreement, or attention.
  */
 const MUSIC_CHANNELS = [
   'mouth',
   'headBody',
-  'gaze',
-  'expression',
 ] as const satisfies readonly MotionChannel[]
 
 export interface SingingFrame {
   apply: SingingApply
   spectrum: SingingSpectrumDrive | null
   articulation: SpeechArticulation
+  /** Stable media identity; a change invalidates tempo evidence immediately. */
+  trackId: string | null
+  behaviors: readonly BehaviorSnapshot[]
 }
 
 export interface MusicMotionClock {
@@ -56,7 +60,7 @@ export interface MusicMotionVisibility {
 }
 
 export interface MusicTrackInput {
-  songId: string
+  trackId: string
   duration?: number
   verbatim?: Parameters<typeof compileSingingTimeline>[0]['verbatim']
   lines?: Parameters<typeof compileSingingTimeline>[0]['lines']
@@ -76,7 +80,7 @@ export class MusicMotionSource {
   private readonly coordinator: RigMotionCoordinator
   private playing = false
   private switching = false
-  private songId = ''
+  private trackId = ''
   private cues: SingingCue[] = []
   private humming = true
   private compileGeneration = 0
@@ -88,6 +92,13 @@ export class MusicMotionSource {
   private unsubscribeVisibility: (() => void) | null = null
   private lastFrame: SingingFrame | null = null
   private musicLease: MotionLeaseHandle | null = null
+  private readonly behaviorScheduler = new BehaviorScheduler()
+  private readonly beatClock = new BeatClock()
+  private behaviorPlan: BehaviorPlan | null = null
+  private behaviorTrackId: string | null = null
+  private behaviorSequence = 0
+  private behaviorId: string | null = null
+  private anticipationPegId: string | null = null
 
   constructor(
     coordinator: RigMotionCoordinator,
@@ -128,14 +139,15 @@ export class MusicMotionSource {
   }
 
   setTrack(track: MusicTrackInput): void {
-    const songId = track.songId
-    if (songId !== this.songId) {
-      if (this.songId) this.switching = true
-      this.songId = songId
+    const trackId = track.trackId
+    if (trackId !== this.trackId) {
+      if (this.trackId) this.switching = true
+      this.trackId = trackId
+      this.beatClock.setTrack(trackId || null)
       this.cues = []
       this.humming = true
     }
-    if (!songId) {
+    if (!trackId) {
       this.compileGeneration += 1
       this.cues = []
       this.humming = true
@@ -177,8 +189,10 @@ export class MusicMotionSource {
 
     if (gap === 'stop' || holdExpired) {
       this.releaseMusic()
+      this.stopEntrainment(nowMs)
     } else {
       this.holdMusic(nowMs)
+      this.holdEntrainment(nowMs)
     }
 
     const snapshot = this.coordinator.snapshot(nowMs)
@@ -197,16 +211,38 @@ export class MusicMotionSource {
       const bands = this.audio.getSpectrumBands()
       const energy = singingVocalEnergy(bands)
       const hasSpectrum = bands.some((band) => band > 0.01)
-      spectrum = hasSpectrum ? singingSpectrumDrive(bands) : null
+      const baseDrive = singingSpectrumDrive(bands)
+      const beatFrame = this.beatClock.sample(time, baseDrive.bass, true)
+      if (hasSpectrum || beatFrame.confidence > 0) {
+        spectrum = {
+          ...baseDrive,
+          sampleTimeSeconds: time,
+          beatFrame: { ...beatFrame },
+        }
+      }
+      this.updateBeatAnticipation(nowMs, beatFrame)
       const cue = this.humming ? null : sampleSingingCue(this.cues, time)
       articulation = singingArticulation({
         cue,
         energy: hasSpectrum ? energy : null,
         humming: this.humming,
       })
+    } else {
+      const beatFrame = this.beatClock.sample(
+        audio && Number.isFinite(audio.currentTime) ? audio.currentTime : 0,
+        0,
+        false,
+      )
+      this.updateBeatAnticipation(nowMs, beatFrame)
     }
 
-    const frame: SingingFrame = { apply, spectrum, articulation }
+    const frame: SingingFrame = {
+      apply,
+      spectrum,
+      articulation,
+      trackId: this.trackId || null,
+      behaviors: this.behaviorScheduler.tick(nowMs),
+    }
     this.lastFrame = frame
     for (const listener of this.listeners) listener(frame)
     return frame
@@ -258,6 +294,8 @@ export class MusicMotionSource {
         },
         spectrum: null,
         articulation: restSingingArticulation(),
+        trackId: this.trackId || null,
+        behaviors: this.stopEntrainment(this.clock.now()),
       }
       this.lastFrame = frame
       for (const listener of this.listeners) listener(frame)
@@ -287,5 +325,76 @@ export class MusicMotionSource {
   private releaseMusic(): void {
     this.coordinator.release(this.musicLease)
     this.musicLease = null
+  }
+
+  private holdEntrainment(nowMs: number): void {
+    const trackId = this.trackId || null
+    if (this.behaviorPlan && this.behaviorTrackId === trackId) return
+    if (this.behaviorPlan) this.behaviorScheduler.clear(nowMs)
+    this.behaviorSequence += 1
+    const prefix = `music-${this.behaviorSequence}`
+    const start = `${prefix}:start`
+    const stroke = `${prefix}:stroke`
+    const hold = `${prefix}:hold`
+    const anticipation = `${prefix}:next-beat`
+    const behaviorId = `${prefix}:entrain`
+    this.behaviorPlan = {
+      id: prefix,
+      originMs: nowMs,
+      pegs: [
+        { id: start, atMs: nowMs, revision: 0 },
+        { id: stroke, atMs: nowMs + 120, revision: 0 },
+        { id: hold, atMs: nowMs + 180, revision: 0 },
+        {
+          id: anticipation,
+          atMs: nowMs + 500,
+          revision: 0,
+          confidence: 0,
+        },
+      ],
+      behaviors: [
+        {
+          id: behaviorId,
+          function: 'entrain',
+          kind: 'rhythmic',
+          source: 'music',
+          resources: ['body.head', 'body.torso'],
+          channels: ['headBody'],
+          timing: { start, stroke, hold, relax: null, end: null },
+          anticipation,
+          form: { family: 'music', id: 'groove' },
+          intensity: 1,
+        },
+      ],
+    }
+    this.behaviorTrackId = trackId
+    this.behaviorId = behaviorId
+    this.anticipationPegId = anticipation
+    this.behaviorScheduler.replace(this.behaviorPlan, nowMs)
+  }
+
+  private updateBeatAnticipation(
+    nowMs: number,
+    frame: Readonly<BeatFrame>,
+  ): void {
+    if (!this.behaviorId || !this.anticipationPegId) return
+    const period = frame.bpm > 0 ? 60 / frame.bpm : 0
+    const delayMs =
+      period > 0 ? Math.max(0, (1 - frame.beatPhase) * period * 1_000) : 0
+    this.behaviorScheduler.retimePeg(
+      this.anticipationPegId,
+      nowMs + delayMs,
+      nowMs,
+      frame.confidence,
+    )
+  }
+
+  private stopEntrainment(nowMs: number): readonly BehaviorSnapshot[] {
+    if (this.behaviorPlan) this.behaviorScheduler.clear(nowMs)
+    this.behaviorPlan = null
+    this.behaviorTrackId = null
+    this.behaviorId = null
+    this.anticipationPegId = null
+    return this.behaviorScheduler.tick(nowMs)
   }
 }

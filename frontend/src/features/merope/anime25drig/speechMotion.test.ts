@@ -107,6 +107,67 @@ test('clearing speech drops queued visemes but keeps the current mouth for a res
   assert.ok(rest.mouthOpen < 1e-6)
 })
 
+test('predicts a quiet mouth response while text visemes are still compiling', async () => {
+  let resolveCompilation:
+    | ((
+        cues: Array<{ viseme: 'round'; duration: number; emphasis: boolean }>,
+      ) => void)
+    | undefined
+  const compilation = new Promise<
+    Array<{ viseme: 'round'; duration: number; emphasis: boolean }>
+  >((resolve) => {
+    resolveCompilation = resolve
+  })
+  const speech = new AutoSpeechController(
+    () => 0.5,
+    () => compilation,
+  )
+  speech.sample(0, true)
+  speech.enqueueText('你好', 'zh-CN')
+
+  const requestFrame = { ...speech.sample(0.001, true) }
+  const predicted = { ...speech.sample(0.045, true) }
+  assert.ok(requestFrame.mouthOpen < 0.01)
+  assert.ok(predicted.mouthOpen > 0.02)
+  assert.ok(predicted.mouthOpen < 0.46)
+  assert.equal(predicted.browAccent, 0)
+  assert.equal(predicted.headAccent, 0)
+
+  resolveCompilation?.([{ viseme: 'round', duration: 0.2, emphasis: false }])
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  const handoff = { ...speech.sample(0.08, true) }
+  const authoritative = { ...speech.sample(0.13, true) }
+  assert.ok(Math.abs(handoff.mouthOpen - predicted.mouthOpen) < 0.55)
+  assert.ok(authoritative.mouthRound > 0.5)
+})
+
+test('does not revive a pending text prediction after speech is cleared', async () => {
+  let resolveCompilation:
+    | ((
+        cues: Array<{ viseme: 'open'; duration: number; emphasis: boolean }>,
+      ) => void)
+    | undefined
+  const compilation = new Promise<
+    Array<{ viseme: 'open'; duration: number; emphasis: boolean }>
+  >((resolve) => {
+    resolveCompilation = resolve
+  })
+  const speech = new AutoSpeechController(
+    () => 0.5,
+    () => compilation,
+  )
+  speech.sample(0, true)
+  speech.enqueueText('稍后到达', 'zh-CN')
+  speech.sample(0.06, true)
+  speech.clear(0.06)
+  resolveCompilation?.([{ viseme: 'open', duration: 0.2, emphasis: false }])
+  await new Promise<void>((resolve) => setImmediate(resolve))
+
+  const rest = { ...speech.sample(0.3, false) }
+  assert.ok(rest.mouthOpen < 1e-6)
+  assert.equal(rest.phraseActivity, 0)
+})
+
 test('releases to rest without a hard cut when preview speech is disabled', () => {
   const speech = new AutoSpeechController(() => 0.5)
   speech.sample(0, true)

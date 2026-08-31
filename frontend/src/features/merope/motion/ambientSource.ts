@@ -1,6 +1,6 @@
 import type { MotionLeaseHandle, RigMotionCoordinator } from './coordinator'
 
-/** Idle floor: gaze, head/body, and physics at ambient priority. */
+/** Idle floor for gaze and head/body at ambient priority. */
 export class AmbientMotionSource {
   private handle: MotionLeaseHandle | null = null
 
@@ -8,8 +8,8 @@ export class AmbientMotionSource {
 
   claim(): void {
     this.handle =
-      this.coordinator.renew(this.handle, ['gaze', 'headBody', 'physics']) ??
-      this.coordinator.claim('ambient', ['gaze', 'headBody', 'physics'])
+      this.coordinator.renew(this.handle, ['gaze', 'headBody']) ??
+      this.coordinator.claim('ambient', ['gaze', 'headBody'])
   }
 
   release(): void {

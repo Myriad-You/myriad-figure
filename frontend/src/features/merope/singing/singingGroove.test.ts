@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {
-  singingDriveAmount,
-  SingingGrooveController,
-  singingSpectrumDrive,
-} from './singingGroove'
+import { SingingGrooveController, singingSpectrumDrive } from './singingGroove'
 
 test('maps bass to beat and mids to vocal without letting kick own the voice', () => {
   const kick = singingSpectrumDrive([1, 0, 0, 0, 0, 0, 0, 0])
@@ -12,7 +8,13 @@ test('maps bass to beat and mids to vocal without letting kick own the voice', (
   assert.equal(kick.vocal, 0)
   const voice = singingSpectrumDrive([0, 1, 1, 0.4, 0, 0, 0, 0])
   assert.ok(voice.vocal > 0.5)
-  assert.ok(singingDriveAmount(voice) > 0.5)
+})
+
+test('groove realizes rhythmic body motion without continuous face or gaze signals', () => {
+  const controller = new SingingGrooveController()
+  const pose = controller.sample(1, true, { bass: 1, beat: 1, vocal: 1 })
+  assert.equal(pose.eyeX, 0)
+  assert.equal(pose.brow, 0)
 })
 
 test('a brief disable keeps the leaned pose instead of yanking back to center', () => {
@@ -222,4 +224,46 @@ test('a pulsing beat nods down then comes back up', () => {
   assert.ok(pulseMin < -0.2)
   assert.ok(pulseMax > 0.08)
   assert.ok(pulseMax - pulseMin > flatMax - flatMin + 0.15)
+})
+
+// The point of the beat clock: with a tempo to lock to, the accent leaves
+// before the hit instead of chasing it.
+test('a locked tempo pulls the nod earlier than an unlocked one', () => {
+  function meanLag(steady: boolean): number {
+    const controller = new SingingGrooveController()
+    const samples: { t: number; y: number; onset: boolean }[] = []
+    let seed = 3
+    let nextOnset = 0
+    for (let step = 0; step <= 60 * 14; step += 1) {
+      const t = step / 60
+      let onset = false
+      if (t >= nextOnset) {
+        onset = true
+        seed = (seed * 1103515245 + 12345) % 2147483648
+        nextOnset = t + (steady ? 0.5 : 0.22 + (seed / 2147483648) * 0.55)
+      }
+      const bass = onset ? 0.95 : 0.05
+      const pose = controller.sample(t, true, { bass, beat: bass, vocal: 0.35 })
+      samples.push({ t, y: pose.angleY, onset })
+    }
+    const lags: number[] = []
+    for (let i = 0; i < samples.length; i += 1) {
+      if (!samples[i]!.onset || samples[i]!.t < 6) continue
+      let lowest = Infinity
+      let at = 0
+      for (
+        let j = Math.max(0, i - 15);
+        j < i + 18 && j < samples.length;
+        j += 1
+      ) {
+        if (samples[j]!.y < lowest) {
+          lowest = samples[j]!.y
+          at = samples[j]!.t
+        }
+      }
+      lags.push(at - samples[i]!.t)
+    }
+    return lags.reduce((sum, lag) => sum + lag, 0) / lags.length
+  }
+  assert.ok(meanLag(true) < meanLag(false))
 })

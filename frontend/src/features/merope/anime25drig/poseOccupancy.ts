@@ -44,7 +44,9 @@ export const STICKER_KEEP_RANDOM = 0.22
 export const STICKER_KEEP_COSPEECH = 0.22
 export const STICKER_KEEP_THINKING = 0.18
 
-const OCCUPANCY_RATE = 6.2
+/** New activity becomes legible quickly; recovery stays soft and unhurried. */
+const OCCUPANCY_ATTACK_RATE = 18
+const OCCUPANCY_RELEASE_RATE = 6.2
 const KEYS = [
   'glance',
   'random',
@@ -78,11 +80,7 @@ export function occupancyTargets(situation: PoseSituation): PoseOccupancy {
         : singing
           ? RANDOM_SINGING
           : RANDOM_IDLE
-  const coSpeech = speaking
-    ? COSPEECH_SPEAKING
-    : singing
-      ? COSPEECH_SINGING
-      : 0
+  const coSpeech = speaking ? COSPEECH_SPEAKING : singing ? COSPEECH_SINGING : 0
   const groove = singing ? GROOVE_SINGING : 0
   const thinking = !situation.thinking
     ? 0
@@ -105,7 +103,10 @@ export class PoseOccupancyController {
   private readonly current: PoseOccupancy = { ...ZERO }
   private initialized = false
 
-  sample(deltaSeconds: number, situation: PoseSituation): Readonly<PoseOccupancy> {
+  sample(
+    deltaSeconds: number,
+    situation: PoseSituation,
+  ): Readonly<PoseOccupancy> {
     const target = occupancyTargets(situation)
     if (!this.initialized) {
       this.initialized = true
@@ -113,9 +114,11 @@ export class PoseOccupancyController {
       return this.current
     }
     const dt = clamp(deltaSeconds, 0, 0.05)
-    const rate = 1 - Math.exp(-OCCUPANCY_RATE * dt)
     for (const key of KEYS) {
       const from = this.current[key]
+      const response =
+        target[key] > from ? OCCUPANCY_ATTACK_RATE : OCCUPANCY_RELEASE_RATE
+      const rate = 1 - Math.exp(-response * dt)
       this.current[key] = from + (target[key] - from) * rate
     }
     return this.current

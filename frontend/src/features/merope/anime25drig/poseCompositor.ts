@@ -1,66 +1,78 @@
+import type { PoseChannelWeights, PoseKey } from './poseArbitration'
 import { mixBoundedExpressionChannel } from './performanceExpression'
+import { POSE_KEYS, poseChannelWeight } from './poseArbitration'
 
-export interface OccupancyOffset {
-  angleX: number
-  angleY: number
-  angleZ: number
-  body: number
-  armY: number
-  armPos: number
-  eyeX: number
-  eyeY: number
-  brow: number
-}
+export type OccupancyOffset = Record<PoseKey, number>
 
 export interface OccupancyLayer {
-  offset: Readonly<OccupancyOffset>
-  occupancy: number
+  offset: Readonly<Partial<OccupancyOffset>>
+  /** Per-channel weight from `resolvePoseGate`, not a single scalar. */
+  weights: Readonly<PoseChannelWeights>
 }
 
-const ZERO_OFFSET: OccupancyOffset = {
-  angleX: 0,
-  angleY: 0,
-  angleZ: 0,
-  body: 0,
-  armY: 0,
-  armPos: 0,
-  eyeX: 0,
-  eyeY: 0,
-  brow: 0,
+export function zeroOccupancyOffset(): OccupancyOffset {
+  const offset = {} as OccupancyOffset
+  for (const key of POSE_KEYS) offset[key] = 0
+  return offset
 }
 
-const KEYS = [
-  'angleX',
-  'angleY',
-  'angleZ',
-  'body',
-  'armY',
-  'armPos',
-  'eyeX',
-  'eyeY',
-  'brow',
-] as const
-
-/** Rest plus occupancy-weighted offsets. High occupancy compresses, it does not drop layers. */
+/**
+ * Rest plus channel-weighted offsets.
+ *
+ * Every source that contends for the pose contributes one layer here instead
+ * of mutating the driver in turn, so what the character does is decided by the
+ * lease table and the situation rather than by the order the player happens to
+ * call things in. High occupancy compresses toward the bound; it never drops a
+ * layer outright.
+ */
 export function composeOccupancyOffsets(
   layers: readonly OccupancyLayer[],
-  output: OccupancyOffset = { ...ZERO_OFFSET },
+  output: OccupancyOffset = zeroOccupancyOffset(),
 ): OccupancyOffset {
-  for (const key of KEYS) output[key] = 0
+  for (const key of POSE_KEYS) output[key] = 0
   for (const layer of layers) {
-    const amount = clamp01(layer.occupancy)
-    if (amount <= 0) continue
-    for (const key of KEYS) {
-      output[key] = mixBoundedExpressionChannel(
-        output[key],
-        layer.offset[key] * amount,
-        -1,
-        1,
-        0,
-      )
-    }
+    accumulateOccupancyOffset(output, layer.offset, layer.weights)
   }
   return output
+}
+
+/** Adds one already-sampled layer into a reusable composition buffer. */
+export function accumulateOccupancyOffset(
+  output: OccupancyOffset,
+  offset: Readonly<Partial<OccupancyOffset>>,
+  weights: Readonly<PoseChannelWeights>,
+): void {
+  for (const key of POSE_KEYS) {
+    const amount = clamp01(poseChannelWeight(weights, key))
+    if (amount <= 0) continue
+    const value = offset[key]
+    if (!value) continue
+    output[key] = mixBoundedExpressionChannel(
+      output[key],
+      value * amount,
+      -1,
+      1,
+      0,
+    )
+  }
+}
+
+/** Adds one channel without constructing a temporary one-field layer. */
+export function accumulatePoseChannel(
+  output: OccupancyOffset,
+  key: PoseKey,
+  value: number,
+  weights: Readonly<PoseChannelWeights>,
+): void {
+  const amount = clamp01(poseChannelWeight(weights, key))
+  if (amount <= 0 || !value) return
+  output[key] = mixBoundedExpressionChannel(
+    output[key],
+    value * amount,
+    -1,
+    1,
+    0,
+  )
 }
 
 function clamp01(value: number): number {

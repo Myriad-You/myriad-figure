@@ -12,7 +12,6 @@ test('ambient and thinking only run on idle or ambient-owned channels', () => {
   assert.equal(allowsAmbientMotion('ambient'), true)
   assert.equal(allowsAmbientMotion('music'), false)
   assert.equal(allowsAmbientMotion('performance'), false)
-  assert.equal(allowsAmbientMotion('autonomy'), false)
 })
 
 test('co-speech brows yield to performance; head nods yield to music', () => {

@@ -11,18 +11,6 @@ test('channel table matches the live-face control order', () => {
     channelPriority('mouth', 'speech') > channelPriority('mouth', 'music'),
   )
   assert.ok(
-    channelPriority('expression', 'performance') >
-      channelPriority('expression', 'music'),
-  )
-  assert.ok(
-    channelPriority('expression', 'coSpeech') >
-      channelPriority('expression', 'music'),
-  )
-  assert.ok(
-    channelPriority('expression', 'music') >
-      channelPriority('expression', 'mood'),
-  )
-  assert.ok(
     channelPriority('headBody', 'performance') >
       channelPriority('headBody', 'music'),
   )
@@ -31,20 +19,8 @@ test('channel table matches the live-face control order', () => {
       channelPriority('headBody', 'ambient'),
   )
   assert.ok(
-    channelPriority('headBody', 'performance') >
-      channelPriority('headBody', 'autonomy'),
-  )
-  assert.ok(
-    channelPriority('headBody', 'autonomy') >
-      channelPriority('headBody', 'music'),
-  )
-  assert.ok(
     channelPriority('headBody', 'music') >
       channelPriority('headBody', 'coSpeech'),
-  )
-  assert.ok(
-    channelPriority('expression', 'performance') >
-      channelPriority('expression', 'autonomy'),
   )
   assert.ok(
     channelPriority('expression', 'coSpeech') >
@@ -111,15 +87,6 @@ test('releasing one channel leaves the rest of the lease', () => {
   const snapshot = coordinator.snapshot(0)
   assert.equal(snapshot.owners.mouth, 'idle')
   assert.equal(snapshot.owners.headBody, 'music')
-})
-
-test('physics overlays instead of taking exclusive ownership', () => {
-  const coordinator = new RigMotionCoordinator()
-  coordinator.claim('music', ['physics'], { nowMs: 0 })
-  coordinator.claim('ambient', ['physics'], { nowMs: 1 })
-  const snapshot = coordinator.snapshot(1)
-  assert.deepEqual(snapshot.physics.slice().sort(), ['ambient', 'music'])
-  assert.equal(snapshot.owners.headBody, 'idle')
 })
 
 test('a producer cannot release another producer lease', () => {

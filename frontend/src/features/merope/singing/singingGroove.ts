@@ -1,24 +1,18 @@
-import { mixBoundedExpressionChannel } from '../anime25drig/performanceExpression'
+import type { BeatFrame } from './beatClock'
+import { beatAccentLead, beatAnticipation, BeatClock } from './beatClock'
 import { singingVocalEnergy } from './singingClock'
 
 export interface SingingSpectrumDrive {
   bass: number
   beat: number
   vocal: number
+  /** Media clock sample used to keep beat prediction aligned with audio. */
+  sampleTimeSeconds?: number
+  /** Production beat evidence; workbench callers may omit it. */
+  beatFrame?: Readonly<BeatFrame>
 }
 
 export interface SingingGroovePose {
-  angleX: number
-  angleY: number
-  angleZ: number
-  body: number
-  armY: number
-  armPos: number
-  eyeX: number
-  brow: number
-}
-
-interface GrooveTarget {
   angleX: number
   angleY: number
   angleZ: number
@@ -57,10 +51,6 @@ export function singingSpectrumDrive(
   }
 }
 
-export function singingDriveAmount(drive: SingingSpectrumDrive): number {
-  return unit(Math.max(drive.beat, drive.vocal * 0.92))
-}
-
 /**
  * Weight cruises side to side. Nod size comes from the live mix: vocals lift,
  * kick/bass dip, and a punch on rising beats. Turns ease instead of bouncing.
@@ -86,7 +76,18 @@ export class SingingGrooveController {
   private readonly neckY: Spring1 = { value: 0, velocity: 0 }
   private readonly torso: Spring1 = { value: 0, velocity: 0 }
   private readonly arm: Spring1 = { value: 0, velocity: 0 }
+  private readonly beat = new BeatClock()
+  private beatFrame = this.beat.sample(0, 0, false)
+  private readonly externalBeatFrame: BeatFrame = { ...this.beatFrame }
+  private externalBeatSampleAt = Number.NaN
+  private externalBeatObservedAt = Number.NaN
   private weyl = 0.41
+
+  setTrack(trackId: string | null): void {
+    this.beat.setTrack(trackId)
+    this.externalBeatSampleAt = Number.NaN
+    this.externalBeatObservedAt = Number.NaN
+  }
 
   sample(
     timeSeconds: number,
@@ -103,6 +104,7 @@ export class SingingGrooveController {
     this.energy +=
       ((enabled ? Math.max(vocal, beat * 0.4, 0.32) : 0) - this.energy) *
       (1 - Math.exp(-1.6 * dt))
+    this.beatFrame = this.resolveBeatFrame(now, enabled, drive)
     this.followSpectrum(dt, enabled, vocal, beat)
 
     if (enabled) this.driftLean(dt)
@@ -121,9 +123,49 @@ export class SingingGrooveController {
     this.output.body = this.torso.value * 0.22
     this.output.armY = 0
     this.output.armPos = 0
-    this.output.eyeX = this.neckX.value * 0.4
-    this.output.brow = -this.neckY.value * 0.06
+    // A rhythmic controller realizes body entrainment only. Eye and brow
+    // reactions are sparse semantic behaviors selected above this layer.
+    this.output.eyeX = 0
+    this.output.brow = 0
     return this.output
+  }
+
+  private resolveBeatFrame(
+    now: number,
+    enabled: boolean,
+    drive: SingingSpectrumDrive | null,
+  ): Readonly<BeatFrame> {
+    const supplied = drive?.beatFrame
+    const mediaTime = drive?.sampleTimeSeconds
+    if (!supplied || mediaTime === undefined || !Number.isFinite(mediaTime)) {
+      return this.beat.sample(now, unit(drive?.bass), enabled)
+    }
+    const fresh = mediaTime !== this.externalBeatSampleAt
+    if (fresh) {
+      Object.assign(this.externalBeatFrame, supplied)
+      this.externalBeatSampleAt = mediaTime
+      this.externalBeatObservedAt = now
+    }
+    if (!enabled || supplied.bpm <= 0 || supplied.confidence <= 0) {
+      this.externalBeatFrame.downbeat = fresh && supplied.downbeat
+      this.externalBeatFrame.onset = fresh && supplied.onset
+      return this.externalBeatFrame
+    }
+    const period = 60 / supplied.bpm
+    const elapsed = Number.isFinite(this.externalBeatObservedAt)
+      ? Math.max(0, now - this.externalBeatObservedAt)
+      : 0
+    const total = supplied.beatPhase + elapsed / period
+    const crossed = Math.floor(total)
+    this.externalBeatFrame.beatPhase = total - crossed
+    this.externalBeatFrame.beatCount = supplied.beatCount + crossed
+    this.externalBeatFrame.barPhase =
+      ((this.externalBeatFrame.beatCount % 4) +
+        this.externalBeatFrame.beatPhase) /
+      4
+    this.externalBeatFrame.downbeat = fresh && supplied.downbeat
+    this.externalBeatFrame.onset = fresh && supplied.onset
+    return this.externalBeatFrame
   }
 
   private followSpectrum(
@@ -146,13 +188,38 @@ export class SingingGrooveController {
     this.nodPulse = clamp(this.nodPulse, 0, 1)
   }
 
-  /** Dip on rising beats, then come back up. Loud hits nod deeper. */
+  /**
+   * Dip into the beat and come back up.
+   *
+   * `nodPulse` is an envelope follower, so it can only fire after the hit that
+   * caused it — the head always arrived late. When the beat clock finds a
+   * tempo, a phase-timed accent joins it, leaving early enough to land on the
+   * downbeat. They combine by max rather than crossfade: the two peak at
+   * different moments, so averaging them would flatten the very accent this is
+   * meant to sharpen. With no tempo the timed term is zero and the groove is
+   * exactly the envelope follower it always was.
+   */
   private nodPitch(): number {
     const spanForNod = Math.max(this.spanNow, 0.16)
     const edge = clamp(Math.abs(this.leanTarget) / spanForNod, 0, 1)
     const lift = mix(0.16, 0.32, this.vocalFollow)
     const grooveDip = mix(0.01, 0.04, this.beatFollow)
-    const hitDip = smootherstep(this.nodPulse) * mix(0.48, 0.7, this.beatFollow)
+    const locked = this.beatFrame.confidence
+    const timed = beatAnticipation(
+      this.beatFrame.beatPhase,
+      beatAccentLead(this.beatFrame.bpm),
+    )
+    // The follower carries the depth, the timed accent carries the timing, and
+    // they combine by max so neither is traded for the other: suppressing the
+    // follower flattens the dip, and averaging them flattens both, since the
+    // two peak at different moments by construction.
+    //
+    // The neck is still a spring, so the pose trails the drive; the accent
+    // begins earlier than the hit that used to cause it, but this does not on
+    // its own put the head exactly on the beat.
+    const follower = smootherstep(this.nodPulse)
+    const drive = Math.max(follower, timed * locked * 0.82)
+    const hitDip = drive * mix(0.48, 0.7, this.beatFollow)
     const edgeDip = edge * mix(0.03, 0.06, this.energy)
     return clamp(lift - grooveDip - hitDip - edgeDip, -0.55, 0.32)
   }
@@ -217,23 +284,6 @@ export class SingingGrooveController {
   }
 }
 
-export function applySingingGroove(
-  target: GrooveTarget,
-  pose: Readonly<SingingGroovePose>,
-  amount: number,
-): void {
-  const scale = clamp(finiteOrZero(amount), 0, 1)
-  if (scale <= 0) return
-  target.angleX = mixChannel(target.angleX, pose.angleX, scale)
-  target.angleY = mixChannel(target.angleY, pose.angleY, scale)
-  target.angleZ = mixChannel(target.angleZ, pose.angleZ, scale)
-  target.body = mixChannel(target.body, pose.body, scale)
-  target.armY = mixChannel(target.armY, pose.armY, scale)
-  target.armPos = mixChannel(target.armPos, pose.armPos, scale)
-  target.eyeX = mixChannel(target.eyeX, pose.eyeX, scale)
-  target.brow = mixChannel(target.brow, pose.brow, scale)
-}
-
 function stepSpring(
   state: Spring1,
   target: number,
@@ -255,17 +305,9 @@ function stepSpring(
   }
 }
 
-function mixChannel(base: number, offset: number, scale: number): number {
-  return mixBoundedExpressionChannel(base, offset * scale, -1, 1, 0)
-}
-
 function unit(value: number | undefined): number {
   if (value == null || !Number.isFinite(value)) return 0
   return Math.max(0, Math.min(1, value))
-}
-
-function finiteOrZero(value: number): number {
-  return Number.isFinite(value) ? value : 0
 }
 
 function mix(from: number, to: number, amount: number): number {

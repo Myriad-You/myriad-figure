@@ -1,10 +1,11 @@
 import type { SpeechArticulation } from '../rig/articulation'
-import type { RigCharacterHandle } from '../rig/RigCharacter'
+import type { RigMotionPort } from '../rig/motionPort'
 import type { SingingSpectrumDrive } from '../singing/singingGroove'
 import type { SingingApply } from './singingApply'
 import { restSingingArticulation } from '../singing/singingClock'
 
 export interface SingingRigWrite {
+  trackId: string | null
   singing: boolean
   spectrum: SingingSpectrumDrive | null
   articulation: SpeechArticulation | null
@@ -18,19 +19,22 @@ export interface SingingRigWrite {
  */
 export function applySingingWrite(
   rig: Pick<
-    RigCharacterHandle,
+    RigMotionPort,
     | 'setSinging'
+    | 'setSingingTrack'
     | 'setSingingSpectrum'
     | 'setSpeechArticulation'
     | 'setSpeechActive'
   >,
   apply: SingingApply,
   drive: {
+    trackId: string | null
     spectrum: SingingSpectrumDrive | null
     articulation: SpeechArticulation
   },
 ): SingingRigWrite {
   const write: SingingRigWrite = {
+    trackId: drive.trackId,
     singing: apply.writeGroove,
     spectrum: apply.writeGroove ? drive.spectrum : null,
     articulation: apply.writeMouth ? drive.articulation : null,
@@ -41,6 +45,7 @@ export function applySingingWrite(
         ? false
         : null,
   }
+  rig.setSingingTrack(drive.trackId)
   if (apply.writeGroove) {
     rig.setSinging(true)
     rig.setSingingSpectrum(drive.spectrum)

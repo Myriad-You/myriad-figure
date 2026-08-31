@@ -1,8 +1,11 @@
-import type { PerformanceCue, RigMotionStyle } from '../../../services/agent/types'
-import type { MoodIntent, MotionFrame, PerformanceIntent, SpeechIntent } from './intents'
+import type {
+  PerformanceCue,
+  RigMotionStyle,
+} from '../../../services/agent/types'
+import type { BehaviorRealizerReport } from './behavior'
+import type { MoodIntent, MotionFrame } from './intents'
 import type { MusicMotionSource, SingingFrame } from './musicSource'
 import { AmbientMotionSource } from './ambientSource'
-import { AutonomyMotionSource } from './autonomySource'
 import { RigMotionCoordinator } from './coordinator'
 import { MoodMotionSource } from './moodSource'
 import { PerformanceMotionSource } from './performanceSource'
@@ -29,16 +32,12 @@ export class MotionRuntime {
   readonly performance: PerformanceMotionSource
   readonly mood: MoodMotionSource
   readonly ambient: AmbientMotionSource
-  readonly autonomy: AutonomyMotionSource
   private readonly musicSource: MusicMotionSource | null
   private readonly listeners = new Set<MotionFrameListener>()
   private retains = 0
   private unsubMusic: (() => void) | null = null
-  private speechIntent: SpeechIntent | null = null
-  private performanceIntent: PerformanceIntent | null = null
   private musicFrame: SingingFrame | null = null
   private moodIntent: MoodIntent | null = null
-  private autonomyIntent: PerformanceIntent | null = null
   private capabilities: string[] = []
   private recentIntents: PerformanceCue['intent'][] = []
   private motionStyle: RigMotionStyle = 'even'
@@ -48,32 +47,28 @@ export class MotionRuntime {
   constructor(
     coordinator: RigMotionCoordinator,
     musicSource: MusicMotionSource | null = null,
-    private readonly liveAutonomy = false,
   ) {
     this.coordinator = coordinator
     this.musicSource = musicSource
-    this.speech = new SpeechMotionSource(coordinator, (intent) => {
-      this.speechIntent = intent
-      this.emit()
-    })
-    this.performance = new PerformanceMotionSource(coordinator, (intent) => {
-      this.performanceIntent = intent
-      this.rememberIntents(intent.directive?.plan.cues.map((cue) => cue.intent) ?? [])
-      this.emit()
-    })
+    this.speech = new SpeechMotionSource(coordinator, () => this.emit())
+    this.performance = new PerformanceMotionSource(
+      coordinator,
+      (intent) => {
+        this.rememberIntents(
+          intent.directive?.plan.cues.map((cue) => cue.intent) ?? [],
+        )
+        this.emit()
+      },
+      () => [
+        ...this.speech.current().behaviors,
+        ...(this.musicFrame?.behaviors ?? []),
+      ],
+    )
     this.mood = new MoodMotionSource(coordinator, (intent) => {
       this.moodIntent = intent
       this.emit()
     })
     this.ambient = new AmbientMotionSource(coordinator)
-    this.autonomy = new AutonomyMotionSource(
-      coordinator,
-      (intent) => {
-        this.autonomyIntent = intent
-        this.emit()
-      },
-      () => Boolean(this.speechIntent?.active),
-    )
   }
 
   retain(): () => void {
@@ -82,7 +77,6 @@ export class MotionRuntime {
       this.speech.start()
       this.performance.start()
       this.ambient.claim()
-      if (this.liveAutonomy) this.autonomy.start()
       if (this.musicSource) {
         this.unsubMusic = this.musicSource.subscribe((frame) => {
           this.musicFrame = frame
@@ -99,7 +93,6 @@ export class MotionRuntime {
       this.stopPreviewClock()
       this.speech.stop()
       this.performance.stop()
-      this.autonomy.stop()
       this.mood.release()
       this.ambient.release()
       this.unsubMusic?.()
@@ -125,15 +118,28 @@ export class MotionRuntime {
     }
   }
 
-  frame(): MotionFrame {
+  frame(nowMs?: number): MotionFrame {
+    const speech = this.speech.current(nowMs)
+    const performance = this.performance.current(nowMs)
     return {
-      snapshot: this.coordinator.snapshot(),
-      speech: this.speechIntent,
-      performance: this.performanceIntent,
+      snapshot: this.coordinator.snapshot(nowMs),
+      bearing: this.performance.currentBearing(),
+      speech: hasSpeechIntent(speech) ? speech : null,
+      performance:
+        performance.directive || performance.behaviorPlan ? performance : null,
       music: this.musicFrame,
       mood: this.moodIntent,
-      autonomy: this.autonomyIntent,
     }
+  }
+
+  reportPerformanceRealizer(
+    planId: string,
+    behaviorId: string,
+    result: 'accepted' | 'rejected',
+    nowMs?: number,
+    reason?: BehaviorRealizerReport['reason'],
+  ): void {
+    this.performance.reportRealizer(planId, behaviorId, result, nowMs, reason)
   }
 
   subscribe(listener: MotionFrameListener): () => void {
@@ -178,12 +184,25 @@ export class MotionRuntime {
   }
 }
 
-/** Production faces: music may occupy the body; idle autonomy may pulse the face. */
+function hasSpeechIntent(
+  intent: ReturnType<SpeechMotionSource['current']>,
+): boolean {
+  return Boolean(
+    intent.active ||
+    intent.autoSpeech ||
+    intent.energy !== null ||
+    intent.prosody ||
+    intent.queuedText.length > 0 ||
+    (intent.articulation && intent.articulation.amount > 0),
+  )
+}
+
+/** Production faces: music may occupy the body; semantic reactions stay explicit. */
 export function createLiveMotionRuntime(
   coordinator: RigMotionCoordinator,
   musicSource: MusicMotionSource | null,
 ): MotionRuntime {
-  return new MotionRuntime(coordinator, musicSource, true)
+  return new MotionRuntime(coordinator, musicSource)
 }
 
 export function createPreviewMotionRuntime(): MotionRuntime {

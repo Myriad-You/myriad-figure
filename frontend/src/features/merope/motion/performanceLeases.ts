@@ -1,88 +1,96 @@
 import type { PerformanceDirective } from '../../../services/agent/types'
+import type { BehaviorPlan } from './behavior'
 import type { MotionLeaseHandle, RigMotionCoordinator } from './coordinator'
-import { scheduleBodyCues } from '../anime25drig/performanceMotion'
-import {
-  cueOccupiesHeadBody,
-  performanceOccupiedChannels,
-} from './performanceChannels'
+import { resourceInGroup } from './behaviorResources'
+import { compilePerformanceBehaviorPlan } from './performanceBehaviorPlan'
 
-/** Lease tail after the last cue. Occupancy, not this delay, returns idle motion. */
-export const PERFORMANCE_BASELINE_HOLD_MS = 400
+type PerformanceLeaseChannels =
+  readonly ['expression'] | readonly ['headBody'] | readonly ['gaze']
 
 export interface PerformanceLeaseWindows {
-  expressionBaselineUntilMs: number
+  planUntilMs: number
   expressionCueUntilMs: number | null
   headBodyCueUntilMs: number | null
+  /**
+   * Cues that drive eyeX/eyeY take the eyes for as long as they play. Without
+   * this window they can be classified as gaze motion and still never claim
+   * it, leaving ambient drift to pull against the directed look.
+   */
+  gazeCueUntilMs: number | null
 }
 
 /**
- * Timed windows for a Lite plan. The landing baseline outlives the last cue
- * so the face can settle. Body occupancy stays on the cue clock so music can
- * return; open posture without a body cue still uses the baseline hold.
+ * Timed windows for transient behavior only. Persistent bearing is a base
+ * pose, not a lease, and therefore never takes expression or body ownership.
  */
 export function performanceLeaseWindows(
   directive: PerformanceDirective,
   originMs: number,
+  behaviorPlan: BehaviorPlan = compilePerformanceBehaviorPlan(
+    directive,
+    originMs,
+    'lease-window',
+  ),
 ): PerformanceLeaseWindows {
-  const scheduled = scheduleBodyCues(directive.plan.cues, originMs)
   let expressionCueUntilMs: number | null = null
   let headBodyCueUntilMs: number | null = null
-  for (const item of scheduled) {
-    expressionCueUntilMs =
-      expressionCueUntilMs === null
-        ? item.endMs
-        : Math.max(expressionCueUntilMs, item.endMs)
-    if (cueOccupiesHeadBody(item.cue)) {
-      headBodyCueUntilMs =
-        headBodyCueUntilMs === null
-          ? item.endMs
-          : Math.max(headBodyCueUntilMs, item.endMs)
+  let gazeCueUntilMs: number | null = null
+  let planUntilMs = originMs
+  const pegTimes = new Map(behaviorPlan.pegs.map((peg) => [peg.id, peg.atMs]))
+  for (const behavior of behaviorPlan.behaviors) {
+    const endMs = behavior.timing.end
+      ? (pegTimes.get(behavior.timing.end) ?? originMs)
+      : originMs
+    planUntilMs = Math.max(planUntilMs, endMs)
+    if (
+      behavior.resources.some((resource) =>
+        resourceInGroup(resource, 'face.expression'),
+      )
+    ) {
+      expressionCueUntilMs = maxTime(expressionCueUntilMs, endMs)
+    }
+    if (
+      behavior.resources.some(
+        (resource) =>
+          resourceInGroup(resource, 'body') ||
+          resourceInGroup(resource, 'secondary'),
+      )
+    ) {
+      headBodyCueUntilMs = maxTime(headBodyCueUntilMs, endMs)
+    }
+    if (
+      behavior.resources.some((resource) =>
+        resourceInGroup(resource, 'face.gaze'),
+      )
+    ) {
+      gazeCueUntilMs = maxTime(gazeCueUntilMs, endMs)
     }
   }
-  const expressionBaselineUntilMs =
-    (expressionCueUntilMs ?? originMs) + PERFORMANCE_BASELINE_HOLD_MS
-  if (
-    headBodyCueUntilMs === null &&
-    performanceOccupiedChannels(directive).includes('headBody')
-  ) {
-    headBodyCueUntilMs = expressionCueUntilMs ?? expressionBaselineUntilMs
-  }
   return {
-    expressionBaselineUntilMs,
+    planUntilMs,
     expressionCueUntilMs,
     headBodyCueUntilMs,
+    gazeCueUntilMs,
   }
 }
 
 /**
- * One performance producer: baseline expression, a timed expression cue,
- * and a timed head/body cue. Each is an independent lease handle.
+ * One performance producer: baseline expression, and timed expression,
+ * head/body and gaze cues. Each is an independent lease handle.
  */
 export class PerformanceMotionLeases {
-  private expressionBaseline: MotionLeaseHandle | null = null
   private expressionCue: MotionLeaseHandle | null = null
   private headBodyCue: MotionLeaseHandle | null = null
+  private gazeCue: MotionLeaseHandle | null = null
 
   constructor(private readonly coordinator: RigMotionCoordinator) {}
 
   apply(
     directive: PerformanceDirective,
     nowMs: number,
+    behaviorPlan?: BehaviorPlan,
   ): PerformanceLeaseWindows {
-    const windows = performanceLeaseWindows(directive, nowMs)
-    if (directive.plan.cues.length === 0) {
-      this.coordinator.release(this.expressionBaseline)
-      this.expressionBaseline = null
-    } else {
-      this.expressionBaseline = this.ensure(
-        this.expressionBaseline,
-        ['expression'],
-        {
-          nowMs,
-          ttlMs: Math.max(1, windows.expressionBaselineUntilMs - nowMs),
-        },
-      )
-    }
+    const windows = performanceLeaseWindows(directive, nowMs, behaviorPlan)
     this.expressionCue = this.syncTimed(
       this.expressionCue,
       ['expression'],
@@ -95,21 +103,27 @@ export class PerformanceMotionLeases {
       windows.headBodyCueUntilMs,
       nowMs,
     )
+    this.gazeCue = this.syncTimed(
+      this.gazeCue,
+      ['gaze'],
+      windows.gazeCueUntilMs,
+      nowMs,
+    )
     return windows
   }
 
   releaseAll(): void {
-    this.coordinator.release(this.expressionBaseline)
     this.coordinator.release(this.expressionCue)
     this.coordinator.release(this.headBodyCue)
-    this.expressionBaseline = null
+    this.coordinator.release(this.gazeCue)
     this.expressionCue = null
     this.headBodyCue = null
+    this.gazeCue = null
   }
 
   private ensure(
     current: MotionLeaseHandle | null,
-    channels: readonly ['expression'] | readonly ['headBody'],
+    channels: PerformanceLeaseChannels,
     options: { nowMs: number; ttlMs?: number },
   ): MotionLeaseHandle | null {
     return (
@@ -120,7 +134,7 @@ export class PerformanceMotionLeases {
 
   private syncTimed(
     current: MotionLeaseHandle | null,
-    channels: readonly ['expression'] | readonly ['headBody'],
+    channels: PerformanceLeaseChannels,
     untilMs: number | null,
     nowMs: number,
   ): MotionLeaseHandle | null {
@@ -133,4 +147,8 @@ export class PerformanceMotionLeases {
       ttlMs: untilMs - nowMs,
     })
   }
+}
+
+function maxTime(current: number | null, next: number): number {
+  return current === null ? next : Math.max(current, next)
 }

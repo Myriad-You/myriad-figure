@@ -2,7 +2,6 @@
  * Exclusive control of the live face. Algorithms stay in the player;
  * this table only decides who may drive which group of drivers.
  *
- * Physics is overlay, not exclusive: every claimed source may mix.
  */
 
 export const MOTION_CHANNELS = [
@@ -10,7 +9,6 @@ export const MOTION_CHANNELS = [
   'expression',
   'gaze',
   'headBody',
-  'physics',
 ] as const
 
 export type MotionChannel = (typeof MOTION_CHANNELS)[number]
@@ -22,26 +20,18 @@ export const MOTION_SOURCES = [
   'music',
   'coSpeech',
   'mood',
-  'pointer',
   'ambient',
-  'autonomy',
   'idle',
 ] as const
 
 export type MotionSourceId = (typeof MOTION_SOURCES)[number]
 
-export const EXCLUSIVE_CHANNELS = [
-  'mouth',
-  'expression',
-  'gaze',
-  'headBody',
-] as const satisfies readonly MotionChannel[]
+export const EXCLUSIVE_CHANNELS = MOTION_CHANNELS
 
-export type ExclusiveMotionChannel = (typeof EXCLUSIVE_CHANNELS)[number]
+export type ExclusiveMotionChannel = MotionChannel
 
 /**
  * Higher number wins. Missing source is idle.
- * autonomy publishes intents through the coordinator; it never writes a rig.
  * Pointer gaze is a local overlay (`allowsPointerGaze`), not a lease.
  */
 export const CHANNEL_PRIORITY: Record<
@@ -56,21 +46,17 @@ export const CHANNEL_PRIORITY: Record<
   expression: {
     preview: 100,
     performance: 80,
-    autonomy: 70,
     coSpeech: 55,
-    music: 45,
     mood: 20,
   },
   gaze: {
     preview: 100,
     performance: 60,
-    autonomy: 50,
     ambient: 20,
   },
   headBody: {
     preview: 100,
     performance: 80,
-    autonomy: 70,
     music: 60,
     coSpeech: 40,
     ambient: 20,
@@ -82,10 +68,4 @@ export function channelPriority(
   source: MotionSourceId,
 ): number {
   return CHANNEL_PRIORITY[channel][source] ?? 0
-}
-
-export function isExclusiveChannel(
-  channel: MotionChannel,
-): channel is ExclusiveMotionChannel {
-  return channel !== 'physics'
 }

@@ -12,8 +12,35 @@ test('summary keeps only semantic fields and drops drivers', () => {
   const summary = sanitizeRigStateSummary({
     expression: 'warm',
     posture: 'open',
-    acting: { intent: 'listen', phase: 'delivery', remainingMs: 800 },
-    owners: { mouth: 'speech', expression: 'coSpeech', gaze: 'ambient', headBody: 'music' },
+    acting: {
+      intent: 'listen',
+      phase: 'delivery',
+      function: 'attend',
+      lifecycle: 'holding',
+      remainingMs: 800,
+    },
+    activeBehaviors: [
+      {
+        function: 'attend',
+        lifecycle: 'holding',
+        source: 'performance',
+        resources: ['face.gaze', 'angleX'],
+        remainingMs: 900,
+      },
+      {
+        function: 'not-real',
+        lifecycle: 'holding',
+        source: 'performance',
+        resources: [],
+        remainingMs: 1,
+      },
+    ],
+    owners: {
+      mouth: 'speech',
+      expression: 'coSpeech',
+      gaze: 'ambient',
+      headBody: 'music',
+    },
     speaking: true,
     singing: true,
     musicPlaying: true,
@@ -33,9 +60,25 @@ test('summary keeps only semantic fields and drops drivers', () => {
   assert.equal(encoded.includes('mouthOpen'), false)
   assert.equal(summary?.owners.mouth, 'speech')
   assert.equal(summary?.owners.headBody, 'music')
+  assert.equal(summary?.acting.function, 'attend')
+  assert.equal(summary?.acting.lifecycle, 'holding')
+  assert.deepEqual(summary?.activeBehaviors, [
+    {
+      function: 'attend',
+      lifecycle: 'holding',
+      source: 'performance',
+      resources: ['face.gaze'],
+      remainingMs: 900,
+    },
+  ])
   assert.equal(
     sanitizeRigStateSummary({
-      owners: { mouth: 'angleX', expression: {}, gaze: 'ambient', headBody: 'music' },
+      owners: {
+        mouth: 'angleX',
+        expression: {},
+        gaze: 'ambient',
+        headBody: 'music',
+      },
     })?.owners.mouth,
     'idle',
   )
@@ -105,6 +148,8 @@ test('acting names only the cue that is currently playing', () => {
   assert.ok(notStarted.acting.remainingMs > 0)
   const duringFace = captureRigStateSummary(runtime, started + 40)
   assert.equal(duringFace.acting.intent, 'think')
+  assert.equal(duringFace.acting.function, 'prepareSpeech')
+  assert.equal(duringFace.acting.lifecycle, 'preparing')
   assert.ok(duringFace.acting.remainingMs > 0)
   const between = captureRigStateSummary(runtime, started + 1_200)
   assert.equal(between.acting.intent, null)
@@ -114,6 +159,41 @@ test('acting names only the cue that is currently playing', () => {
   const ended = captureRigStateSummary(runtime, started + 8_000)
   assert.equal(ended.acting.intent, null)
   assert.equal(ended.acting.remainingMs, 0)
+  release()
+})
+
+test('speech accents share the agent-visible behavior lifecycle', () => {
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const release = runtime.retain()
+  const startedAtMs = performance.now() + 100
+  runtime.speech.handleForTest({
+    phase: 'start',
+    messageId: 'message-2',
+    utteranceId: 'stream-2',
+    source: 'reply',
+  })
+  runtime.speech.handleForTest({
+    phase: 'prosody',
+    messageId: 'message-2',
+    utteranceId: 'stream-2',
+    source: 'reply',
+    prosody: {
+      utteranceId: 'stream-2',
+      startedAtMs,
+      durationMs: 600,
+      accents: [{ offsetMs: 100, intensity: 0.8 }],
+    },
+  })
+  const preparing = captureRigStateSummary(runtime, startedAtMs + 50)
+  assert.equal(preparing.acting.intent, null)
+  assert.equal(preparing.acting.function, 'emphasize')
+  assert.equal(preparing.acting.lifecycle, 'preparing')
+  assert.equal(preparing.activeBehaviors[0]?.source, 'coSpeech')
+  assert.deepEqual(preparing.activeBehaviors[0]?.resources, [
+    'face.expression',
+    'body.head',
+    'body.torso',
+  ])
   release()
 })
 

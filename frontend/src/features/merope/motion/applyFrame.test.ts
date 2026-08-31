@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { applyMotionFrame, createMotionApplyState } from './applyFrame'
 import { RigMotionCoordinator } from './coordinator'
+import { compilePerformanceBehaviorPlan } from './performanceBehaviorPlan'
 
 function recordingRig() {
   const calls: string[] = []
@@ -12,19 +13,29 @@ function recordingRig() {
     rig: {
       setMotionPolicy: (policy: { mouth: string }) =>
         calls.push(`policy:${policy.mouth}`),
+      setMood: (mood: number, activity: string) =>
+        calls.push(`mood:${mood}:${activity}`),
+      setBearing: (bearing: unknown) =>
+        calls.push(`bearing:${bearing !== null}`),
       setSpeechActive: (value: boolean) => calls.push(`speechActive:${value}`),
       setAutoSpeech: (value: boolean) => calls.push(`auto:${value}`),
-      setSpeechEnergy: (value: number | null) =>
-        calls.push(`energy:${value}`),
+      setSpeechEnergy: (value: number | null) => calls.push(`energy:${value}`),
       setSpeechArticulation: (value: { viseme: string }) =>
         calls.push(`articulation:${value.viseme}`),
+      setSpeechProsody: (value: { utteranceId: string } | null) =>
+        calls.push(`prosody:${value?.utteranceId ?? 'none'}`),
       enqueueSpeechText: (text: string) => calls.push(`text:${text}`),
-      playMotionPlan: () => {
+      playBehaviorPlan: (plan: { behaviors: readonly { id: string }[] }) => {
         calls.push('play')
-        return true
+        return plan.behaviors.map((behavior) => ({
+          behaviorId: behavior.id,
+          result: 'accepted' as const,
+          atMs: 10,
+        }))
       },
-      stopMotionPlan: () => calls.push('stop'),
+      stopBehaviorPlan: () => calls.push('stop'),
       setSinging: (value: boolean) => calls.push(`singing:${value}`),
+      setSingingTrack: (value: string | null) => calls.push(`track:${value}`),
       setSingingSpectrum: (value: unknown) =>
         calls.push(`spectrum:${value !== null}`),
     },
@@ -38,11 +49,11 @@ function frame(
 ): MotionFrame {
   return {
     snapshot: coordinator.snapshot(nowMs),
+    bearing: null,
     speech: null,
     performance: null,
     music: null,
     mood: null,
-    autonomy: null,
     ...extra,
   }
 }
@@ -57,8 +68,31 @@ const directive: PerformanceDirective = {
       motionEnergy: 1,
       attention: 1,
     },
-    cues: [],
+    cues: [
+      {
+        intent: 'respond',
+        atMs: 0,
+        intensity: 1,
+        tempo: 1,
+        fadeInMs: 80,
+        fadeOutMs: 120,
+        interrupt: 'replace',
+      },
+    ],
   },
+}
+
+function performanceIntent(planId: string, startedAtMs: number) {
+  return {
+    directive,
+    startedAtMs,
+    motionIntentId: planId,
+    behaviorPlan: compilePerformanceBehaviorPlan(
+      directive,
+      startedAtMs,
+      planId,
+    ),
+  }
 }
 
 test('speech intent writes the mouth only while speech owns it', () => {
@@ -74,6 +108,8 @@ test('speech intent writes the mouth only while speech owns it', () => {
         autoSpeech: true,
         energy: null,
         articulation: null,
+        prosody: null,
+        behaviors: [],
         queuedText: [{ seq: 1, text: '你好' }],
       },
     }),
@@ -84,22 +120,126 @@ test('speech intent writes the mouth only while speech owns it', () => {
   assert.ok(host.calls.includes('text:你好'))
 })
 
+test('forwards one future prosody plan and clears it when speech yields', () => {
+  const coordinator = new RigMotionCoordinator()
+  const speech = coordinator.claim('speech', ['mouth'], { nowMs: 1 })
+  const host = recordingRig()
+  const state = createMotionApplyState()
+  const prosody = {
+    utteranceId: 'utt-1',
+    startedAtMs: 10,
+    durationMs: 500,
+    accents: [{ offsetMs: 200, intensity: 0.8 }],
+  }
+  const intent = {
+    active: true,
+    autoSpeech: false,
+    energy: null,
+    articulation: null,
+    prosody,
+    behaviors: [],
+    queuedText: [],
+  }
+  applyMotionFrame(host.rig, frame(coordinator, 1, { speech: intent }), state)
+  applyMotionFrame(host.rig, frame(coordinator, 2, { speech: intent }), state)
+  coordinator.release(speech)
+  applyMotionFrame(host.rig, frame(coordinator, 3, { speech: intent }), state)
+  assert.deepEqual(
+    host.calls.filter((call) => call.startsWith('prosody:')),
+    ['prosody:utt-1', 'prosody:none'],
+  )
+})
+
+test('forwards an incremental prosody revision with the same utterance id', () => {
+  const coordinator = new RigMotionCoordinator()
+  coordinator.claim('speech', ['mouth'], { nowMs: 1 })
+  const host = recordingRig()
+  const state = createMotionApplyState()
+  const base = {
+    active: true,
+    autoSpeech: false,
+    energy: null,
+    articulation: null,
+    behaviors: [],
+    queuedText: [],
+  }
+  const first = {
+    utteranceId: 'utt-live',
+    startedAtMs: 10,
+    durationMs: 900,
+    accents: [{ offsetMs: 200, intensity: 0.7 }],
+  }
+  applyMotionFrame(
+    host.rig,
+    frame(coordinator, 1, { speech: { ...base, prosody: first } }),
+    state,
+  )
+  applyMotionFrame(
+    host.rig,
+    frame(coordinator, 2, {
+      speech: {
+        ...base,
+        prosody: {
+          ...first,
+          accents: [...first.accents, { offsetMs: 620, intensity: 0.82 }],
+        },
+      },
+    }),
+    state,
+  )
+  assert.equal(
+    host.calls.filter((call) => call === 'prosody:utt-live').length,
+    2,
+  )
+})
+
+test('mood and activity enter the rig through the shared frame', () => {
+  const coordinator = new RigMotionCoordinator()
+  const host = recordingRig()
+  applyMotionFrame(
+    host.rig,
+    frame(coordinator, 1, { mood: { mood: 82, activity: 'thinking' } }),
+    createMotionApplyState(),
+  )
+  assert.ok(host.calls.includes('mood:82:thinking'))
+})
+
+test('a music frame forwards track identity before the groove sample', () => {
+  const coordinator = new RigMotionCoordinator()
+  coordinator.claim('music', ['mouth', 'headBody'], { nowMs: 1 })
+  const host = recordingRig()
+  applyMotionFrame(
+    host.rig,
+    frame(coordinator, 1, {
+      music: {
+        trackId: 'netease:123',
+        apply: {
+          release: false,
+          writeGroove: true,
+          writeMouth: true,
+          restMouth: false,
+        },
+        spectrum: { bass: 0.4, beat: 0.5, vocal: 0.6 },
+        articulation: { energy: 0.6, viseme: 'open', amount: 0.8 },
+        behaviors: [],
+      },
+    }),
+    createMotionApplyState(),
+  )
+  assert.ok(
+    host.calls.indexOf('track:netease:123') <
+      host.calls.indexOf('singing:true'),
+  )
+})
+
 test('the same performance plan is not replayed on later frames', () => {
   const coordinator = new RigMotionCoordinator()
   coordinator.claim('performance', ['expression'], { nowMs: 1 })
   const host = recordingRig()
   const state = createMotionApplyState()
-  const performance = { directive, startedAtMs: 10 }
-  applyMotionFrame(
-    host.rig,
-    frame(coordinator, 1, { performance }),
-    state,
-  )
-  applyMotionFrame(
-    host.rig,
-    frame(coordinator, 2, { performance }),
-    state,
-  )
+  const performance = performanceIntent('plan-1', 10)
+  applyMotionFrame(host.rig, frame(coordinator, 1, { performance }), state)
+  applyMotionFrame(host.rig, frame(coordinator, 2, { performance }), state)
   assert.equal(host.calls.filter((call) => call === 'play').length, 1)
 })
 
@@ -109,7 +249,7 @@ test('clearing the performance intent stops the plan once', () => {
   const state = createMotionApplyState()
   applyMotionFrame(
     host.rig,
-    frame(coordinator, 1, { performance: { directive, startedAtMs: 10 } }),
+    frame(coordinator, 1, { performance: performanceIntent('plan-1', 10) }),
     state,
   )
   applyMotionFrame(
@@ -125,46 +265,7 @@ test('clearing the performance intent stops the plan once', () => {
   assert.equal(host.calls.filter((call) => call === 'stop').length, 1)
 })
 
-test('autonomy plays only while it owns expression or gaze', () => {
-  const coordinator = new RigMotionCoordinator()
-  const handle = coordinator.claim('autonomy', ['expression', 'gaze'], {
-    nowMs: 1,
-  })
-  const host = recordingRig()
-  const state = createMotionApplyState()
-  const autonomy = { directive, startedAtMs: 20 }
-  applyMotionFrame(host.rig, frame(coordinator, 1, { autonomy }), state)
-  applyMotionFrame(host.rig, frame(coordinator, 2, { autonomy }), state)
-  assert.equal(host.calls.filter((call) => call === 'play').length, 1)
-
-  coordinator.release(handle)
-  applyMotionFrame(host.rig, frame(coordinator, 3, { autonomy }), state)
-  assert.equal(host.calls.filter((call) => call === 'stop').length, 1)
-})
-
-test('a live performance plan takes the rig from an autonomy pulse', () => {
-  const coordinator = new RigMotionCoordinator()
-  coordinator.claim('autonomy', ['expression', 'gaze'], { nowMs: 1 })
-  const host = recordingRig()
-  const state = createMotionApplyState()
-  applyMotionFrame(
-    host.rig,
-    frame(coordinator, 1, { autonomy: { directive, startedAtMs: 20 } }),
-    state,
-  )
-  applyMotionFrame(
-    host.rig,
-    frame(coordinator, 2, {
-      performance: { directive, startedAtMs: 30 },
-      autonomy: { directive, startedAtMs: 20 },
-    }),
-    state,
-  )
-  assert.equal(host.calls.filter((call) => call === 'stop').length, 1)
-  assert.equal(host.calls.filter((call) => call === 'play').length, 2)
-})
-
-test('a plan the player refused is retried on the next frame', () => {
+test('a rejected plan reports once instead of retrying every frame', () => {
   const coordinator = new RigMotionCoordinator()
   coordinator.claim('performance', ['expression'], { nowMs: 1 })
   const host = recordingRig()
@@ -172,20 +273,36 @@ test('a plan the player refused is retried on the next frame', () => {
   let accept = false
   const rig = {
     ...host.rig,
-    playMotionPlan: () => {
+    playBehaviorPlan: (plan: { behaviors: readonly { id: string }[] }) => {
       calls.push('play')
-      return accept
+      return plan.behaviors.map((behavior) => ({
+        behaviorId: behavior.id,
+        result: accept ? ('accepted' as const) : ('rejected' as const),
+        atMs: 30,
+      }))
     },
   }
   const state = createMotionApplyState()
-  const performance = { directive, startedAtMs: 30 }
+  const performance = performanceIntent('plan-1', 30)
   applyMotionFrame(rig, frame(coordinator, 1, { performance }), state)
   applyMotionFrame(rig, frame(coordinator, 2, { performance }), state)
-  assert.equal(calls.filter((call) => call === 'play').length, 2)
+  assert.equal(calls.filter((call) => call === 'play').length, 1)
 
-  // Once the player takes it, the plan settles and stops being re-offered.
+  // A new semantic plan may be offered; changing renderer state alone may not
+  // replay the rejected command without planner feedback.
   accept = true
-  applyMotionFrame(rig, frame(coordinator, 3, { performance }), state)
-  applyMotionFrame(rig, frame(coordinator, 4, { performance }), state)
-  assert.equal(calls.filter((call) => call === 'play').length, 3)
+  const nextPerformance = performanceIntent('next-plan', 31)
+  applyMotionFrame(
+    rig,
+    frame(coordinator, 3, {
+      performance: nextPerformance,
+    }),
+    state,
+  )
+  applyMotionFrame(
+    rig,
+    frame(coordinator, 4, { performance: nextPerformance }),
+    state,
+  )
+  assert.equal(calls.filter((call) => call === 'play').length, 2)
 })

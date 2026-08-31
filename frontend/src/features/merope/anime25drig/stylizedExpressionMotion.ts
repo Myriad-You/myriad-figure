@@ -99,6 +99,26 @@ const ZERO_MOTION: StylizedExpressionMotion = {
   speechlessSweatRotation: 0,
 }
 
+const MOTION_KEYS = Object.keys(ZERO_MOTION) as Array<
+  keyof StylizedExpressionMotion
+>
+
+export function createStylizedExpressionMotion(): StylizedExpressionMotion {
+  return { ...ZERO_MOTION }
+}
+
+/** Reuses `output`; all fields are offsets except ambientScale (neutral 1). */
+export function writeWeightedStylizedExpressionMotion(
+  output: StylizedExpressionMotion,
+  input: Readonly<StylizedExpressionMotion>,
+  amount: number,
+): StylizedExpressionMotion {
+  const weight = clamp(amount, 0, 1)
+  for (const key of MOTION_KEYS) output[key] = input[key] * weight
+  output.ambientScale = 1 + (input.ambientScale - 1) * weight
+  return output
+}
+
 /**
  * Stages semantic expression channels instead of cross-fading the whole face.
  * The reused output keeps the per-frame path allocation-free.

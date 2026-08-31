@@ -15,6 +15,7 @@ export interface AutoSpeechPose {
 }
 
 type RandomSource = () => number
+type TextVisemeCompiler = typeof compileTextVisemes
 
 const REST_RELEASE = 0.2
 
@@ -87,8 +88,13 @@ export class AutoSpeechController {
   private nextTextAccentAt = 0
   private textCompilation: Promise<void> = Promise.resolve()
   private textGeneration = 0
+  private pendingTextCompilations = 0
+  private provisionalTextActive = false
 
-  constructor(private readonly random: RandomSource = Math.random) {}
+  constructor(
+    private readonly random: RandomSource = Math.random,
+    private readonly compileVisemes: TextVisemeCompiler = compileTextVisemes,
+  ) {}
 
   clear(timeSeconds = 0): void {
     const now = Number.isFinite(timeSeconds) ? Math.max(0, timeSeconds) : 0
@@ -100,14 +106,34 @@ export class AutoSpeechController {
   enqueueText(text: string, locale?: string): void {
     const generation = this.textGeneration
     this.textMode = true
+    this.pendingTextCompilations += 1
     this.textCompilation = this.textCompilation.then(async () => {
-      const cues = await compileTextVisemes(text, locale)
-      if (generation !== this.textGeneration || cues.length === 0) return
-      this.appendTextCues(cues)
+      try {
+        const cues = await this.compileVisemes(text, locale)
+        if (generation !== this.textGeneration || cues.length === 0) return
+        this.appendTextCues(cues)
+      } catch {
+        // Visual-only articulation is best effort. Keep the serialized queue
+        // usable when an optional language compiler rejects unexpectedly.
+        return
+      } finally {
+        if (generation === this.textGeneration) {
+          this.pendingTextCompilations = Math.max(
+            0,
+            this.pendingTextCompilations - 1,
+          )
+        }
+      }
     })
   }
 
   private appendTextCues(cues: readonly TextVisemeCue[]): void {
+    if (this.provisionalTextActive) {
+      this.provisionalTextActive = false
+      this.speaking = false
+      this.nextEventAt = Number.POSITIVE_INFINITY
+      this.previousViseme = closestViseme(this.output)
+    }
     if (this.textCueIndex > 0) {
       this.activeTextAccentIndex =
         this.activeTextAccentIndex >= this.textCueIndex
@@ -142,7 +168,15 @@ export class AutoSpeechController {
 
     if (!this.enabled) return this.resolveRest(now)
 
-    if (this.textMode) return this.sampleText(now)
+    if (this.textMode) {
+      if (
+        !this.textCues[this.textCueIndex] &&
+        this.pendingTextCompilations > 0
+      ) {
+        return this.sampleProvisionalText(now)
+      }
+      return this.sampleText(now)
+    }
 
     this.resolve(now)
     // Preserve time-based behavior after a throttled or dropped frame without
@@ -292,6 +326,13 @@ export class AutoSpeechController {
     }
     const cue = this.textCues[this.textCueIndex]
     if (!cue) {
+      this.textCueStartedAt = Number.NaN
+      this.textCues = []
+      this.textCueIndex = 0
+      this.activeTextAccentIndex = -1
+      if (this.pendingTextCompilations > 0) {
+        return this.sampleProvisionalText(now)
+      }
       this.output.mouthOpen = 0
       this.output.mouthWide = 0
       this.output.mouthRound = 0
@@ -301,11 +342,7 @@ export class AutoSpeechController {
       this.output.phraseActivity = 0
       this.output.browAccent = 0
       this.output.headAccent = 0
-      this.textCueStartedAt = Number.NaN
-      this.textCues = []
-      this.textCueIndex = 0
       this.previousViseme = 'rest'
-      this.activeTextAccentIndex = -1
       return this.output
     }
     const next = this.textCues[this.textCueIndex + 1]?.viseme || 'rest'
@@ -363,6 +400,51 @@ export class AutoSpeechController {
     return this.output
   }
 
+  /**
+   * Covers only the causal gap between receiving text and compiling its exact
+   * visemes. This stays quieter than the workbench fallback and is discarded
+   * as soon as the authoritative cue queue is available.
+   */
+  private sampleProvisionalText(now: number): Readonly<AutoSpeechPose> {
+    if (!this.provisionalTextActive) {
+      this.provisionalTextActive = true
+      this.speaking = true
+      this.phraseStartedAt = now
+      this.phraseDuration = 3_600
+      this.phraseEndsAt = now + this.phraseDuration
+      this.emphasisStartedAt = Number.NEGATIVE_INFINITY
+      this.scheduleProvisionalSyllable(now)
+    }
+
+    this.resolve(now)
+    for (let event = 0; event < 12 && now >= this.nextEventAt; event += 1) {
+      const scheduledAt = this.nextEventAt
+      this.scheduleProvisionalSyllable(scheduledAt)
+      this.resolve(now)
+    }
+    return this.output
+  }
+
+  private scheduleProvisionalSyllable(now: number): void {
+    const interval = this.randomRange(0.11, 0.17)
+    const openness = clamp(
+      this.randomRange(0.24, 0.46),
+      this.toOpen - 0.26,
+      this.toOpen + 0.26,
+    )
+    const shape = this.randomUnit()
+    this.beginTransition(
+      now,
+      openness,
+      0,
+      shape < 0.34 ? this.randomRange(0.45, 0.72) : 0,
+      shape >= 0.34 && shape < 0.66 ? this.randomRange(0.45, 0.72) : 0,
+      shape >= 0.66 ? this.randomRange(0.4, 0.68) : 0,
+      Math.min(interval * 0.7, 0.095),
+    )
+    this.nextEventAt = now + interval
+  }
+
   private maybeStartTextAccent(cueStartedAt: number): void {
     const cue = this.textCues[this.textCueIndex]
     if (!cue?.emphasis || cueStartedAt < this.nextTextAccentAt) return
@@ -397,6 +479,8 @@ export class AutoSpeechController {
     this.previousViseme = 'rest'
     this.activeTextAccentIndex = -1
     this.nextTextAccentAt = 0
+    this.pendingTextCompilations = 0
+    this.provisionalTextActive = false
     this.textGeneration += 1
     this.textCompilation = Promise.resolve()
     this.restRelease = true
@@ -443,6 +527,32 @@ function visemeValue(
     return 0
   }
   return viseme === channel ? 1 : 0
+}
+
+function closestViseme(pose: Readonly<AutoSpeechPose>): SpeechViseme {
+  const candidates: SpeechViseme[] = [
+    'rest',
+    'closed',
+    'open',
+    'wide',
+    'round',
+    'narrow',
+  ]
+  let closest: SpeechViseme = 'rest'
+  let closestDistance = Number.POSITIVE_INFINITY
+  for (const candidate of candidates) {
+    const distance =
+      Math.abs(pose.mouthOpen - visemeValue(candidate, 'open')) +
+      Math.abs(pose.mouthWide - visemeValue(candidate, 'wide')) +
+      Math.abs(pose.mouthRound - visemeValue(candidate, 'round')) +
+      Math.abs(pose.mouthNarrow - visemeValue(candidate, 'narrow')) +
+      Math.abs(pose.mouthSeal - visemeValue(candidate, 'seal'))
+    if (distance < closestDistance) {
+      closest = candidate
+      closestDistance = distance
+    }
+  }
+  return closest
 }
 
 function smootherstep(value: number): number {

@@ -3,19 +3,137 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { IDENTITY_DRIVER } from './driver'
 import {
+  applyAnime25DComposedPose,
   applyAnime25DSillyMouthOwnership,
+  applyAnime25DStylizedExpression,
   prepareAnime25DWorkingTarget,
   resolveAnime25DStylizedTargets,
   stepAnime25DBlink,
   stepAnime25DDriverResponse,
 } from './driverComposition'
-import { mixBoundedExpressionChannel } from './performanceExpression'
+import {
+  expressionCueOffset,
+  mixBoundedExpressionChannel,
+} from './performanceExpression'
+import { zeroOccupancyOffset } from './poseCompositor'
 import {
   stepMouthForm,
   stepMouthOpen,
   stepMouthSeal,
   stepMouthShape,
 } from './speechResponse'
+import { StylizedExpressionMotionController } from './stylizedExpressionMotion'
+
+test('all shared pose producers land through one channel-weighted composition', () => {
+  const target = { ...IDENTITY_DRIVER }
+  const full = { gaze: 1, headBody: 1, expression: 1 }
+  const none = { gaze: 0, headBody: 0, expression: 0 }
+  const performance = expressionCueOffset({
+    intent: 'think',
+    atMs: 0,
+    intensity: 1,
+    tempo: 1,
+    fadeInMs: 80,
+    fadeOutMs: 120,
+    interrupt: 'replace',
+  })
+  const stylized = new StylizedExpressionMotionController().sample(
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+  )
+  applyAnime25DComposedPose(
+    target,
+    {
+      ambient: full,
+      random: none,
+      groove: none,
+      thinking: none,
+      performance: full,
+      stylized: full,
+      coSpeech: full,
+      speechMouth: 0,
+      grooveMouth: 0,
+    },
+    {
+      ambient: { angleX: 0, angleY: 0, angleZ: 0, body: 0, eyeX: 0, eyeY: 0 },
+      randomAction: {
+        angleX: 0,
+        angleY: 0,
+        angleZ: 0,
+        body: 0,
+        eyeX: 0,
+        eyeY: 0,
+        brow: 0,
+        browAngSym: 0,
+        eyeOpen: 0,
+        irisScale: 0,
+        armY: 0,
+        armPos: 0,
+        ambientScale: 1,
+      },
+      groove: {
+        angleX: 0,
+        angleY: 0,
+        angleZ: 0,
+        body: 0,
+        armY: 0,
+        armPos: 0,
+        eyeX: 0,
+        brow: 0,
+      },
+      thinking: {
+        angleX: 0,
+        angleY: 0,
+        angleZ: 0,
+        eyeX: 0,
+        eyeY: 0,
+        brow: 0,
+        mouthCY: 0,
+        mouthCAng: 0,
+        mouthScale: 0,
+      },
+      breath: { angleX: 0.1, angleY: 0, angleZ: 0, body: 0.08 },
+      performance,
+      stylized,
+      coSpeech: { brow: 0.1, eyeOpen: 0, angleY: 0.05 },
+    },
+    zeroOccupancyOffset(),
+  )
+
+  assert.ok(target.angleX > 0.09, 'breath')
+  assert.ok(target.body > 0.07, 'breath body')
+  assert.ok(target.eyeX > 0.45, 'directed gaze')
+  assert.ok(target.angleZ < -0.15, 'semantic head plus expressive range')
+  assert.ok(target.brow > 0.23, 'semantic and co-speech brow')
+})
+
+test('semantic and staged expression extras honor independent ownership', () => {
+  const target = { ...IDENTITY_DRIVER }
+  const semantic = expressionCueOffset({
+    intent: 'dizzy',
+    atMs: 0,
+    intensity: 1,
+    tempo: 1,
+    fadeInMs: 80,
+    fadeOutMs: 120,
+    interrupt: 'replace',
+  })
+  const controller = new StylizedExpressionMotionController()
+  let stylized = controller.sample(0, 0, 0, 1, 0, 0)
+  for (let frame = 1; frame <= 60; frame += 1) {
+    stylized = controller.sample(frame / 60, 0, 0, 1, 0, 0)
+  }
+
+  applyAnime25DStylizedExpression(target, semantic, stylized, false, 0, 0.25)
+
+  assert.equal(target.eyeDizzy, 0)
+  assert.equal(target.maniac, 0)
+  assert.equal(target.mouthOpen, stylized.mouthOpen * 0.25)
+})
 
 test('working target preparation reuses its output and preserves legacy math', () => {
   const authored: Anime25DDriver = {

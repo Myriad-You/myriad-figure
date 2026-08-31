@@ -69,3 +69,24 @@ test('derives a delayed visual beat from authored energy without frame allocatio
   assert.ok(Math.abs(rest.eyeOpen) < 1e-3)
   assert.ok(Math.abs(rest.angleY) < 1e-3)
 })
+
+test('anticipates known TTS emphasis instead of waiting for the loudness edge', () => {
+  const expression = new CoSpeechExpressionController()
+  expression.setProsody(
+    {
+      utteranceId: 'utt-1',
+      startedAtMs: 1_000,
+      durationMs: 1_000,
+      accents: [{ offsetMs: 400, intensity: 0.8 }],
+    },
+    0,
+    1_000,
+  )
+  expression.sample(0.3, true, 0.2, 0, 0, 0)
+  const preparation = {
+    ...expression.sample(0.36, true, 0.2, 0, 0, 0),
+  }
+  const stroke = { ...expression.sample(0.4, true, 0.2, 0, 0, 0) }
+  assert.ok(preparation.brow > 0)
+  assert.ok(stroke.brow > preparation.brow)
+})

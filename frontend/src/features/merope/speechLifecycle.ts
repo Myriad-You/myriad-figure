@@ -1,4 +1,5 @@
 import type { SpeechArticulation } from './rig/articulation'
+import type { SpeechProsodyPlan } from './speech/prosody'
 import type { MeropeSpeechEventDetail } from './speechEvents'
 import { isLiveMotionGeneration } from './motion/liveGeneration'
 import { noteTurnTraceDrop } from './turnTrace'
@@ -8,6 +9,7 @@ export interface SpeechLifecycleTarget {
   setAutoSpeech: (active: boolean) => void
   setSpeechEnergy: (energy: number | null) => void
   setSpeechArticulation: (articulation: SpeechArticulation) => void
+  setSpeechProsody?: (prosody: SpeechProsodyPlan | null) => void
   enqueueSpeechText: (text: string, locale?: string) => void
 }
 
@@ -110,6 +112,12 @@ export class SpeechLifecycleController {
       return
     }
 
+    if (event.phase === 'prosody') {
+      this.target.setSpeechProsody?.(event.prosody)
+      this.scheduleWatchdog()
+      return
+    }
+
     if (this.authored) {
       this.finishNow()
       return
@@ -165,6 +173,7 @@ export class SpeechLifecycleController {
   }
 
   private finishNow(): void {
+    const hadUtterance = this.activeMessageId !== null || this.speechActive
     this.clearTimer()
     if (this.authored) {
       this.target.setSpeechArticulation({
@@ -176,6 +185,7 @@ export class SpeechLifecycleController {
       this.target.setAutoSpeech(false)
     }
     if (this.speechActive) this.target.setSpeechActive(false)
+    if (hadUtterance) this.target.setSpeechProsody?.(null)
     this.setOccupancy(false)
     this.activeMessageId = null
     this.activeUtteranceId = null

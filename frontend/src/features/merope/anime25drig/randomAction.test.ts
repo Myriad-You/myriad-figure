@@ -24,12 +24,12 @@ test('waits briefly, then plays a visible staged action', () => {
   assert.equal(magnitude(controller.sample(1.59, true, false)), 0)
 
   controller.sample(1.61, true, false)
-  assert.equal(controller.getActiveAction(), 'openGesture')
+  assert.equal(controller.getActiveAction(), 'shoulderEase')
   const action = controller.sample(2.25, true, false)
-  assert.ok(action.armY > 0.2)
-  assert.ok(action.brow > 0.08)
-  assert.ok(action.eyeOpen < -0.05)
-  assert.ok(action.ambientScale < 0.5)
+  assert.ok(action.armY > 0.05)
+  assert.equal(action.brow, 0)
+  assert.ok(action.eyeOpen < -0.015)
+  assert.ok(action.ambientScale < 0.8)
 })
 
 test('reuses one frame object and keeps every action channel bounded', () => {
@@ -90,81 +90,11 @@ test('cycles through the complete action catalog without immediate repeats', () 
     activeBefore = active
   }
   assert.deepEqual([...seen].sort(), [
-    'acknowledge',
-    'curious',
-    'openGesture',
-    'pleased',
+    'headDrift',
+    'postureShift',
+    'shoulderEase',
+    'softBlink',
   ])
-})
-
-test('excited singing starts a face clip quickly without moving hands', () => {
-  const controller = new RandomActionController(() => 0.5)
-  assert.equal(magnitude(controller.sample(0, true, false, 'excited')), 0)
-  assert.equal(controller.getActiveAction(), null)
-  assert.equal(controller.sample(0.52, true, false, 'excited').armY, 0)
-  assert.equal(controller.getActiveAction(), null)
-  controller.sample(0.55, true, false, 'excited')
-  assert.equal(controller.getActiveAction(), 'cheer')
-  const face = controller.sample(0.95, true, false, 'excited')
-  assert.equal(face.armY, 0)
-  assert.equal(face.body, 0)
-  assert.equal(face.angleZ, 0)
-  assert.equal(face.eyeX, 0)
-  assert.equal(face.eyeY, 0)
-  assert.ok(face.brow > 0.04)
-})
-
-test('excited catalog cycles singing faces without idle clips', () => {
-  let seed = 0x51C3_0A17
-  const random = () => {
-    seed = (seed * 1_103_515_245 + 12_345) >>> 0
-    return seed / 0x1_0000_0000
-  }
-  const controller = new RandomActionController(random)
-  const smileNames = new Set<RandomActionName>([
-    'beam',
-    'cheer',
-    'coy',
-    'smug',
-    'sparkle',
-  ])
-  const seen = new Set<RandomActionName>()
-  let clips = 0
-  let smileClips = 0
-  let otherClips = 0
-  let activeBefore: RandomActionName | null = null
-  for (let frame = 0; frame <= 60 * 90; frame += 1) {
-    controller.sample(frame / 60, true, false, 'excited')
-    const active = controller.getActiveAction()
-    if (active) seen.add(active)
-    if (active && activeBefore === null) {
-      clips += 1
-      if (smileNames.has(active)) smileClips += 1
-      else otherClips += 1
-    }
-    activeBefore = active
-  }
-  assert.ok(seen.has('beam'))
-  assert.ok(seen.has('cheer'))
-  assert.ok(!seen.has('acknowledge'))
-  assert.ok(!seen.has('pleased'))
-  assert.ok(clips >= 12)
-  assert.ok(smileClips > otherClips * 1.8)
-})
-
-test('switching into singing releases the idle clip before grooving', () => {
-  const controller = new RandomActionController(() => 0.5)
-  controller.sample(0, true, false)
-  controller.sample(1.61, true, false)
-  const idle = { ...controller.sample(2.25, true, false) }
-  assert.ok(magnitude(idle) > 0.2)
-  const switched = controller.sample(2.25, true, false, 'excited')
-  assert.deepEqual(switched, idle)
-  assert.equal(controller.getActiveAction(), null)
-  assert.ok(
-    magnitude(controller.sample(2.57, true, false, 'excited')) <
-      magnitude(idle),
-  )
 })
 
 test('speech or another owner releases an action and resumes without a long freeze', () => {
@@ -172,7 +102,7 @@ test('speech or another owner releases an action and resumes without a long free
   controller.sample(0, true, false)
   controller.sample(1.61, true, false)
   const active = { ...controller.sample(2.25, true, false) }
-  assert.ok(magnitude(active) > 0.2)
+  assert.ok(magnitude(active) > 0.06)
 
   const releaseStart = { ...controller.sample(2.25, true, true) }
   assert.deepEqual(releaseStart, active)

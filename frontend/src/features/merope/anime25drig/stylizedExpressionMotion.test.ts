@@ -2,12 +2,29 @@ import type { StylizedExpressionMotion } from './stylizedExpressionMotion'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  createStylizedExpressionMotion,
   SILLY_IRIS_DRIFT_LIMIT,
   StylizedExpressionMotionController,
+  writeWeightedStylizedExpressionMotion,
 } from './stylizedExpressionMotion'
 
 const STEP = 1 / 60
 const LOOP_SECONDS = 6
+
+test('weights renderer-local motion without allocating or shifting its neutral', () => {
+  const controller = new StylizedExpressionMotionController()
+  let source = controller.sample(0, 0, 0, 1, 0, 0)
+  for (let frame = 1; frame <= 60; frame += 1) {
+    source = controller.sample(frame * STEP, 0, 0, 1, 0, 0)
+  }
+  const output = createStylizedExpressionMotion()
+  const actual = writeWeightedStylizedExpressionMotion(output, source, 0.25)
+
+  assert.equal(actual, output)
+  assert.equal(actual.maniac, source.maniac * 0.25)
+  assert.equal(actual.maniacUpperMouthPulse, source.maniacUpperMouthPulse * 0.25)
+  assert.equal(actual.ambientScale, 1 + (source.ambientScale - 1) * 0.25)
+})
 
 test('drifts the two silly irides on independent, unequal paths', () => {
   const frames = runSilly(2 * LOOP_SECONDS)

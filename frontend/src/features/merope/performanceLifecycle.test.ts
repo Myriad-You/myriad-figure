@@ -21,11 +21,11 @@ test('forwards only semantic performance data and leaves event text speech-owned
   const played: (typeof performance)[] = []
   let stopped = 0
   const target: PerformanceLifecycleTarget = {
-    playMotionPlan: (value) => {
+    applyPerformanceDirective: (value) => {
       played.push(value as typeof performance)
       return true
     },
-    stopMotionPlan: () => {
+    clearPerformanceDirective: () => {
       stopped += 1
     },
   }
@@ -45,8 +45,8 @@ test('forwards only semantic performance data and leaves event text speech-owned
 test('stops the mounted rig when the lifecycle owner is disposed', () => {
   let stopped = 0
   const controller = new PerformanceLifecycleController({
-    playMotionPlan: () => true,
-    stopMotionPlan: () => {
+    applyPerformanceDirective: () => true,
+    clearPerformanceDirective: () => {
       stopped += 1
     },
   })
@@ -57,8 +57,8 @@ test('stops the mounted rig when the lifecycle owner is disposed', () => {
 test('a normal speech end keeps the landing plan; cancel dumps it', () => {
   let stopped = 0
   const controller = new PerformanceLifecycleController({
-    playMotionPlan: () => true,
-    stopMotionPlan: () => {
+    applyPerformanceDirective: () => true,
+    clearPerformanceDirective: () => {
       stopped += 1
     },
   })
@@ -93,11 +93,11 @@ test('cancels only the transient plan owned by the interrupted message', () => {
   const played: (typeof performance)[] = []
   let stopped = 0
   const controller = new PerformanceLifecycleController({
-    playMotionPlan: (value) => {
+    applyPerformanceDirective: (value) => {
       played.push(value as typeof performance)
       return true
     },
-    stopMotionPlan: () => {
+    clearPerformanceDirective: () => {
       stopped += 1
     },
   })
@@ -125,11 +125,11 @@ test('cancels only the transient plan owned by the interrupted message', () => {
 test('drops a performance plan that arrives after its message was cancelled', () => {
   const played: (typeof performance)[] = []
   const controller = new PerformanceLifecycleController({
-    playMotionPlan: (value) => {
+    applyPerformanceDirective: (value) => {
       played.push(value as typeof performance)
       return true
     },
-    stopMotionPlan: () => undefined,
+    clearPerformanceDirective: () => undefined,
   })
   controller.handleSpeech({
     phase: 'cancel',
@@ -149,8 +149,8 @@ test('does not transfer cancellation ownership to a plan rejected by the rig', (
   let stopped = 0
   let accepted = true
   const controller = new PerformanceLifecycleController({
-    playMotionPlan: () => accepted,
-    stopMotionPlan: () => {
+    applyPerformanceDirective: () => accepted,
+    clearPerformanceDirective: () => {
       stopped += 1
     },
   })
@@ -186,11 +186,11 @@ test('drops an older generation plan and ignores a replay of the active plan', a
   setLiveMotionGeneration(2)
   const played: (typeof performance)[] = []
   const controller = new PerformanceLifecycleController({
-    playMotionPlan: (value) => {
+    applyPerformanceDirective: (value) => {
       played.push(value as typeof performance)
       return true
     },
-    stopMotionPlan: () => undefined,
+    clearPerformanceDirective: () => undefined,
   })
   controller.handle({
     text: 'stale',

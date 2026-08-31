@@ -2,21 +2,33 @@ import type { SingingGroovePose } from '../singing/singingGroove'
 import type { AmbientPose } from './ambientMotion'
 import type { CryMouthMotion } from './cryMotion'
 import type { Anime25DDriver } from './driver'
+import type { IdleBreathOffset } from './idleBreath'
 import type { PerformanceExpressionOffset } from './performanceExpression'
+import type { PoseGate } from './poseArbitration'
+import type { OccupancyOffset } from './poseCompositor'
 import type { RandomActionFrame } from './randomAction'
 import type { CoSpeechExpressionOffset } from './speechExpression'
 import type { AutoSpeechPose } from './speechMotion'
 import type { StylizedExpressionMotion } from './stylizedExpressionMotion'
 import type { ThinkingMotionPose } from './thinkingMotion'
-import { applySingingGroove } from '../singing/singingGroove'
 import { sampleCryMouthMotion } from './cryMotion'
 import { IDENTITY_DRIVER } from './driver'
 import {
-  applyPerformanceExpressionOffset,
+  semanticRollMotionOffset,
+  semanticVerticalMotionOffset,
+  speechBrowMotionOffset,
+  speechHeadMotionOffset,
+} from './expressiveMotionEnvelope'
+import {
+  applyPerformanceExpressionExtras,
   mixBoundedExpressionChannel,
   mixEyeOpen,
 } from './performanceExpression'
-import { applyRandomActionFrame } from './randomAction'
+import { POSE_KEYS } from './poseArbitration'
+import {
+  accumulateOccupancyOffset,
+  accumulatePoseChannel,
+} from './poseCompositor'
 import {
   stepMouthForm,
   stepMouthOpen,
@@ -118,236 +130,228 @@ export function resolveAnime25DStylizedTargets(
   return output
 }
 
-export function applyAnime25DAmbientMotion(
+/**
+ * One arbitrated pose write for every source that contends for the same head,
+ * body, eyes and brow.
+ *
+ * Every shared pose producer contributes a layer with the weight
+ * `resolvePoseGate` derived from ownership and occupancy. Ambient motion,
+ * random action, groove, thinking, breath, directed expression and co-speech
+ * therefore land on the driver once instead of rewriting it in call order.
+ *
+ * Channels only one source writes (the random action's brow asymmetry, eye
+ * openness and iris; the thinking loop's mouth corners) are uncontended, so
+ * they stay on their own path — at that source's own arbitrated weight.
+ */
+export function applyAnime25DComposedPose(
   target: Anime25DDriver,
-  ambient: Readonly<AmbientPose>,
-  ambientScale: number,
-  headKeep: number,
+  gate: PoseGate,
+  sources: {
+    ambient: Readonly<AmbientPose>
+    randomAction: Readonly<RandomActionFrame>
+    groove: Readonly<SingingGroovePose>
+    thinking: Readonly<ThinkingMotionPose>
+    breath: Readonly<IdleBreathOffset>
+    performance: Readonly<PerformanceExpressionOffset>
+    stylized: Readonly<StylizedExpressionMotion>
+    coSpeech: Readonly<CoSpeechExpressionOffset>
+  },
+  scratch: OccupancyOffset,
 ): void {
-  target.angleX = clamp(
-    target.angleX + ambient.angleX * ambientScale * headKeep,
-    -1,
-    1,
+  for (const key of POSE_KEYS) scratch[key] = 0
+  accumulateOccupancyOffset(scratch, sources.ambient, gate.ambient)
+  accumulateOccupancyOffset(scratch, sources.randomAction, gate.random)
+  accumulateOccupancyOffset(scratch, sources.groove, gate.groove)
+  accumulateOccupancyOffset(scratch, sources.thinking, gate.thinking)
+  accumulateOccupancyOffset(scratch, sources.breath, gate.ambient)
+  accumulateOccupancyOffset(scratch, sources.performance, gate.performance)
+  accumulateOccupancyOffset(scratch, sources.stylized, gate.stylized)
+  accumulateOccupancyOffset(scratch, sources.coSpeech, gate.coSpeech)
+  accumulatePoseChannel(
+    scratch,
+    'angleY',
+    semanticVerticalMotionOffset(sources.performance.angleY),
+    gate.performance,
   )
-  target.angleY = clamp(
-    target.angleY + ambient.angleY * ambientScale * headKeep,
-    -1,
-    1,
+  accumulatePoseChannel(
+    scratch,
+    'angleZ',
+    semanticRollMotionOffset(sources.performance.angleZ),
+    gate.performance,
   )
-  target.angleZ = clamp(
-    target.angleZ + ambient.angleZ * ambientScale * headKeep,
-    -1,
-    1,
+  accumulatePoseChannel(
+    scratch,
+    'angleY',
+    speechHeadMotionOffset(sources.coSpeech.angleY),
+    gate.coSpeech,
   )
-  target.body = clamp(
-    target.body + ambient.body * ambientScale * headKeep,
-    -1,
-    1,
+  accumulatePoseChannel(
+    scratch,
+    'brow',
+    speechBrowMotionOffset(sources.coSpeech.brow),
+    gate.coSpeech,
   )
-  target.eyeX = clamp(target.eyeX + ambient.eyeX * ambientScale, -1, 1)
-  target.eyeY = clamp(target.eyeY + ambient.eyeY * ambientScale, -1, 1)
+  for (const key of POSE_KEYS) {
+    target[key] = mixBoundedExpressionChannel(
+      target[key],
+      scratch[key],
+      -1,
+      1,
+      0,
+    )
+  }
+  applyRandomActionExpressionExtras(
+    target,
+    sources.randomAction,
+    gate.random.expression,
+  )
+  applyThinkingMouth(target, sources.thinking, gate.thinking.expression)
 }
 
-export function applyAnime25DActionMotion(
+function applyRandomActionExpressionExtras(
   target: Anime25DDriver,
-  randomAction: Readonly<RandomActionFrame>,
-  randomActionScale: number,
-  groove: Readonly<SingingGroovePose>,
-  singingAmount: number,
-  thinking: Readonly<ThinkingMotionPose>,
-  thinkingAmount = 1,
+  frame: Readonly<RandomActionFrame>,
+  amount: number,
 ): void {
-  applyRandomActionFrame(target, randomAction, randomActionScale)
-  applySingingGroove(target, groove, singingAmount)
-  const think = clamp(thinkingAmount, 0, 1)
-  target.angleX = mixBoundedExpressionChannel(
-    target.angleX,
-    thinking.angleX * think,
+  const weight = clamp(amount, 0, 1)
+  if (weight <= 0) return
+  target.browAngSym = mixBoundedExpressionChannel(
+    target.browAngSym,
+    frame.browAngSym * weight,
     -1,
     1,
     0,
   )
-  target.angleY = mixBoundedExpressionChannel(
-    target.angleY,
-    thinking.angleY * think,
-    -1,
+  target.eyeOpenL = mixEyeOpen(target.eyeOpenL, frame.eyeOpen * weight)
+  target.eyeOpenR = mixEyeOpen(target.eyeOpenR, frame.eyeOpen * weight)
+  target.irisScale = mixBoundedExpressionChannel(
+    target.irisScale,
+    frame.irisScale * weight,
+    0.5,
+    1.3,
     1,
-    0,
   )
-  target.angleZ = mixBoundedExpressionChannel(
-    target.angleZ,
-    thinking.angleZ * think,
-    -1,
-    1,
-    0,
-  )
-  target.eyeX = mixBoundedExpressionChannel(
-    target.eyeX,
-    thinking.eyeX * think,
-    -1,
-    1,
-    0,
-  )
-  target.eyeY = mixBoundedExpressionChannel(
-    target.eyeY,
-    thinking.eyeY * think,
-    -1,
-    1,
-    0,
-  )
-  target.brow = mixBoundedExpressionChannel(
-    target.brow,
-    thinking.brow * think,
-    -1,
-    1,
-    0,
-  )
+}
+
+function applyThinkingMouth(
+  target: Anime25DDriver,
+  thinking: Readonly<ThinkingMotionPose>,
+  amount: number,
+): void {
+  const weight = clamp(amount, 0, 1)
+  if (weight <= 0) return
   target.mouthCY = mixBoundedExpressionChannel(
     target.mouthCY,
-    thinking.mouthCY * think,
+    thinking.mouthCY * weight,
     -1,
     1,
     0,
   )
   target.mouthCAng = mixBoundedExpressionChannel(
     target.mouthCAng,
-    thinking.mouthCAng * think,
+    thinking.mouthCAng * weight,
     -1,
     1,
     0,
   )
   target.mouthScale = mixBoundedExpressionChannel(
     target.mouthScale,
-    thinking.mouthScale * think,
+    thinking.mouthScale * weight,
     0.5,
     1.5,
     1,
   )
 }
 
-export function applyAnime25DStylizedMotion(
+export function applyAnime25DStylizedExpression(
   target: Anime25DDriver,
   semantic: Readonly<PerformanceExpressionOffset>,
   stylized: Readonly<StylizedExpressionMotion>,
   speaking: boolean,
+  semanticAmount = 1,
+  stylizedAmount = 1,
 ): void {
-  applyPerformanceExpressionOffset(target, semantic)
-  target.brow = mixBoundedExpressionChannel(
-    target.brow,
-    stylized.brow,
-    -1,
-    1,
-    0,
-  )
+  const semanticWeight = clamp(semanticAmount, 0, 1)
+  const stylizedWeight = clamp(stylizedAmount, 0, 1)
+  applyPerformanceExpressionExtras(target, semantic, semanticWeight)
   target.browAngL = mixBoundedExpressionChannel(
     target.browAngL,
-    stylized.browAngL,
+    stylized.browAngL * stylizedWeight,
     -1,
     1,
     0,
   )
   target.browAngR = mixBoundedExpressionChannel(
     target.browAngR,
-    stylized.browAngR,
+    stylized.browAngR * stylizedWeight,
     -1,
     1,
     0,
   )
   target.browAngSym = mixBoundedExpressionChannel(
     target.browAngSym,
-    stylized.browAngSym,
+    stylized.browAngSym * stylizedWeight,
     -1,
     1,
     0,
   )
-  target.eyeOpenL = mixEyeOpen(target.eyeOpenL, stylized.eyeOpen)
-  target.eyeOpenR = mixEyeOpen(target.eyeOpenR, stylized.eyeOpen)
-  target.eyeX = mixBoundedExpressionChannel(
-    target.eyeX,
-    stylized.eyeX,
-    -1,
-    1,
-    0,
+  target.eyeOpenL = mixEyeOpen(
+    target.eyeOpenL,
+    stylized.eyeOpen * stylizedWeight,
   )
-  target.eyeY = mixBoundedExpressionChannel(
-    target.eyeY,
-    stylized.eyeY,
-    -1,
-    1,
-    0,
+  target.eyeOpenR = mixEyeOpen(
+    target.eyeOpenR,
+    stylized.eyeOpen * stylizedWeight,
   )
   target.irisScale = mixBoundedExpressionChannel(
     target.irisScale,
-    stylized.irisScale,
+    stylized.irisScale * stylizedWeight,
     0.5,
     1.3,
     1,
   )
   target.mouthForm = mixBoundedExpressionChannel(
     target.mouthForm,
-    stylized.mouthForm,
+    stylized.mouthForm * stylizedWeight,
     -1,
     1,
     0,
   )
-  target.mouthOpen = Math.max(target.mouthOpen, stylized.mouthOpen)
+  target.mouthOpen = Math.max(
+    target.mouthOpen,
+    stylized.mouthOpen * stylizedWeight,
+  )
   const lovestruckMouthShare = speaking ? 0.18 : 1
   target.mouthOpen = Math.max(
     target.mouthOpen,
-    stylized.lovestruckMouthOpen * lovestruckMouthShare,
+    stylized.lovestruckMouthOpen * lovestruckMouthShare * stylizedWeight,
   )
   target.mouthRound = Math.max(
     target.mouthRound,
-    stylized.lovestruckMouthRound * lovestruckMouthShare,
+    stylized.lovestruckMouthRound * lovestruckMouthShare * stylizedWeight,
   )
   target.mouthCY = mixBoundedExpressionChannel(
     target.mouthCY,
-    stylized.mouthCY,
+    stylized.mouthCY * stylizedWeight,
     -1,
     1,
     0,
   )
   target.mouthCAng = mixBoundedExpressionChannel(
     target.mouthCAng,
-    stylized.mouthCAng,
+    stylized.mouthCAng * stylizedWeight,
     -1,
     1,
     0,
   )
   target.mouthScale = mixBoundedExpressionChannel(
     target.mouthScale,
-    stylized.mouthScale + stylized.lovestruckMouthScale * lovestruckMouthShare,
+    (stylized.mouthScale +
+      stylized.lovestruckMouthScale * lovestruckMouthShare) *
+      stylizedWeight,
     0.5,
     1.5,
     1,
-  )
-  target.angleX = mixBoundedExpressionChannel(
-    target.angleX,
-    stylized.angleX,
-    -1,
-    1,
-    0,
-  )
-  target.angleY = mixBoundedExpressionChannel(
-    target.angleY,
-    stylized.angleY,
-    -1,
-    1,
-    0,
-  )
-  target.angleZ = mixBoundedExpressionChannel(
-    target.angleZ,
-    stylized.angleZ,
-    -1,
-    1,
-    0,
-  )
-  target.body = mixBoundedExpressionChannel(
-    target.body,
-    stylized.body,
-    -1,
-    1,
-    0,
   )
 }
 
@@ -391,7 +395,7 @@ export function applyAnime25DCryMouth(
   )
 }
 
-export function applyAnime25DSpeechMotion(
+export function applyAnime25DSpeechExtras(
   target: Anime25DDriver,
   speech: Readonly<AutoSpeechPose>,
   expression: Readonly<CoSpeechExpressionOffset>,
@@ -409,22 +413,8 @@ export function applyAnime25DSpeechMotion(
     target.mouthNarrow = Math.max(target.mouthNarrow, speech.mouthNarrow)
     target.mouthSeal = Math.max(target.mouthSeal, speech.mouthSeal)
   }
-  target.brow = mixBoundedExpressionChannel(
-    target.brow,
-    expression.brow,
-    -1,
-    1,
-    0,
-  )
   target.eyeOpenL = mixEyeOpen(target.eyeOpenL, expression.eyeOpen)
   target.eyeOpenR = mixEyeOpen(target.eyeOpenR, expression.eyeOpen)
-  target.angleY = mixBoundedExpressionChannel(
-    target.angleY,
-    expression.angleY,
-    -1,
-    1,
-    0,
-  )
 }
 
 export function applyAnime25DSillyMouthOwnership(

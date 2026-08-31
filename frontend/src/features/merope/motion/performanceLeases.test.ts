@@ -4,7 +4,6 @@ import test from 'node:test'
 import { cueDurationMs } from '../anime25drig/performanceMotion'
 import { RigMotionCoordinator } from './coordinator'
 import {
-  PERFORMANCE_BASELINE_HOLD_MS,
   performanceLeaseWindows,
   PerformanceMotionLeases,
 } from './performanceLeases'
@@ -44,11 +43,7 @@ function directive(
   }
 }
 
-test('lease tail is not a multi-second visual return to idle', () => {
-  assert.ok(PERFORMANCE_BASELINE_HOLD_MS < 2400)
-})
-
-test('open posture without a body cue occupies head/body for the baseline hold', () => {
+test('persistent bearing never acquires a transient lease', () => {
   const windows = performanceLeaseWindows(
     directive({
       baseline: {
@@ -60,9 +55,10 @@ test('open posture without a body cue occupies head/body for the baseline hold',
     }),
     0,
   )
-  assert.equal(windows.headBodyCueUntilMs, PERFORMANCE_BASELINE_HOLD_MS)
-  assert.equal(windows.expressionBaselineUntilMs, PERFORMANCE_BASELINE_HOLD_MS)
+  assert.equal(windows.planUntilMs, 0)
+  assert.equal(windows.headBodyCueUntilMs, null)
   assert.equal(windows.expressionCueUntilMs, null)
+  assert.equal(windows.gazeCueUntilMs, null)
 })
 
 test('a greet cue times the head/body lease to its actual duration', () => {
@@ -70,10 +66,7 @@ test('a greet cue times the head/body lease to its actual duration', () => {
   const windows = performanceLeaseWindows(directive({ cues: [greet] }), 0)
   assert.equal(windows.headBodyCueUntilMs, cueDurationMs(greet))
   assert.equal(windows.expressionCueUntilMs, cueDurationMs(greet))
-  assert.equal(
-    windows.expressionBaselineUntilMs,
-    cueDurationMs(greet) + PERFORMANCE_BASELINE_HOLD_MS,
-  )
+  assert.equal(windows.planUntilMs, cueDurationMs(greet))
 })
 
 test('think stays on expression and never takes the singing body', () => {
@@ -85,7 +78,7 @@ test('think stays on expression and never takes the singing body', () => {
   assert.equal(windows.headBodyCueUntilMs, null)
 })
 
-test('body cue lease expires and music groove resumes; landing baseline outlives the cue', () => {
+test('body cue lease expires and music groove resumes without a synthetic tail', () => {
   const coordinator = new RigMotionCoordinator()
   coordinator.claim('music', ['mouth', 'headBody'], { nowMs: 0 })
   const leases = new PerformanceMotionLeases(coordinator)
@@ -97,13 +90,10 @@ test('body cue lease expires and music groove resumes; landing baseline outlives
   const end = cueDurationMs(greet)
   coordinator.tick(end)
   assert.equal(coordinator.owner('headBody', end), 'music')
-  assert.equal(coordinator.owner('expression', end), 'performance')
-  const settled = end + PERFORMANCE_BASELINE_HOLD_MS
-  coordinator.tick(settled)
-  assert.notEqual(coordinator.owner('expression', settled), 'performance')
+  assert.equal(coordinator.owner('expression', end), 'idle')
 })
 
-test('open posture plus a face cue holds head/body then returns it to music', () => {
+test('open bearing plus a face cue leaves the body with music', () => {
   const coordinator = new RigMotionCoordinator()
   coordinator.claim('music', ['headBody'], { nowMs: 0 })
   const leases = new PerformanceMotionLeases(coordinator)
@@ -120,7 +110,7 @@ test('open posture plus a face cue holds head/body then returns it to music', ()
     }),
     0,
   )
-  assert.equal(coordinator.owner('headBody', 0), 'performance')
+  assert.equal(coordinator.owner('headBody', 0), 'music')
   const end = cueDurationMs(think)
   coordinator.tick(end)
   assert.equal(coordinator.owner('headBody', end), 'music')
@@ -143,7 +133,7 @@ test('cue lease expiry returns expression without a cancel event', () => {
   const think = cue('think')
   leases.apply(directive({ cues: [think] }), 0)
   assert.equal(coordinator.owner('expression', 0), 'performance')
-  const settled = cueDurationMs(think) + PERFORMANCE_BASELINE_HOLD_MS
+  const settled = cueDurationMs(think)
   coordinator.tick(settled)
   assert.equal(coordinator.owner('expression', settled), 'idle')
   assert.equal(
@@ -165,4 +155,29 @@ test('cancel or unmount releases every performance lease, not someone else', () 
   assert.equal(coordinator.owner('headBody', 0), 'idle')
   panel.releaseAll()
   assert.equal(coordinator.owner('expression', 0), 'idle')
+})
+
+// Both semantic and stylized eye axes use this lease. Missing either class lets
+// ambient drift keep full weight and pull against the directed look.
+test('a cue that moves the eyes takes the gaze lease for as long as it plays', () => {
+  for (const intent of [
+    'think',
+    'speechless',
+    'maniac',
+    'lovestruck',
+  ] as const) {
+    const windows = performanceLeaseWindows(
+      directive({ cues: [cue(intent)] }),
+      1_000,
+    )
+    assert.ok(windows.gazeCueUntilMs !== null, intent)
+    assert.ok(windows.gazeCueUntilMs! > 1_000, intent)
+    assert.equal(windows.gazeCueUntilMs, windows.expressionCueUntilMs, intent)
+  }
+
+  const facial = performanceLeaseWindows(
+    directive({ cues: [cue('respond')] }),
+    1_000,
+  )
+  assert.equal(facial.gazeCueUntilMs, null)
 })

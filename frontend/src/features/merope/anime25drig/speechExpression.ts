@@ -1,3 +1,5 @@
+import type { SpeechProsodyPlan } from '../speech/prosody'
+
 export interface CoSpeechExpressionOffset {
   brow: number
   eyeOpen: number
@@ -25,6 +27,34 @@ export class CoSpeechExpressionController {
   private nextAccentAt = 0
   private lastTime = Number.NaN
   private initialized = false
+  private plannedAccents: Array<{ at: number; intensity: number }> = []
+  private plannedAccentIndex = 0
+  private plannedUntil = Number.NEGATIVE_INFINITY
+  private accentIntensity = 1
+
+  setProsody(
+    plan: SpeechProsodyPlan | null,
+    playerTimeSeconds: number,
+    wallNowMs: number = performance.now(),
+  ): void {
+    this.plannedAccents = []
+    this.plannedAccentIndex = 0
+    this.plannedUntil = Number.NEGATIVE_INFINITY
+    if (!plan) return
+    const ageSeconds = Math.max(0, wallNowMs - plan.startedAtMs) / 1_000
+    const origin = playerTimeSeconds - ageSeconds
+    this.plannedAccents = plan.accents.map((accent) => ({
+      at: origin + accent.offsetMs / 1_000,
+      intensity: unitInterval(accent.intensity),
+    }))
+    this.plannedUntil = origin + plan.durationMs / 1_000
+    while (
+      this.plannedAccentIndex < this.plannedAccents.length &&
+      this.plannedAccents[this.plannedAccentIndex]!.at < playerTimeSeconds - 0.2
+    ) {
+      this.plannedAccentIndex += 1
+    }
+  }
 
   sample(
     timeSeconds: number,
@@ -40,14 +70,23 @@ export class CoSpeechExpressionController {
       : 0
     this.lastTime = now
     const energy = authoredEnergy == null ? 0 : unitInterval(authoredEnergy)
+    const planned = this.plannedAccents[this.plannedAccentIndex]
+    if (active && planned && now >= planned.at - 0.065) {
+      this.accentStartedAt = planned.at - 0.065
+      this.accentIntensity = planned.intensity
+      this.plannedAccentIndex += 1
+    }
+    const plannedProsodyActive = active && now <= this.plannedUntil
     if (
       active &&
+      !plannedProsodyActive &&
       authoredEnergy != null &&
       energy >= 0.58 &&
       this.previousEnergy < 0.46 &&
       now >= this.nextAccentAt
     ) {
       this.accentStartedAt = now
+      this.accentIntensity = 1
       this.nextAccentAt = now + 0.48
     }
 
@@ -57,6 +96,9 @@ export class CoSpeechExpressionController {
       this.previousEnergy = 0
       this.accentStartedAt = Number.NEGATIVE_INFINITY
       this.nextAccentAt = now
+      this.plannedAccents = []
+      this.plannedAccentIndex = 0
+      this.plannedUntil = Number.NEGATIVE_INFINITY
     }
 
     const authoredActivity =
@@ -64,9 +106,11 @@ export class CoSpeechExpressionController {
         ? 0.22 + 0.78 * smootherstep((energy - 0.05) / 0.55)
         : 0
     const elapsed = now - this.accentStartedAt
-    const authoredBrow = active ? attackReleasePulse(elapsed, 0, 0.065, 0.2) : 0
+    const authoredBrow = active
+      ? attackReleasePulse(elapsed, 0, 0.065, 0.2) * this.accentIntensity
+      : 0
     const authoredHead = active
-      ? attackReleasePulse(elapsed, 0.045, 0.1, 0.22)
+      ? attackReleasePulse(elapsed, 0.045, 0.1, 0.22) * this.accentIntensity
       : 0
     writeOffset(
       this.targetOffset,
@@ -81,11 +125,7 @@ export class CoSpeechExpressionController {
       this.output.angleY = this.targetOffset.angleY
       return this.output
     }
-    this.output.brow = stepRelease(
-      this.output.brow,
-      this.targetOffset.brow,
-      dt,
-    )
+    this.output.brow = stepRelease(this.output.brow, this.targetOffset.brow, dt)
     this.output.eyeOpen = stepRelease(
       this.output.eyeOpen,
       this.targetOffset.eyeOpen,

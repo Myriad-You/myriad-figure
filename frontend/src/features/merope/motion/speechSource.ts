@@ -1,8 +1,11 @@
 import type { SpeechArticulation } from '../rig/articulation'
+import type { BehaviorPlan } from './behavior'
 import type { MotionLeaseHandle, RigMotionCoordinator } from './coordinator'
 import type { SpeechIntent, SpeechTextChunk } from './intents'
 import { MEROPE_SPEECH_EVENT, meropeSpeechEventDetail } from '../speechEvents'
 import { SpeechLifecycleController } from '../speechLifecycle'
+import { BehaviorScheduler } from './behaviorScheduler'
+import { compileSpeechBehaviorPlan } from './speechBehaviorPlan'
 import { SpeechMotionLease } from './speechLease'
 
 const REST: SpeechArticulation = { energy: 0, viseme: 'rest', amount: 0 }
@@ -14,6 +17,8 @@ const MAX_QUEUED_TEXT = 32
  */
 export class SpeechMotionSource {
   private readonly mouth: SpeechMotionLease
+  private readonly behaviorScheduler = new BehaviorScheduler()
+  private speechBehaviorPlan: BehaviorPlan | null = null
   private coSpeech: MotionLeaseHandle | null = null
   private controller: SpeechLifecycleController | null = null
   private textSeq = 0
@@ -23,6 +28,8 @@ export class SpeechMotionSource {
     autoSpeech: false,
     energy: null,
     articulation: null,
+    prosody: null,
+    behaviors: [],
     queuedText: [],
   }
 
@@ -35,8 +42,8 @@ export class SpeechMotionSource {
     this.mouth = new SpeechMotionLease(coordinator)
   }
 
-  current(): SpeechIntent {
-    return this.intent
+  current(nowMs: number = currentNow()): SpeechIntent {
+    return { ...this.intent, behaviors: this.behaviorScheduler.tick(nowMs) }
   }
 
   start(): void {
@@ -57,6 +64,28 @@ export class SpeechMotionSource {
         },
         setSpeechArticulation: (articulation) => {
           this.intent = { ...this.intent, articulation, energy: null }
+          this.flush()
+        },
+        setSpeechProsody: (prosody) => {
+          if (prosody) {
+            const nowMs = currentNow()
+            const nextPlan = compileSpeechBehaviorPlan(prosody)
+            const retimed = this.speechBehaviorPlan
+              ? this.behaviorScheduler.reconcilePlan(nextPlan, nowMs)
+              : { compatible: false }
+            if (!retimed.compatible) {
+              this.behaviorScheduler.replace(nextPlan, nowMs)
+            }
+            this.speechBehaviorPlan = nextPlan
+          } else {
+            this.behaviorScheduler.clear(currentNow())
+            this.speechBehaviorPlan = null
+          }
+          this.intent = {
+            ...this.intent,
+            prosody,
+            behaviors: this.behaviorScheduler.tick(currentNow()),
+          }
           this.flush()
         },
         enqueueSpeechText: (text, locale) => {
@@ -96,11 +125,14 @@ export class SpeechMotionSource {
     this.listening = false
     this.queuedText = []
     this.textSeq = 0
+    this.speechBehaviorPlan = null
     this.intent = {
       active: false,
       autoSpeech: false,
       energy: null,
       articulation: REST,
+      prosody: null,
+      behaviors: [],
       queuedText: [],
     }
     this.flush()
@@ -133,4 +165,8 @@ export class SpeechMotionSource {
   private flush(): void {
     this.onChange(this.intent)
   }
+}
+
+function currentNow(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now()
 }

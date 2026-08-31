@@ -1,4 +1,5 @@
 import type { SpeechArticulation, SpeechViseme } from './rig/articulation'
+import type { SpeechProsodyPlan } from './speech/prosody'
 
 export const MEROPE_SPEECH_EVENT = 'arael-merope-speech'
 
@@ -20,6 +21,10 @@ export type MeropeSpeechEventDetail =
   | (SpeechEventBase & {
       phase: 'articulation'
       articulation: SpeechArticulation
+    })
+  | (SpeechEventBase & {
+      phase: 'prosody'
+      prosody: SpeechProsodyPlan
     })
   | (Omit<SpeechEventBase, 'utteranceId'> & {
       phase: 'cancel'
@@ -126,7 +131,52 @@ export function meropeSpeechEventDetail(
     const articulation = sanitizeArticulation(value.articulation)
     return articulation ? { ...base, phase, articulation } : null
   }
+  if (phase === 'prosody') {
+    const prosody = sanitizeProsody(value.prosody, utteranceId)
+    return prosody ? { ...base, phase, prosody } : null
+  }
   return null
+}
+
+function sanitizeProsody(
+  value: unknown,
+  utteranceId: string,
+): SpeechProsodyPlan | null {
+  if (!isRecord(value)) return null
+  if (
+    typeof value.startedAtMs !== 'number' ||
+    !Number.isFinite(value.startedAtMs) ||
+    typeof value.durationMs !== 'number' ||
+    !Number.isFinite(value.durationMs)
+  ) {
+    return null
+  }
+  const rawAccents = Array.isArray(value.accents) ? value.accents : []
+  const accents = rawAccents
+    .filter(isRecord)
+    .flatMap((accent) => {
+      if (
+        typeof accent.offsetMs !== 'number' ||
+        !Number.isFinite(accent.offsetMs) ||
+        typeof accent.intensity !== 'number' ||
+        !Number.isFinite(accent.intensity)
+      ) {
+        return []
+      }
+      return [
+        {
+          offsetMs: clamp(accent.offsetMs, 0, 30_000),
+          intensity: clamp(accent.intensity, 0, 1),
+        },
+      ]
+    })
+    .slice(0, 12)
+  return {
+    utteranceId,
+    startedAtMs: Math.max(0, value.startedAtMs),
+    durationMs: clamp(value.durationMs, 0, 30_000),
+    accents,
+  }
 }
 
 function sanitizeArticulation(value: unknown): SpeechArticulation | null {

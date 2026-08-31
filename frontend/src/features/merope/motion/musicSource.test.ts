@@ -69,6 +69,21 @@ test('one sampler fans out to every mounted rig', () => {
   assert.equal(source.listenerCount(), 0)
 })
 
+test('frames carry the media identity across a fast track switch', () => {
+  const source = new MusicMotionSource(
+    new RigMotionCoordinator(),
+    fakeClock(),
+    silentAudio(),
+    visible,
+  )
+  source.setPlayback(true, false)
+  source.setTrack({ trackId: 'netease:song-a' })
+  assert.equal(source.sampleNow(10).trackId, 'netease:song-a')
+
+  source.setTrack({ trackId: 'qq:song-b' })
+  assert.equal(source.sampleNow(20).trackId, 'qq:song-b')
+})
+
 test('playing music claims mouth and body until speech takes the mouth', () => {
   const coordinator = new RigMotionCoordinator()
   const source = new MusicMotionSource(
@@ -81,6 +96,10 @@ test('playing music claims mouth and body until speech takes the mouth', () => {
   const frame = source.sampleNow(80)
   assert.equal(coordinator.owner('mouth', 80), 'music')
   assert.equal(coordinator.owner('headBody', 80), 'music')
+  assert.equal(coordinator.owner('gaze', 80), 'idle')
+  assert.equal(coordinator.owner('expression', 80), 'idle')
+  assert.equal(frame.behaviors[0]?.function, 'entrain')
+  assert.equal(frame.behaviors[0]?.kind, 'rhythmic')
   assert.equal(frame.apply.writeMouth, true)
   assert.equal(frame.apply.writeGroove, true)
 
@@ -89,6 +108,22 @@ test('playing music claims mouth and body until speech takes the mouth', () => {
   assert.equal(yielded.apply.writeMouth, false)
   assert.equal(yielded.apply.writeGroove, true)
   assert.equal(coordinator.owner('headBody', 90), 'music')
+})
+
+test('stopping music gives entrainment a recovery phase', () => {
+  const coordinator = new RigMotionCoordinator()
+  const source = new MusicMotionSource(
+    coordinator,
+    fakeClock(),
+    silentAudio(),
+    visible,
+  )
+  source.setPlayback(true, false)
+  source.sampleNow(100)
+  source.setPlayback(false, false)
+  const stopped = source.sampleNow(200)
+  assert.equal(stopped.behaviors[0]?.phase, 'recovering')
+  assert.equal(stopped.behaviors[0]?.function, 'entrain')
 })
 
 test('pause rests the mouth without dropping the music lease', () => {
@@ -199,4 +234,41 @@ test('reconnects the analyser when the player swaps its audio element', () => {
   source.sampleNow(30)
   assert.equal(connected.length, 2)
   assert.equal(connected[1], current)
+})
+
+test('publishes the next audio-clock beat as a mutable anticipator peg', () => {
+  let currentTime = 0
+  let bass = 0.05
+  const audio: MusicMotionAudio = {
+    getCurrentAudio: () => ({ paused: false, currentTime }),
+    getSpectrumBands: () => [bass, 0.1, 0.2, 0.1, 0, 0, 0, 0],
+    connectAudioToAnalyser: () => true,
+  }
+  const source = new MusicMotionSource(
+    new RigMotionCoordinator(),
+    fakeClock(),
+    audio,
+    visible,
+  )
+  source.setTrack({ trackId: 'steady-120bpm' })
+  source.setPlayback(true, false)
+  let latest = source.sampleNow(0)
+  for (let beat = 0; beat < 6; beat += 1) {
+    currentTime = beat * 0.5
+    bass = 0.95
+    latest = source.sampleNow(currentTime * 1_000)
+    currentTime += 0.05
+    bass = 0.05
+    latest = source.sampleNow(currentTime * 1_000)
+  }
+  const entrainment = latest.behaviors.find(
+    (behavior) => behavior.function === 'entrain',
+  )
+  assert.ok((entrainment?.anticipationConfidence ?? 0) > 0.8)
+  assert.ok((entrainment?.anticipatedAtMs ?? 0) > currentTime * 1_000)
+  assert.ok(
+    (entrainment?.anticipatedAtMs ?? Number.POSITIVE_INFINITY) <=
+      currentTime * 1_000 + 500,
+  )
+  assert.equal(latest.spectrum?.sampleTimeSeconds, currentTime)
 })

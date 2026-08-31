@@ -89,27 +89,22 @@ test('preview runtime ticks timed leases without a music sampler', async () => {
   release()
 })
 
-test('live runtime attaches music and starts autonomy; preview stays still', () => {
+test('live runtime attaches music without inventing semantic idle reactions', () => {
   const coordinator = new RigMotionCoordinator()
   coordinator.claim('music', ['mouth', 'headBody'], { nowMs: 0 })
   const music = stubMusic()
   const live = createLiveMotionRuntime(coordinator, music)
   const release = live.retain()
   assert.equal(music.listeners, 1)
-  live.autonomy.consider(0)
-  assert.equal(live.frame().snapshot.owners.expression, 'autonomy')
+  assert.equal(live.frame().snapshot.owners.expression, 'idle')
   assert.equal(live.frame().snapshot.owners.mouth, 'music')
   assert.equal(live.frame().snapshot.owners.headBody, 'music')
-  assert.ok(live.frame().autonomy?.directive)
   release()
-  assert.equal(live.frame().autonomy, null)
   assert.equal(music.listeners, 0)
 
   const preview = createPreviewMotionRuntime()
   const previewRelease = preview.retain()
-  preview.autonomy.consider(0)
-  assert.equal(preview.frame().autonomy, null)
-  assert.notEqual(preview.frame().snapshot.owners.expression, 'autonomy')
+  assert.equal(preview.frame().snapshot.owners.expression, 'idle')
   previewRelease()
 })
 
@@ -127,5 +122,86 @@ test('mood claims expression below co-speech', () => {
   })
   assert.equal(runtime.frame().snapshot.owners.expression, 'coSpeech')
   assert.equal(runtime.frame().mood?.mood, 80)
+  release()
+})
+
+test('realizer feedback reaches the behavior lifecycle', () => {
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const release = runtime.retain()
+  runtime.performance.handleForTest({
+    phase: 'delivery',
+    moodRevision: 1,
+    plan: {
+      cues: [
+        {
+          intent: 'respond',
+          atMs: 0,
+          intensity: 1,
+          tempo: 1,
+          fadeInMs: 80,
+          fadeOutMs: 120,
+          interrupt: 'replace',
+        },
+      ],
+    },
+  })
+  const intent = runtime.frame().performance
+  assert.ok(intent?.motionIntentId)
+  const behaviorId = intent?.behaviorPlan?.behaviors[0]?.id
+  assert.ok(behaviorId)
+  runtime.reportPerformanceRealizer(
+    intent.motionIntentId!,
+    behaviorId!,
+    'rejected',
+  )
+  assert.ok(
+    runtime
+      .frame()
+      .performance?.behaviors?.some(
+        (behavior) => behavior.phase === 'rejected',
+      ),
+  )
+  release()
+})
+
+test('a same-strength refinement updates bearing without replaying the reaction', () => {
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const release = runtime.retain()
+  const first = {
+    phase: 'delivery' as const,
+    moodRevision: 3,
+    plan: {
+      baseline: {
+        expression: 'steady' as const,
+        posture: 'neutral' as const,
+        motionEnergy: 0.8,
+        attention: 0.7,
+      },
+      cues: [
+        {
+          intent: 'respond' as const,
+          atMs: 0,
+          intensity: 1,
+          tempo: 1,
+          fadeInMs: 80,
+          fadeOutMs: 120,
+          interrupt: 'if-lower' as const,
+        },
+      ],
+    },
+  }
+  runtime.performance.handleForTest(first)
+  const planId = runtime.frame().performance?.behaviorPlan?.id
+  runtime.performance.handleForTest({
+    ...first,
+    plan: {
+      ...first.plan,
+      baseline: { ...first.plan.baseline, expression: 'warm' as const },
+    },
+  })
+  const refined = runtime.frame()
+  assert.equal(refined.performance?.behaviorPlan?.id, planId)
+  assert.equal(refined.performance?.directive?.plan.cues.length, 0)
+  assert.equal(refined.bearing?.expression, 'warm')
   release()
 })

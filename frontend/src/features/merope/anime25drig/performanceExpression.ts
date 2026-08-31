@@ -4,13 +4,10 @@ import type {
   PerformanceDirective,
   PerformancePhase,
 } from '../../../services/agent/types'
+import type { Anime25DDriver } from './driver'
 import { performanceCuePriority } from '../performanceContract'
-import {
-  cueDriverPatch,
-  cueIsSticker,
-  cueVisualEnvelope,
-  MIN_STICKER_FADE_OUT,
-} from './performanceMotion'
+import { cueExpressionPatch, cueIsSticker } from './performanceCueDefinitions'
+import { cueVisualEnvelope, MIN_STICKER_FADE_OUT } from './performanceMotion'
 
 export interface PerformanceExpressionOffset {
   brow: number
@@ -123,7 +120,10 @@ const MAX_DIRECTIVE_FINGERPRINTS = 32
 
 export type PerformanceDirectiveAcceptance = 'reject' | 'accept' | 'supersede'
 
-/** Shared, bounded ordering policy for the independent face and body owners. */
+/**
+ * Legacy directive ordering retained as a compatibility reference.
+ * Production behavior plans are ordered by BehaviorScheduler before this body.
+ */
 export class PerformanceDirectiveGate {
   private moodRevision = -1
   private phaseRank: number | null = null
@@ -246,6 +246,34 @@ export class PerformanceExpressionController {
     // Flooring it here is what made a stale plan replay from the top.
     this.scheduleCues(directive.plan.cues, finiteOrZero(cueOriginSeconds))
     return true
+  }
+
+  /** New body-adapter path: scheduling is already resolved by BehaviorPlan. */
+  playBehaviorCues(
+    cues: readonly PerformanceCue[],
+    timeSeconds: number,
+    cueOriginSeconds = timeSeconds,
+  ): boolean {
+    if (cues.length === 0) return false
+    const now = finiteTime(timeSeconds)
+    this.pruneExpiredCues(now)
+    this.releaseActiveCues(now)
+    if (!Number.isFinite(this.lastTime)) this.lastTime = now
+    this.scheduleCues(cues, finiteOrZero(cueOriginSeconds))
+    return true
+  }
+
+  setBearingAttention(attention: number | null): void {
+    this.ambientScaleTarget =
+      attention === null ? 1 : ambientScaleForAttention(attention)
+  }
+
+  /** Releases transient cues without erasing the persistent bearing. */
+  stopBehaviors(timeSeconds: number): void {
+    const now = finiteTime(timeSeconds)
+    this.lastTime = now
+    this.gate.reset()
+    this.releaseActiveCues(now)
   }
 
   stop(timeSeconds: number): void {
@@ -408,6 +436,15 @@ export function baselineExpressionOffset(
   return output
 }
 
+/** Installs persistent bearing onto the authored base pose. */
+export function bearingDriverPatch(
+  baseline: PerformanceBaseline | null,
+): Partial<Anime25DDriver> {
+  const offset = baseline ? baselineExpressionOffset(baseline) : ZERO_OFFSET
+  const { eyeOpen, ...driver } = offset
+  return { ...driver, eyeOpenL: eyeOpen, eyeOpenR: eyeOpen }
+}
+
 /**
  * Amplitudes are calibrated against screen pixels, not driver decimals.
  *
@@ -423,59 +460,8 @@ export function baselineExpressionOffset(
 export function expressionCueOffset(
   cue: PerformanceCue,
 ): PerformanceExpressionOffset {
-  const amount = clamp(cue.intensity, 0.2, 1.4)
   const output = { ...ZERO_OFFSET }
-  const patches: Record<
-    PerformanceCue['intent'],
-    Partial<PerformanceExpressionOffset>
-  > = {
-    greet: { angleZ: -0.05 * amount, brow: 0.17 * amount },
-    respond: { angleY: -0.035 * amount, brow: 0.13 * amount },
-    question: {
-      angleZ: 0.075 * amount,
-      brow: 0.26 * amount,
-      eyeOpen: 0.05 * amount,
-    },
-    delight: {
-      angleY: -0.05 * amount,
-      brow: 0.22 * amount,
-      eyeOpen: -0.025 * amount,
-      eyeSqueeze: 0.84 * amount,
-      mouthForm: 0.18 * amount,
-    },
-    emphasize: { angleY: 0.055 * amount, brow: 0.2 * amount },
-    listen: { angleY: 0.04 * amount, brow: 0.12 * amount },
-    notify: {
-      angleZ: -0.045 * amount,
-      brow: 0.22 * amount,
-      eyeOpen: 0.055 * amount,
-    },
-    think: {
-      angleZ: -0.14 * amount,
-      brow: 0.14 * amount,
-      eyeX: 0.5 * amount,
-      eyeY: -0.36 * amount,
-    },
-    dizzy: {
-      eyeDizzy: 1,
-    },
-    cry: {
-      brow: 0.2 * amount,
-      browAngSym: -0.3 * amount,
-      eyeCry: 1,
-      mouthForm: -0.12 * amount,
-    },
-    angry: { anger: amount },
-    speechless: { speechless: amount },
-    maniac: { maniac: amount },
-    silly: { silly: amount },
-    lovestruck: { lovestruck: amount },
-  }
-  Object.assign(output, patches[cue.intent])
-  const body = cueDriverPatch(cue)
-  if (typeof body.body === 'number') output.body = body.body
-  if (typeof body.armY === 'number') output.armY = body.armY
-  if (typeof body.armPos === 'number') output.armPos = body.armPos
+  Object.assign(output, cueExpressionPatch(cue))
   return output
 }
 
@@ -483,53 +469,22 @@ export function expressionCueOffset(
 export function applyPerformanceExpressionOffset(
   target: PerformanceExpressionTarget,
   offset: Readonly<PerformanceExpressionOffset>,
+  gaze = 1,
 ): void {
   target.brow = mixBoundedExpressionChannel(target.brow, offset.brow, -1, 1, 0)
-  target.browAngSym = mixBoundedExpressionChannel(
-    target.browAngSym,
-    offset.browAngSym,
+  target.eyeX = mixBoundedExpressionChannel(
+    target.eyeX,
+    offset.eyeX * gaze,
     -1,
     1,
     0,
   )
-  target.eyeOpenL = mixEyeOpen(target.eyeOpenL, offset.eyeOpen)
-  target.eyeOpenR = mixEyeOpen(target.eyeOpenR, offset.eyeOpen)
-  target.eyeDizzy = mixBoundedExpressionChannel(
-    target.eyeDizzy,
-    offset.eyeDizzy,
-    0,
-    1,
-    0,
-  )
-  target.eyeSqueeze = mixBoundedExpressionChannel(
-    target.eyeSqueeze,
-    offset.eyeSqueeze,
-    0,
-    1,
-    0,
-  )
-  target.eyeCry = mixBoundedExpressionChannel(
-    target.eyeCry,
-    offset.eyeCry,
-    0,
-    1,
-    0,
-  )
-  target.eyeX = mixBoundedExpressionChannel(target.eyeX, offset.eyeX, -1, 1, 0)
-  target.eyeY = mixBoundedExpressionChannel(target.eyeY, offset.eyeY, -1, 1, 0)
-  target.mouthForm = mixBoundedExpressionChannel(
-    target.mouthForm,
-    offset.mouthForm,
+  target.eyeY = mixBoundedExpressionChannel(
+    target.eyeY,
+    offset.eyeY * gaze,
     -1,
     1,
     0,
-  )
-  target.irisScale = mixBoundedExpressionChannel(
-    target.irisScale,
-    offset.irisScale,
-    0.5,
-    1.3,
-    1,
   )
   target.angleY = mixBoundedExpressionChannel(
     target.angleY,
@@ -572,37 +527,91 @@ export function applyPerformanceExpressionOffset(
       0,
     )
   }
+  applyPerformanceExpressionExtras(target, offset)
+}
+
+/** Applies semantic expression fields that are not pose-compositor channels. */
+export function applyPerformanceExpressionExtras(
+  target: PerformanceExpressionTarget,
+  offset: Readonly<PerformanceExpressionOffset>,
+  amount = 1,
+): void {
+  const weight = clamp(amount, 0, 1)
+  target.browAngSym = mixBoundedExpressionChannel(
+    target.browAngSym,
+    offset.browAngSym * weight,
+    -1,
+    1,
+    0,
+  )
+  target.eyeOpenL = mixEyeOpen(target.eyeOpenL, offset.eyeOpen * weight)
+  target.eyeOpenR = mixEyeOpen(target.eyeOpenR, offset.eyeOpen * weight)
+  target.eyeDizzy = mixBoundedExpressionChannel(
+    target.eyeDizzy,
+    offset.eyeDizzy * weight,
+    0,
+    1,
+    0,
+  )
+  target.eyeSqueeze = mixBoundedExpressionChannel(
+    target.eyeSqueeze,
+    offset.eyeSqueeze * weight,
+    0,
+    1,
+    0,
+  )
+  target.eyeCry = mixBoundedExpressionChannel(
+    target.eyeCry,
+    offset.eyeCry * weight,
+    0,
+    1,
+    0,
+  )
+  target.mouthForm = mixBoundedExpressionChannel(
+    target.mouthForm,
+    offset.mouthForm * weight,
+    -1,
+    1,
+    0,
+  )
+  target.irisScale = mixBoundedExpressionChannel(
+    target.irisScale,
+    offset.irisScale * weight,
+    0.5,
+    1.3,
+    1,
+  )
   target.anger = mixBoundedExpressionChannel(
     target.anger ?? 0,
-    offset.anger ?? 0,
+    (offset.anger ?? 0) * weight,
     0,
     1,
     0,
   )
   target.speechless = mixBoundedExpressionChannel(
     target.speechless ?? 0,
-    offset.speechless ?? 0,
+    (offset.speechless ?? 0) * weight,
     0,
     1,
     0,
   )
   target.maniac = mixBoundedExpressionChannel(
     target.maniac ?? 0,
-    offset.maniac ?? 0,
+    (offset.maniac ?? 0) * weight,
     0,
     1,
     0,
   )
   target.silly = mixBoundedExpressionChannel(
     target.silly ?? 0,
-    offset.silly ?? 0,
+    (offset.silly ?? 0) * weight,
     0,
     1,
     0,
   )
   target.lovestruck = mixBoundedExpressionChannel(
     target.lovestruck ?? 0,
-    offset.lovestruck ?? 0,
+    (offset.lovestruck ?? 0) * weight,
     0,
     1,
     0,

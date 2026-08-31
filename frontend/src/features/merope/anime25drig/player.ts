@@ -1,7 +1,12 @@
-import type { PerformanceDirective } from '../../../services/agent/types'
+import type {
+  PerformanceBaseline,
+  PerformanceCue,
+  PerformanceDirective,
+} from '../../../services/agent/types'
 import type { MotionChannelPolicy } from '../motion/policy'
 import type { MeropeRigManifest } from '../rig/types'
 import type { SingingSpectrumDrive } from '../singing/singingGroove'
+import type { SpeechProsodyPlan } from '../speech/prosody'
 import type {
   ChestDeformationRegion,
   ChestDynamicsTuning,
@@ -41,10 +46,7 @@ import type {
 import type { Anime25DPlayback, Anime25DShellProfile } from './types'
 import { currentCopy } from '../../../i18n/localeCopy'
 import { allowsPointerGaze, IDLE_MOTION_POLICY } from '../motion/policy'
-import {
-  singingDriveAmount,
-  SingingGrooveController,
-} from '../singing/singingGroove'
+import { SingingGrooveController } from '../singing/singingGroove'
 import { noteTurnTraceFrame } from '../turnTrace'
 import { AmbientMotionController } from './ambientMotion'
 import {
@@ -77,12 +79,11 @@ import {
 } from './deformationDependencies'
 import { IDENTITY_DRIVER, sanitizeDriverPatch } from './driver'
 import {
-  applyAnime25DActionMotion,
-  applyAnime25DAmbientMotion,
+  applyAnime25DComposedPose,
   applyAnime25DCryMouth,
   applyAnime25DSillyMouthOwnership,
-  applyAnime25DSpeechMotion,
-  applyAnime25DStylizedMotion,
+  applyAnime25DSpeechExtras,
+  applyAnime25DStylizedExpression,
   captureAnime25DSecondaryMotion,
   prepareAnime25DWorkingTarget,
   resolveAnime25DStylizedTargets,
@@ -91,9 +92,14 @@ import {
   stepAnime25DDriverResponse,
 } from './driverComposition'
 import { deformAnime25DExpressionPoint } from './expressionDeformation'
-import { applyExpressiveMotionEnvelope } from './expressiveMotionEnvelope'
+import { expressiveEyeOpenOffset } from './expressiveMotionEnvelope'
+import {
+  animationCatchupSeconds,
+  animationElapsedSeconds,
+  animationSubstepCount,
+} from './frameClock'
 import { stepAnime25DHairLayerSprings } from './hairPhysics'
-import { applyIdleBreath } from './idleBreath'
+import { idleBreathOffset } from './idleBreath'
 import {
   createJawMotionState,
   jawMotionTarget,
@@ -103,6 +109,7 @@ import {
 import { deformAnime25DUpstreamFeaturePoint } from './layerDeformation'
 import { compileAnime25DGpuLayers } from './layerGpuBinding'
 import { writeAnime25DLayerGlobalTransform } from './layerTransform'
+import { predictedControlTime } from './motionPrediction'
 import {
   deformAnime25DFaceJawPoint,
   deformAnime25DMouthPoint,
@@ -118,13 +125,17 @@ import {
 } from './mouthRuntime'
 import { MouthTransitionController } from './mouthTransition'
 import {
+  bearingDriverPatch,
   performanceCueOrigin,
   PerformanceExpressionController,
 } from './performanceExpression'
+import { baselineDriverPatch, restEnergyDriverPatch } from './performanceMotion'
 import {
   Anime25DPerformanceTelemetry,
   createAnime25DFrameWork,
 } from './performanceTelemetry'
+import { PoseGateController, resolvePoseGate } from './poseArbitration'
+import { zeroOccupancyOffset } from './poseCompositor'
 import { PoseOccupancyController } from './poseOccupancy'
 import { RandomActionController } from './randomAction'
 import { createAnime25DRendererBindings, drawAnime25DFrame } from './renderer'
@@ -136,7 +147,11 @@ import {
 import { writeAnime25DShellRotation } from './shellDeformation'
 import { CoSpeechExpressionController } from './speechExpression'
 import { AutoSpeechController } from './speechMotion'
-import { StylizedExpressionMotionController } from './stylizedExpressionMotion'
+import {
+  createStylizedExpressionMotion,
+  StylizedExpressionMotionController,
+  writeWeightedStylizedExpressionMotion,
+} from './stylizedExpressionMotion'
 import { ThinkingMotionController } from './thinkingMotion'
 import {
   resolveAnime25DTorsoChestShape,
@@ -273,6 +288,7 @@ export class Anime25DPlayer {
 
   private readonly ambientMotion = new AmbientMotionController()
   private readonly occupancy = new PoseOccupancyController()
+  private readonly poseGate = new PoseGateController()
   private readonly randomAction = new RandomActionController()
   private readonly singingGroove = new SingingGrooveController()
   private singingDrive: SingingSpectrumDrive | null = null
@@ -288,7 +304,14 @@ export class Anime25DPlayer {
   }
 
   private stylizedMotion: Readonly<StylizedExpressionMotion> | null = null
+  private rawStylizedMotion: Readonly<StylizedExpressionMotion> | null = null
+  private readonly weightedStylizedMotion = createStylizedExpressionMotion()
+  private stylizedExpressionShare = 1
+  private stylizedHeadShare = 1
   private readonly performanceExpression = new PerformanceExpressionController()
+  /** Reused so the per-frame pose composition never allocates. */
+  private readonly composedPose = zeroOccupancyOffset()
+  private readonly breathPose = { angleX: 0, angleY: 0, angleZ: 0, body: 0 }
   private readonly speechMotion = new AutoSpeechController()
   private readonly speechExpression = new CoSpeechExpressionController()
   private readonly cryMouth = {
@@ -508,8 +531,16 @@ export class Anime25DPlayer {
     this.target.singing = active
   }
 
+  setSingingTrack(trackId: string | null): void {
+    this.singingGroove.setTrack(trackId)
+  }
+
   setSingingSpectrum(drive: SingingSpectrumDrive | null): void {
     this.singingDrive = drive
+  }
+
+  setSpeechProsody(plan: SpeechProsodyPlan | null): void {
+    this.speechExpression.setProsody(plan, this.time)
   }
 
   enqueueSpeechText(text: string, locale?: string): void {
@@ -520,6 +551,7 @@ export class Anime25DPlayer {
     this.speechMotion.clear(this.time)
   }
 
+  /** Legacy directive reference path; production uses playBehaviorCues. */
   playPerformance(
     directive: PerformanceDirective,
     cueOriginSeconds?: number,
@@ -532,8 +564,28 @@ export class Anime25DPlayer {
     )
   }
 
+  playBehaviorCues(
+    cues: readonly PerformanceCue[],
+    cueOriginSeconds?: number,
+  ): boolean {
+    const now = this.time
+    return this.performanceExpression.playBehaviorCues(
+      cues,
+      now,
+      performanceCueOrigin(now, cueOriginSeconds),
+    )
+  }
+
+  setBearing(bearing: PerformanceBaseline | null): void {
+    this.performanceExpression.setBearingAttention(bearing?.attention ?? null)
+    this.setTarget({
+      ...(bearing ? baselineDriverPatch(bearing) : restEnergyDriverPatch()),
+      ...bearingDriverPatch(bearing),
+    })
+  }
+
   stopPerformance(): void {
-    this.performanceExpression.stop(this.time)
+    this.performanceExpression.stopBehaviors(this.time)
   }
 
   debugSnapshot(): Anime25DDebugSnapshot {
@@ -616,12 +668,20 @@ export class Anime25DPlayer {
 
   tick(deltaSeconds: number): void {
     if (this.disposed || this.layers.length === 0) return
-    const dropped = deltaSeconds > 0.05
-    const dt = Math.min(0.05, Math.max(0.001, deltaSeconds))
-    this.time += dt
+    const elapsed = animationElapsedSeconds(deltaSeconds)
+    const catchup = animationCatchupSeconds(elapsed)
+    const substeps = animationSubstepCount(catchup)
+    const dt = catchup / substeps
+    const dropped = elapsed > 0.05
+    // Skip the stale part of a long stall so expired cues are not replayed,
+    // then integrate the most recent bounded tail in stable substeps.
+    this.time += elapsed - catchup
     if (!this.performanceTelemetry.shouldSample()) {
-      this.smoothDriver(dt)
-      this.updateSprings(dt)
+      for (let step = 0; step < substeps; step += 1) {
+        this.time += dt
+        this.smoothDriver(dt)
+        this.updateSprings(dt)
+      }
       this.deform()
       this.uploadGeometry()
       this.draw()
@@ -630,10 +690,18 @@ export class Anime25DPlayer {
     }
     const work = createAnime25DFrameWork()
     const frameStarted = performance.now()
-    const phaseStarted = frameStarted
-    this.smoothDriver(dt)
-    const driverFinished = performance.now()
-    this.updateSprings(dt)
+    let driverMs = 0
+    let springsMs = 0
+    for (let step = 0; step < substeps; step += 1) {
+      this.time += dt
+      const driverStarted = performance.now()
+      this.smoothDriver(dt)
+      const driverFinished = performance.now()
+      this.updateSprings(dt)
+      const springsFinished = performance.now()
+      driverMs += driverFinished - driverStarted
+      springsMs += springsFinished - driverFinished
+    }
     const springsFinished = performance.now()
     this.deform(work)
     this.uploadGeometry(work)
@@ -643,8 +711,8 @@ export class Anime25DPlayer {
     this.performanceTelemetry.record({
       ...work,
       frameCpuMs: drawFinished - frameStarted,
-      driverMs: driverFinished - phaseStarted,
-      springsMs: springsFinished - driverFinished,
+      driverMs,
+      springsMs,
       deformMs: deformFinished - springsFinished,
       drawSubmitMs: drawFinished - deformFinished,
     })
@@ -689,27 +757,38 @@ export class Anime25DPlayer {
       pointer,
       t,
     )
-    const semanticExpression = this.performanceExpression.sample(t)
+    // Known cues and prosody are sampled slightly ahead to compensate the
+    // display plus driver response. Observed input and physics remain at `t`.
+    const controlTime = predictedControlTime(t)
+    const semanticExpression = this.performanceExpression.sample(controlTime)
     const stylizedTargets = resolveAnime25DStylizedTargets(
       this.stylizedTargets,
       tgt,
       semanticExpression,
     )
     const stylized = this.stylizedExpression.sample(
-      t,
+      controlTime,
       stylizedTargets.anger,
       stylizedTargets.speechless,
       stylizedTargets.maniac,
       stylizedTargets.silly,
       stylizedTargets.lovestruck,
     )
-    this.stylizedMotion = stylized
+    this.rawStylizedMotion = stylized
     const performanceMotionScale =
       this.performanceExpression.getAmbientMotionScale()
     const pointerDriven = this.target.mouse && pointer.inside
-    const speech = this.speechMotion.sample(t, this.target.talk)
+    const speech = this.speechMotion.sample(controlTime, this.target.talk)
     this.jawEmphasis = speech.browAccent
     const speaking = this.speechActive || this.target.talk
+    const speechExpression = this.speechExpression.sample(
+      controlTime,
+      speaking,
+      this.speechActive && !this.target.talk ? tgt.mouthOpen : null,
+      speech.phraseActivity,
+      speech.browAccent,
+      speech.headAccent,
+    )
     const singing = this.target.singing
     this.singingDeform +=
       ((singing ? 1 : 0) - this.singingDeform) *
@@ -730,47 +809,64 @@ export class Anime25DPlayer {
       automation: this.target.rand,
       sticker,
     })
-    const randomAction = this.randomAction.sample(
-      t,
-      this.target.rand,
-      false,
-      singing ? 'excited' : 'idle',
-      this.singingDrive ? singingDriveAmount(this.singingDrive) : 1,
-    )
+    const randomAction = this.randomAction.sample(t, this.target.rand, false)
     const ambient = this.ambientMotion.sample(t, this.target.rand)
     const thinking = this.thinkingMotion.sample(t, this.target.thinking)
-    const ambientScale =
-      occupancy.glance *
-      performanceMotionScale *
-      randomAction.ambientScale *
-      stylized.ambientScale
-    applyAnime25DAmbientMotion(tgt, ambient, ambientScale, 1)
-    applyIdleBreath(tgt, occupancy.glance, t)
-    applyAnime25DActionMotion(
+    const breath = idleBreathOffset(t, this.breathPose)
+    // Ownership and situation resolve to one weight per source per channel;
+    // nothing below this line invents a scale of its own.
+    const gate = this.poseGate.sample(
+      dt,
+      resolvePoseGate(this.policy, occupancy, {
+        performance: performanceMotionScale,
+        stylized: stylized.ambientScale,
+        randomAmbient: randomAction.ambientScale,
+      }),
+    )
+    this.stylizedExpressionShare +=
+      (gate.stylized.expression - this.stylizedExpressionShare) *
+      (1 - Math.exp(-8 * dt))
+    this.stylizedHeadShare +=
+      (gate.stylized.headBody - this.stylizedHeadShare) *
+      (1 - Math.exp(-8 * dt))
+    this.stylizedMotion = writeWeightedStylizedExpressionMotion(
+      this.weightedStylizedMotion,
+      stylized,
+      this.stylizedExpressionShare,
+    )
+    applyAnime25DComposedPose(
       tgt,
-      randomAction,
-      occupancy.random * performanceMotionScale * stylized.ambientScale,
-      groove,
-      occupancy.groove,
-      thinking,
-      occupancy.thinking,
+      gate,
+      {
+        ambient,
+        randomAction,
+        groove,
+        thinking,
+        breath,
+        performance: semanticExpression,
+        stylized,
+        coSpeech: speechExpression,
+      },
+      this.composedPose,
     )
-    applyAnime25DStylizedMotion(tgt, semanticExpression, stylized, speaking)
-    applyAnime25DCryMouth(tgt, this.current.eyeCry, t, dt, this.cryMouth)
-    const speechExpression = this.speechExpression.sample(
-      t,
+    applyAnime25DStylizedExpression(
+      tgt,
+      semanticExpression,
+      stylized,
       speaking,
-      this.speechActive && !this.target.talk ? tgt.mouthOpen : null,
-      speech.phraseActivity,
-      speech.browAccent,
-      speech.headAccent,
+      gate.performance.expression,
+      gate.stylized.expression,
     )
+    applyAnime25DCryMouth(tgt, this.current.eyeCry, t, dt, this.cryMouth)
     const gatedSpeechExpression = {
-      brow: speechExpression.brow * occupancy.coSpeech,
-      eyeOpen: speechExpression.eyeOpen * occupancy.coSpeech,
-      angleY: speechExpression.angleY * occupancy.coSpeech,
+      brow: speechExpression.brow * gate.coSpeech.expression,
+      eyeOpen: speechExpression.eyeOpen * gate.coSpeech.expression,
+      angleY: speechExpression.angleY * gate.coSpeech.headBody,
     }
-    applyAnime25DSpeechMotion(tgt, speech, gatedSpeechExpression)
+    gatedSpeechExpression.eyeOpen += expressiveEyeOpenOffset(
+      gatedSpeechExpression,
+    )
+    applyAnime25DSpeechExtras(tgt, speech, gatedSpeechExpression)
     // The omega mouth only takes over once the character has stopped talking;
     // a cue landing mid-delivery would otherwise freeze the lip sync.
     this.sillyMouthShare +=
@@ -780,11 +876,6 @@ export class Anime25DPlayer {
       smoothAnime25DUnit(stylizedTargets.silly) * this.sillyMouthShare,
     )
     captureAnime25DSecondaryMotion(this.secondaryTarget, tgt)
-    applyExpressiveMotionEnvelope(
-      tgt,
-      semanticExpression,
-      gatedSpeechExpression,
-    )
     stepAnime25DBlink(
       tgt,
       this.blinkState,
@@ -895,10 +986,11 @@ export class Anime25DPlayer {
     const inverseChestRy = 1 / chestRy
     const jawDrop = this.jaw.value * this.jawTravel
     const jawOpen = Math.max(0, this.jaw.value)
-    const specialHeadOffset = this.stylizedMotion
-      ? (this.stylizedMotion.maniacHeadPulse * 80 +
-          this.stylizedMotion.sillyHeadPulse * 8 +
-          this.stylizedMotion.lovestruckHeadPulse * 5) *
+    const specialHeadOffset = this.rawStylizedMotion
+      ? (this.rawStylizedMotion.maniacHeadPulse * 80 +
+          this.rawStylizedMotion.sillyHeadPulse * 8 +
+          this.rawStylizedMotion.lovestruckHeadPulse * 5) *
+        this.stylizedHeadShare *
         fs
       : 0
     const mouthTransition = this.mouthTransition.sample(e)

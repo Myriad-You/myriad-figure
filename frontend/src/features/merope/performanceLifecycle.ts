@@ -4,8 +4,8 @@ import type { MeropeSpeechEventDetail } from './speechEvents'
 import { acceptLiveMotionGeneration } from './motion/liveGeneration'
 
 export interface PerformanceLifecycleTarget {
-  playMotionPlan: (performance: PerformanceDirective) => boolean
-  stopMotionPlan: () => void
+  applyPerformanceDirective: (performance: PerformanceDirective) => boolean
+  clearPerformanceDirective: () => void
 }
 
 /** Forwards bounded semantic plans to the mounted rig; text stays speech-owned. */
@@ -25,7 +25,7 @@ export class PerformanceLifecycleController {
       event.motionIntentId ||
       `${event.messageId ?? ''}:${event.performance.phase}:${event.performance.plan.cues.length}`
     if (planKey && planKey === this.activePlanKey) return
-    if (!this.target.playMotionPlan(event.performance)) return
+    if (!this.target.applyPerformanceDirective(event.performance)) return
     this.activeMessageId = event.messageId ?? null
     this.activePlanKey = planKey
   }
@@ -37,13 +37,13 @@ export class PerformanceLifecycleController {
     this.activeMessageId = null
     this.activePlanKey = null
     // A finished utterance keeps the landing baseline; only cancel dumps it.
-    if (event.phase === 'cancel') this.target.stopMotionPlan()
+    if (event.phase === 'cancel') this.target.clearPerformanceDirective()
   }
 
   dispose(): void {
     this.activeMessageId = null
     this.activePlanKey = null
-    this.target.stopMotionPlan()
+    this.target.clearPerformanceDirective()
   }
 
   private rememberCancellation(messageId: string): void {
