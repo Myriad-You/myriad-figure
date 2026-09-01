@@ -18,9 +18,9 @@ import {
 } from '../anime25drig/performanceMotion'
 
 /**
- * Adapts today's Strict-Lite directive into the renderer-neutral behavior
- * protocol. The directive remains the Anime2.5D realization input during the
- * migration, while timing, lifecycle and resource facts come from this plan.
+ * Compiles a Strict-Lite directive into the renderer-neutral behavior
+ * protocol. Bodies realize only this plan; the directive does not bypass the
+ * shared scheduler.
  */
 export function compilePerformanceBehaviorPlan(
   directive: PerformanceDirective,

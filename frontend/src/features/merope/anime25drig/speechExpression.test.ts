@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { completeBehaviorQuality } from './behaviorMotion'
 import { CoSpeechExpressionController } from './speechExpression'
 
 /** 不带 authored energy 的那一路：直接把三个包络喂进 writeOffset。 */
@@ -37,6 +38,44 @@ test('carries a speech beat through face, head, and torso', () => {
   assert.ok(Math.abs(offset.angleZ) > 0.01)
   assert.ok(Math.abs(offset.body) > 0.07)
   assert.ok(Math.abs(offset.body) < 0.15)
+})
+
+test('behavior quality changes conversational timing and weight transfer', () => {
+  const restrained = new CoSpeechExpressionController().sample(
+    0,
+    false,
+    null,
+    1,
+    1,
+    1,
+    completeBehaviorQuality({
+      tempo: 0.8,
+      fluidity: 1.2,
+      directness: 1.1,
+      rebound: 0.1,
+      asymmetry: 0.05,
+      density: 0.4,
+    }),
+  )
+  const open = new CoSpeechExpressionController().sample(
+    0,
+    false,
+    null,
+    1,
+    1,
+    1,
+    completeBehaviorQuality({
+      tempo: 1.2,
+      fluidity: 0.7,
+      directness: 0.55,
+      rebound: 1.1,
+      asymmetry: 1.2,
+      density: 1.4,
+    }),
+  )
+  assert.ok(Math.abs(open.angleZ) > Math.abs(restrained.angleZ))
+  assert.ok(Math.abs(open.body) > Math.abs(restrained.body))
+  assert.ok(open.brow > restrained.brow)
 })
 
 test('sanitizes unusable inputs and reuses its frame result', () => {

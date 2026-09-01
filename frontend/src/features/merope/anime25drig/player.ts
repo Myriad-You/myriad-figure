@@ -1,16 +1,9 @@
-import type {
-  PerformanceBaseline,
-  PerformanceCue,
-  PerformanceDirective,
-} from '../../../services/agent/types'
+import type { PerformanceBaseline } from '../../../services/agent/types'
 import type { MotionChannelPolicy } from '../motion/policy'
 import type { MeropeRigManifest } from '../rig/types'
 import type { SingingSpectrumDrive } from '../singing/singingGroove'
 import type { SpeechProsodyPlan } from '../speech/prosody'
-import type {
-  Anime25DBehaviorMotionSample,
-  Anime25DMotionUnit,
-} from './behaviorMotion'
+import type { Anime25DMotionUnit } from './behaviorMotion'
 import type {
   ChestDeformationRegion,
   ChestDynamicsTuning,
@@ -28,6 +21,7 @@ import type {
 import type { Anime25DExpressionDeformationFrame } from './expressionDeformation'
 import type { Anime25DHairSpringFrame } from './hairPhysics'
 import type { Anime25DGpuLayer } from './layerGpuBinding'
+import type { Anime25DMotionEnvelopeProfile } from './motionEnvelope'
 import type { Anime25DMouthDeformationFrame } from './mouthDeformation'
 import type {
   Anime25DMouthMorphSources,
@@ -39,7 +33,6 @@ import type {
   Anime25DFrameWork,
   Anime25DPerformanceSnapshot,
 } from './performanceTelemetry'
-import type { PoseGate } from './poseArbitration'
 import type { Anime25DRendererBindings, Anime25DRenderFrame } from './renderer'
 import type { Anime25DSecondaryDeformationFrame } from './secondaryDeformation'
 import type { Anime25DShellRotation } from './shellDeformation'
@@ -115,7 +108,10 @@ import {
 import { deformAnime25DUpstreamFeaturePoint } from './layerDeformation'
 import { compileAnime25DGpuLayers } from './layerGpuBinding'
 import { writeAnime25DLayerGlobalTransform } from './layerTransform'
-import { projectAnime25DMotionEnvelope } from './motionEnvelope'
+import {
+  deriveAnime25DMotionEnvelopeProfile,
+  projectAnime25DMotionEnvelope,
+} from './motionEnvelope'
 import { predictedControlTime } from './motionPrediction'
 import {
   deformAnime25DFaceJawPoint,
@@ -133,7 +129,6 @@ import {
 import { MouthTransitionController } from './mouthTransition'
 import {
   bearingDriverPatch,
-  performanceCueOrigin,
   PerformanceExpressionController,
 } from './performanceExpression'
 import { baselineDriverPatch, restEnergyDriverPatch } from './performanceMotion'
@@ -173,7 +168,6 @@ interface SecondaryMotionPose {
   body: number
 }
 
-
 export interface Anime25DDebugSnapshot {
   layerCount: number
   hairLayerCount: number
@@ -199,6 +193,14 @@ export interface Anime25DDebugSnapshot {
   mouthManiacLayers: number
   mouthSillyLayers: number
   canvas: { width: number; height: number }
+  motionEnvelope: {
+    highCollar: boolean
+    armMotion: boolean
+    pitchLimit: number
+    torsoLimit: number
+    armLimit: number
+    transferredEnergy: number
+  }
   performance: Anime25DPerformanceSnapshot
   current: Anime25DDriver
 }
@@ -339,8 +341,7 @@ export class Anime25DPlayer {
   private readonly chestWeightField: ChestWeightField | null
   private readonly jaw = createJawMotionState()
   private readonly jawTravel: number
-  private readonly highCollar: boolean
-  private readonly armMotion: boolean
+  private readonly motionEnvelopeProfile: Anime25DMotionEnvelopeProfile
   private readonly motionEnvelopeResult = {
     clippedEnergy: 0,
     transferredEnergy: 0,
@@ -368,11 +369,11 @@ export class Anime25DPlayer {
     this.gl = gl
     this.playback = playback
     this.shellProfile = playback.shellProfile
-    this.highCollar = playback.layers.some(
-      (layer) => layer.role === 'collar-back' || layer.role === 'collar-front',
+    this.motionEnvelopeProfile = deriveAnime25DMotionEnvelopeProfile(
+      playback,
+      rigManifest,
     )
-    this.armMotion = playback.layers.some((layer) => layer.role === 'handwear')
-    this.singingGroove.setArmMotion(this.armMotion)
+    this.singingGroove.setArmMotion(this.motionEnvelopeProfile.armMotion)
     this.neckDepth =
       playback.layers.find((layer) => layer.role === 'neck')?.depth ?? 0.95
     this.mouthTransition = new MouthTransitionController(playback.mouthProfile)
@@ -438,7 +439,7 @@ export class Anime25DPlayer {
       torsoShellRotation: this.torsoShellRotation,
       torsoShellBlend: 0,
       specialHeadOffset: 0,
-      highCollar: this.highCollar,
+      highCollar: this.motionEnvelopeProfile.highCollar,
       breath: 0,
       chestCenterX: this.chestRegion.centerX,
       chestRegionCenterY: this.chestRegion.centerY,
@@ -565,40 +566,25 @@ export class Anime25DPlayer {
     this.speechMotion.clear(this.time)
   }
 
-  /** Legacy directive reference path; production uses playBehaviorCues. */
-  playPerformance(
-    directive: PerformanceDirective,
-    cueOriginSeconds?: number,
-  ): boolean {
-    const now = this.time
-    return this.performanceExpression.play(
-      directive,
-      now,
-      performanceCueOrigin(now, cueOriginSeconds),
-    )
-  }
-
-  playBehaviorCues(
-    cues: readonly PerformanceCue[],
-    cueOriginSeconds?: number,
-  ): boolean {
-    const now = this.time
-    return this.performanceExpression.playBehaviorCues(
-      cues,
-      now,
-      performanceCueOrigin(now, cueOriginSeconds),
-    )
-  }
-
+  /**
+   * The one body entry point for a realized plan.
+   *
+   * Units are routed by family, not by output shape: modulating families reach
+   * the pose generators they scale, and performance units carry their own pose
+   * to the expression controller. Restating the whole live set is what makes
+   * this safe to call on every plan revision.
+   */
   setBehaviorMotionUnits(
     units: readonly Anime25DMotionUnit[],
     nowMs: number,
   ): void {
     this.behaviorMotion.replace(units, nowMs, this.time)
+    this.performanceExpression.playBehaviorUnits(units, this.time, nowMs)
   }
 
   clearBehaviorMotionUnits(): void {
     this.behaviorMotion.clear()
+    this.performanceExpression.stopBehaviors(this.time)
   }
 
   setBearing(bearing: PerformanceBaseline | null): void {
@@ -607,10 +593,6 @@ export class Anime25DPlayer {
       ...(bearing ? baselineDriverPatch(bearing) : restEnergyDriverPatch()),
       ...bearingDriverPatch(bearing),
     })
-  }
-
-  stopPerformance(): void {
-    this.performanceExpression.stopBehaviors(this.time)
   }
 
   debugSnapshot(): Anime25DDebugSnapshot {
@@ -663,6 +645,14 @@ export class Anime25DPlayer {
       mouthSillyLayers: layers.filter((layer) => layer.fade === 'mouthSilly')
         .length,
       canvas: { ...this.playback.pixelCanvas },
+      motionEnvelope: {
+        highCollar: this.motionEnvelopeProfile.highCollar,
+        armMotion: this.motionEnvelopeProfile.armMotion,
+        pitchLimit: this.motionEnvelopeProfile.pitch.limit,
+        torsoLimit: this.motionEnvelopeProfile.torso.limit,
+        armLimit: this.motionEnvelopeProfile.rigidArm.limit,
+        transferredEnergy: this.motionEnvelopeResult.transferredEnergy,
+      },
       performance: this.performanceTelemetry.observe(),
       current: this.getCurrent(),
     }
@@ -817,14 +807,20 @@ export class Anime25DPlayer {
       speech.phraseActivity,
       speech.browAccent,
       speech.headAccent,
+      behaviorMotion.coSpeechQuality,
     )
     const singing = this.target.singing
-    // Singing decides whether the body moves; the music unit only scales it
-    // through `gate.groove`. A missing unit must not freeze a singing body.
+    // Audio drives the local groove clock; the realized music behavior below
+    // still decides whether that pose may enter the shared body compositor.
     this.singingDeform +=
       ((singing ? 1 : 0) - this.singingDeform) *
       (1 - Math.exp(-(singing ? 5.5 : 1.05) * dt))
-    const groove = this.singingGroove.sample(t, singing, this.singingDrive)
+    const groove = this.singingGroove.sample(
+      t,
+      singing,
+      this.singingDrive,
+      behaviorMotion.musicQuality,
+    )
     const sticker = Math.max(
       stylizedTargets.anger,
       stylizedTargets.speechless,
@@ -904,7 +900,7 @@ export class Anime25DPlayer {
     )
     projectAnime25DMotionEnvelope(
       tgt,
-      { highCollar: this.highCollar, armMotion: this.armMotion },
+      this.motionEnvelopeProfile,
       this.motionEnvelopeResult,
     )
     captureAnime25DSecondaryMotion(this.secondaryTarget, tgt)

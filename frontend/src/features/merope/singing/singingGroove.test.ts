@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { completeBehaviorQuality } from '../anime25drig/behaviorMotion'
 import {
   MIN_SINGING_NOD_INTERVAL_SECONDS,
   SingingGrooveController,
@@ -20,6 +21,50 @@ test('groove realizes rhythmic body motion without continuous face or gaze signa
   const pose = controller.sample(1, true, { bass: 1, beat: 1, vocal: 1 })
   assert.equal(pose.eyeX, 0)
   assert.equal(pose.brow, 0)
+})
+
+test('behavior quality reaches groove response, density, and asymmetry', () => {
+  const restrained = new SingingGrooveController()
+  const open = new SingingGrooveController()
+  const drive = { bass: 0.4, beat: 0.4, vocal: 0.5 }
+  const restrainedQuality = completeBehaviorQuality({
+    tempo: 0.8,
+    fluidity: 1.2,
+    directness: 1.1,
+    rebound: 0.1,
+    asymmetry: 0.05,
+    density: 0.3,
+  })
+  const openQuality = completeBehaviorQuality({
+    tempo: 1.2,
+    fluidity: 0.7,
+    directness: 0.55,
+    rebound: 1.1,
+    asymmetry: 1.2,
+    density: 1.4,
+  })
+  let restrainedRange = 0
+  let openRange = 0
+  for (let frame = 0; frame <= 60 * 8; frame += 1) {
+    const time = frame / 60
+    const restrainedPose = restrained.sample(
+      time,
+      true,
+      drive,
+      restrainedQuality,
+    )
+    const openPose = open.sample(time, true, drive, openQuality)
+    if (frame < 90) continue
+    restrainedRange = Math.max(
+      restrainedRange,
+      Math.abs(restrainedPose.angleZ) + Math.abs(restrainedPose.body),
+    )
+    openRange = Math.max(
+      openRange,
+      Math.abs(openPose.angleZ) + Math.abs(openPose.body),
+    )
+  }
+  assert.ok(openRange > restrainedRange)
 })
 
 test('reads faster music in half-time instead of nodding on every beat', () => {

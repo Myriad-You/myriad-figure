@@ -50,13 +50,51 @@ export function applyMotionFrame(
   state: MotionApplyState,
   onRealizer?: (feedback: MotionRealizerFeedback) => void,
 ): MotionApplyState {
+  // Writes come in three kinds and only one of them is motion.
+  //
+  //   standing — ownership, the bearing held between behaviors, and mood;
+  //   signals  — the speech and audio streams the mouth and groove generators
+  //              consume, which carry no pose of their own;
+  //   behavior — the single path that puts transient motion on the body.
+  //
+  // A second behavior path would be a second scheduler, which is the thing the
+  // behavior protocol exists to prevent. Signals are not that: a spectrum and a
+  // line of text are inputs, and they compete for nothing.
+  applyStanding(rig, frame, state)
+  applySignals(rig, frame, state)
+  applyBehaviorPlan(rig, frame, state, onRealizer)
+  return state
+}
+
+function applyStanding(
+  rig: Pick<RigMotionPort, 'setMotionPolicy' | 'setBearing' | 'setMood'>,
+  frame: MotionFrame,
+  state: MotionApplyState,
+): void {
   rig.setMotionPolicy(policyFromOwners(frame.snapshot.owners))
   applyBearing(rig, frame, state)
   if (frame.mood) rig.setMood(frame.mood.mood, frame.mood.activity)
+}
+
+/** Music writes last: it may take the mouth that speech just claimed. */
+function applySignals(
+  rig: Pick<
+    RigMotionPort,
+    | 'setSpeechActive'
+    | 'setAutoSpeech'
+    | 'setSpeechEnergy'
+    | 'setSpeechArticulation'
+    | 'setSpeechProsody'
+    | 'enqueueSpeechText'
+    | 'setSinging'
+    | 'setSingingTrack'
+    | 'setSingingSpectrum'
+  >,
+  frame: MotionFrame,
+  state: MotionApplyState,
+): void {
   applySpeech(rig, frame, state)
-  applyBehaviorPlan(rig, frame, state, onRealizer)
   applyMusic(rig, frame)
-  return state
 }
 
 export interface MotionRealizerFeedback {

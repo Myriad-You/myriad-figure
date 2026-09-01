@@ -58,8 +58,20 @@ export function resourcesConflict(
   )
 }
 
-/** Compatibility projection for the current four-channel coordinator. */
-export function legacyChannelsForResources(
+/**
+ * Projects a behavior's resources onto what this rig can actually drive.
+ *
+ * The dotted vocabulary anticipates a richer body; `rig/README.md` is the
+ * boundary, and it lists no shoulder, elbow, wrist, leg or foot. Of the body
+ * resources only head and torso reach a real transform, and this rig composes
+ * them through one shared upper-body pose — so `headBody` is not a leftover
+ * coarse channel, it is the granularity the artwork has.
+ *
+ * Splitting head from torso is the one refinement the rig could support (a nod
+ * could then survive a groove). That changes arbitration outcomes per cue, so
+ * it belongs in its own change with a running face to look at — not here.
+ */
+export function rigChannelsForResources(
   resources: readonly BehaviorResource[],
 ): MotionChannel[] {
   const channels = new Set<MotionChannel>()
@@ -72,8 +84,8 @@ export function legacyChannelsForResources(
   return [...channels]
 }
 
-/** Name mapping retained for old plans and reference implementations. */
-export function resourcesForLegacyChannels(
+/** The inverse: the resources a rig channel stands for. */
+export function resourcesForRigChannels(
   channels: readonly MotionChannel[],
 ): BehaviorResource[] {
   const resources = new Set<BehaviorResource>()

@@ -1,3 +1,4 @@
+import type { BehaviorQuality } from '../motion/behavior'
 import type { BeatFrame } from './beatClock'
 import { beatAccentLead, beatAnticipation, BeatClock } from './beatClock'
 import { singingVocalEnergy } from './singingClock'
@@ -115,6 +116,7 @@ export class SingingGrooveController {
     timeSeconds: number,
     enabled: boolean,
     drive: SingingSpectrumDrive | null,
+    quality?: Readonly<BehaviorQuality>,
   ): Readonly<SingingGroovePose> {
     const now = Number.isFinite(timeSeconds) ? Math.max(0, timeSeconds) : 0
     const dt = Number.isFinite(this.lastTime)
@@ -129,20 +131,48 @@ export class SingingGrooveController {
     this.beatFrame = this.resolveBeatFrame(now, enabled, drive)
     this.followSpectrum(now, dt, enabled, vocal, beat)
 
-    if (enabled) this.driftLean(dt)
+    const pace =
+      relativeQuality(quality?.tempo, 1, 0.72) *
+      relativeQuality(quality?.density, 0.8, 0.12)
+    if (enabled) this.driftLean(dt * pace)
     else this.settleLean(dt)
 
     const pitch = enabled ? this.nodPitch() : 0
-    stepSpring(this.neckZ, this.leanTarget, dt, 1.45, 1.04)
-    stepSpring(this.neckX, this.leanTarget * 0.42, dt, 1.5, 1.04)
-    stepSpring(this.neckY, pitch, dt, 2.25, 1.16)
-    stepSpring(this.torso, this.neckZ.value * 0.55, dt, 0.95, 1.08)
+    const directness = relativeQuality(quality?.directness, 0.72, 0.22)
+    const fluidity = relativeQuality(quality?.fluidity, 0.8, 0.18)
+    const rebound = relativeQuality(quality?.rebound, 0.35, -0.2)
+    const response = clamp(directness / fluidity, 0.72, 1.35)
+    const damping = clamp(fluidity * rebound, 0.78, 1.24)
+    const asymmetry = relativeQuality(quality?.asymmetry, 0.2, 0.2)
+    const density = relativeQuality(quality?.density, 0.8, 0.16)
+    stepSpring(
+      this.neckZ,
+      this.leanTarget * asymmetry,
+      dt,
+      1.45 * response,
+      1.04 * damping,
+    )
+    stepSpring(
+      this.neckX,
+      (this.leanTarget * 0.42) / directness,
+      dt,
+      1.5 * response,
+      1.04 * damping,
+    )
+    stepSpring(this.neckY, pitch, dt, 2.25 * response, 1.16 * damping)
+    stepSpring(
+      this.torso,
+      this.neckZ.value * 0.55 * density,
+      dt,
+      0.95 * response,
+      1.08 * damping,
+    )
     const barWave = Math.sin(this.beatFrame.barPhase * Math.PI * 2)
     const armTarget =
       enabled && this.armMotion
-        ? -this.leanTarget * 0.42 + barWave * this.energy * 0.045
+        ? (-this.leanTarget * 0.42 + barWave * this.energy * 0.045) * density
         : 0
-    stepSpring(this.arm, armTarget, dt, 0.88, 1.04)
+    stepSpring(this.arm, armTarget, dt, 0.88 * response, 1.04 * damping)
 
     this.output.angleX = this.neckX.value
     this.output.angleY = this.neckY.value
@@ -383,4 +413,14 @@ function smootherstep(value: number): number {
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value))
+}
+
+function relativeQuality(
+  value: number | undefined,
+  neutral: number,
+  influence: number,
+): number {
+  const resolved =
+    typeof value === 'number' && Number.isFinite(value) ? value : neutral
+  return clamp(1 + (resolved - neutral) * influence, 0.65, 1.4)
 }

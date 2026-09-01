@@ -1,3 +1,4 @@
+import type { BehaviorQuality } from '../motion/behavior'
 import type { SpeechProsodyPlan } from '../speech/prosody'
 
 export interface CoSpeechExpressionOffset {
@@ -71,6 +72,7 @@ export class CoSpeechExpressionController {
     phraseActivity: number,
     browAccent: number,
     headAccent: number,
+    quality?: Readonly<BehaviorQuality>,
   ): Readonly<CoSpeechExpressionOffset> {
     const now = Number.isFinite(timeSeconds) ? Math.max(0, timeSeconds) : 0
     const dt = Number.isFinite(this.lastTime)
@@ -134,7 +136,9 @@ export class CoSpeechExpressionController {
       resolvedHeadAccent,
       now,
       this.gestureDirection,
+      quality,
     )
+    const responseScale = qualityResponseScale(quality)
     if (!this.initialized) {
       this.initialized = true
       this.output.brow = this.targetOffset.brow
@@ -144,28 +148,35 @@ export class CoSpeechExpressionController {
       this.output.body = this.targetOffset.body
       return this.output
     }
-    this.output.brow = stepRelease(this.output.brow, this.targetOffset.brow, dt)
+    this.output.brow = stepRelease(
+      this.output.brow,
+      this.targetOffset.brow,
+      dt,
+      RELEASE_RATE * responseScale,
+    )
     this.output.eyeOpen = stepRelease(
       this.output.eyeOpen,
       this.targetOffset.eyeOpen,
       dt,
+      RELEASE_RATE * responseScale,
     )
     this.output.angleY = stepRelease(
       this.output.angleY,
       this.targetOffset.angleY,
       dt,
+      RELEASE_RATE * responseScale,
     )
     this.output.angleZ = stepPose(
       this.output.angleZ,
       this.targetOffset.angleZ,
       dt,
-      5.2,
+      5.2 * responseScale,
     )
     this.output.body = stepPose(
       this.output.body,
       this.targetOffset.body,
       dt,
-      4.2,
+      4.2 * responseScale,
     )
     return this.output
   }
@@ -178,6 +189,7 @@ function writeOffset(
   headAccent: number,
   timeSeconds: number,
   gestureDirection: number,
+  quality?: Readonly<BehaviorQuality>,
 ): Readonly<CoSpeechExpressionOffset> {
   const activity = unitInterval(phraseActivity)
   const browBeat = unitInterval(browAccent)
@@ -185,23 +197,40 @@ function writeOffset(
   // Two incommensurate, low-frequency components keep conversational weight
   // transfer alive without a repeated left-right metronome. Accent direction
   // alternates per beat, matching the head stroke with a small torso carry.
+  const tempo = relativeQuality(quality?.tempo, 1, 0.72)
+  const density = relativeQuality(quality?.density, 0.8, 0.18)
+  const directness = relativeQuality(quality?.directness, 0.72, -0.22)
+  const asymmetry = relativeQuality(quality?.asymmetry, 0.2, 0.24)
+  const rebound = relativeQuality(quality?.rebound, 0.35, 0.18)
+  const motionTime = timeSeconds * tempo * density
   const drift =
-    Math.sin(timeSeconds * 1.17 + 0.6) * 0.62 +
-    Math.sin(timeSeconds * 0.43 + 2.1) * 0.38
+    Math.sin(motionTime * 1.17 + 0.6) * 0.62 +
+    Math.sin(motionTime * 0.43 + 2.1) * 0.38
   const carry =
-    Math.sin(timeSeconds * 0.71 + 2.4) * 0.7 +
-    Math.sin(timeSeconds * 0.31 + 0.1) * 0.3
-  output.brow = 0.025 * activity + 0.07 * browBeat
+    Math.sin(motionTime * 0.71 + 2.4) * 0.7 +
+    Math.sin(motionTime * 0.31 + 0.1) * 0.3
+  output.brow = (0.025 * activity + 0.07 * browBeat) * density
   output.eyeOpen = -0.018 * activity + 0.014 * browBeat
-  output.angleY = 0.09 * headBeat
-  output.angleZ = 0.075 * activity * drift + 0.09 * headBeat * gestureDirection
-  output.body = 0.22 * activity * carry + 0.2 * headBeat * gestureDirection
+  output.angleY = (0.09 * headBeat) / directness
+  output.angleZ =
+    (0.075 * activity * drift * directness +
+      0.09 * headBeat * gestureDirection * rebound) *
+    asymmetry
+  output.body =
+    (0.22 * activity * carry * directness +
+      0.2 * headBeat * gestureDirection * rebound) *
+    density
   return output
 }
 
-function stepRelease(current: number, target: number, dt: number): number {
+function stepRelease(
+  current: number,
+  target: number,
+  dt: number,
+  rate: number,
+): number {
   if (Math.abs(target) >= Math.abs(current) - 1e-6) return target
-  return current + (target - current) * (1 - Math.exp(-RELEASE_RATE * dt))
+  return current + (target - current) * (1 - Math.exp(-rate * dt))
 }
 
 function stepPose(
@@ -216,6 +245,25 @@ function stepPose(
 function unitInterval(value: number): number {
   if (!Number.isFinite(value)) return 0
   return Math.max(0, Math.min(1, value))
+}
+
+function qualityResponseScale(
+  quality: Readonly<BehaviorQuality> | undefined,
+): number {
+  const tempo = relativeQuality(quality?.tempo, 1, 0.72)
+  const directness = relativeQuality(quality?.directness, 0.72, 0.22)
+  const fluidity = relativeQuality(quality?.fluidity, 0.8, 0.28)
+  return clamp((tempo * directness) / fluidity, 0.65, 1.45)
+}
+
+function relativeQuality(
+  value: number | undefined,
+  neutral: number,
+  influence: number,
+): number {
+  const resolved =
+    typeof value === 'number' && Number.isFinite(value) ? value : neutral
+  return clamp(1 + (resolved - neutral) * influence, 0.65, 1.4)
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

@@ -6,10 +6,10 @@ import {
   performanceCueChannels,
 } from '../anime25drig/performanceCueDefinitions'
 import {
-  legacyChannelsForResources,
   resourceInGroup,
   resourcesConflict,
-  resourcesForLegacyChannels,
+  resourcesForRigChannels,
+  rigChannelsForResources,
 } from './behaviorResources'
 
 test('resource hierarchy permits independent limbs but conflicts with parents', () => {
@@ -19,12 +19,29 @@ test('resource hierarchy permits independent limbs but conflicts with parents', 
   assert.equal(resourceInGroup('face.gaze', 'body'), false)
 })
 
+test('the rig channels are what this rig can drive, not leftover coarseness', () => {
+  const boundary = source('../rig/README.md')
+  // The projection collapses arms and hands because this rig has no arm or
+  // hand joints to collapse them onto. If that ever changes, this fails first
+  // and the split becomes a real question instead of a recurring smell.
+  assert.match(boundary, /no shoulder, elbow, wrist, leg, foot/)
+  const projection = source('./behaviorResources.ts')
+  assert.match(projection, /rig\/README\.md/)
+  for (const limb of ['body.arm.left', 'body.arm.right', 'body.hand.left']) {
+    assert.deepEqual(
+      rigChannelsForResources([limb as Parameters<typeof rigChannelsForResources>[0][number]]),
+      ['headBody'],
+      limb,
+    )
+  }
+})
+
 test('coarse channel names remain a loss-aware compatibility projection', () => {
   assert.deepEqual(
-    legacyChannelsForResources(['face.expression', 'body.arm.left']),
+    rigChannelsForResources(['face.expression', 'body.arm.left']),
     ['expression', 'headBody'],
   )
-  assert.deepEqual(resourcesForLegacyChannels(['gaze', 'headBody']), [
+  assert.deepEqual(resourcesForRigChannels(['gaze', 'headBody']), [
     'face.gaze',
     'body.head',
     'body.torso',
@@ -41,7 +58,7 @@ test('coarse channels stay derived, never a second authored list', () => {
   )) {
     assert.deepEqual(
       performanceCueChannels(intent as Parameters<typeof performanceCueChannels>[0]),
-      legacyChannelsForResources(definition.resources),
+      rigChannelsForResources(definition.resources),
       intent,
     )
   }

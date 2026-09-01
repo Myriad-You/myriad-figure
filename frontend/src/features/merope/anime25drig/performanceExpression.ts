@@ -4,10 +4,16 @@ import type {
   PerformanceDirective,
   PerformancePhase,
 } from '../../../services/agent/types'
+import type { BehaviorQuality } from '../motion/behavior'
+import type { Anime25DMotionUnit } from './behaviorMotion'
 import type { Anime25DDriver } from './driver'
-import { performanceCuePriority } from '../performanceContract'
+import type { CueIntent } from './performanceCueDefinitions'
+import {
+  PERFORMANCE_CUE_INTENTS,
+  performanceCuePriority,
+} from '../performanceContract'
 import { IDENTITY_DRIVER } from './driver'
-import { cueExpressionPatch, cueIsSticker } from './performanceCueDefinitions'
+import { cueIsSticker, intentExpressionPatch } from './performanceCueDefinitions'
 import { cueVisualEnvelope, MIN_STICKER_FADE_OUT } from './performanceMotion'
 
 export interface PerformanceExpressionOffset {
@@ -60,6 +66,8 @@ export interface PerformanceExpressionTarget {
 }
 
 interface ScheduledExpressionCue {
+  /** Null for the directive reference path, which has no behavior identity. */
+  behaviorId: string | null
   start: number
   fadeIn: number
   hold: number
@@ -253,19 +261,54 @@ export class PerformanceExpressionController {
     return true
   }
 
-  /** New body-adapter path: scheduling is already resolved by BehaviorPlan. */
-  playBehaviorCues(
-    cues: readonly PerformanceCue[],
+  /**
+   * Restates the live performance units on the player clock.
+   *
+   * Nothing is re-derived here. The plan already resolved when each behavior
+   * starts, peaks, releases and ends, so its pegs map straight onto the
+   * envelope — the previous path packed those points back into a cue's three
+   * durations and rebuilt them, which quietly dropped the stroke plateau.
+   *
+   * Taking the whole live set makes this idempotent: a restated plan keeps the
+   * poses it already scheduled, and a behavior that dropped out of the plan
+   * releases instead of playing on to its authored end. That is why the caller
+   * needs no record of what it has already played.
+   */
+  playBehaviorUnits(
+    units: readonly Anime25DMotionUnit[],
     timeSeconds: number,
-    cueOriginSeconds = timeSeconds,
+    nowMs: number,
   ): boolean {
-    if (cues.length === 0) return false
     const now = finiteTime(timeSeconds)
     this.pruneExpiredCues(now)
-    this.releaseActiveCues(now)
     if (!Number.isFinite(this.lastTime)) this.lastTime = now
-    this.scheduleCues(cues, finiteOrZero(cueOriginSeconds))
-    return true
+    const live = new Set<string>()
+    for (const unit of units) {
+      if (unit.family === 'performance') live.add(unit.behaviorId)
+    }
+    let changed = false
+    const scheduled = new Set<string>()
+    for (const cue of this.cues) {
+      if (cue.behaviorId === null) continue
+      if (live.has(cue.behaviorId)) {
+        scheduled.add(cue.behaviorId)
+        continue
+      }
+      releaseScheduledCue(cue, now)
+      changed = true
+    }
+    for (const unit of units) {
+      if (unit.family !== 'performance') continue
+      if (scheduled.has(unit.behaviorId)) continue
+      const cue = scheduledCueFromUnit(unit, now, nowMs)
+      if (!cue) continue
+      this.cues.push(cue)
+      scheduled.add(unit.behaviorId)
+      changed = true
+    }
+    this.cues.sort((left, right) => left.start - right.start)
+    this.pruneExpiredCues(now)
+    return changed
   }
 
   setBearingAttention(attention: number | null): void {
@@ -362,6 +405,7 @@ export class PerformanceExpressionController {
         }
       }
       this.cues.push({
+        behaviorId: null,
         start,
         fadeIn,
         hold,
@@ -476,9 +520,69 @@ export function bearingDriverPatch(
 export function expressionCueOffset(
   cue: PerformanceCue,
 ): PerformanceExpressionOffset {
+  return intentExpressionOffset(cue.intent, cue.intensity)
+}
+
+export function intentExpressionOffset(
+  intent: CueIntent,
+  intensity: number,
+): PerformanceExpressionOffset {
   const output = { ...ZERO_OFFSET }
-  Object.assign(output, cueExpressionPatch(cue))
+  Object.assign(output, intentExpressionPatch(intent, intensity))
   return output
+}
+
+/**
+ * How large a performance unit reads.
+ *
+ * Amplitude is the behavior's own intensity shaped by the quality the planner
+ * resolved. It belongs here rather than in the realizer: it is a question
+ * about the pose, and only the thing that draws the pose should answer it.
+ */
+export function performanceUnitAmount(
+  intensity: number,
+  quality: Readonly<BehaviorQuality>,
+): number {
+  return clamp(
+    intensity * (0.62 + quality.extent * 0.25 + quality.power * 0.13),
+    0.2,
+    1.4,
+  )
+}
+
+function scheduledCueFromUnit(
+  unit: Anime25DMotionUnit,
+  playerNow: number,
+  wallNowMs: number,
+): ScheduledExpressionCue | null {
+  const intent = unit.form as CueIntent
+  if (!PERFORMANCE_CUE_INTENTS.includes(intent)) return null
+  const local = (atMs: number): number =>
+    playerNow + (finiteOrZero(atMs) - wallNowMs) / 1_000
+  const start = local(unit.timing.startMs)
+  const peak = local(unit.timing.strokePeakMs)
+  const relax = unit.timing.relaxMs === null ? null : local(unit.timing.relaxMs)
+  const end = unit.timing.endMs === null ? null : local(unit.timing.endMs)
+  // The stroke plateau is part of the hold. Measuring the hold from strokeEnd
+  // instead of strokePeak is what cut every performance behavior short.
+  const tail = relax ?? end
+  return {
+    behaviorId: unit.behaviorId,
+    start,
+    fadeIn: Math.max(0, peak - start),
+    hold: tail === null ? Number.POSITIVE_INFINITY : Math.max(0, tail - peak),
+    fadeOut: tail === null || end === null ? 0 : Math.max(0, end - tail),
+    // An absent end means the behavior holds until something replaces it.
+    end: end ?? Number.POSITIVE_INFINITY,
+    // Queue and priority were resolved by the planner.
+    interrupt: 'replace',
+    priority: performanceCuePriority(intent),
+    sticker: cueIsSticker(intent),
+    offset: intentExpressionOffset(
+      intent,
+      performanceUnitAmount(unit.intensity, unit.quality),
+    ),
+  }
 }
 
 /** Adds expression-owned channels while preserving manual left/right asymmetry. */

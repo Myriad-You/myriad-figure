@@ -57,3 +57,55 @@ test('replacement preserves wall-clock age across different player origins', () 
   const nearPeak = controller.sample(9.05).coSpeech
   assert.ok(nearPeak > 0.8)
 })
+
+test('tempo, fluidity, rebound, and density shape the scheduled envelope', () => {
+  const fastUnit = unit()
+  fastUnit.quality = completeBehaviorQuality({
+    tempo: 1.6,
+    fluidity: 0.35,
+    directness: 1.2,
+    rebound: 1.2,
+    density: 1.4,
+  })
+  const slowUnit = unit()
+  slowUnit.quality = completeBehaviorQuality({
+    tempo: 0.5,
+    fluidity: 1.3,
+    directness: 0.3,
+    rebound: 0,
+    density: 0.3,
+  })
+  const fast = new Anime25DBehaviorMotionController()
+  const slow = new Anime25DBehaviorMotionController()
+  fast.replace([fastUnit], 1_000, 5)
+  slow.replace([slowUnit], 1_000, 5)
+
+  assert.ok(fast.sample(5.15).coSpeech > slow.sample(5.15).coSpeech)
+  assert.ok(fast.sample(5.525).coSpeech > slow.sample(5.525).coSpeech)
+  assert.equal(fast.sample(5.55).coSpeechQuality.rebound, 1.2)
+})
+
+test('quality completion bounds untrusted planner values', () => {
+  assert.deepEqual(
+    completeBehaviorQuality({
+      extent: 99,
+      tempo: -2,
+      power: Number.NaN,
+      fluidity: 8,
+      directness: -1,
+      rebound: 4,
+      asymmetry: -3,
+      density: 7,
+    }),
+    {
+      extent: 1.6,
+      tempo: 0.45,
+      power: 1,
+      fluidity: 1.4,
+      directness: 0.2,
+      rebound: 1.4,
+      asymmetry: 0,
+      density: 1.5,
+    },
+  )
+})

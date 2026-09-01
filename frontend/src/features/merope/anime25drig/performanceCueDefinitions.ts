@@ -3,10 +3,10 @@ import type { BehaviorResource } from '../motion/behaviorResources'
 import type { MotionChannel } from '../motion/channels'
 import type { Anime25DDriver } from './driver'
 import type { PerformanceExpressionOffset } from './performanceExpression'
-import { legacyChannelsForResources } from '../motion/behaviorResources'
+import { rigChannelsForResources } from '../motion/behaviorResources'
 import { IDENTITY_DRIVER } from './driver'
 
-type CueIntent = PerformanceCue['intent']
+export type CueIntent = PerformanceCue['intent']
 
 export interface PerformanceCueDefinition {
   /** Renderer-neutral body resources this cue's pose writes. Authored here. */
@@ -20,7 +20,6 @@ export interface PerformanceCueDefinition {
 }
 
 const FACE = ['face.expression'] as const
-const FACE_HEAD = ['face.expression', 'body.head'] as const
 const FACE_GAZE_HEAD = ['face.expression', 'face.gaze', 'body.head'] as const
 const FACE_TORSO = ['face.expression', 'body.head', 'body.torso'] as const
 const FACE_TORSO_ARMS = [
@@ -55,11 +54,15 @@ export const PERFORMANCE_CUE_DEFINITIONS = {
     }),
   },
   respond: {
-    resources: FACE_HEAD,
-    driver: () => ({}),
+    resources: FACE_TORSO,
+    // Acknowledgement is the deterministic default, so it must remain
+    // readable even when semantic refinement is unavailable: head leads and
+    // the torso follows at lower amplitude.
+    driver: (poseAmount) => ({ body: 0.2 * poseAmount }),
     expression: (amount, poseAmount) => ({
-      angleY: -0.09 * poseAmount,
-      brow: 0.13 * amount,
+      angleY: -0.12 * poseAmount,
+      angleZ: -0.045 * poseAmount,
+      brow: 0.15 * amount,
     }),
   },
   question: {
@@ -96,8 +99,8 @@ export const PERFORMANCE_CUE_DEFINITIONS = {
     }),
   },
   listen: {
-    resources: FACE_HEAD,
-    driver: () => ({}),
+    resources: FACE_TORSO,
+    driver: (poseAmount) => ({ body: 0.12 * poseAmount }),
     expression: (amount, poseAmount) => ({
       angleY: 0.09 * poseAmount,
       brow: 0.12 * amount,
@@ -178,7 +181,7 @@ export const PERFORMANCE_CUE_DEFINITIONS = {
 const CUE_CHANNELS = Object.fromEntries(
   Object.entries(PERFORMANCE_CUE_DEFINITIONS).map(([intent, definition]) => [
     intent,
-    Object.freeze(legacyChannelsForResources(definition.resources)),
+    Object.freeze(rigChannelsForResources(definition.resources)),
   ]),
 ) as Record<CueIntent, readonly MotionChannel[]>
 
@@ -196,15 +199,38 @@ export function performanceCueChannels(
 }
 
 export function cueDriverPatch(cue: PerformanceCue): Partial<Anime25DDriver> {
-  return performanceCueDefinition(cue.intent).driver(cuePoseAmount(cue))
+  return intentDriverPatch(cue.intent, cue.intensity)
+}
+
+export function intentDriverPatch(
+  intent: CueIntent,
+  intensity: number,
+): Partial<Anime25DDriver> {
+  return performanceCueDefinition(intent).driver(intentPoseAmount(intensity))
 }
 
 export function cueExpressionPatch(
   cue: PerformanceCue,
 ): Partial<PerformanceExpressionOffset> {
-  const definition = performanceCueDefinition(cue.intent)
-  const amount = cueAmount(cue)
-  const poseAmount = cuePoseAmount(cue)
+  return intentExpressionPatch(cue.intent, cue.intensity)
+}
+
+/**
+ * The pose a cue form writes at a given amplitude.
+ *
+ * A realized behavior carries a form and an amplitude; `PerformanceCue` is the
+ * director's wire shape, and its remaining fields (`atMs`, the three envelope
+ * durations, `interrupt`) are scheduling, already resolved by the time a body
+ * asks for a pose. Taking the two that matter keeps callers from rebuilding a
+ * cue just to ask what a form looks like.
+ */
+export function intentExpressionPatch(
+  intent: CueIntent,
+  intensity: number,
+): Partial<PerformanceExpressionOffset> {
+  const definition = performanceCueDefinition(intent)
+  const amount = intentAmount(intensity)
+  const poseAmount = intentPoseAmount(intensity)
   const driver = definition.driver(poseAmount)
   return {
     ...definition.expression(amount, poseAmount),
@@ -221,8 +247,8 @@ export function cueIsSticker(intent: CueIntent): boolean {
   return performanceCueDefinition(intent).sticker === true
 }
 
-function cueAmount(cue: PerformanceCue): number {
-  return Math.max(0.2, Math.min(1.4, cue.intensity))
+function intentAmount(intensity: number): number {
+  return Math.max(0.2, Math.min(1.4, intensity))
 }
 
 /**
@@ -231,6 +257,10 @@ function cueAmount(cue: PerformanceCue): number {
  * semantic amount itself continues to scale the face without this lift.
  */
 export function cuePoseAmount(cue: PerformanceCue): number {
-  const normalized = (cueAmount(cue) - 0.2) / 1.2
+  return intentPoseAmount(cue.intensity)
+}
+
+export function intentPoseAmount(intensity: number): number {
+  const normalized = (intentAmount(intensity) - 0.2) / 1.2
   return 0.72 + normalized * 0.68
 }

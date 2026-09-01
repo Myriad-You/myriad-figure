@@ -5,6 +5,8 @@ import type {
 } from '../../../services/agent/types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { compilePerformanceBehaviorPlan } from '../motion/performanceBehaviorPlan'
+import { realizeAnime25DBehaviorPlan } from './behaviorRealizer'
 import {
   applyPerformanceExpressionOffset,
   baselineExpressionOffset,
@@ -50,6 +52,7 @@ function directive(
   return {
     phase,
     moodRevision,
+    motionStyle: 'even',
     plan: {
       baseline: { ...steadyBaseline, expression },
       cues,
@@ -707,4 +710,87 @@ test('a remount resumes a plan instead of replaying it from the top', () => {
     performanceCueOrigin(0, 98, 101),
   )
   assert.equal(remounted.sample(0.3).brow, 0)
+})
+
+function poseMagnitude(
+  offset: Readonly<Record<string, number | undefined>>,
+): number {
+  return Object.values(offset).reduce<number>(
+    (total, value) => total + Math.abs(value ?? 0),
+    0,
+  )
+}
+
+const heldDirective: PerformanceDirective = {
+  phase: 'delivery',
+  moodRevision: 1,
+  motionStyle: 'even',
+  plan: {
+    cues: [
+      {
+        intent: 'emphasize',
+        atMs: 0,
+        intensity: 1.1,
+        tempo: 1,
+        fadeInMs: 120,
+        fadeOutMs: 200,
+        interrupt: 'replace',
+      },
+    ],
+  },
+}
+
+test('a performance unit holds through its stroke plateau, not up to it', () => {
+  const plan = compilePerformanceBehaviorPlan(heldDirective, 0, 'held')
+  const realized = realizeAnime25DBehaviorPlan(plan, 0)
+  const unit = realized.units[0]!
+  // The planner puts up to 80ms between the peak and the end of the stroke.
+  // Packing the lifecycle into a cue measured the hold from strokeEnd, so that
+  // plateau was silently dropped from every performance behavior.
+  const plateau = (unit.timing.strokeEndMs - unit.timing.strokePeakMs) / 1_000
+  assert.ok(plateau > 0, 'this plan has no plateau to protect')
+
+  const controller = new PerformanceExpressionController()
+  controller.playBehaviorUnits(realized.units, 0, 0)
+  const peak = poseMagnitude(controller.sample(unit.timing.strokePeakMs / 1_000))
+  assert.ok(peak > 0)
+  const atRelax = poseMagnitude(controller.sample(unit.timing.relaxMs! / 1_000))
+  assert.ok(
+    Math.abs(atRelax - peak) < 1e-6,
+    `full amplitude ended early: ${atRelax} at relax vs ${peak} at peak`,
+  )
+  assert.ok(poseMagnitude(controller.sample(unit.timing.endMs! / 1_000 - 0.01)) > 0)
+  assert.equal(poseMagnitude(controller.sample(unit.timing.endMs! / 1_000)), 0)
+})
+
+test('restating the same units keeps the pose instead of replaying it', () => {
+  const plan = compilePerformanceBehaviorPlan(heldDirective, 0, 'restated')
+  const realized = realizeAnime25DBehaviorPlan(plan, 0)
+  const unit = realized.units[0]!
+  const peakSeconds = unit.timing.strokePeakMs / 1_000
+
+  const once = new PerformanceExpressionController()
+  once.playBehaviorUnits(realized.units, 0, 0)
+  const expected = poseMagnitude(once.sample(peakSeconds))
+
+  const restated = new PerformanceExpressionController()
+  restated.playBehaviorUnits(realized.units, 0, 0)
+  restated.sample(peakSeconds / 2)
+  // A plan revision restates every live behavior. Scheduling it a second time
+  // would stack the same pose on itself; dropping it would freeze the face.
+  restated.playBehaviorUnits(realized.units, peakSeconds / 2, peakSeconds * 500)
+  assert.equal(poseMagnitude(restated.sample(peakSeconds)), expected)
+})
+
+test('a behavior dropped from the plan releases instead of playing on', () => {
+  const plan = compilePerformanceBehaviorPlan(heldDirective, 0, 'dropped')
+  const realized = realizeAnime25DBehaviorPlan(plan, 0)
+  const unit = realized.units[0]!
+  const controller = new PerformanceExpressionController()
+  controller.playBehaviorUnits(realized.units, 0, 0)
+  const peakSeconds = unit.timing.strokePeakMs / 1_000
+  assert.ok(poseMagnitude(controller.sample(peakSeconds)) > 0)
+  controller.playBehaviorUnits([], peakSeconds, peakSeconds * 1_000)
+  const released = unit.timing.endMs! / 1_000
+  assert.equal(poseMagnitude(controller.sample(released)), 0)
 })

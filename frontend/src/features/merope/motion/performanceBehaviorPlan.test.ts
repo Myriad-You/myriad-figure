@@ -10,6 +10,7 @@ function directive(): PerformanceDirective {
   return {
     phase: 'delivery',
     moodRevision: 1,
+    motionStyle: 'even',
     plan: {
       baseline: {
         expression: 'warm',
@@ -61,14 +62,18 @@ test('compiles only transient functions and monotonic time pegs', () => {
   )
 })
 
-test('declares the head resource when an acknowledgement nods', () => {
+test('declares head and torso resources for a readable acknowledgement', () => {
   const value = directive()
   value.plan.baseline = undefined
   value.plan.cues[0] = { ...value.plan.cues[0]!, intent: 'respond' }
   const plan = compilePerformanceBehaviorPlan(value, 0, 'plan-b')
   const cue = plan.behaviors.find((behavior) => behavior.form.id === 'respond')
   assert.deepEqual(cue?.channels, ['expression', 'headBody'])
-  assert.deepEqual(cue?.resources, ['face.expression', 'body.head'])
+  assert.deepEqual(cue?.resources, [
+    'face.expression',
+    'body.head',
+    'body.torso',
+  ])
 })
 
 test('recompiling a realized cue does not shrink it', () => {
@@ -84,6 +89,7 @@ test('recompiling a realized cue does not shrink it', () => {
   const directive: PerformanceDirective = {
     phase: 'delivery',
     moodRevision: 1,
+    motionStyle: 'even',
     plan: { cues: [cue] },
   }
   const first = compilePerformanceBehaviorPlan(directive, 0, 'plan-1')

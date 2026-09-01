@@ -1,6 +1,7 @@
 import type { PerformanceDirective } from '../../../services/agent/types'
 import type { MotionFrame } from './intents'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { applyMotionFrame, createMotionApplyState } from './applyFrame'
 import { RigMotionCoordinator } from './coordinator'
@@ -70,6 +71,7 @@ function frame(
 const directive: PerformanceDirective = {
   phase: 'delivery',
   moodRevision: 1,
+  motionStyle: 'even',
   plan: {
     baseline: {
       expression: 'warm',
@@ -318,4 +320,20 @@ test('a rejected plan reports once instead of retrying every frame', () => {
     state,
   )
   assert.equal(calls.filter((call) => call === 'play').length, 2)
+})
+
+test('the frame writer keeps exactly one behavior path', () => {
+  const source = readFileSync(new URL('./applyFrame.ts', import.meta.url), 'utf8')
+  // Motion reaches the body through the behavior protocol or not at all. A
+  // second call site here is a second scheduler, which is what the protocol
+  // exists to prevent; signals (speech text, audio spectrum) are inputs to a
+  // generator and are deliberately not counted.
+  const behaviorWrites = [...source.matchAll(/rig\.playBehaviorPlan\(/g)]
+  assert.equal(
+    behaviorWrites.length,
+    1,
+    `applyFrame plays ${behaviorWrites.length} behavior paths, expected 1`,
+  )
+  assert.match(source, /applyStanding\(rig, frame, state\)/)
+  assert.match(source, /applySignals\(rig, frame, state\)/)
 })

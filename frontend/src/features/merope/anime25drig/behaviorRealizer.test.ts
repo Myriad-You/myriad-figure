@@ -13,6 +13,7 @@ import { cueVisualEnvelope } from './performanceMotion'
 const directive: PerformanceDirective = {
   phase: 'delivery',
   moodRevision: 2,
+  motionStyle: 'even',
   plan: {
     cues: [
       {
@@ -28,13 +29,23 @@ const directive: PerformanceDirective = {
   },
 }
 
-test('Anime2.5D realizes a behavior form without restoring a legacy directive', () => {
+test('a performance behavior realizes as a unit, not back into a cue', () => {
   const plan = compilePerformanceBehaviorPlan(directive, 1_000, 'plan-a')
   const realized = realizeAnime25DBehaviorPlan(plan, 900)
-  assert.equal(realized.cues.length, 1)
-  assert.equal(realized.cues[0]?.intent, 'emphasize')
-  assert.equal(realized.cues[0]?.atMs, 200)
-  assert.equal(realized.cues[0]?.interrupt, 'replace')
+  assert.equal(realized.units.length, 1)
+  const unit = realized.units[0]!
+  assert.equal(unit.family, 'performance')
+  assert.equal(unit.form, 'emphasize')
+  // The unit keeps the pegs the scheduler resolved. Nothing repacks them into
+  // a cue's three durations, so nothing has to guess them back out.
+  const behavior = plan.behaviors[0]!
+  const at = (id: string): number =>
+    plan.pegs.find((peg) => peg.id === id)!.atMs
+  assert.equal(unit.timing.startMs, at(behavior.timing.start))
+  assert.equal(unit.timing.strokePeakMs, at(behavior.timing.strokePeak))
+  assert.equal(unit.timing.strokeEndMs, at(behavior.timing.strokeEnd))
+  assert.equal(unit.timing.relaxMs, at(behavior.timing.relax!))
+  assert.equal(unit.timing.endMs, at(behavior.timing.end!))
   assert.deepEqual(realized.reports, [
     {
       behaviorId: 'plan-a:cue-0',
@@ -58,7 +69,7 @@ test('unsupported forms are rejected per behavior while supported peers survive'
     ],
   }
   const realized = realizeAnime25DBehaviorPlan(plan, 10)
-  assert.equal(realized.cues.length, 1)
+  assert.equal(realized.units.length, 1)
   assert.equal(realized.reports[1]?.behaviorId, 'plan-b:unsupported')
   assert.equal(realized.reports[1]?.result, 'rejected')
   assert.equal(realized.reports[1]?.reason, 'unsupported-form')
@@ -112,7 +123,7 @@ test('missing canonical timing pegs are rejected instead of approximated', () =>
     (peg) => peg.id !== plan.behaviors[0]!.timing.strokeStart,
   )
   const realized = realizeAnime25DBehaviorPlan(plan, 10)
-  assert.equal(realized.cues.length, 0)
+  assert.equal(realized.units.length, 0)
   assert.equal(realized.reports[0]?.result, 'rejected')
   assert.equal(realized.reports[0]?.reason, 'invalid-timing')
 })

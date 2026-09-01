@@ -71,7 +71,7 @@ export interface ScheduledBehavior {
   source: MotionSourceId
   /** Fine-grained body-semantic resources used by new planners/adapters. */
   resources: readonly BehaviorResource[]
-  /** Coarse compatibility projection for the current ownership coordinator. */
+  /** Coarse projection used by the current ownership coordinator. */
   channels: readonly MotionChannel[]
   timing: BehaviorTiming
   /** Mutable future event used by rhythmic/tracking behavior after commitment. */
