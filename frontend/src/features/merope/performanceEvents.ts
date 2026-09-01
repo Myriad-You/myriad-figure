@@ -90,23 +90,28 @@ export function meropeStateEventDetail(
 ): MeropeStateEventDetail | null {
   if (!isRecord(value) || !isRecord(value.mood)) return null
   const mood = value.mood
-  const bands = ['floor', 'low', 'normal', 'high'] as const
+  const bandBefore = moodBandName(mood.bandBefore)
+  const bandAfter = moodBandName(mood.bandAfter)
   const numbers = [mood.before, mood.after, mood.delta, mood.revision]
   if (
     !numbers.every(
       (number) => typeof number === 'number' && Number.isFinite(number),
     ) ||
-    !bands.includes(mood.bandBefore as (typeof bands)[number]) ||
-    !bands.includes(mood.bandAfter as (typeof bands)[number])
+    !bandBefore ||
+    !bandAfter
   ) {
     return null
   }
+  const arousalBefore = optionalArousal(mood.arousalBefore)
+  const arousalAfter = optionalArousal(mood.arousalAfter)
   return {
     mood: {
       before: clamp(mood.before as number, 0, 100),
       after: clamp(mood.after as number, 0, 100),
-      bandBefore: mood.bandBefore as MoodTransition['bandBefore'],
-      bandAfter: mood.bandAfter as MoodTransition['bandAfter'],
+      ...(arousalBefore !== undefined ? { arousalBefore } : {}),
+      ...(arousalAfter !== undefined ? { arousalAfter } : {}),
+      bandBefore,
+      bandAfter,
       delta: clamp(mood.delta as number, -10, 10),
       cause:
         typeof mood.cause === 'string' ? mood.cause.slice(0, 80) : 'unknown',
@@ -115,6 +120,31 @@ export function meropeStateEventDetail(
     activity:
       typeof value.activity === 'string' ? value.activity.slice(0, 32) : 'idle',
   }
+}
+
+function moodBandName(value: unknown): MoodTransition['bandBefore'] | null {
+  switch (value) {
+    case 'floor':
+      return 'floor'
+    case 'sad':
+    case 'low':
+      return 'sad'
+    case 'tense':
+      return 'tense'
+    case 'calm':
+    case 'normal':
+      return 'calm'
+    case 'excited':
+    case 'high':
+      return 'excited'
+    default:
+      return null
+  }
+}
+
+function optionalArousal(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  return clamp(value, 0, 100)
 }
 
 export function sanitizePerformanceDirective(

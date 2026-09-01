@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { compileTextVisemes } from '../anime25drig/textVisemes'
-import {
-  alignVisemeTimeline,
-  visemeAmount,
-  visemeAt,
-} from './visemeTimeline'
+import { alignVisemeTimeline, visemeAmount, visemeAt } from './visemeTimeline'
 
 test('stretches the compiled shapes onto the audio that says them', async () => {
   const cues = await compileTextVisemes('你好世界', 'zh-CN')
@@ -73,5 +69,21 @@ test('the locale decides how han characters are read', async () => {
   assert.notDeepEqual(
     japanese.map((cue) => cue.viseme),
     chinese.map((cue) => cue.viseme),
+  )
+})
+
+test('keeps conversational pacing and real sentence pauses without audio', async () => {
+  const chinese = await compileTextVisemes('你好，世界。再见', 'zh-CN')
+  const rests = chinese.filter((cue) => cue.viseme === 'rest')
+  assert.ok(rests.some((cue) => cue.duration >= 0.18))
+  assert.ok(rests.some((cue) => cue.duration >= 0.32))
+  assert.ok(
+    chinese.reduce((duration, cue) => duration + cue.duration, 0) >= 1.65,
+  )
+
+  const english = await compileTextVisemes('Hello. There', 'en-US')
+  assert.ok(
+    english.some((cue) => cue.viseme === 'rest' && cue.duration >= 0.32),
+    'ASCII full stops are sentence boundaries too',
   )
 })

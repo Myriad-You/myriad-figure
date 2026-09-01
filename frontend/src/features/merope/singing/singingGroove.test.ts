@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { SingingGrooveController, singingSpectrumDrive } from './singingGroove'
+import {
+  MIN_SINGING_NOD_INTERVAL_SECONDS,
+  SingingGrooveController,
+  singingNodBeatStride,
+  singingSpectrumDrive,
+} from './singingGroove'
 
 test('maps bass to beat and mids to vocal without letting kick own the voice', () => {
   const kick = singingSpectrumDrive([1, 0, 0, 0, 0, 0, 0, 0])
@@ -15,6 +20,16 @@ test('groove realizes rhythmic body motion without continuous face or gaze signa
   const pose = controller.sample(1, true, { bass: 1, beat: 1, vocal: 1 })
   assert.equal(pose.eyeX, 0)
   assert.equal(pose.brow, 0)
+})
+
+test('reads faster music in half-time instead of nodding on every beat', () => {
+  assert.equal(singingNodBeatStride(72), 1)
+  assert.equal(singingNodBeatStride(120), 2)
+  assert.equal(singingNodBeatStride(180), 4)
+  for (const bpm of [60, 72, 86, 100, 120, 150, 180, 200]) {
+    const nodInterval = (60 / bpm) * singingNodBeatStride(bpm)
+    assert.ok(nodInterval >= MIN_SINGING_NOD_INTERVAL_SECONDS - 1e-9)
+  }
 })
 
 test('a brief disable keeps the leaned pose instead of yanking back to center', () => {
@@ -168,7 +183,8 @@ test('kick-heavy mix nods down more than a vocal phrase', () => {
   assert.ok(count > 0)
   assert.ok(kickSum / count < voiceSum / count - 0.08)
   assert.ok(voiceSum / count > 0.08)
-  assert.ok(kickMin < -0.2)
+  assert.ok(kickMin < -0.12)
+  assert.ok(kickMin > -0.27, 'the downbeat no longer makes the head dive')
 })
 
 test('a loud beat dips deeper than a soft beat', () => {
@@ -192,7 +208,7 @@ test('a loud beat dips deeper than a soft beat', () => {
     loudMin = Math.min(loudMin, heavy.angleY)
     softMin = Math.min(softMin, light.angleY)
   }
-  assert.ok(loudMin < softMin - 0.08)
+  assert.ok(loudMin < softMin - 0.06)
 })
 
 test('a pulsing beat nods down then comes back up', () => {
@@ -221,9 +237,9 @@ test('a pulsing beat nods down then comes back up', () => {
     flatMin = Math.min(flatMin, flat.angleY)
     flatMax = Math.max(flatMax, flat.angleY)
   }
-  assert.ok(pulseMin < -0.2)
+  assert.ok(pulseMin < -0.12)
   assert.ok(pulseMax > 0.08)
-  assert.ok(pulseMax - pulseMin > flatMax - flatMin + 0.15)
+  assert.ok(pulseMax - pulseMin > flatMax - flatMin + 0.055)
 })
 
 // The point of the beat clock: with a tempo to lock to, the accent leaves

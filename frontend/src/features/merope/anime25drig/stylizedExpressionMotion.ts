@@ -258,6 +258,12 @@ export class StylizedExpressionMotionController {
       maniacLaughCurve(maniacMouthPhase) * maniacMouth
     const delayedManiacHead =
       maniacLaughCurve((maniacMouthPhase + 0.94) % 1) * maniacMouth
+    // The artwork pulse is deliberately small, but using that value unchanged
+    // made the accompanying head motion almost imperceptible. Keep the same
+    // laugh cadence and slight delay while giving the head its own amplitude.
+    // Rotation carries most of the read; translation stays modest so collars
+    // and the neck continue to overlap safely.
+    const maniacHeadCycle = delayedManiacHead * 2
     const sillyPhase =
       (sillyAge / SILLY_LOOP_SECONDS + this.sillyPhaseOffset) % 1
     const sillyIrisXL = loopedKeyframe(sillyPhase, SILLY_IRIS_X_LEFT)
@@ -312,7 +318,7 @@ export class StylizedExpressionMotionController {
     output.mouthScale =
       -0.1 * angerMouth - 0.1 * speechlessFace + 0.018 * maniacMouth
     output.maniacUpperMouthPulse = maniacUpperMouthCycle
-    output.maniacHeadPulse = delayedManiacHead
+    output.maniacHeadPulse = maniacHeadCycle
     output.sillyEyeScale = symbolPop(this.silly, sillyAge, 0.035, 0.2)
     output.sillyIrisOffsetXL = sillyIrisXL * sillyFace
     output.sillyIrisOffsetYL = sillyIrisYL * sillyFace
@@ -346,8 +352,9 @@ export class StylizedExpressionMotionController {
     output.angleY =
       0.085 * angerPose -
       0.025 * speechlessPose -
-      0.11 * maniacPose +
-      maniacWobble * 0.55 -
+      0.055 * maniacPose -
+      maniacHeadCycle * 2.1 +
+      maniacWobble * 0.35 -
       0.025 * sillyPose -
       0.018 * lovestruckPose
     output.angleZ =

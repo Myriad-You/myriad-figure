@@ -150,6 +150,40 @@ test('lets the wilder face win and keeps quieter ones out of the way', () => {
   assert.ok(laughing.silly < 0.02)
 })
 
+test('pairs every settled maniac laugh burst with a visible delayed head nod', () => {
+  const controller = new StylizedExpressionMotionController()
+  const frames: StylizedExpressionMotion[] = []
+  for (let frame = 0; frame <= 60 * 6; frame += 1) {
+    frames.push({ ...controller.sample(frame * STEP, 0, 0, 1) })
+  }
+  const settled = frames.slice(90)
+  const headPulse = settled.map((frame) => frame.maniacHeadPulse)
+  const headPitch = settled.map((frame) => frame.angleY)
+  const mouthPeaks = localPeaks(
+    settled.map((frame) => frame.maniacUpperMouthPulse),
+    0.02,
+  )
+  const headPeaks = localPeaks(headPulse, 0.045)
+
+  assert.ok(range(headPulse) > 0.065, 'the laugh moves the head vertically')
+  assert.ok(range(headPitch) > 0.13, 'the laugh reads primarily as a head nod')
+  assert.ok(
+    headPitch.slice(1).every((value, index) => {
+      return Math.abs(value - headPitch[index]!) < 0.03
+    }),
+    'the stronger nod remains continuous frame to frame',
+  )
+  assert.ok(mouthPeaks.length >= 4)
+  for (const mouthPeak of mouthPeaks.slice(0, -1)) {
+    assert.ok(
+      headPeaks.some(
+        (headPeak) => headPeak > mouthPeak && headPeak - mouthPeak <= 6,
+      ),
+      'the head follows each mouth burst within 100ms',
+    )
+  }
+})
+
 function runSilly(seconds: number): StylizedExpressionMotion[] {
   const controller = new StylizedExpressionMotionController()
   const frames: StylizedExpressionMotion[] = []
@@ -203,6 +237,20 @@ function burst(
 
 function range(values: number[]): number {
   return Math.max(...values) - Math.min(...values)
+}
+
+function localPeaks(values: number[], threshold: number): number[] {
+  const peaks: number[] = []
+  for (let index = 1; index < values.length - 1; index += 1) {
+    if (
+      values[index]! > threshold &&
+      values[index]! >= values[index - 1]! &&
+      values[index]! > values[index + 1]!
+    ) {
+      peaks.push(index)
+    }
+  }
+  return peaks
 }
 
 function mean(values: number[]): number {

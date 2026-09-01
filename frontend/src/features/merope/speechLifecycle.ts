@@ -2,6 +2,7 @@ import type { SpeechArticulation } from './rig/articulation'
 import type { SpeechProsodyPlan } from './speech/prosody'
 import type { MeropeSpeechEventDetail } from './speechEvents'
 import { isLiveMotionGeneration } from './motion/liveGeneration'
+import { estimateVisualSpeechDurationMs } from './speech/textTiming'
 import { noteTurnTraceDrop } from './turnTrace'
 
 export interface SpeechLifecycleTarget {
@@ -44,6 +45,7 @@ export class SpeechLifecycleController {
   private activeUtteranceId: string | null = null
   private startedAt = 0
   private bufferedText = ''
+  private activeLocale: string | undefined
   private authored = false
   private autoActive = false
   private speechActive = false
@@ -79,16 +81,17 @@ export class SpeechLifecycleController {
     }
 
     if (event.phase === 'start') {
-      this.start(event.messageId, event.utteranceId)
+      this.start(event.messageId, event.utteranceId, event.locale)
       return
     }
 
     if (!this.matches(event.messageId, event.utteranceId)) {
       if (event.phase === 'end') return
-      this.start(event.messageId, event.utteranceId)
+      this.start(event.messageId, event.utteranceId, event.locale)
     }
 
     if (event.phase === 'chunk') {
+      if (event.locale) this.activeLocale = event.locale
       this.target.enqueueSpeechText(event.text, event.locale)
       this.bufferedText = `${this.bufferedText}${event.text}`.slice(
         0,
@@ -123,7 +126,9 @@ export class SpeechLifecycleController {
       return
     }
     const elapsed = Math.max(0, this.scheduler.now() - this.startedAt)
-    const remaining = estimateAutoSpeechDurationMs(this.bufferedText) - elapsed
+    const remaining =
+      estimateAutoSpeechDurationMs(this.bufferedText, this.activeLocale) -
+      elapsed
     this.scheduleFinish(Math.max(MIN_END_TAIL_MS, remaining))
   }
 
@@ -131,12 +136,13 @@ export class SpeechLifecycleController {
     this.finishNow()
   }
 
-  private start(messageId: string, utteranceId: string): void {
+  private start(messageId: string, utteranceId: string, locale?: string): void {
     this.finishNow()
     this.activeMessageId = messageId
     this.activeUtteranceId = utteranceId
     this.startedAt = this.scheduler.now()
     this.bufferedText = ''
+    this.activeLocale = locale
     this.authored = false
     this.autoActive = true
     this.speechActive = true
@@ -191,6 +197,7 @@ export class SpeechLifecycleController {
     this.activeUtteranceId = null
     this.startedAt = 0
     this.bufferedText = ''
+    this.activeLocale = undefined
     this.authored = false
     this.autoActive = false
     this.speechActive = false
@@ -210,18 +217,14 @@ export class SpeechLifecycleController {
   }
 }
 
-export function estimateAutoSpeechDurationMs(text: string): number {
-  const bounded = text.slice(0, MAX_BUFFERED_TEXT)
-  const cjk = Array.from(bounded).filter((unit) =>
-    /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(
-      unit,
-    ),
-  ).length
-  const latinWords =
-    bounded.match(/[\p{Script=Latin}\p{Number}]+/gu)?.length ?? 0
-  const punctuation = bounded.match(/[.,!?;:，。！？；：、…—\-]/gu)?.length ?? 0
-  const estimated = 420 + cjk * 155 + latinWords * 260 + punctuation * 70
-  return Math.round(clamp(estimated, 600, MAX_UTTERANCE_MS))
+export function estimateAutoSpeechDurationMs(
+  text: string,
+  locale?: string,
+): number {
+  return estimateVisualSpeechDurationMs(
+    text.slice(0, MAX_BUFFERED_TEXT),
+    locale,
+  )
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

@@ -92,7 +92,30 @@ test('accepts persisted Merope state transitions for immediate face sync', () =>
     activity: 'talking',
   })
   assert.equal(detail?.mood.after, 74)
+  assert.equal(detail?.mood.bandBefore, 'calm')
+  assert.equal(detail?.mood.bandAfter, 'calm')
   assert.equal(detail?.activity, 'talking')
+})
+
+test('accepts circumplex mood bands and optional arousal', () => {
+  const detail = meropeStateEventDetail({
+    mood: {
+      before: 30,
+      after: 30,
+      arousalBefore: 40,
+      arousalAfter: 70,
+      bandBefore: 'sad',
+      bandAfter: 'tense',
+      delta: 0,
+      cause: 'user_scold',
+      revision: 11,
+    },
+    activity: 'idle',
+  })
+  assert.equal(detail?.mood.bandBefore, 'sad')
+  assert.equal(detail?.mood.bandAfter, 'tense')
+  assert.equal(detail?.mood.arousalBefore, 40)
+  assert.equal(detail?.mood.arousalAfter, 70)
 })
 
 test('accepts crying only as a bounded semantic performance cue', () => {

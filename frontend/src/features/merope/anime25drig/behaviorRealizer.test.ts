@@ -1,5 +1,5 @@
-import type { BehaviorPlan } from '../motion/behavior'
 import type { PerformanceDirective } from '../../../services/agent/types'
+import type { BehaviorPlan } from '../motion/behavior'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { compilePerformanceBehaviorPlan } from '../motion/performanceBehaviorPlan'

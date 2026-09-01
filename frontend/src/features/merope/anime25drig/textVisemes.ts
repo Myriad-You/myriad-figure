@@ -1,4 +1,5 @@
 import type { SpeechViseme } from '../rig/articulation'
+import { visualSpeechPauseSeconds } from '../speech/textTiming'
 
 export interface TextVisemeCue {
   viseme: SpeechViseme
@@ -58,7 +59,7 @@ function compileUnknownHan(text: string, output: TextVisemeCue[]): void {
   const options: SpeechViseme[] = ['narrow', 'open', 'wide', 'round']
   for (const symbol of text) {
     const viseme = options[symbol.codePointAt(0)! % options.length]
-    push(output, viseme, 0.12, viseme === 'open')
+    push(output, viseme, 0.195, viseme === 'open')
   }
 }
 
@@ -76,16 +77,16 @@ function compileHan(
     if (!syllable) continue
     const initial = syllable.match(/^(?:[csz]h|[b-df-hj-np-tw-z])/)?.[0]
     if (initial && /^[bpm]$/.test(initial)) {
-      push(output, 'closed', 0.045, false)
+      push(output, 'closed', 0.05, false)
     } else if (initial === 'w') {
-      push(output, 'round', 0.055, false)
+      push(output, 'round', 0.06, false)
     } else if (initial) {
-      push(output, 'narrow', 0.045, false)
+      push(output, 'narrow', 0.05, false)
     }
     const final = syllable.slice(initial?.length || 0) || syllable
     const apical = final === 'i' && /^(?:[csz]h|[crsz])$/.test(initial || '')
     const finalViseme = apical ? 'narrow' : chineseFinalViseme(final)
-    push(output, finalViseme, 0.115, isOpenFinal(final))
+    push(output, finalViseme, initial ? 0.145 : 0.195, isOpenFinal(final))
   }
 }
 
@@ -129,17 +130,16 @@ function compileSymbols(
     ) {
       if (isJapaneseLabial(symbol)) push(output, 'closed', 0.04, false)
       const cue = japaneseCue(symbol, index > 0 ? symbols[index - 1] : '')
-      if (cue) push(output, cue, 0.105, cue === 'open')
+      if (cue) push(output, cue, 0.135, cue === 'open')
       continue
     }
-    if (/\s/u.test(symbol)) {
-      push(output, 'rest', 0.045, false)
-    } else if (/[。！？!?]/u.test(symbol)) {
-      push(output, 'rest', symbol === '。' ? 0.24 : 0.2, false)
-    } else if (/[，、,;；:：]/u.test(symbol)) {
-      push(output, 'rest', 0.12, false)
-    } else if (/[…—–-]/u.test(symbol)) {
-      push(output, 'rest', 0.16, false)
+    const pause = visualSpeechPauseSeconds(symbol)
+    if (pause !== null) {
+      push(output, 'rest', pause, false)
+    } else if (/\p{Number}/u.test(symbol)) {
+      const options: SpeechViseme[] = ['narrow', 'wide', 'open', 'round']
+      const viseme = options[symbol.codePointAt(0)! % options.length]
+      push(output, viseme, 0.15, viseme === 'open')
     }
   }
 }
@@ -248,8 +248,12 @@ function coalesce(input: TextVisemeCue[]): TextVisemeCue[] {
   const output: TextVisemeCue[] = []
   for (const cue of input) {
     const previous = output[output.length - 1]
-    if (previous?.viseme === cue.viseme && previous.duration < 0.22) {
-      previous.duration = Math.min(0.28, previous.duration + cue.duration)
+    const limit = cue.viseme === 'rest' ? 0.64 : 0.28
+    if (
+      previous?.viseme === cue.viseme &&
+      previous.duration + cue.duration <= limit
+    ) {
+      previous.duration += cue.duration
       previous.emphasis ||= cue.emphasis
     } else {
       output.push({ ...cue })

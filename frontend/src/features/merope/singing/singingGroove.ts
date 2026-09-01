@@ -39,6 +39,21 @@ const ZERO: SingingGroovePose = {
   brow: 0,
 }
 
+/** A head nod needs at least this long to land and visibly recover. */
+export const MIN_SINGING_NOD_INTERVAL_SECONDS = 0.7
+
+/**
+ * Read fast music in half-time (or at the top of the bar) so the body follows
+ * the pulse without trying to articulate every beat with its neck.
+ */
+export function singingNodBeatStride(bpm: number): 1 | 2 | 4 {
+  if (!Number.isFinite(bpm) || bpm <= 0) return 1
+  const beatPeriod = 60 / bpm
+  if (beatPeriod >= MIN_SINGING_NOD_INTERVAL_SECONDS) return 1
+  if (beatPeriod * 2 >= MIN_SINGING_NOD_INTERVAL_SECONDS) return 2
+  return 4
+}
+
 export function singingSpectrumDrive(
   bands: readonly number[],
 ): SingingSpectrumDrive {
@@ -62,6 +77,8 @@ export class SingingGrooveController {
   private vocalFollow = 0
   private beatFollow = 0
   private nodPulse = 0
+  private lastFollowerNodAt = Number.NEGATIVE_INFINITY
+  private followerNodWindowUntil = Number.NEGATIVE_INFINITY
   private leanTarget = 0
   private leanSpeed = 0
   private leanDir = 0
@@ -105,7 +122,7 @@ export class SingingGrooveController {
       ((enabled ? Math.max(vocal, beat * 0.4, 0.32) : 0) - this.energy) *
       (1 - Math.exp(-1.6 * dt))
     this.beatFrame = this.resolveBeatFrame(now, enabled, drive)
-    this.followSpectrum(dt, enabled, vocal, beat)
+    this.followSpectrum(now, dt, enabled, vocal, beat)
 
     if (enabled) this.driftLean(dt)
     else this.settleLean(dt)
@@ -173,6 +190,7 @@ export class SingingGrooveController {
   }
 
   private followSpectrum(
+    now: number,
     dt: number,
     enabled: boolean,
     vocal: number,
@@ -186,7 +204,24 @@ export class SingingGrooveController {
     const beatRate = beatTarget > this.beatFollow ? 9 : 3.2
     this.beatFollow +=
       (beatTarget - this.beatFollow) * (1 - Math.exp(-beatRate * dt))
-    this.nodPulse += rise * 14
+    const cadenceLocked =
+      this.beatFrame.confidence >= 0.4 && this.beatFrame.bpm > 0
+    const cadenceBeat = isSingingNodBeat(
+      this.beatFrame.beatCount,
+      this.beatFrame.bpm,
+    )
+    const startsNod =
+      rise > 0.01 &&
+      (!cadenceLocked || cadenceBeat) &&
+      now - this.lastFollowerNodAt >= MIN_SINGING_NOD_INTERVAL_SECONDS
+    if (startsNod) {
+      this.lastFollowerNodAt = now
+      // A spectrum attack spans several frames. Admit that short attack as
+      // one gesture so cadence limiting removes extra nods, not their depth.
+      this.followerNodWindowUntil = now + 0.16
+    }
+    if (!enabled) this.followerNodWindowUntil = Number.NEGATIVE_INFINITY
+    if (now <= this.followerNodWindowUntil) this.nodPulse += rise * 14
     this.nodPulse +=
       (0 - this.nodPulse) * (1 - Math.exp(-(enabled ? 8.2 : 10) * dt))
     this.nodPulse = clamp(this.nodPulse, 0, 1)
@@ -209,10 +244,12 @@ export class SingingGrooveController {
     const lift = mix(0.16, 0.32, this.vocalFollow)
     const grooveDip = mix(0.01, 0.04, this.beatFollow)
     const locked = this.beatFrame.confidence
-    const timed = beatAnticipation(
-      this.beatFrame.beatPhase,
-      beatAccentLead(this.beatFrame.bpm),
-    )
+    const lead = beatAccentLead(this.beatFrame.bpm)
+    const accentBeat =
+      this.beatFrame.beatCount + (this.beatFrame.beatPhase >= 1 - lead ? 1 : 0)
+    const timed = isSingingNodBeat(accentBeat, this.beatFrame.bpm)
+      ? beatAnticipation(this.beatFrame.beatPhase, lead)
+      : 0
     // The follower carries the depth, the timed accent carries the timing, and
     // they combine by max so neither is traded for the other: suppressing the
     // follower flattens the dip, and averaging them flattens both, since the
@@ -223,9 +260,11 @@ export class SingingGrooveController {
     // its own put the head exactly on the beat.
     const follower = smootherstep(this.nodPulse)
     const drive = Math.max(follower, timed * locked * 0.82)
-    const hitDip = drive * mix(0.48, 0.7, this.beatFollow)
+    // Keep the downbeat legible without making the whole head dive. The lift
+    // remains unchanged, so this trims only the downward half of the nod.
+    const hitDip = drive * mix(0.32, 0.46, this.beatFollow)
     const edgeDip = edge * mix(0.03, 0.06, this.energy)
-    return clamp(lift - grooveDip - hitDip - edgeDip, -0.55, 0.32)
+    return clamp(lift - grooveDip - hitDip - edgeDip, -0.38, 0.32)
   }
 
   private driftLean(dt: number): void {
@@ -286,6 +325,12 @@ export class SingingGrooveController {
     this.weyl = (this.weyl + 0.6180339887) % 1
     return this.weyl
   }
+}
+
+function isSingingNodBeat(beatCount: number, bpm: number): boolean {
+  const stride = singingNodBeatStride(bpm)
+  const beat = Math.trunc(Number.isFinite(beatCount) ? beatCount : 0)
+  return ((beat % stride) + stride) % stride === 0
 }
 
 function stepSpring(

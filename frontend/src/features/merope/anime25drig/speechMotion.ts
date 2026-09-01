@@ -1,5 +1,9 @@
 import type { SpeechViseme } from '../rig/articulation'
 import type { TextVisemeCue } from './textVisemes'
+import {
+  isMajorVisualSpeechPause,
+  visualSpeechPauseActivity,
+} from '../speech/textTiming'
 import { compileTextVisemes } from './textVisemes'
 
 export interface AutoSpeechPose {
@@ -18,6 +22,10 @@ type RandomSource = () => number
 type TextVisemeCompiler = typeof compileTextVisemes
 
 const REST_RELEASE = 0.2
+const TEXT_PHRASE_PACE_MIN = 0.92
+const TEXT_PHRASE_PACE_MAX = 1.08
+const TEXT_LOCAL_PACE_MIN = 0.94
+const TEXT_LOCAL_PACE_MAX = 1.06
 
 const ZERO_SPEECH: AutoSpeechPose = {
   mouthOpen: 0,
@@ -83,6 +91,11 @@ export class AutoSpeechController {
   private textCues: TextVisemeCue[] = []
   private textCueIndex = 0
   private textCueStartedAt = Number.NaN
+  private textCueDuration = Number.NaN
+  private textPhraseStartedAt = Number.NaN
+  private textPhrasePace = 1
+  private textLocalPace = 1
+  private textPhraseStartPending = true
   private previousViseme: SpeechViseme = 'rest'
   private activeTextAccentIndex = -1
   private nextTextAccentAt = 0
@@ -314,19 +327,39 @@ export class AutoSpeechController {
   private sampleText(now: number): Readonly<AutoSpeechPose> {
     if (!Number.isFinite(this.textCueStartedAt)) {
       this.textCueStartedAt = now
+      if (
+        this.textPhraseStartPending ||
+        !Number.isFinite(this.textPhraseStartedAt)
+      ) {
+        this.textPhraseStartedAt = now
+      }
+      this.prepareTextCue()
       this.maybeStartTextAccent(now)
     }
     for (let skipped = 0; skipped < 24; skipped += 1) {
       const cue = this.textCues[this.textCueIndex]
-      if (!cue || now < this.textCueStartedAt + cue.duration) break
+      if (
+        !cue ||
+        !Number.isFinite(this.textCueDuration) ||
+        now < this.textCueStartedAt + this.textCueDuration
+      ) {
+        break
+      }
       this.previousViseme = cue.viseme
-      this.textCueStartedAt += cue.duration
+      this.textCueStartedAt += this.textCueDuration
       this.textCueIndex += 1
+      if (cue.viseme === 'rest' && isMajorVisualSpeechPause(cue.duration)) {
+        this.textPhraseStartedAt = this.textCueStartedAt
+        this.textPhraseStartPending = true
+        this.nextTextAccentAt = this.textCueStartedAt
+      }
+      this.prepareTextCue()
       this.maybeStartTextAccent(this.textCueStartedAt)
     }
     const cue = this.textCues[this.textCueIndex]
     if (!cue) {
       this.textCueStartedAt = Number.NaN
+      this.textCueDuration = Number.NaN
       this.textCues = []
       this.textCueIndex = 0
       this.activeTextAccentIndex = -1
@@ -346,7 +379,11 @@ export class AutoSpeechController {
       return this.output
     }
     const next = this.textCues[this.textCueIndex + 1]?.viseme || 'rest'
-    const progress = clamp((now - this.textCueStartedAt) / cue.duration, 0, 1)
+    const progress = clamp(
+      (now - this.textCueStartedAt) / this.textCueDuration,
+      0,
+      1,
+    )
     const onsetFraction = cue.viseme === 'closed' ? 0.12 : 0.24
     const releaseFraction = next === 'round' ? 0.42 : 0.28
     let from = cue.viseme
@@ -385,12 +422,10 @@ export class AutoSpeechController {
       blend,
     )
     this.output.mouthForm = 0
-    const phraseOnset =
-      this.textCueIndex === 0
-        ? smootherstep((now - this.textCueStartedAt) / 0.14)
-        : 1
+    const phraseOnset = smootherstep((now - this.textPhraseStartedAt) / 0.14)
     this.output.phraseActivity =
-      phraseOnset * (cue.viseme === 'rest' ? 0.25 : 1)
+      phraseOnset *
+      (cue.viseme === 'rest' ? visualSpeechPauseActivity(cue.duration) : 1)
     const accent =
       this.activeTextAccentIndex === this.textCueIndex
         ? attackReleasePulse(now - this.textCueStartedAt, 0, 0.055, 0.18)
@@ -398,6 +433,56 @@ export class AutoSpeechController {
     this.output.browAccent = accent
     this.output.headAccent = accent * smootherstep(progress)
     return this.output
+  }
+
+  /**
+   * Gives text-only speech a bounded, correlated rhythm. A whole phrase drifts
+   * a little faster or slower; adjacent cues follow that drift instead of
+   * receiving independent jitter. Stress and phrase edges then add restrained
+   * local lengthening. This runs only at cue boundaries, never per frame.
+   */
+  private prepareTextCue(): void {
+    const cue = this.textCues[this.textCueIndex]
+    if (!cue) {
+      this.textCueDuration = Number.NaN
+      return
+    }
+
+    const startsPhrase = this.textPhraseStartPending
+    if (startsPhrase) {
+      this.textPhrasePace = this.randomRange(
+        TEXT_PHRASE_PACE_MIN,
+        TEXT_PHRASE_PACE_MAX,
+      )
+      this.textLocalPace = mix(this.textLocalPace, 1, 0.65)
+      this.textPhraseStartPending = false
+    }
+
+    let pace: number
+    if (cue.viseme === 'rest') {
+      const pauseSpread = isMajorVisualSpeechPause(cue.duration)
+        ? this.randomRange(0.88, 1.22)
+        : cue.duration >= 0.18
+          ? this.randomRange(0.86, 1.18)
+          : this.randomRange(0.78, 1.24)
+      pace = Math.sqrt(this.textPhrasePace) * pauseSpread
+    } else {
+      const target = this.randomRange(TEXT_LOCAL_PACE_MIN, TEXT_LOCAL_PACE_MAX)
+      this.textLocalPace += (target - this.textLocalPace) * 0.38
+      pace = this.textPhrasePace * this.textLocalPace
+      if (startsPhrase) pace *= this.randomRange(1.015, 1.07)
+      if (cue.emphasis) pace *= this.randomRange(1.035, 1.095)
+      const nextCue = this.textCues[this.textCueIndex + 1]
+      if (nextCue?.viseme === 'rest') {
+        pace *= isMajorVisualSpeechPause(nextCue.duration)
+          ? this.randomRange(1.055, 1.12)
+          : this.randomRange(1.02, 1.07)
+      }
+    }
+    this.textCueDuration = Math.max(
+      0.025,
+      cue.duration * clamp(pace, 0.78, 1.32),
+    )
   }
 
   /**
@@ -426,7 +511,7 @@ export class AutoSpeechController {
   }
 
   private scheduleProvisionalSyllable(now: number): void {
-    const interval = this.randomRange(0.11, 0.17)
+    const interval = this.randomRange(0.14, 0.2)
     const openness = clamp(
       this.randomRange(0.24, 0.46),
       this.toOpen - 0.26,
@@ -476,6 +561,11 @@ export class AutoSpeechController {
     this.textCues = []
     this.textCueIndex = 0
     this.textCueStartedAt = Number.NaN
+    this.textCueDuration = Number.NaN
+    this.textPhraseStartedAt = Number.NaN
+    this.textPhrasePace = 1
+    this.textLocalPace = 1
+    this.textPhraseStartPending = true
     this.previousViseme = 'rest'
     this.activeTextAccentIndex = -1
     this.nextTextAccentAt = 0

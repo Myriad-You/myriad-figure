@@ -141,6 +141,96 @@ test('predicts a quiet mouth response while text visemes are still compiling', a
   assert.ok(authoritative.mouthRound > 0.5)
 })
 
+test('rests at sentence boundaries and eases into the next phrase', async () => {
+  const speech = new AutoSpeechController(
+    () => 0.5,
+    async () => [
+      { viseme: 'open', duration: 0.2, emphasis: true },
+      { viseme: 'rest', duration: 0.32, emphasis: false },
+      { viseme: 'wide', duration: 0.2, emphasis: true },
+    ],
+  )
+  speech.sample(0, true)
+  speech.enqueueText('一句。下一句', 'zh-CN')
+  await new Promise<void>((resolve) => setImmediate(resolve))
+
+  speech.sample(0.001, true)
+  const firstPhrase = { ...speech.sample(0.12, true) }
+  const sentencePause = { ...speech.sample(0.36, true) }
+  const restart = { ...speech.sample(0.521, true) }
+  const resumed = { ...speech.sample(0.61, true) }
+
+  assert.ok(firstPhrase.phraseActivity > 0.8)
+  assert.equal(sentencePause.phraseActivity, 0)
+  assert.ok(sentencePause.mouthOpen < 0.01)
+  assert.ok(restart.phraseActivity < 0.01)
+  assert.ok(resumed.phraseActivity > restart.phraseActivity)
+  assert.ok(resumed.phraseActivity < 1)
+  assert.ok(resumed.mouthWide > 0.5)
+})
+
+test('varies text-only phrase pace instead of replaying a fixed metronome', async () => {
+  const cues = [
+    { viseme: 'open' as const, duration: 0.2, emphasis: false },
+    { viseme: 'wide' as const, duration: 0.2, emphasis: false },
+    { viseme: 'round' as const, duration: 0.2, emphasis: false },
+    { viseme: 'rest' as const, duration: 0.32, emphasis: false },
+  ]
+  const fast = new AutoSpeechController(
+    () => 0,
+    async () => cues,
+  )
+  const slow = new AutoSpeechController(
+    () => 1,
+    async () => cues,
+  )
+  for (const speech of [fast, slow]) {
+    speech.sample(0, true)
+    speech.enqueueText('同一句话。', 'zh-CN')
+  }
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  fast.sample(0.001, true)
+  slow.sample(0.001, true)
+
+  const fastSecondCue = { ...fast.sample(0.18, true) }
+  const slowFirstCue = { ...slow.sample(0.18, true) }
+  assert.ok(fastSecondCue.mouthWide > 0.8)
+  assert.ok(slowFirstCue.mouthWide < 0.1)
+
+  const fastFinished = { ...fast.sample(0.64, true) }
+  const slowStillSpeaking = { ...slow.sample(0.64, true) }
+  assert.ok(fastFinished.mouthRound < 0.01)
+  assert.ok(slowStillSpeaking.mouthRound > 0.8)
+})
+
+test('keeps one rhythm across streaming chunks without inventing a phrase break', async () => {
+  let randomCalls = 0
+  const speech = new AutoSpeechController(
+    () => (randomCalls++ < 4 ? 1 : 0),
+    async (text) => [
+      {
+        viseme: text === '前' ? ('open' as const) : ('wide' as const),
+        duration: 0.2,
+        emphasis: false,
+      },
+    ],
+  )
+  speech.sample(0, true)
+  speech.enqueueText('前', 'zh-CN')
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  speech.sample(0.001, true)
+  speech.sample(0.3, true)
+
+  // The first chunk has drained, but no punctuation ended its phrase. The
+  // second chunk must inherit its slow phrase curve rather than sample a new,
+  // fast one from token arrival timing.
+  speech.enqueueText('后', 'zh-CN')
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  speech.sample(0.301, true)
+  const continuation = { ...speech.sample(0.48, true) }
+  assert.ok(continuation.mouthWide > 0.5)
+})
+
 test('does not revive a pending text prediction after speech is cleared', async () => {
   let resolveCompilation:
     | ((
