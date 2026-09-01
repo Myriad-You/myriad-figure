@@ -105,6 +105,25 @@ export function cueVisualEnvelope(cue: PerformanceCue): {
   hold: number
   fadeOut: number
 } {
+  // A scheduled cue carries the hold the scheduler resolved; only an
+  // unscheduled one is guessed from tempo.
+  return {
+    ...authoredCueEnvelope(cue),
+    ...(cue.holdMs == null ? {} : { hold: Math.max(0.24, cue.holdMs / 1_000) }),
+  }
+}
+
+/**
+ * The envelope the plan authors, ignoring any hold a previous realization
+ * wrote back. The planner must not read its own output: peg spacing derives
+ * from this, and feeding a realized hold back in would shrink the cue on
+ * every recompile.
+ */
+export function authoredCueEnvelope(cue: PerformanceCue): {
+  fadeIn: number
+  hold: number
+  fadeOut: number
+} {
   const sticker = cueIsSticker(cue.intent)
   return {
     fadeIn: Math.max(cue.fadeInMs / 1_000, sticker ? MIN_STICKER_FADE_IN : 0),
@@ -116,8 +135,15 @@ export function cueVisualEnvelope(cue: PerformanceCue): {
   }
 }
 
+/** Playback duration, including a scheduler-resolved hold. */
 export function cueDurationMs(cue: PerformanceCue): number {
   const envelope = cueVisualEnvelope(cue)
+  return Math.round((envelope.fadeIn + envelope.hold + envelope.fadeOut) * 1_000)
+}
+
+/** Duration the plan lays out with, before any realization writes back. */
+export function authoredCueDurationMs(cue: PerformanceCue): number {
+  const envelope = authoredCueEnvelope(cue)
   return Math.round((envelope.fadeIn + envelope.hold + envelope.fadeOut) * 1_000)
 }
 
@@ -168,7 +194,7 @@ export function scheduleBodyCues(
     scheduled.push({
       cue,
       startMs,
-      endMs: startMs + cueDurationMs(cue),
+      endMs: startMs + authoredCueDurationMs(cue),
     })
   }
   return scheduled.sort((left, right) => left.startMs - right.startMs)

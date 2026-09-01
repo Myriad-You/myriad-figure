@@ -188,6 +188,17 @@ export class BehaviorScheduler {
     return snapshots.sort((left, right) => left.startedAtMs - right.startedAtMs)
   }
 
+  /** Restates a candidate plan with the scheduler's accepted peg positions. */
+  resolvePlan(plan: BehaviorPlan): BehaviorPlan {
+    return {
+      ...plan,
+      pegs: plan.pegs.map((peg) => {
+        const resolved = this.pegs.get(peg.id)
+        return resolved ? { ...resolved } : peg
+      }),
+    }
+  }
+
   retimePeg(
     pegId: string,
     requestedAtMs: number,
@@ -265,7 +276,14 @@ export class BehaviorScheduler {
         ...runtime.spec,
         timing: {
           ...runtime.spec.timing,
-          ...(phase === 'preparing' ? { stroke: relaxId, hold: relaxId } : {}),
+          ...(phase === 'preparing'
+            ? {
+                ready: relaxId,
+                strokeStart: relaxId,
+                strokePeak: relaxId,
+                strokeEnd: relaxId,
+              }
+            : {}),
           relax: relaxId,
           end: endId,
         },
@@ -309,22 +327,18 @@ export class BehaviorScheduler {
   }
 
   private phaseAt(spec: ScheduledBehavior, nowMs: number): BehaviorPhase {
-    const start = this.pegTime(spec.timing.start)
-    const stroke = this.pegTime(spec.timing.stroke)
-    const hold = this.pegTime(spec.timing.hold)
-    const relax = this.optionalPegTime(spec.timing.relax)
-    const end = this.optionalPegTime(spec.timing.end)
-    if (nowMs < start) return 'planned'
-    if (nowMs < stroke) return 'preparing'
-    if (nowMs < hold) return 'committed'
-    if (relax === null || nowMs < relax) return 'holding'
-    if (end === null || nowMs < end) return 'recovering'
+    const timing = this.resolvedTiming(spec)
+    if (nowMs < timing.start) return 'planned'
+    if (nowMs < timing.strokePeak) return 'preparing'
+    if (nowMs < timing.strokeEnd) return 'committed'
+    if (timing.relax === null || nowMs < timing.relax) return 'holding'
+    if (timing.end === null || nowMs < timing.end) return 'recovering'
     return 'complete'
   }
 
   private snapshot(runtime: RuntimeBehavior, nowMs: number): BehaviorSnapshot {
     const { spec } = runtime
-    const end = this.optionalPegTime(spec.timing.end)
+    const timing = this.resolvedTiming(spec)
     const anticipation = spec.anticipation
       ? this.pegs.get(spec.anticipation)
       : undefined
@@ -337,11 +351,17 @@ export class BehaviorScheduler {
       channels: spec.channels,
       form: spec.form,
       phase: runtime.phase,
-      startedAtMs: this.pegTime(spec.timing.start),
-      strokeAtMs: this.pegTime(spec.timing.stroke),
-      relaxAtMs: this.optionalPegTime(spec.timing.relax),
-      endsAtMs: end,
-      remainingMs: end === null ? null : Math.max(0, Math.round(end - nowMs)),
+      startedAtMs: timing.start,
+      readyAtMs: timing.ready,
+      strokeStartAtMs: timing.strokeStart,
+      strokePeakAtMs: timing.strokePeak,
+      strokeEndAtMs: timing.strokeEnd,
+      relaxAtMs: timing.relax,
+      endsAtMs: timing.end,
+      remainingMs:
+        timing.end === null
+          ? null
+          : Math.max(0, Math.round(timing.end - nowMs)),
       ...(anticipation
         ? {
             anticipatedAtMs: anticipation.atMs,
@@ -352,16 +372,31 @@ export class BehaviorScheduler {
   }
 
   private hasValidTiming(spec: ScheduledBehavior): boolean {
+    const timing = this.resolvedTiming(spec)
     const times = [
-      this.pegTime(spec.timing.start),
-      this.pegTime(spec.timing.stroke),
-      this.pegTime(spec.timing.hold),
-      this.optionalPegTime(spec.timing.relax),
-      this.optionalPegTime(spec.timing.end),
+      timing.start,
+      timing.ready,
+      timing.strokeStart,
+      timing.strokePeak,
+      timing.strokeEnd,
+      timing.relax,
+      timing.end,
     ].filter((value): value is number => value !== null)
     return times.every(
       (value, index) => index === 0 || value >= times[index - 1]!,
     )
+  }
+
+  private resolvedTiming(spec: ScheduledBehavior): ResolvedBehaviorTiming {
+    return {
+      start: this.pegTime(spec.timing.start),
+      ready: this.pegTime(spec.timing.ready),
+      strokeStart: this.pegTime(spec.timing.strokeStart),
+      strokePeak: this.pegTime(spec.timing.strokePeak),
+      strokeEnd: this.pegTime(spec.timing.strokeEnd),
+      relax: this.optionalPegTime(spec.timing.relax),
+      end: this.optionalPegTime(spec.timing.end),
+    }
   }
 
   private pegTime(id: string): number {
@@ -398,8 +433,10 @@ export class BehaviorScheduler {
 function timingPegIds(spec: ScheduledBehavior): string[] {
   return [
     spec.timing.start,
-    spec.timing.stroke,
-    spec.timing.hold,
+    spec.timing.ready,
+    spec.timing.strokeStart,
+    spec.timing.strokePeak,
+    spec.timing.strokeEnd,
     spec.timing.relax,
     spec.timing.end,
     spec.anticipation,
@@ -414,8 +451,10 @@ function sameTimingTopology(
     left.kind === right.kind &&
     left.form.family === right.form.family &&
     left.timing.start === right.timing.start &&
-    left.timing.stroke === right.timing.stroke &&
-    left.timing.hold === right.timing.hold &&
+    left.timing.ready === right.timing.ready &&
+    left.timing.strokeStart === right.timing.strokeStart &&
+    left.timing.strokePeak === right.timing.strokePeak &&
+    left.timing.strokeEnd === right.timing.strokeEnd &&
     left.timing.relax === right.timing.relax &&
     left.timing.end === right.timing.end &&
     left.anticipation === right.anticipation
@@ -426,7 +465,15 @@ function timingPegRole(
   spec: ScheduledBehavior,
   pegId: string,
 ): keyof ScheduledBehavior['timing'] | null {
-  for (const role of ['start', 'stroke', 'hold', 'relax', 'end'] as const) {
+  for (const role of [
+    'start',
+    'ready',
+    'strokeStart',
+    'strokePeak',
+    'strokeEnd',
+    'relax',
+    'end',
+  ] as const) {
     if (spec.timing[role] === pegId) return role
   }
   return null
@@ -451,7 +498,15 @@ function timingBounds(
   pegs: ReadonlyMap<string, TimePeg>,
 ): { minimum: number; maximum: number } {
   if (role === null) return { minimum: 0, maximum: Number.POSITIVE_INFINITY }
-  const roles = ['start', 'stroke', 'hold', 'relax', 'end'] as const
+  const roles = [
+    'start',
+    'ready',
+    'strokeStart',
+    'strokePeak',
+    'strokeEnd',
+    'relax',
+    'end',
+  ] as const
   const index = roles.indexOf(role)
   let minimum = 0
   let maximum = Number.POSITIVE_INFINITY
@@ -468,6 +523,16 @@ function timingBounds(
     break
   }
   return { minimum, maximum }
+}
+
+interface ResolvedBehaviorTiming {
+  start: number
+  ready: number
+  strokeStart: number
+  strokePeak: number
+  strokeEnd: number
+  relax: number | null
+  end: number | null
 }
 
 function sanitizePeg(peg: TimePeg): TimePeg {

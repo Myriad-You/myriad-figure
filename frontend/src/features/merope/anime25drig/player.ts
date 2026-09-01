@@ -8,6 +8,10 @@ import type { MeropeRigManifest } from '../rig/types'
 import type { SingingSpectrumDrive } from '../singing/singingGroove'
 import type { SpeechProsodyPlan } from '../speech/prosody'
 import type {
+  Anime25DBehaviorMotionSample,
+  Anime25DMotionUnit,
+} from './behaviorMotion'
+import type {
   ChestDeformationRegion,
   ChestDynamicsTuning,
   ChestMotionGeometry,
@@ -35,6 +39,7 @@ import type {
   Anime25DFrameWork,
   Anime25DPerformanceSnapshot,
 } from './performanceTelemetry'
+import type { PoseGate } from './poseArbitration'
 import type { Anime25DRendererBindings, Anime25DRenderFrame } from './renderer'
 import type { Anime25DSecondaryDeformationFrame } from './secondaryDeformation'
 import type { Anime25DShellRotation } from './shellDeformation'
@@ -49,6 +54,7 @@ import { allowsPointerGaze, IDLE_MOTION_POLICY } from '../motion/policy'
 import { SingingGrooveController } from '../singing/singingGroove'
 import { noteTurnTraceFrame } from '../turnTrace'
 import { AmbientMotionController } from './ambientMotion'
+import { Anime25DBehaviorMotionController } from './behaviorMotion'
 import {
   buildChestWeightField,
   chestBodyExcitationY,
@@ -109,6 +115,7 @@ import {
 import { deformAnime25DUpstreamFeaturePoint } from './layerDeformation'
 import { compileAnime25DGpuLayers } from './layerGpuBinding'
 import { writeAnime25DLayerGlobalTransform } from './layerTransform'
+import { projectAnime25DMotionEnvelope } from './motionEnvelope'
 import { predictedControlTime } from './motionPrediction'
 import {
   deformAnime25DFaceJawPoint,
@@ -134,7 +141,11 @@ import {
   Anime25DPerformanceTelemetry,
   createAnime25DFrameWork,
 } from './performanceTelemetry'
-import { PoseGateController, resolvePoseGate } from './poseArbitration'
+import {
+  applyBehaviorMotionGate,
+  PoseGateController,
+  resolvePoseGate,
+} from './poseArbitration'
 import { zeroOccupancyOffset } from './poseCompositor'
 import { PoseOccupancyController } from './poseOccupancy'
 import { RandomActionController } from './randomAction'
@@ -161,6 +172,7 @@ interface SecondaryMotionPose {
   angleZ: number
   body: number
 }
+
 
 export interface Anime25DDebugSnapshot {
   layerCount: number
@@ -283,6 +295,7 @@ export class Anime25DPlayer {
   }
 
   private readonly ambientMotion = new AmbientMotionController()
+  private readonly behaviorMotion = new Anime25DBehaviorMotionController()
   private readonly occupancy = new PoseOccupancyController()
   private readonly poseGate = new PoseGateController()
   private readonly randomAction = new RandomActionController()
@@ -327,6 +340,12 @@ export class Anime25DPlayer {
   private readonly jaw = createJawMotionState()
   private readonly jawTravel: number
   private readonly highCollar: boolean
+  private readonly armMotion: boolean
+  private readonly motionEnvelopeResult = {
+    clippedEnergy: 0,
+    transferredEnergy: 0,
+  }
+
   private readonly neckDepth: number
   private collarClip: CollarClipMesh | null = null
   private jawEmphasis = 0
@@ -352,6 +371,8 @@ export class Anime25DPlayer {
     this.highCollar = playback.layers.some(
       (layer) => layer.role === 'collar-back' || layer.role === 'collar-front',
     )
+    this.armMotion = playback.layers.some((layer) => layer.role === 'handwear')
+    this.singingGroove.setArmMotion(this.armMotion)
     this.neckDepth =
       playback.layers.find((layer) => layer.role === 'neck')?.depth ?? 0.95
     this.mouthTransition = new MouthTransitionController(playback.mouthProfile)
@@ -569,6 +590,17 @@ export class Anime25DPlayer {
     )
   }
 
+  setBehaviorMotionUnits(
+    units: readonly Anime25DMotionUnit[],
+    nowMs: number,
+  ): void {
+    this.behaviorMotion.replace(units, nowMs, this.time)
+  }
+
+  clearBehaviorMotionUnits(): void {
+    this.behaviorMotion.clear()
+  }
+
   setBearing(bearing: PerformanceBaseline | null): void {
     this.performanceExpression.setBearingAttention(bearing?.attention ?? null)
     this.setTarget({
@@ -753,6 +785,7 @@ export class Anime25DPlayer {
     // Known cues and prosody are sampled slightly ahead to compensate the
     // display plus driver response. Observed input and physics remain at `t`.
     const controlTime = predictedControlTime(t)
+    const behaviorMotion = this.behaviorMotion.sample(controlTime)
     const semanticExpression = this.performanceExpression.sample(controlTime)
     const stylizedTargets = resolveAnime25DStylizedTargets(
       this.stylizedTargets,
@@ -786,6 +819,8 @@ export class Anime25DPlayer {
       speech.headAccent,
     )
     const singing = this.target.singing
+    // Singing decides whether the body moves; the music unit only scales it
+    // through `gate.groove`. A missing unit must not freeze a singing body.
     this.singingDeform +=
       ((singing ? 1 : 0) - this.singingDeform) *
       (1 - Math.exp(-(singing ? 5.5 : 1.05) * dt))
@@ -813,11 +848,14 @@ export class Anime25DPlayer {
     // nothing below this line invents a scale of its own.
     const gate = this.poseGate.sample(
       dt,
-      resolvePoseGate(this.policy, occupancy, {
-        performance: performanceMotionScale,
-        stylized: stylized.ambientScale,
-        randomAmbient: randomAction.ambientScale,
-      }),
+      applyBehaviorMotionGate(
+        resolvePoseGate(this.policy, occupancy, {
+          performance: performanceMotionScale,
+          stylized: stylized.ambientScale,
+          randomAmbient: randomAction.ambientScale,
+        }),
+        behaviorMotion,
+      ),
     )
     // PoseGateController already supplies a velocity-continuous handoff. Keep
     // the renderer-local head pulse on that exact envelope instead of adding a
@@ -863,6 +901,11 @@ export class Anime25DPlayer {
     applyAnime25DSillyMouthOwnership(
       tgt,
       smoothAnime25DUnit(stylizedTargets.silly) * this.sillyMouthShare,
+    )
+    projectAnime25DMotionEnvelope(
+      tgt,
+      { highCollar: this.highCollar, armMotion: this.armMotion },
+      this.motionEnvelopeResult,
     )
     captureAnime25DSecondaryMotion(this.secondaryTarget, tgt)
     stepAnime25DBlink(

@@ -1,4 +1,4 @@
-import type { ExclusiveMotionChannel, MotionSourceId } from './channels'
+import type { MotionChannel, MotionSourceId } from './channels'
 
 export interface MotionChannelPolicy {
   mouth: MotionSourceId
@@ -38,7 +38,7 @@ export function allowsPointerGaze(owner: MotionSourceId): boolean {
 }
 
 export function policyFromOwners(
-  owners: Record<ExclusiveMotionChannel, MotionSourceId>,
+  owners: Record<MotionChannel, MotionSourceId>,
 ): MotionChannelPolicy {
   return {
     mouth: owners.mouth,

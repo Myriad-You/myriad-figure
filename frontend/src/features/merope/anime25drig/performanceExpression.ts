@@ -718,6 +718,10 @@ function writeBaselineOffset(
     open: { body: 0.12, armY: 0.16, armPos: 0.2 },
   }
   Object.assign(output, posture[baseline.posture])
+  const poseEnergy = 0.72 + clamp(baseline.motionEnergy, 0.2, 1.4) * 0.36
+  output.body *= poseEnergy
+  output.armY *= poseEnergy
+  output.armPos *= poseEnergy
 }
 
 function ambientScaleForAttention(attention: number): number {

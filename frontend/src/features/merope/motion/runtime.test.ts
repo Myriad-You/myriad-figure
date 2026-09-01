@@ -149,8 +149,8 @@ test('realizer feedback reaches the behavior lifecycle', () => {
   assert.ok(intent?.motionIntentId)
   const behaviorId = intent?.behaviorPlan?.behaviors[0]?.id
   assert.ok(behaviorId)
-  runtime.reportPerformanceRealizer(
-    intent.motionIntentId!,
+  runtime.reportBehaviorRealizer(
+    runtime.frame().behaviorPlan!.id,
     behaviorId!,
     'rejected',
   )

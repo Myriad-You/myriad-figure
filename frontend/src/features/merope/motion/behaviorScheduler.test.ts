@@ -12,8 +12,10 @@ function plan(endMs = 1_000): BehaviorPlan {
     originMs: 0,
     pegs: [
       { id: 'start', atMs: 100, revision: 0 },
-      { id: 'stroke', atMs: 300, revision: 0 },
-      { id: 'hold', atMs: 380, revision: 0 },
+      { id: 'ready', atMs: 200, revision: 0 },
+      { id: 'stroke-start', atMs: 260, revision: 0 },
+      { id: 'stroke-peak', atMs: 300, revision: 0 },
+      { id: 'stroke-end', atMs: 380, revision: 0 },
       { id: 'relax', atMs: 800, revision: 0 },
       { id: 'end', atMs: endMs, revision: 0 },
     ],
@@ -27,8 +29,10 @@ function plan(endMs = 1_000): BehaviorPlan {
         channels: ['expression', 'headBody'],
         timing: {
           start: 'start',
-          stroke: 'stroke',
-          hold: 'hold',
+          ready: 'ready',
+          strokeStart: 'stroke-start',
+          strokePeak: 'stroke-peak',
+          strokeEnd: 'stroke-end',
           relax: 'relax',
           end: 'end',
         },
@@ -54,15 +58,15 @@ test('moves through explicit preparation, commitment, hold and recovery phases',
 test('retimes freely before preparation, clamps during preparation, and locks the stroke after commitment', () => {
   const scheduler = new BehaviorScheduler()
   scheduler.replace(plan(), 0)
-  assert.equal(scheduler.retimePeg('stroke', 340, 0), 'retimed')
+  assert.equal(scheduler.retimePeg('stroke-peak', 340, 0), 'retimed')
   const before = scheduler.snapshots(0)[0]
-  assert.equal(before?.strokeAtMs, 340)
-  assert.equal(scheduler.retimePeg('stroke', 900, 150), 'retimed')
+  assert.equal(before?.strokePeakAtMs, 340)
+  assert.equal(scheduler.retimePeg('stroke-peak', 900, 150), 'retimed')
   assert.equal(
-    scheduler.snapshots(150)[0]?.strokeAtMs,
+    scheduler.snapshots(150)[0]?.strokePeakAtMs,
     Math.min(340 + MAX_PREPARATION_RETIME_MS, 380),
   )
-  assert.equal(scheduler.retimePeg('stroke', 700, 670), 'locked')
+  assert.equal(scheduler.retimePeg('stroke-peak', 700, 670), 'locked')
 })
 
 test('a compatible event revision retimes pegs without restarting lifecycle', () => {
@@ -72,14 +76,26 @@ test('a compatible event revision retimes pegs without restarting lifecycle', ()
   scheduler.replace(plan(), 0)
   const revised = plan()
   revised.pegs = revised.pegs.map((peg) =>
-    peg.id === 'stroke' ? { ...peg, atMs: 340, revision: 1 } : peg,
+    peg.id === 'stroke-peak' ? { ...peg, atMs: 340, revision: 1 } : peg,
   )
   const report = scheduler.retimePlan(revised, 0)
   assert.equal(report.compatible, true)
-  assert.equal(report.pegs.stroke, 'retimed')
-  assert.equal(scheduler.snapshots(0)[0]?.strokeAtMs, 340)
+  assert.equal(report.pegs['stroke-peak'], 'retimed')
+  assert.equal(scheduler.snapshots(0)[0]?.strokePeakAtMs, 340)
   assert.equal(feedback.filter((type) => type === 'scheduled').length, 1)
   assert.ok(feedback.includes('retimed'))
+})
+
+test('the body plan receives only scheduler-accepted peg positions', () => {
+  const scheduler = new BehaviorScheduler()
+  scheduler.replace(plan(), 0)
+  const revised = plan()
+  revised.pegs = revised.pegs.map((peg) =>
+    peg.id === 'stroke-peak' ? { ...peg, atMs: 900, revision: 1 } : peg,
+  )
+  scheduler.reconcilePlan(revised, 150)
+  const resolved = scheduler.resolvePlan(revised)
+  assert.equal(resolved.pegs.find((peg) => peg.id === 'stroke-peak')?.atMs, 380)
 })
 
 test('incremental revisions append future behavior without restarting committed work', () => {
@@ -94,8 +110,10 @@ test('incremental revisions append future behavior without restarting committed 
   revised.pegs = [
     ...revised.pegs,
     { id: 'start-2', atMs: 700, revision: 0 },
-    { id: 'stroke-2', atMs: 800, revision: 0 },
-    { id: 'hold-2', atMs: 840, revision: 0 },
+    { id: 'ready-2', atMs: 750, revision: 0 },
+    { id: 'stroke-start-2', atMs: 780, revision: 0 },
+    { id: 'stroke-peak-2', atMs: 800, revision: 0 },
+    { id: 'stroke-end-2', atMs: 840, revision: 0 },
     { id: 'relax-2', atMs: 980, revision: 0 },
     { id: 'end-2', atMs: 1_100, revision: 0 },
   ]
@@ -106,8 +124,10 @@ test('incremental revisions append future behavior without restarting committed 
       id: 'behavior-2',
       timing: {
         start: 'start-2',
-        stroke: 'stroke-2',
-        hold: 'hold-2',
+        ready: 'ready-2',
+        strokeStart: 'stroke-start-2',
+        strokePeak: 'stroke-peak-2',
+        strokeEnd: 'stroke-end-2',
         relax: 'relax-2',
         end: 'end-2',
       },
@@ -189,8 +209,10 @@ test('keeps rhythmic and tracking behaviors open until an explicit interruption'
       originMs: 0,
       pegs: [
         { id: `${kind}:start`, atMs: 0, revision: 0 },
-        { id: `${kind}:stroke`, atMs: 100, revision: 0 },
-        { id: `${kind}:hold`, atMs: 140, revision: 0 },
+        { id: `${kind}:ready`, atMs: 45, revision: 0 },
+        { id: `${kind}:stroke-start`, atMs: 75, revision: 0 },
+        { id: `${kind}:stroke-peak`, atMs: 100, revision: 0 },
+        { id: `${kind}:stroke-end`, atMs: 140, revision: 0 },
       ],
       behaviors: [
         {
@@ -202,8 +224,10 @@ test('keeps rhythmic and tracking behaviors open until an explicit interruption'
           channels: kind === 'rhythmic' ? ['headBody'] : ['gaze'],
           timing: {
             start: `${kind}:start`,
-            stroke: `${kind}:stroke`,
-            hold: `${kind}:hold`,
+            ready: `${kind}:ready`,
+            strokeStart: `${kind}:stroke-start`,
+            strokePeak: `${kind}:stroke-peak`,
+            strokeEnd: `${kind}:stroke-end`,
             relax: null,
             end: null,
           },

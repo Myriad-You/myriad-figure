@@ -8,9 +8,12 @@ import type {
   ScheduledBehavior,
   TimePeg,
 } from './behavior'
-import { performanceCueDefinition } from '../anime25drig/performanceCueDefinitions'
 import {
-  cueVisualEnvelope,
+  performanceCueChannels,
+  performanceCueDefinition,
+} from '../anime25drig/performanceCueDefinitions'
+import {
+  authoredCueEnvelope,
   scheduleBodyCues,
 } from '../anime25drig/performanceMotion'
 
@@ -30,17 +33,22 @@ export function compilePerformanceBehaviorPlan(
 
   scheduled.forEach((item, index) => {
     const prefix = `${planId}:cue-${index}`
-    const envelope = cueVisualEnvelope(item.cue)
+    const envelope = authoredCueEnvelope(item.cue)
     const strokeAt = Math.min(
       item.endMs,
       item.startMs + envelope.fadeIn * 1_000,
     )
+    const preparationMs = Math.max(0, strokeAt - item.startMs)
+    const readyAt = item.startMs + preparationMs * 0.46
+    const strokeStartAt = item.startMs + preparationMs * 0.72
     const relaxAt = Math.max(strokeAt, item.endMs - envelope.fadeOut * 1_000)
-    const holdAt = Math.min(relaxAt, strokeAt + 80)
+    const strokeEndAt = Math.min(relaxAt, strokeAt + 80)
     pegs.push(
       peg(`${prefix}:start`, item.startMs),
-      peg(`${prefix}:stroke`, strokeAt),
-      peg(`${prefix}:hold`, holdAt),
+      peg(`${prefix}:ready`, readyAt),
+      peg(`${prefix}:stroke-start`, strokeStartAt),
+      peg(`${prefix}:stroke-peak`, strokeAt),
+      peg(`${prefix}:stroke-end`, strokeEndAt),
       peg(`${prefix}:relax`, relaxAt),
       peg(`${prefix}:end`, item.endMs),
     )
@@ -50,11 +58,13 @@ export function compilePerformanceBehaviorPlan(
       kind: 'oneShot',
       source: 'performance',
       resources: performanceCueDefinition(item.cue.intent).resources,
-      channels: performanceCueDefinition(item.cue.intent).channels,
+      channels: performanceCueChannels(item.cue.intent),
       timing: {
         start: `${prefix}:start`,
-        stroke: `${prefix}:stroke`,
-        hold: `${prefix}:hold`,
+        ready: `${prefix}:ready`,
+        strokeStart: `${prefix}:stroke-start`,
+        strokePeak: `${prefix}:stroke-peak`,
+        strokeEnd: `${prefix}:stroke-end`,
         relax: `${prefix}:relax`,
         end: `${prefix}:end`,
       },
@@ -64,6 +74,11 @@ export function compilePerformanceBehaviorPlan(
         parameters: { tempo: item.cue.tempo },
       },
       intensity: clamp(item.cue.intensity, 0.2, 1.4),
+      quality: cueQuality(
+        item.cue,
+        directive.plan.baseline?.motionEnergy ?? 1,
+      ),
+      confidence: 1,
     })
   })
 
@@ -76,6 +91,38 @@ export function compilePerformanceBehaviorPlan(
     },
     pegs,
     behaviors,
+  }
+}
+
+function cueQuality(cue: PerformanceCue, motionEnergy: number) {
+  const forceful =
+    cue.intent === 'emphasize' ||
+    cue.intent === 'angry' ||
+    cue.intent === 'maniac'
+  const buoyant =
+    cue.intent === 'delight' ||
+    cue.intent === 'greet' ||
+    cue.intent === 'maniac'
+  const energy = clamp(motionEnergy, 0.2, 1.4)
+  const extentEnergy = 0.72 + energy * 0.32
+  const powerEnergy = 0.76 + energy * 0.28
+  return {
+    extent: clamp(
+      (0.78 + cue.intensity * 0.32) * extentEnergy,
+      0.68,
+      1.4,
+    ),
+    tempo: clamp(cue.tempo, 0.5, 1.6),
+    power: clamp(
+      ((forceful ? 0.92 : 0.7) + cue.intensity * 0.22) * powerEnergy,
+      0.58,
+      1.4,
+    ),
+    fluidity: forceful ? 0.58 : 0.82,
+    directness: forceful ? 0.9 : 0.72,
+    rebound: buoyant ? 0.68 : 0.36,
+    asymmetry: cue.intent === 'question' || cue.intent === 'think' ? 0.46 : 0.2,
+    density: 1,
   }
 }
 

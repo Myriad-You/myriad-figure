@@ -1,8 +1,4 @@
-import type {
-  ExclusiveMotionChannel,
-  MotionChannel,
-  MotionSourceId,
-} from './channels'
+import type { MotionChannel, MotionSourceId } from './channels'
 import { noteTurnTraceLeaseExpiry } from '../turnTrace'
 import { channelPriority } from './channels'
 
@@ -27,7 +23,7 @@ interface PrivateLease extends MotionLease {
 
 export interface MotionSnapshot {
   generation: number
-  owners: Record<ExclusiveMotionChannel, MotionSourceId>
+  owners: Record<MotionChannel, MotionSourceId>
   leases: readonly MotionLease[]
 }
 
@@ -147,14 +143,14 @@ export class RigMotionCoordinator {
   }
 
   owner(
-    channel: ExclusiveMotionChannel,
+    channel: MotionChannel,
     nowMs: number = this.clockMs,
   ): MotionSourceId {
     this.tick(nowMs)
     return this.winner(channel)
   }
 
-  private winner(channel: ExclusiveMotionChannel): MotionSourceId {
+  private winner(channel: MotionChannel): MotionSourceId {
     let winner: MotionSourceId = IDLE
     let best = 0
     let bestGeneration = 0
@@ -207,11 +203,6 @@ export function getRigMotionCoordinator(): RigMotionCoordinator {
   return runtime.current
 }
 
-export function resetRigMotionCoordinator(): RigMotionCoordinator {
-  runtime.current = new RigMotionCoordinator()
-  return runtime.current
-}
-
 function uniqueChannels(channels: readonly MotionChannel[]): MotionChannel[] {
   const seen = new Set<MotionChannel>()
   const unique: MotionChannel[] = []
@@ -244,5 +235,3 @@ function toPublicLease(lease: PrivateLease): MotionLease {
     expiresAtMs: lease.expiresAtMs,
   }
 }
-
-export type { ExclusiveMotionChannel }

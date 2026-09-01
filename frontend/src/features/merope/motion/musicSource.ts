@@ -2,7 +2,7 @@ import type { SpeechArticulation } from '../rig/articulation'
 import type { BeatFrame } from '../singing/beatClock'
 import type { SingingSpectrumDrive } from '../singing/singingGroove'
 import type { SingingCue } from '../singing/singingTimeline'
-import type { BehaviorPlan, BehaviorSnapshot } from './behavior'
+import type { BehaviorPlan } from './behavior'
 import type { MotionChannel } from './channels'
 import type { MotionLeaseHandle, RigMotionCoordinator } from './coordinator'
 import type { SingingApply } from './singingApply'
@@ -16,7 +16,6 @@ import {
 import { singingSpectrumDrive } from '../singing/singingGroove'
 import { singingPlaybackGap } from '../singing/singingHold'
 import { compileSingingTimeline } from '../singing/singingTimeline'
-import { BehaviorScheduler } from './behaviorScheduler'
 import { resolveSingingApply } from './singingApply'
 
 export const SINGING_SAMPLE_INTERVAL_MS = 50
@@ -39,7 +38,9 @@ export interface SingingFrame {
   articulation: SpeechArticulation
   /** Stable media identity; a change invalidates tempo evidence immediately. */
   trackId: string | null
-  behaviors: readonly BehaviorSnapshot[]
+  behaviorPlan: BehaviorPlan | null
+  /** Filled from the global scheduler by MotionRuntime. */
+  behaviors: readonly import('./behavior').BehaviorSnapshot[]
 }
 
 export interface MusicMotionClock {
@@ -92,7 +93,6 @@ export class MusicMotionSource {
   private unsubscribeVisibility: (() => void) | null = null
   private lastFrame: SingingFrame | null = null
   private musicLease: MotionLeaseHandle | null = null
-  private readonly behaviorScheduler = new BehaviorScheduler()
   private readonly beatClock = new BeatClock()
   private behaviorPlan: BehaviorPlan | null = null
   private behaviorTrackId: string | null = null
@@ -241,7 +241,8 @@ export class MusicMotionSource {
       spectrum,
       articulation,
       trackId: this.trackId || null,
-      behaviors: this.behaviorScheduler.tick(nowMs),
+      behaviorPlan: this.behaviorPlan,
+      behaviors: [],
     }
     this.lastFrame = frame
     for (const listener of this.listeners) listener(frame)
@@ -295,8 +296,10 @@ export class MusicMotionSource {
         spectrum: null,
         articulation: restSingingArticulation(),
         trackId: this.trackId || null,
-        behaviors: this.stopEntrainment(this.clock.now()),
+        behaviorPlan: null,
+        behaviors: [],
       }
+      this.stopEntrainment()
       this.lastFrame = frame
       for (const listener of this.listeners) listener(frame)
     }
@@ -330,12 +333,13 @@ export class MusicMotionSource {
   private holdEntrainment(nowMs: number): void {
     const trackId = this.trackId || null
     if (this.behaviorPlan && this.behaviorTrackId === trackId) return
-    if (this.behaviorPlan) this.behaviorScheduler.clear(nowMs)
     this.behaviorSequence += 1
     const prefix = `music-${this.behaviorSequence}`
     const start = `${prefix}:start`
-    const stroke = `${prefix}:stroke`
-    const hold = `${prefix}:hold`
+    const ready = `${prefix}:ready`
+    const strokeStart = `${prefix}:stroke-start`
+    const strokePeak = `${prefix}:stroke-peak`
+    const strokeEnd = `${prefix}:stroke-end`
     const anticipation = `${prefix}:next-beat`
     const behaviorId = `${prefix}:entrain`
     this.behaviorPlan = {
@@ -343,8 +347,10 @@ export class MusicMotionSource {
       originMs: nowMs,
       pegs: [
         { id: start, atMs: nowMs, revision: 0 },
-        { id: stroke, atMs: nowMs + 120, revision: 0 },
-        { id: hold, atMs: nowMs + 180, revision: 0 },
+        { id: ready, atMs: nowMs + 55, revision: 0 },
+        { id: strokeStart, atMs: nowMs + 88, revision: 0 },
+        { id: strokePeak, atMs: nowMs + 120, revision: 0 },
+        { id: strokeEnd, atMs: nowMs + 180, revision: 0 },
         {
           id: anticipation,
           atMs: nowMs + 500,
@@ -358,19 +364,42 @@ export class MusicMotionSource {
           function: 'entrain',
           kind: 'rhythmic',
           source: 'music',
-          resources: ['body.head', 'body.torso'],
+          resources: [
+            'body.head',
+            'body.torso',
+            'body.arm.left',
+            'body.arm.right',
+          ],
           channels: ['headBody'],
-          timing: { start, stroke, hold, relax: null, end: null },
+          timing: {
+            start,
+            ready,
+            strokeStart,
+            strokePeak,
+            strokeEnd,
+            relax: null,
+            end: null,
+          },
           anticipation,
           form: { family: 'music', id: 'groove' },
           intensity: 1,
+          quality: {
+            extent: 1.08,
+            tempo: 0.82,
+            power: 0.78,
+            fluidity: 0.92,
+            directness: 0.58,
+            rebound: 0.54,
+            asymmetry: 0.36,
+            density: 0.7,
+          },
+          confidence: 0.8,
         },
       ],
     }
     this.behaviorTrackId = trackId
     this.behaviorId = behaviorId
     this.anticipationPegId = anticipation
-    this.behaviorScheduler.replace(this.behaviorPlan, nowMs)
   }
 
   private updateBeatAnticipation(
@@ -381,20 +410,27 @@ export class MusicMotionSource {
     const period = frame.bpm > 0 ? 60 / frame.bpm : 0
     const delayMs =
       period > 0 ? Math.max(0, (1 - frame.beatPhase) * period * 1_000) : 0
-    this.behaviorScheduler.retimePeg(
-      this.anticipationPegId,
-      nowMs + delayMs,
-      nowMs,
-      frame.confidence,
-    )
+    if (!this.behaviorPlan) return
+    const pegId = this.anticipationPegId
+    this.behaviorPlan = {
+      ...this.behaviorPlan,
+      pegs: this.behaviorPlan.pegs.map((peg) =>
+        peg.id === pegId
+          ? {
+              ...peg,
+              atMs: nowMs + delayMs,
+              revision: peg.revision + 1,
+              confidence: frame.confidence,
+            }
+          : peg,
+      ),
+    }
   }
 
-  private stopEntrainment(nowMs: number): readonly BehaviorSnapshot[] {
-    if (this.behaviorPlan) this.behaviorScheduler.clear(nowMs)
+  private stopEntrainment(_nowMs?: number): void {
     this.behaviorPlan = null
     this.behaviorTrackId = null
     this.behaviorId = null
     this.anticipationPegId = null
-    return this.behaviorScheduler.tick(nowMs)
   }
 }

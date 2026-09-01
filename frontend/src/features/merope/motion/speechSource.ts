@@ -2,9 +2,10 @@ import type { SpeechArticulation } from '../rig/articulation'
 import type { BehaviorPlan } from './behavior'
 import type { MotionLeaseHandle, RigMotionCoordinator } from './coordinator'
 import type { SpeechIntent, SpeechTextChunk } from './intents'
+import { predictTextProsody } from '../speech/textProsody'
 import { MEROPE_SPEECH_EVENT, meropeSpeechEventDetail } from '../speechEvents'
 import { SpeechLifecycleController } from '../speechLifecycle'
-import { BehaviorScheduler } from './behaviorScheduler'
+import { isLiveMotionGeneration } from './liveGeneration'
 import { compileSpeechBehaviorPlan } from './speechBehaviorPlan'
 import { SpeechMotionLease } from './speechLease'
 
@@ -17,18 +18,23 @@ const MAX_QUEUED_TEXT = 32
  */
 export class SpeechMotionSource {
   private readonly mouth: SpeechMotionLease
-  private readonly behaviorScheduler = new BehaviorScheduler()
   private speechBehaviorPlan: BehaviorPlan | null = null
   private coSpeech: MotionLeaseHandle | null = null
   private controller: SpeechLifecycleController | null = null
   private textSeq = 0
   private queuedText: SpeechTextChunk[] = []
+  private activeUtteranceId: string | null = null
+  private speechStartedAtMs = 0
+  private behaviorText = ''
+  private behaviorLocale: string | undefined
+  private externalProsody = false
   private intent: SpeechIntent = {
     active: false,
     autoSpeech: false,
     energy: null,
     articulation: null,
     prosody: null,
+    behaviorPlan: null,
     behaviors: [],
     queuedText: [],
   }
@@ -42,8 +48,8 @@ export class SpeechMotionSource {
     this.mouth = new SpeechMotionLease(coordinator)
   }
 
-  current(nowMs: number = currentNow()): SpeechIntent {
-    return { ...this.intent, behaviors: this.behaviorScheduler.tick(nowMs) }
+  current(_nowMs: number = currentNow()): SpeechIntent {
+    return this.intent
   }
 
   start(): void {
@@ -68,23 +74,25 @@ export class SpeechMotionSource {
         },
         setSpeechProsody: (prosody) => {
           if (prosody) {
-            const nowMs = currentNow()
-            const nextPlan = compileSpeechBehaviorPlan(prosody)
-            const retimed = this.speechBehaviorPlan
-              ? this.behaviorScheduler.reconcilePlan(nextPlan, nowMs)
-              : { compatible: false }
-            if (!retimed.compatible) {
-              this.behaviorScheduler.replace(nextPlan, nowMs)
+            this.externalProsody = true
+            this.speechBehaviorPlan = compileSpeechBehaviorPlan(prosody)
+            this.intent = {
+              ...this.intent,
+              prosody,
+              behaviorPlan: this.speechBehaviorPlan,
             }
-            this.speechBehaviorPlan = nextPlan
           } else {
-            this.behaviorScheduler.clear(currentNow())
-            this.speechBehaviorPlan = null
-          }
-          this.intent = {
-            ...this.intent,
-            prosody,
-            behaviors: this.behaviorScheduler.tick(currentNow()),
+            this.externalProsody = false
+            if (this.activeUtteranceId) {
+              this.planFromPredictedText(this.activeUtteranceId)
+            } else {
+              this.speechBehaviorPlan = null
+              this.intent = {
+                ...this.intent,
+                prosody,
+                behaviorPlan: null,
+              }
+            }
           }
           this.flush()
         },
@@ -126,12 +134,18 @@ export class SpeechMotionSource {
     this.queuedText = []
     this.textSeq = 0
     this.speechBehaviorPlan = null
+    this.activeUtteranceId = null
+    this.speechStartedAtMs = 0
+    this.behaviorText = ''
+    this.behaviorLocale = undefined
+    this.externalProsody = false
     this.intent = {
       active: false,
       autoSpeech: false,
       energy: null,
       articulation: REST,
       prosody: null,
+      behaviorPlan: null,
       behaviors: [],
       queuedText: [],
     }
@@ -141,14 +155,74 @@ export class SpeechMotionSource {
   handleForTest(
     detail: Parameters<SpeechLifecycleController['handle']>[0],
   ): void {
-    this.controller?.handle(detail)
+    this.handle(detail)
   }
 
   private readonly onSpeech = (event: Event): void => {
     const detail = meropeSpeechEventDetail(
       (event as CustomEvent<unknown>).detail,
     )
-    if (detail) this.controller?.handle(detail)
+    if (detail) this.handle(detail)
+  }
+
+  private handle(
+    detail: Parameters<SpeechLifecycleController['handle']>[0],
+  ): void {
+    this.controller?.handle(detail)
+    if (
+      detail.phase === 'cancel' ||
+      !isLiveMotionGeneration(detail.generation)
+    ) {
+      return
+    }
+    this.prepareBehaviorPlan(detail)
+    this.flush()
+  }
+
+  private prepareBehaviorPlan(
+    detail: Parameters<SpeechLifecycleController['handle']>[0],
+  ): void {
+    if (detail.phase === 'cancel') return
+    if (
+      detail.phase === 'start' ||
+      this.activeUtteranceId !== detail.utteranceId
+    ) {
+      this.activeUtteranceId = detail.utteranceId
+      this.speechStartedAtMs = currentNow()
+      this.behaviorText = ''
+      this.behaviorLocale = detail.locale
+      this.externalProsody = false
+    }
+    if (detail.locale) this.behaviorLocale = detail.locale
+    if (detail.phase === 'prosody') {
+      this.externalProsody = true
+      return
+    }
+    if (detail.phase === 'chunk') {
+      this.behaviorText = `${this.behaviorText}${detail.text}`.slice(0, 2_000)
+    }
+    if (this.externalProsody) return
+    this.planFromPredictedText(detail.utteranceId)
+  }
+
+  /**
+   * Predicted prosody is the floor, not a bonus: an utterance without a plan
+   * has no co-speech behavior at all, so every path that loses real prosody
+   * falls back here rather than leaving the plan null.
+   */
+  private planFromPredictedText(utteranceId: string): void {
+    const predictedProsody = predictTextProsody({
+      utteranceId,
+      text: this.behaviorText,
+      ...(this.behaviorLocale ? { locale: this.behaviorLocale } : {}),
+      startedAtMs: this.speechStartedAtMs,
+    })
+    this.speechBehaviorPlan = compileSpeechBehaviorPlan(predictedProsody)
+    this.intent = {
+      ...this.intent,
+      prosody: predictedProsody,
+      behaviorPlan: this.speechBehaviorPlan,
+    }
   }
 
   private claimCoSpeech(): void {

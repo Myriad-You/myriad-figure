@@ -7,6 +7,7 @@ import type { MoodIntent, MotionFrame } from './intents'
 import type { MusicMotionSource, SingingFrame } from './musicSource'
 import { AmbientMotionSource } from './ambientSource'
 import { RigMotionCoordinator } from './coordinator'
+import { HumanPerformanceRuntime } from './humanPerformanceRuntime'
 import { MoodMotionSource } from './moodSource'
 import { PerformanceMotionSource } from './performanceSource'
 import { SpeechMotionSource } from './speechSource'
@@ -32,6 +33,7 @@ export class MotionRuntime {
   readonly performance: PerformanceMotionSource
   readonly mood: MoodMotionSource
   readonly ambient: AmbientMotionSource
+  private readonly humanPerformance = new HumanPerformanceRuntime()
   private readonly musicSource: MusicMotionSource | null
   private readonly listeners = new Set<MotionFrameListener>()
   private retains = 0
@@ -59,10 +61,7 @@ export class MotionRuntime {
         )
         this.emit()
       },
-      () => [
-        ...this.speech.current().behaviors,
-        ...(this.musicFrame?.behaviors ?? []),
-      ],
+      () => this.humanPerformance.snapshots(currentNow()),
     )
     this.mood = new MoodMotionSource(coordinator, (intent) => {
       this.moodIntent = intent
@@ -98,6 +97,7 @@ export class MotionRuntime {
       this.unsubMusic?.()
       this.unsubMusic = null
       this.musicFrame = null
+      this.humanPerformance.clear(currentNow())
     }
   }
 
@@ -106,7 +106,10 @@ export class MotionRuntime {
   }
 
   setMotionStyle(style: RigMotionStyle): void {
+    if (style === this.motionStyle) return
     this.motionStyle = style
+    this.humanPerformance.setMotionStyle(style)
+    this.emit()
   }
 
   summaryFacts(): RigSummaryFacts {
@@ -119,27 +122,60 @@ export class MotionRuntime {
   }
 
   frame(nowMs?: number): MotionFrame {
-    const speech = this.speech.current(nowMs)
-    const performance = this.performance.current(nowMs)
+    const now = nowMs ?? currentNow()
+    const speech = this.speech.current(now)
+    const performance = this.performance.current(now)
+    const human = this.humanPerformance.frame(
+      [
+        speech.behaviorPlan,
+        performance.behaviorPlan,
+        this.musicFrame?.behaviorPlan,
+      ],
+      now,
+    )
+    const speechBehaviors = human.behaviors.filter(
+      (behavior) => behavior.source === 'coSpeech',
+    )
+    const performanceBehaviors = human.behaviors.filter(
+      (behavior) => behavior.source === 'performance',
+    )
+    const musicBehaviors = human.behaviors.filter(
+      (behavior) => behavior.source === 'music',
+    )
     return {
-      snapshot: this.coordinator.snapshot(nowMs),
+      snapshot: this.coordinator.snapshot(now),
       bearing: this.performance.currentBearing(),
-      speech: hasSpeechIntent(speech) ? speech : null,
+      speech: hasSpeechIntent(speech)
+        ? { ...speech, behaviors: speechBehaviors }
+        : null,
       performance:
-        performance.directive || performance.behaviorPlan ? performance : null,
-      music: this.musicFrame,
+        performance.directive || performance.behaviorPlan
+          ? { ...performance, behaviors: performanceBehaviors }
+          : null,
+      music: this.musicFrame
+        ? { ...this.musicFrame, behaviors: musicBehaviors }
+        : null,
       mood: this.moodIntent,
+      behaviorPlan: human.plan,
+      behaviorRevision: human.revision,
+      behaviors: human.behaviors,
     }
   }
 
-  reportPerformanceRealizer(
+  reportBehaviorRealizer(
     planId: string,
     behaviorId: string,
     result: 'accepted' | 'rejected',
     nowMs?: number,
     reason?: BehaviorRealizerReport['reason'],
   ): void {
-    this.performance.reportRealizer(planId, behaviorId, result, nowMs, reason)
+    this.humanPerformance.reportRealizer(
+      planId,
+      behaviorId,
+      result,
+      nowMs ?? currentNow(),
+      reason,
+    )
   }
 
   subscribe(listener: MotionFrameListener): () => void {
@@ -207,4 +243,8 @@ export function createLiveMotionRuntime(
 
 export function createPreviewMotionRuntime(): MotionRuntime {
   return new MotionRuntime(new RigMotionCoordinator())
+}
+
+function currentNow(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now()
 }

@@ -88,7 +88,6 @@ const BEHAVIOR_RESOURCES = [
   'body.arm.right',
   'body.hand.left',
   'body.hand.right',
-  'body.legs',
   'secondary.hair',
   'secondary.clothing',
   'secondary.bust',
@@ -130,11 +129,7 @@ export function captureRigStateSummary(
   const facts = runtime.summaryFacts()
   const performance = frame.performance?.directive ?? null
   const baseline = frame.bearing
-  const behaviors = [
-    ...(frame.performance?.behaviors ?? []),
-    ...(frame.speech?.behaviors ?? []),
-    ...(frame.music?.behaviors ?? []),
-  ]
+  const behaviors = frame.behaviors
   const acting = resolveActing(performance, behaviors)
   const spectrum = frame.music?.spectrum ?? null
   const singing = Boolean(frame.music?.apply.writeGroove)
@@ -322,6 +317,10 @@ function resolveActing(
   )
   const active =
     live.find((behavior) => behavior.form.family === 'performance-cue') ??
+    live.find(
+      (behavior) =>
+        behavior.form.family === 'co-speech' && behavior.form.id === 'accent',
+    ) ??
     live.find((behavior) => behavior.source === 'coSpeech') ??
     live.find((behavior) => behavior.source === 'performance') ??
     live.find((behavior) => behavior.source === 'music') ??

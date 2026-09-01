@@ -1,9 +1,12 @@
 import type { MotionChannelPolicy } from '../motion/policy'
+import type { PoseGate } from './poseArbitration'
 import type { PoseOccupancy } from './poseOccupancy'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { IDLE_MOTION_POLICY } from '../motion/policy'
 import {
+  applyBehaviorMotionGate,
+  behaviorMotionScale,
   PoseGateController,
   resolvePoseGate,
   UNOWNED_POSE_KEEP,
@@ -179,3 +182,47 @@ test('the new owner is mostly present within eighty milliseconds', () => {
   assert.ok(current.groove.headBody > 0.9)
   assert.ok(current.groove.headBody < 1)
 })
+
+test('a missing behavior unit leaves the occupancy gate alone, never zeroes it', () => {
+  const speaking: PoseGate = fullGate()
+  applyBehaviorMotionGate(speaking, {
+    coSpeech: 0,
+    coSpeechPower: 0,
+    music: 0,
+    musicPower: 0,
+  })
+  // Talking with no realized co-speech behavior must still move the face.
+  assert.equal(speaking.coSpeech.expression, 1)
+  assert.equal(speaking.coSpeech.headBody, 1)
+  assert.equal(speaking.groove.headBody, 1)
+
+  const withUnit: PoseGate = fullGate()
+  applyBehaviorMotionGate(withUnit, {
+    coSpeech: 0.5,
+    coSpeechPower: 1,
+    music: 0,
+    musicPower: 0,
+  })
+  assert.equal(withUnit.coSpeech.expression, 0.5)
+  assert.ok(withUnit.coSpeech.expression < speaking.coSpeech.expression)
+})
+
+test('behaviorMotionScale modulates but never inverts a live unit', () => {
+  assert.equal(behaviorMotionScale(0, 0), 1)
+  assert.equal(behaviorMotionScale(1, 1), 1)
+  assert.ok(behaviorMotionScale(0.2, 0) < 1)
+  assert.equal(behaviorMotionScale(1.4, 1.4), Math.min(1.55, 1.4 * (0.82 + 1.4 * 0.18)))
+})
+
+function fullGate(): PoseGate {
+  const weights = () => ({ mouth: 1, expression: 1, gaze: 1, headBody: 1 })
+  return {
+    ambient: weights(),
+    coSpeech: weights(),
+    groove: weights(),
+    performance: weights(),
+    randomAmbient: weights(),
+    stylized: weights(),
+    thinking: weights(),
+  } as unknown as PoseGate
+}

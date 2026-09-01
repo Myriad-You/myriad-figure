@@ -3,14 +3,13 @@ import type { BehaviorResource } from '../motion/behaviorResources'
 import type { MotionChannel } from '../motion/channels'
 import type { Anime25DDriver } from './driver'
 import type { PerformanceExpressionOffset } from './performanceExpression'
+import { legacyChannelsForResources } from '../motion/behaviorResources'
 import { IDENTITY_DRIVER } from './driver'
 
 type CueIntent = PerformanceCue['intent']
 
 export interface PerformanceCueDefinition {
-  /** Every exclusive channel this cue can write, including stylized motion. */
-  channels: readonly MotionChannel[]
-  /** Renderer-neutral body resources; channels above are its compatibility map. */
+  /** Renderer-neutral body resources this cue's pose writes. Authored here. */
   resources: readonly BehaviorResource[]
   sticker?: true
   driver: (amount: number) => Partial<Anime25DDriver>
@@ -20,9 +19,6 @@ export interface PerformanceCueDefinition {
   ) => Partial<PerformanceExpressionOffset>
 }
 
-const EXPRESSION = ['expression'] as const
-const EXPRESSION_BODY = ['expression', 'headBody'] as const
-const EXPRESSION_GAZE_BODY = ['expression', 'gaze', 'headBody'] as const
 const FACE = ['face.expression'] as const
 const FACE_HEAD = ['face.expression', 'body.head'] as const
 const FACE_GAZE_HEAD = ['face.expression', 'face.gaze', 'body.head'] as const
@@ -48,7 +44,6 @@ const FACE_TORSO_ARMS_BUST = [...FACE_TORSO_ARMS, 'secondary.bust'] as const
  */
 export const PERFORMANCE_CUE_DEFINITIONS = {
   greet: {
-    channels: EXPRESSION_BODY,
     resources: FACE_TORSO_ARMS,
     driver: (poseAmount) => ({
       body: 0.22 * poseAmount,
@@ -60,7 +55,6 @@ export const PERFORMANCE_CUE_DEFINITIONS = {
     }),
   },
   respond: {
-    channels: EXPRESSION_BODY,
     resources: FACE_HEAD,
     driver: () => ({}),
     expression: (amount, poseAmount) => ({
@@ -69,7 +63,6 @@ export const PERFORMANCE_CUE_DEFINITIONS = {
     }),
   },
   question: {
-    channels: EXPRESSION_BODY,
     resources: FACE_TORSO,
     driver: (poseAmount) => ({ body: 0.18 * poseAmount }),
     expression: (amount, poseAmount) => ({
@@ -79,7 +72,6 @@ export const PERFORMANCE_CUE_DEFINITIONS = {
     }),
   },
   delight: {
-    channels: EXPRESSION_BODY,
     resources: FACE_TORSO_ARMS_BUST,
     driver: (poseAmount) => ({
       body: 0.16 * poseAmount,
@@ -96,7 +88,6 @@ export const PERFORMANCE_CUE_DEFINITIONS = {
     }),
   },
   emphasize: {
-    channels: EXPRESSION_BODY,
     resources: FACE_TORSO,
     driver: (poseAmount) => ({ body: 0.4 * poseAmount }),
     expression: (amount, poseAmount) => ({
@@ -105,7 +96,6 @@ export const PERFORMANCE_CUE_DEFINITIONS = {
     }),
   },
   listen: {
-    channels: EXPRESSION_BODY,
     resources: FACE_HEAD,
     driver: () => ({}),
     expression: (amount, poseAmount) => ({
@@ -114,7 +104,6 @@ export const PERFORMANCE_CUE_DEFINITIONS = {
     }),
   },
   notify: {
-    channels: EXPRESSION_BODY,
     resources: FACE_TORSO,
     driver: (poseAmount) => ({ body: 0.32 * poseAmount }),
     expression: (amount, poseAmount) => ({
@@ -124,7 +113,6 @@ export const PERFORMANCE_CUE_DEFINITIONS = {
     }),
   },
   think: {
-    channels: EXPRESSION_GAZE_BODY,
     resources: FACE_GAZE_HEAD,
     driver: () => ({}),
     expression: (amount, poseAmount) => ({
@@ -135,14 +123,12 @@ export const PERFORMANCE_CUE_DEFINITIONS = {
     }),
   },
   dizzy: {
-    channels: EXPRESSION,
     resources: FACE,
     sticker: true,
     driver: () => ({}),
     expression: () => ({ eyeDizzy: 1 }),
   },
   cry: {
-    channels: EXPRESSION,
     resources: FACE,
     sticker: true,
     driver: () => ({}),
@@ -154,35 +140,30 @@ export const PERFORMANCE_CUE_DEFINITIONS = {
     }),
   },
   angry: {
-    channels: EXPRESSION_BODY,
     resources: FACE_TORSO,
     sticker: true,
     driver: (poseAmount) => ({ body: 0.22 * poseAmount }),
     expression: (amount) => ({ anger: amount }),
   },
   speechless: {
-    channels: EXPRESSION_GAZE_BODY,
     resources: FACE_GAZE_TORSO,
     sticker: true,
     driver: (poseAmount) => ({ body: -0.18 * poseAmount, idle: false }),
     expression: (amount) => ({ speechless: amount }),
   },
   maniac: {
-    channels: EXPRESSION_GAZE_BODY,
     resources: FACE_GAZE_TORSO,
     sticker: true,
     driver: (poseAmount) => ({ body: 0.17 * poseAmount, idle: false }),
     expression: (amount) => ({ maniac: amount }),
   },
   silly: {
-    channels: EXPRESSION_BODY,
     resources: FACE_TORSO,
     sticker: true,
     driver: (poseAmount) => ({ body: -0.15 * poseAmount, idle: false }),
     expression: (amount) => ({ silly: amount }),
   },
   lovestruck: {
-    channels: EXPRESSION_GAZE_BODY,
     resources: FACE_GAZE_TORSO,
     sticker: true,
     driver: (poseAmount) => ({ body: -0.14 * poseAmount, idle: false }),
@@ -190,10 +171,28 @@ export const PERFORMANCE_CUE_DEFINITIONS = {
   },
 } satisfies Record<CueIntent, PerformanceCueDefinition>
 
+/**
+ * Coarse channels are derived, never authored: two hand-kept lists drift, and
+ * only `resources` describes what the pose actually writes.
+ */
+const CUE_CHANNELS = Object.fromEntries(
+  Object.entries(PERFORMANCE_CUE_DEFINITIONS).map(([intent, definition]) => [
+    intent,
+    Object.freeze(legacyChannelsForResources(definition.resources)),
+  ]),
+) as Record<CueIntent, readonly MotionChannel[]>
+
 export function performanceCueDefinition(
   intent: CueIntent,
 ): PerformanceCueDefinition {
   return PERFORMANCE_CUE_DEFINITIONS[intent]
+}
+
+/** Exclusive channels this cue can write, projected from its resources. */
+export function performanceCueChannels(
+  intent: CueIntent,
+): readonly MotionChannel[] {
+  return CUE_CHANNELS[intent]
 }
 
 export function cueDriverPatch(cue: PerformanceCue): Partial<Anime25DDriver> {

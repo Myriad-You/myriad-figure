@@ -1,4 +1,7 @@
-import type { PerformanceDirective } from '../../../services/agent/types'
+import type {
+  PerformanceCue,
+  PerformanceDirective,
+} from '../../../services/agent/types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { compilePerformanceBehaviorPlan } from './performanceBehaviorPlan'
@@ -67,3 +70,40 @@ test('declares the head resource when an acknowledgement nods', () => {
   assert.deepEqual(cue?.channels, ['expression', 'headBody'])
   assert.deepEqual(cue?.resources, ['face.expression', 'body.head'])
 })
+
+test('recompiling a realized cue does not shrink it', () => {
+  const cue: PerformanceCue = {
+    intent: 'greet',
+    atMs: 0,
+    intensity: 1,
+    tempo: 1,
+    fadeInMs: 160,
+    fadeOutMs: 240,
+    interrupt: 'replace',
+  }
+  const directive: PerformanceDirective = {
+    phase: 'delivery',
+    moodRevision: 1,
+    plan: { cues: [cue] },
+  }
+  const first = compilePerformanceBehaviorPlan(directive, 0, 'plan-1')
+  const holdMs = Math.round(
+    pegAt(first, 'plan-1:cue-0:relax') - pegAt(first, 'plan-1:cue-0:stroke-end'),
+  )
+  // Feed the realized hold straight back in: peg spacing must not move.
+  const second = compilePerformanceBehaviorPlan(
+    { ...directive, plan: { cues: [{ ...cue, holdMs }] } },
+    0,
+    'plan-2',
+  )
+  assert.equal(
+    pegAt(second, 'plan-2:cue-0:end'),
+    pegAt(first, 'plan-1:cue-0:end'),
+  )
+})
+
+function pegAt(plan: ReturnType<typeof compilePerformanceBehaviorPlan>, id: string): number {
+  const found = plan.pegs.find((peg) => peg.id === id)
+  assert.ok(found, `${id} missing`)
+  return found.atMs
+}

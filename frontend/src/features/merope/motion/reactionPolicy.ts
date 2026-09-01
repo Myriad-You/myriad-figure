@@ -5,7 +5,10 @@ import type {
 import type { BehaviorSnapshot } from './behavior'
 import type { BehaviorResource } from './behaviorResources'
 import type { MotionChannel } from './channels'
-import { performanceCueDefinition } from '../anime25drig/performanceCueDefinitions'
+import {
+  performanceCueChannels,
+  performanceCueDefinition,
+} from '../anime25drig/performanceCueDefinitions'
 import { cueDurationMs } from '../anime25drig/performanceMotion'
 import { resourcesConflict } from './behaviorResources'
 import { channelPriority } from './channels'
@@ -60,7 +63,7 @@ export class HumanReactionPolicy {
       if (
         cue.interrupt === 'if-lower' &&
         blocking.some((behavior) =>
-          blocksIfLower(definition.channels, behavior),
+          blocksIfLower(performanceCueChannels(cue.intent), behavior),
         )
       ) {
         decisions.push({

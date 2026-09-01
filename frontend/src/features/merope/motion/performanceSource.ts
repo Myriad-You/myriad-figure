@@ -1,7 +1,6 @@
 import type { PerformanceDirective } from '../../../services/agent/types'
 import type { RigBearing } from './bearing'
-import type { BehaviorRealizerReport, BehaviorSnapshot } from './behavior'
-import type { RealizerResult } from './behaviorScheduler'
+import type { BehaviorSnapshot } from './behavior'
 import type { RigMotionCoordinator } from './coordinator'
 import type { PerformanceIntent } from './intents'
 import {
@@ -11,7 +10,6 @@ import {
 import { PerformanceLifecycleController } from '../performanceLifecycle'
 import { MEROPE_SPEECH_EVENT, meropeSpeechEventDetail } from '../speechEvents'
 import { bearingFromDirective } from './bearing'
-import { BehaviorScheduler } from './behaviorScheduler'
 import { liveMotionGeneration, newMotionIntentId } from './liveGeneration'
 import { compilePerformanceBehaviorPlan } from './performanceBehaviorPlan'
 import { PerformanceMotionLeases } from './performanceLeases'
@@ -23,7 +21,6 @@ import { HumanReactionPolicy } from './reactionPolicy'
  */
 export class PerformanceMotionSource {
   private readonly leases: PerformanceMotionLeases
-  private readonly scheduler = new BehaviorScheduler()
   private readonly reactionPolicy = new HumanReactionPolicy()
   private controller: PerformanceLifecycleController | null = null
   private settleTimer: ReturnType<typeof setTimeout> | null = null
@@ -46,9 +43,8 @@ export class PerformanceMotionSource {
     this.leases = new PerformanceMotionLeases(coordinator)
   }
 
-  current(nowMs: number = currentNow()): PerformanceIntent {
-    if (!this.intent.behaviorPlan) return this.intent
-    return { ...this.intent, behaviors: this.scheduler.tick(nowMs) }
+  current(_nowMs: number = currentNow()): PerformanceIntent {
+    return { ...this.intent, behaviors: this.externalBehaviors() }
   }
 
   currentBearing(): RigBearing | null {
@@ -92,7 +88,7 @@ export class PerformanceMotionSource {
     this.bearing = bearingFromDirective(performance) ?? this.bearing
     const selected = this.reactionPolicy.select(
       performance,
-      [...this.scheduler.snapshots(startedAtMs), ...this.externalBehaviors()],
+      this.externalBehaviors(),
       startedAtMs,
     ).directive
     if (selected.plan.cues.length === 0) {
@@ -106,7 +102,6 @@ export class PerformanceMotionSource {
       startedAtMs,
       motionIntentId,
     )
-    this.scheduler.replace(behaviorPlan, startedAtMs)
     const windows = this.leases.apply(selected, startedAtMs, behaviorPlan)
     this.intent = {
       directive: selected,
@@ -114,7 +109,7 @@ export class PerformanceMotionSource {
       motionIntentId,
       generation: liveMotionGeneration() || undefined,
       behaviorPlan,
-      behaviors: this.scheduler.tick(startedAtMs),
+      behaviors: [],
     }
     this.armSettle(windows.planUntilMs - startedAtMs)
     this.onChange(this.intent)
@@ -124,7 +119,6 @@ export class PerformanceMotionSource {
   private clear(): void {
     this.clearSettle()
     this.leases.releaseAll()
-    this.scheduler.clear(currentNow())
     this.intent = {
       directive: null,
       startedAtMs: 0,
@@ -133,18 +127,6 @@ export class PerformanceMotionSource {
       behaviors: [],
     }
     this.onChange(this.intent)
-  }
-
-  reportRealizer(
-    planId: string,
-    behaviorId: string,
-    result: RealizerResult,
-    nowMs: number = currentNow(),
-    reason?: BehaviorRealizerReport['reason'],
-  ): void {
-    const plan = this.intent.behaviorPlan
-    if (!plan || plan.id !== planId) return
-    this.scheduler.reportRealizer(behaviorId, result, nowMs, reason)
   }
 
   private armSettle(delayMs: number): void {

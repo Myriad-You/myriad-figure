@@ -9,12 +9,16 @@ test('turns future TTS accents into co-speech behaviors that prepare before the 
     durationMs: 800,
     accents: [{ offsetMs: 300, intensity: 0.8 }],
   })
-  const behavior = plan.behaviors[0]
+  const behavior = plan.behaviors.find(
+    (candidate) => candidate.form.id === 'accent',
+  )
   assert.equal(behavior?.function, 'emphasize')
   assert.equal(behavior?.source, 'coSpeech')
   const times = new Map(plan.pegs.map((peg) => [peg.id, peg.atMs]))
   assert.ok(
-    times.get(behavior!.timing.start)! < times.get(behavior!.timing.stroke)!,
+    times.get(behavior!.timing.start)! <
+      times.get(behavior!.timing.strokePeak)!,
   )
-  assert.equal(times.get(behavior!.timing.stroke), 1_300)
+  assert.equal(times.get(behavior!.timing.strokePeak), 1_300)
+  assert.ok(plan.behaviors.some((candidate) => candidate.form.id === 'presence'))
 })

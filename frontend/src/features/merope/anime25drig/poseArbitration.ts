@@ -1,4 +1,5 @@
 import type { MotionChannelPolicy } from '../motion/policy'
+import type { Anime25DBehaviorMotionSample } from './behaviorMotion'
 import type { PoseOccupancy } from './poseOccupancy'
 import {
   allowsAmbientMotion,
@@ -300,4 +301,30 @@ function stepCritical(
 function clamp(value: number, minimum: number, maximum: number): number {
   if (!Number.isFinite(value)) return minimum
   return Math.max(minimum, Math.min(maximum, value))
+}
+
+/**
+ * Behavior units modulate how big a motion is; they do not decide whether it
+ * exists. With no live unit the occupancy gate stands on its own — multiplying
+ * by zero would turn any hiccup upstream (a null prosody plan, an unrealized
+ * peg, a habituated cue) into a face that is silent while the voice talks.
+ */
+export function behaviorMotionScale(extent: number, power: number): number {
+  if (extent <= 0) return 1
+  return Math.min(1.55, extent * (0.82 + power * 0.18))
+}
+
+export function applyBehaviorMotionGate(
+  gate: PoseGate,
+  motion: Readonly<Anime25DBehaviorMotionSample>,
+): PoseGate {
+  const coSpeech = behaviorMotionScale(motion.coSpeech, motion.coSpeechPower)
+  const music = behaviorMotionScale(motion.music, motion.musicPower)
+  gate.coSpeech.gaze *= coSpeech
+  gate.coSpeech.headBody *= coSpeech
+  gate.coSpeech.expression *= coSpeech
+  gate.groove.gaze *= music
+  gate.groove.headBody *= music
+  gate.groove.expression *= music
+  return gate
 }

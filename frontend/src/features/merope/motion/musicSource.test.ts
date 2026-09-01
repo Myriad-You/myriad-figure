@@ -98,8 +98,8 @@ test('playing music claims mouth and body until speech takes the mouth', () => {
   assert.equal(coordinator.owner('headBody', 80), 'music')
   assert.equal(coordinator.owner('gaze', 80), 'idle')
   assert.equal(coordinator.owner('expression', 80), 'idle')
-  assert.equal(frame.behaviors[0]?.function, 'entrain')
-  assert.equal(frame.behaviors[0]?.kind, 'rhythmic')
+  assert.equal(frame.behaviorPlan?.behaviors[0]?.function, 'entrain')
+  assert.equal(frame.behaviorPlan?.behaviors[0]?.kind, 'rhythmic')
   assert.equal(frame.apply.writeMouth, true)
   assert.equal(frame.apply.writeGroove, true)
 
@@ -110,7 +110,7 @@ test('playing music claims mouth and body until speech takes the mouth', () => {
   assert.equal(coordinator.owner('headBody', 90), 'music')
 })
 
-test('stopping music gives entrainment a recovery phase', () => {
+test('stopping music withdraws its candidate plan for global recovery', () => {
   const coordinator = new RigMotionCoordinator()
   const source = new MusicMotionSource(
     coordinator,
@@ -122,8 +122,7 @@ test('stopping music gives entrainment a recovery phase', () => {
   source.sampleNow(100)
   source.setPlayback(false, false)
   const stopped = source.sampleNow(200)
-  assert.equal(stopped.behaviors[0]?.phase, 'recovering')
-  assert.equal(stopped.behaviors[0]?.function, 'entrain')
+  assert.equal(stopped.behaviorPlan, null)
 })
 
 test('pause rests the mouth without dropping the music lease', () => {
@@ -261,13 +260,16 @@ test('publishes the next audio-clock beat as a mutable anticipator peg', () => {
     bass = 0.05
     latest = source.sampleNow(currentTime * 1_000)
   }
-  const entrainment = latest.behaviors.find(
+  const entrainment = latest.behaviorPlan?.behaviors.find(
     (behavior) => behavior.function === 'entrain',
   )
-  assert.ok((entrainment?.anticipationConfidence ?? 0) > 0.8)
-  assert.ok((entrainment?.anticipatedAtMs ?? 0) > currentTime * 1_000)
+  const anticipation = latest.behaviorPlan?.pegs.find(
+    (peg) => peg.id === entrainment?.anticipation,
+  )
+  assert.ok((anticipation?.confidence ?? 0) > 0.8)
+  assert.ok((anticipation?.atMs ?? 0) > currentTime * 1_000)
   assert.ok(
-    (entrainment?.anticipatedAtMs ?? Number.POSITIVE_INFINITY) <=
+    (anticipation?.atMs ?? Number.POSITIVE_INFINITY) <=
       currentTime * 1_000 + 500,
   )
   assert.equal(latest.spectrum?.sampleTimeSeconds, currentTime)

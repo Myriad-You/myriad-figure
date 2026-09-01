@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
-import { PERFORMANCE_CUE_DEFINITIONS } from '../anime25drig/performanceCueDefinitions'
+import {
+  PERFORMANCE_CUE_DEFINITIONS,
+  performanceCueChannels,
+} from '../anime25drig/performanceCueDefinitions'
 import {
   legacyChannelsForResources,
   resourceInGroup,
@@ -29,13 +33,15 @@ test('coarse channel names remain a loss-aware compatibility projection', () => 
   ])
 })
 
-test('every cue keeps its compatibility channel map aligned with resources', () => {
+test('coarse channels stay derived, never a second authored list', () => {
+  const registry = source('../anime25drig/performanceCueDefinitions.ts')
+  assert.doesNotMatch(registry, /^\s*channels: /m)
   for (const [intent, definition] of Object.entries(
     PERFORMANCE_CUE_DEFINITIONS,
   )) {
     assert.deepEqual(
+      performanceCueChannels(intent as Parameters<typeof performanceCueChannels>[0]),
       legacyChannelsForResources(definition.resources),
-      definition.channels,
       intent,
     )
   }
@@ -69,5 +75,34 @@ test('every cue declares the fine-grained resources its pose actually writes', (
     if (expression.eyeX || expression.eyeY) {
       assert.equal(resources.has('face.gaze'), true, `${intent}: gaze`)
     }
+  }
+})
+
+function source(relative: string): string {
+  return readFileSync(new URL(relative, import.meta.url), 'utf8')
+}
+
+test('the resource vocabulary matches the director contract and the rig boundary', () => {
+  const local = source('./behaviorResources.ts')
+  const summary = source('./rigStateSummary.ts')
+  const contract = source('../../../../../crates/myriad-merope/src/rig_state.rs')
+  const boundary = source('../rig/README.md')
+
+  const block = /RIG_STATE_BEHAVIOR_RESOURCES: &\[&str\] = &\[([^\]]*)\]/.exec(
+    contract,
+  )?.[1]
+  assert.ok(block, 'director contract has no RIG_STATE_BEHAVIOR_RESOURCES block')
+  const declared = [...block.matchAll(/"([a-z.]+)"/g)].map((match) => match[1])
+  assert.ok(declared.length > 0, 'director contract listed no resources')
+  for (const resource of declared) {
+    assert.match(local, new RegExp(`\\| '${resource}'`), resource)
+    assert.match(summary, new RegExp(`'${resource}',`), resource)
+  }
+
+  // The rig IR has no leg, foot or locomotion role, so no behavior may name one.
+  assert.match(boundary, /no shoulder, elbow, wrist, leg, foot/)
+  for (const forbidden of ['legs', 'foot', 'feet', 'locomotion']) {
+    assert.doesNotMatch(local, new RegExp(`body\\.${forbidden}`), forbidden)
+    assert.doesNotMatch(contract, new RegExp(`body\\.${forbidden}`), forbidden)
   }
 })

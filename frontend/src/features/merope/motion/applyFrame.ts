@@ -1,15 +1,13 @@
 import type { RigMotionPort } from '../rig/motionPort'
 import type { RigBearing } from './bearing'
-import type { BehaviorPlan } from './behavior'
 import type { MotionFrame } from './intents'
 import { applySingingWrite } from './applySnapshot'
 import { policyFromOwners } from './policy'
 
 export interface MotionApplyState {
   speechTextSeq: number
-  directedKind: 'performance' | null
-  directedStartedAtMs: number | null
-  directedPlanId: string | null
+  behaviorRevision: number | null
+  behaviorPlanId: string | null
   bearing: RigBearing | null
   speechOwnedMouth: boolean
   speechProsodyKey: string | null
@@ -18,9 +16,8 @@ export interface MotionApplyState {
 export function createMotionApplyState(): MotionApplyState {
   return {
     speechTextSeq: 0,
-    directedKind: null,
-    directedStartedAtMs: null,
-    directedPlanId: null,
+    behaviorRevision: null,
+    behaviorPlanId: null,
     bearing: null,
     speechOwnedMouth: false,
     speechProsodyKey: null,
@@ -57,7 +54,7 @@ export function applyMotionFrame(
   applyBearing(rig, frame, state)
   if (frame.mood) rig.setMood(frame.mood.mood, frame.mood.activity)
   applySpeech(rig, frame, state)
-  applyDirectedPlan(rig, frame, state, onRealizer)
+  applyBehaviorPlan(rig, frame, state, onRealizer)
   applyMusic(rig, frame)
   return state
 }
@@ -133,29 +130,27 @@ function speechProsodyKey(
   return `${prosody.utteranceId}|${prosody.startedAtMs}|${prosody.durationMs}|${accents}`
 }
 
-function applyDirectedPlan(
+function applyBehaviorPlan(
   rig: Pick<RigMotionPort, 'playBehaviorPlan' | 'stopBehaviorPlan'>,
   frame: MotionFrame,
   state: MotionApplyState,
   onRealizer?: (feedback: MotionRealizerFeedback) => void,
 ): void {
-  const next = directedPlan(frame)
-  if (next) {
+  const plan = frame.behaviorPlan
+  if (plan && plan.behaviors.length > 0) {
     if (
-      state.directedKind !== next.kind ||
-      state.directedStartedAtMs !== next.startedAtMs ||
-      state.directedPlanId !== next.motionIntentId
+      state.behaviorRevision !== frame.behaviorRevision ||
+      state.behaviorPlanId !== plan.id
     ) {
-      if (state.directedKind != null && state.directedKind !== next.kind) {
-        rig.stopBehaviorPlan(state.directedPlanId ?? undefined)
+      if (state.behaviorPlanId && state.behaviorPlanId !== plan.id) {
+        rig.stopBehaviorPlan(state.behaviorPlanId)
       }
-      const reports = rig.playBehaviorPlan(next.plan)
-      state.directedKind = next.kind
-      state.directedStartedAtMs = next.startedAtMs
-      state.directedPlanId = next.motionIntentId
+      const reports = rig.playBehaviorPlan(plan)
+      state.behaviorRevision = frame.behaviorRevision
+      state.behaviorPlanId = plan.id
       for (const report of reports) {
         onRealizer?.({
-          planId: next.plan.id,
+          planId: plan.id,
           behaviorId: report.behaviorId,
           result: report.result,
           atMs: report.atMs,
@@ -165,30 +160,11 @@ function applyDirectedPlan(
     }
     return
   }
-  if (state.directedKind != null) {
-    rig.stopBehaviorPlan(state.directedPlanId ?? undefined)
-    state.directedKind = null
-    state.directedStartedAtMs = null
-    state.directedPlanId = null
+  if (state.behaviorPlanId) {
+    rig.stopBehaviorPlan(state.behaviorPlanId)
+    state.behaviorRevision = null
+    state.behaviorPlanId = null
   }
-}
-
-function directedPlan(frame: MotionFrame): {
-  kind: 'performance'
-  plan: BehaviorPlan
-  startedAtMs: number
-  motionIntentId: string | null
-} | null {
-  const plan = frame.performance?.behaviorPlan ?? null
-  if (plan && plan.behaviors.length > 0) {
-    return {
-      kind: 'performance',
-      plan,
-      startedAtMs: frame.performance?.startedAtMs ?? 0,
-      motionIntentId: frame.performance?.motionIntentId ?? null,
-    }
-  }
-  return null
 }
 
 function applyMusic(

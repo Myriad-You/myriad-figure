@@ -87,6 +87,13 @@ export class SpeechLifecycleController {
 
     if (!this.matches(event.messageId, event.utteranceId)) {
       if (event.phase === 'end') return
+      // A sampled frame may open an idle mouth but must not evict a live
+      // utterance. The live-conversation analyser and a streamed reply are
+      // different producers; being loud does not make one the owner.
+      if (this.speechActive && event.phase !== 'chunk') {
+        noteTurnTraceDrop('foreign_speech_frame')
+        return
+      }
       this.start(event.messageId, event.utteranceId, event.locale)
     }
 

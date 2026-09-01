@@ -26,16 +26,35 @@ export interface TimePeg {
   confidence?: number
 }
 
-/**
- * Five monotonic boundaries. `end` may be absent for a sustained behavior;
- * interruption then creates a recovery and end peg.
- */
+/** BML-shaped monotonic boundaries. Sustained behavior omits relax and end. */
 export interface BehaviorTiming {
   start: string
-  stroke: string
-  hold: string
+  ready: string
+  strokeStart: string
+  strokePeak: string
+  strokeEnd: string
   relax: string | null
   end: string | null
+}
+
+/** Execution manner is independent from the semantic form being performed. */
+export interface BehaviorQuality {
+  /** Spatial extent of the readable primary pose. */
+  extent: number
+  /** Relative phase speed. */
+  tempo: number
+  /** Acceleration/impact at the stroke. */
+  power: number
+  /** Continuity between preparation, stroke and recovery. */
+  fluidity: number
+  /** Straight/direct versus wandering trajectory. */
+  directness: number
+  /** Overshoot and settling after the stroke. */
+  rebound: number
+  /** Stable left/right variation; not per-frame noise. */
+  asymmetry: number
+  /** Relative amount of motion events over time. */
+  density: number
 }
 
 /** Renderer-neutral choice made by a planner and resolved by a body adapter. */
@@ -59,6 +78,9 @@ export interface ScheduledBehavior {
   anticipation?: string
   form: BehaviorForm
   intensity: number
+  quality?: Partial<BehaviorQuality>
+  /** Planner confidence; low-confidence future work remains easier to retime. */
+  confidence?: number
 }
 
 export interface BehaviorPlan {
@@ -87,7 +109,10 @@ export interface BehaviorSnapshot {
   form: BehaviorForm
   phase: BehaviorPhase
   startedAtMs: number
-  strokeAtMs: number
+  readyAtMs: number
+  strokeStartAtMs: number
+  strokePeakAtMs: number
+  strokeEndAtMs: number
   relaxAtMs: number | null
   endsAtMs: number | null
   remainingMs: number | null

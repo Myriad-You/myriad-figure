@@ -47,6 +47,12 @@ function frame(
   nowMs: number,
   extra: Partial<MotionFrame> = {},
 ): MotionFrame {
+  const behaviorPlan =
+    extra.behaviorPlan ??
+    extra.performance?.behaviorPlan ??
+    extra.speech?.behaviorPlan ??
+    extra.music?.behaviorPlan ??
+    null
   return {
     snapshot: coordinator.snapshot(nowMs),
     bearing: null,
@@ -54,6 +60,9 @@ function frame(
     performance: null,
     music: null,
     mood: null,
+    behaviorPlan,
+    behaviorRevision: behaviorPlan ? 1 : 0,
+    behaviors: [],
     ...extra,
   }
 }
@@ -109,6 +118,7 @@ test('speech intent writes the mouth only while speech owns it', () => {
         energy: null,
         articulation: null,
         prosody: null,
+        behaviorPlan: null,
         behaviors: [],
         queuedText: [{ seq: 1, text: '你好' }],
       },
@@ -137,6 +147,7 @@ test('forwards one future prosody plan and clears it when speech yields', () => 
     energy: null,
     articulation: null,
     prosody,
+    behaviorPlan: null,
     behaviors: [],
     queuedText: [],
   }
@@ -160,6 +171,7 @@ test('forwards an incremental prosody revision with the same utterance id', () =
     autoSpeech: false,
     energy: null,
     articulation: null,
+    behaviorPlan: null,
     behaviors: [],
     queuedText: [],
   }
@@ -221,6 +233,7 @@ test('a music frame forwards track identity before the groove sample', () => {
         },
         spectrum: { bass: 0.4, beat: 0.5, vocal: 0.6 },
         articulation: { energy: 0.6, viseme: 'open', amount: 0.8 },
+        behaviorPlan: null,
         behaviors: [],
       },
     }),

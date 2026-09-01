@@ -208,7 +208,8 @@ test('a loud beat dips deeper than a soft beat', () => {
     loudMin = Math.min(loudMin, heavy.angleY)
     softMin = Math.min(softMin, light.angleY)
   }
-  assert.ok(loudMin < softMin - 0.06)
+  assert.ok(loudMin < softMin - 0.05)
+  assert.ok(loudMin > -0.13)
 })
 
 test('a pulsing beat nods down then comes back up', () => {
@@ -237,7 +238,8 @@ test('a pulsing beat nods down then comes back up', () => {
     flatMin = Math.min(flatMin, flat.angleY)
     flatMax = Math.max(flatMax, flat.angleY)
   }
-  assert.ok(pulseMin < -0.12)
+  assert.ok(pulseMin < -0.045)
+  assert.ok(pulseMin > -0.1)
   assert.ok(pulseMax > 0.08)
   assert.ok(pulseMax - pulseMin > flatMax - flatMin + 0.055)
 })

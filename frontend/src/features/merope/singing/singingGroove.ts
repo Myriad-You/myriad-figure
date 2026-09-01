@@ -40,7 +40,7 @@ const ZERO: SingingGroovePose = {
 }
 
 /** A head nod needs at least this long to land and visibly recover. */
-export const MIN_SINGING_NOD_INTERVAL_SECONDS = 0.7
+export const MIN_SINGING_NOD_INTERVAL_SECONDS = 0.82
 
 /**
  * Read fast music in half-time (or at the top of the bar) so the body follows
@@ -98,7 +98,12 @@ export class SingingGrooveController {
   private readonly externalBeatFrame: BeatFrame = { ...this.beatFrame }
   private externalBeatSampleAt = Number.NaN
   private externalBeatObservedAt = Number.NaN
+  private armMotion = false
   private weyl = 0.41
+
+  setArmMotion(enabled: boolean): void {
+    this.armMotion = enabled
+  }
 
   setTrack(trackId: string | null): void {
     this.beat.setTrack(trackId)
@@ -132,7 +137,12 @@ export class SingingGrooveController {
     stepSpring(this.neckX, this.leanTarget * 0.42, dt, 1.5, 1.04)
     stepSpring(this.neckY, pitch, dt, 2.25, 1.16)
     stepSpring(this.torso, this.neckZ.value * 0.55, dt, 0.95, 1.08)
-    stepSpring(this.arm, 0, dt, 1.6, 0.9)
+    const barWave = Math.sin(this.beatFrame.barPhase * Math.PI * 2)
+    const armTarget =
+      enabled && this.armMotion
+        ? -this.leanTarget * 0.42 + barWave * this.energy * 0.045
+        : 0
+    stepSpring(this.arm, armTarget, dt, 0.88, 1.04)
 
     this.output.angleX = this.neckX.value
     this.output.angleY = this.neckY.value
@@ -142,8 +152,8 @@ export class SingingGrooveController {
     // few hundredths. Preserve the slower torso spring and transmit enough of
     // it for the upper body to visibly follow the head.
     this.output.body = this.torso.value * 0.55
-    this.output.armY = 0
-    this.output.armPos = 0
+    this.output.armY = this.arm.value * 0.72
+    this.output.armPos = -this.arm.value * 0.48 + this.torso.value * 0.14
     // A rhythmic controller realizes body entrainment only. Eye and brow
     // reactions are sparse semantic behaviors selected above this layer.
     this.output.eyeX = 0
@@ -222,8 +232,11 @@ export class SingingGrooveController {
     }
     if (!enabled) this.followerNodWindowUntil = Number.NEGATIVE_INFINITY
     if (now <= this.followerNodWindowUntil) this.nodPulse += rise * 14
+    // A cadence-limited nod needs time to reach the slower neck spring. The
+    // old fast release decayed before the head could follow, so reducing nod
+    // frequency also erased almost all of its downward stroke.
     this.nodPulse +=
-      (0 - this.nodPulse) * (1 - Math.exp(-(enabled ? 8.2 : 10) * dt))
+      (0 - this.nodPulse) * (1 - Math.exp(-(enabled ? 3.5 : 8) * dt))
     this.nodPulse = clamp(this.nodPulse, 0, 1)
   }
 
@@ -262,9 +275,9 @@ export class SingingGrooveController {
     const drive = Math.max(follower, timed * locked * 0.82)
     // Keep the downbeat legible without making the whole head dive. The lift
     // remains unchanged, so this trims only the downward half of the nod.
-    const hitDip = drive * mix(0.32, 0.46, this.beatFollow)
+    const hitDip = drive * mix(0.25, 0.38, this.beatFollow)
     const edgeDip = edge * mix(0.03, 0.06, this.energy)
-    return clamp(lift - grooveDip - hitDip - edgeDip, -0.38, 0.32)
+    return clamp(lift - grooveDip - hitDip - edgeDip, -0.31, 0.32)
   }
 
   private driftLean(dt: number): void {

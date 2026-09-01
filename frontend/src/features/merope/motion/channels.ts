@@ -1,7 +1,6 @@
 /**
- * Exclusive control of the live face. Algorithms stay in the player;
- * this table only decides who may drive which group of drivers.
- *
+ * Who may drive which group of drivers. Higher CHANNEL_PRIORITY wins.
+ * Hair and cloth physics are bounded overlays, not a fifth mutex channel.
  */
 
 export const MOTION_CHANNELS = [
@@ -26,16 +25,12 @@ export const MOTION_SOURCES = [
 
 export type MotionSourceId = (typeof MOTION_SOURCES)[number]
 
-export const EXCLUSIVE_CHANNELS = MOTION_CHANNELS
-
-export type ExclusiveMotionChannel = MotionChannel
-
 /**
  * Higher number wins. Missing source is idle.
  * Pointer gaze is a local overlay (`allowsPointerGaze`), not a lease.
  */
 export const CHANNEL_PRIORITY: Record<
-  ExclusiveMotionChannel,
+  MotionChannel,
   Partial<Record<MotionSourceId, number>>
 > = {
   mouth: {
@@ -64,7 +59,7 @@ export const CHANNEL_PRIORITY: Record<
 }
 
 export function channelPriority(
-  channel: ExclusiveMotionChannel,
+  channel: MotionChannel,
   source: MotionSourceId,
 ): number {
   return CHANNEL_PRIORITY[channel][source] ?? 0

@@ -19,6 +19,7 @@ export interface SpeechIntent {
   energy: number | null
   articulation: SpeechArticulation | null
   prosody: SpeechProsodyPlan | null
+  behaviorPlan: BehaviorPlan | null
   behaviors: readonly BehaviorSnapshot[]
   queuedText: readonly SpeechTextChunk[]
 }
@@ -48,4 +49,8 @@ export interface MotionFrame {
   performance: PerformanceIntent | null
   music: SingingFrame | null
   mood: MoodIntent | null
+  /** One executable graph shared by every semantic motion source. */
+  behaviorPlan: BehaviorPlan | null
+  behaviorRevision: number
+  behaviors: readonly BehaviorSnapshot[]
 }
