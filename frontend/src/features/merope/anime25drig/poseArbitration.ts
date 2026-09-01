@@ -305,9 +305,13 @@ function clamp(value: number, minimum: number, maximum: number): number {
 
 /**
  * Behavior units modulate how big a motion is; they do not decide whether it
- * exists. With no live unit the occupancy gate stands on its own — multiplying
- * by zero would turn any hiccup upstream (a null prosody plan, an unrealized
- * peg, a habituated cue) into a face that is silent while the voice talks.
+ * exists. Occupancy already resolved who owns the channel — multiplying by a
+ * missing unit makes it a second, independent kill switch, and then any hiccup
+ * upstream (a plan that ends before the mouth does, a rejected claim, a surface
+ * with no music source) reads as a talking head on a frozen body.
+ *
+ * "The mouth still moves" is not a defence: the mouth moving while the body is
+ * dead is the exact symptom this returns 1 to prevent.
  */
 export function behaviorMotionScale(extent: number, power: number): number {
   if (extent <= 0) return 1

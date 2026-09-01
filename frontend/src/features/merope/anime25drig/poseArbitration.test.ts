@@ -4,6 +4,7 @@ import type { PoseOccupancy } from './poseOccupancy'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { IDLE_MOTION_POLICY } from '../motion/policy'
+import { completeBehaviorQuality } from './behaviorMotion'
 import {
   applyBehaviorMotionGate,
   behaviorMotionScale,
@@ -184,14 +185,18 @@ test('the new owner is mostly present within eighty milliseconds', () => {
 })
 
 test('a missing behavior unit leaves the occupancy gate alone, never zeroes it', () => {
+  const quality = completeBehaviorQuality(undefined)
   const speaking: PoseGate = fullGate()
   applyBehaviorMotionGate(speaking, {
     coSpeech: 0,
     coSpeechPower: 0,
+    coSpeechQuality: quality,
     music: 0,
     musicPower: 0,
+    musicQuality: quality,
   })
-  // Talking with no realized co-speech behavior must still move the face.
+  // Talking with no realized co-speech behavior must still move the face: a
+  // moving mouth on a frozen body is the failure, not the fallback.
   assert.equal(speaking.coSpeech.expression, 1)
   assert.equal(speaking.coSpeech.headBody, 1)
   assert.equal(speaking.groove.headBody, 1)
@@ -200,8 +205,10 @@ test('a missing behavior unit leaves the occupancy gate alone, never zeroes it',
   applyBehaviorMotionGate(withUnit, {
     coSpeech: 0.5,
     coSpeechPower: 1,
+    coSpeechQuality: quality,
     music: 0,
     musicPower: 0,
+    musicQuality: quality,
   })
   assert.equal(withUnit.coSpeech.expression, 0.5)
   assert.ok(withUnit.coSpeech.expression < speaking.coSpeech.expression)
