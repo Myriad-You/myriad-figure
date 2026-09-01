@@ -2,6 +2,7 @@ import type {
   PerformanceCue,
   RigMotionStyle,
 } from '../../../services/agent/types'
+import type { MeropeActivity } from '../types'
 import type { BehaviorRealizerReport } from './behavior'
 import type { MoodIntent, MotionFrame } from './intents'
 import type { MusicMotionSource, SingingFrame } from './musicSource'
@@ -19,6 +20,20 @@ export interface RigSummaryFacts {
   recentIntents: PerformanceCue['intent'][]
   motionStyle: RigMotionStyle
   faceVisible: boolean
+}
+
+export interface LiveFaceConsumerState {
+  ready: boolean
+  mood: number
+  arousal: number
+  activity: MeropeActivity
+  capabilities: readonly string[]
+  priority?: number
+}
+
+export interface LiveFaceConsumer {
+  update: (state: LiveFaceConsumerState) => void
+  release: () => void
 }
 
 const MAX_RECENT = 6
@@ -41,6 +56,9 @@ export class MotionRuntime {
   private musicFrame: SingingFrame | null = null
   private moodIntent: MoodIntent | null = null
   private capabilities: string[] = []
+  private manualCapabilities: string[] = []
+  private readonly faceConsumers = new Map<number, LiveFaceConsumerState>()
+  private nextFaceConsumerId = 0
   private recentIntents: PerformanceCue['intent'][] = []
   private motionStyle: RigMotionStyle = 'even'
   private previewClock: ReturnType<typeof setTimeout> | null = null
@@ -108,7 +126,31 @@ export class MotionRuntime {
   }
 
   setCapabilities(capabilities: readonly string[]): void {
-    this.capabilities = [...new Set(capabilities)].slice(0, 12)
+    this.manualCapabilities = uniqueCapabilities(capabilities)
+    if (this.faceConsumers.size === 0) {
+      this.capabilities = this.manualCapabilities
+    }
+  }
+
+  attachLiveFaceConsumer(initial: LiveFaceConsumerState): LiveFaceConsumer {
+    this.nextFaceConsumerId += 1
+    const id = this.nextFaceConsumerId
+    this.faceConsumers.set(id, normalizeFaceConsumer(initial))
+    this.reconcileLiveFaces()
+    let attached = true
+    return {
+      update: (state) => {
+        if (!attached) return
+        this.faceConsumers.set(id, normalizeFaceConsumer(state))
+        this.reconcileLiveFaces()
+      },
+      release: () => {
+        if (!attached) return
+        attached = false
+        this.faceConsumers.delete(id)
+        this.reconcileLiveFaces()
+      },
+    }
   }
 
   summaryFacts(): RigSummaryFacts {
@@ -116,7 +158,10 @@ export class MotionRuntime {
       capabilities: this.capabilities,
       recentIntents: this.recentIntents,
       motionStyle: this.motionStyle,
-      faceVisible: this.retains > 0,
+      faceVisible:
+        this.faceConsumers.size > 0
+          ? [...this.faceConsumers.values()].some((consumer) => consumer.ready)
+          : this.retains > 0,
     }
   }
 
@@ -143,8 +188,7 @@ export class MotionRuntime {
     )
     return {
       snapshot: this.coordinator.snapshot(now),
-      bearing:
-        this.performance.currentBearing() ?? this.mood.currentBearing(),
+      bearing: this.performance.currentBearing() ?? this.mood.currentBearing(),
       speech: hasSpeechIntent(speech)
         ? { ...speech, behaviors: speechBehaviors }
         : null,
@@ -189,6 +233,22 @@ export class MotionRuntime {
   private rememberIntents(intents: readonly PerformanceCue['intent'][]): void {
     if (intents.length === 0) return
     this.recentIntents = [...this.recentIntents, ...intents].slice(-MAX_RECENT)
+  }
+
+  private reconcileLiveFaces(): void {
+    const ready = [...this.faceConsumers.entries()].filter(
+      ([, consumer]) => consumer.ready,
+    )
+    this.capabilities = uniqueCapabilities(
+      ready.flatMap(([, consumer]) => consumer.capabilities),
+    )
+    const authority = ready.sort(
+      ([leftId, left], [rightId, right]) =>
+        (right.priority ?? 0) - (left.priority ?? 0) || leftId - rightId,
+    )[0]?.[1]
+    if (authority) {
+      this.mood.set(authority.mood, authority.activity, authority.arousal)
+    }
   }
 
   private emit(): void {
@@ -247,4 +307,18 @@ export function createPreviewMotionRuntime(): MotionRuntime {
 
 function currentNow(): number {
   return typeof performance !== 'undefined' ? performance.now() : Date.now()
+}
+
+function uniqueCapabilities(capabilities: readonly string[]): string[] {
+  return [...new Set(capabilities)].slice(0, 12)
+}
+
+function normalizeFaceConsumer(
+  state: LiveFaceConsumerState,
+): LiveFaceConsumerState {
+  return {
+    ...state,
+    capabilities: uniqueCapabilities(state.capabilities),
+    priority: state.priority ?? 0,
+  }
 }

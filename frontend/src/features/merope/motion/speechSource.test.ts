@@ -109,3 +109,104 @@ test('losing real prosody mid-utterance falls back to the predicted plan', () =>
   )
   source.stop()
 })
+
+test('cancelling speech clears predicted behavior and queued text', () => {
+  const frames: Array<{ active: boolean; behaviorPlan: unknown }> = []
+  const source = new SpeechMotionSource(
+    new RigMotionCoordinator(),
+    (intent) => {
+      frames.push({ active: intent.active, behaviorPlan: intent.behaviorPlan })
+    },
+  )
+  source.start()
+  source.handleForTest({
+    phase: 'start',
+    messageId: 'message-cancel',
+    utteranceId: 'utterance-cancel',
+    source: 'reply',
+  })
+  source.handleForTest({
+    phase: 'chunk',
+    messageId: 'message-cancel',
+    utteranceId: 'utterance-cancel',
+    source: 'reply',
+    text: '这句话会被打断。',
+  })
+  assert.ok(source.current().behaviorPlan)
+  assert.ok(source.current().queuedText.length > 0)
+
+  source.handleForTest({
+    phase: 'cancel',
+    messageId: 'message-cancel',
+    source: 'reply',
+  })
+
+  assert.equal(source.current().active, false)
+  assert.equal(source.current().prosody, null)
+  assert.equal(source.current().behaviorPlan, null)
+  assert.deepEqual(source.current().queuedText, [])
+  assert.ok(
+    frames
+      .filter((frame) => !frame.active)
+      .every((frame) => frame.behaviorPlan === null),
+  )
+  source.stop()
+})
+
+test('authored speech end cannot resurrect an inactive co-speech plan', () => {
+  const source = new SpeechMotionSource(new RigMotionCoordinator(), () => {})
+  source.start()
+  source.handleForTest({
+    phase: 'start',
+    messageId: 'message-authored',
+    utteranceId: 'utterance-authored',
+    source: 'reply',
+  })
+  source.handleForTest({
+    phase: 'articulation',
+    messageId: 'message-authored',
+    utteranceId: 'utterance-authored',
+    source: 'reply',
+    articulation: { energy: 0.7, viseme: 'open', amount: 0.8 },
+  })
+  source.handleForTest({
+    phase: 'end',
+    messageId: 'message-authored',
+    utteranceId: 'utterance-authored',
+    source: 'reply',
+  })
+
+  assert.equal(source.current().active, false)
+  assert.equal(source.current().prosody, null)
+  assert.equal(source.current().behaviorPlan, null)
+  source.stop()
+})
+
+test('a foreign end cannot replace the live utterance behavior', () => {
+  const source = new SpeechMotionSource(new RigMotionCoordinator(), () => {})
+  source.start()
+  source.handleForTest({
+    phase: 'start',
+    messageId: 'message-live',
+    utteranceId: 'utterance-live',
+    source: 'reply',
+  })
+  source.handleForTest({
+    phase: 'chunk',
+    messageId: 'message-live',
+    utteranceId: 'utterance-live',
+    source: 'reply',
+    text: '正在说话。',
+  })
+  source.handleForTest({
+    phase: 'end',
+    messageId: 'message-old',
+    utteranceId: 'utterance-old',
+    source: 'reply',
+  })
+
+  assert.equal(source.current().active, true)
+  assert.equal(source.current().prosody?.utteranceId, 'utterance-live')
+  assert.equal(source.current().behaviorPlan?.id, 'speech:utterance-live')
+  source.stop()
+})

@@ -25,6 +25,9 @@ export interface SpeechOccupancy {
   current: boolean
 }
 
+/** Whether the motion layer may derive co-speech behavior from this event. */
+export type SpeechLifecycleDisposition = 'active' | 'finished' | 'ignored'
+
 const MIN_END_TAIL_MS = 180
 const MAX_UTTERANCE_MS = 12_000
 const MAX_BUFFERED_TEXT = 2_000
@@ -64,35 +67,36 @@ export class SpeechLifecycleController {
     this.occupancy = occupancy
   }
 
-  handle(event: MeropeSpeechEventDetail): void {
+  handle(event: MeropeSpeechEventDetail): SpeechLifecycleDisposition {
     if (event.phase === 'cancel') {
       if (
         this.activeMessageId === event.messageId &&
         (!event.utteranceId || event.utteranceId === this.activeUtteranceId)
       ) {
         this.finishNow()
+        return 'finished'
       }
-      return
+      return 'ignored'
     }
 
     if (!isLiveMotionGeneration(event.generation)) {
       if (event.phase === 'start') noteTurnTraceDrop('stale_generation')
-      return
+      return 'ignored'
     }
 
     if (event.phase === 'start') {
       this.start(event.messageId, event.utteranceId, event.locale)
-      return
+      return 'active'
     }
 
     if (!this.matches(event.messageId, event.utteranceId)) {
-      if (event.phase === 'end') return
+      if (event.phase === 'end') return 'ignored'
       // A sampled frame may open an idle mouth but must not evict a live
       // utterance. The live-conversation analyser and a streamed reply are
       // different producers; being loud does not make one the owner.
       if (this.speechActive && event.phase !== 'chunk') {
         noteTurnTraceDrop('foreign_speech_frame')
-        return
+        return 'ignored'
       }
       this.start(event.messageId, event.utteranceId, event.locale)
     }
@@ -105,38 +109,39 @@ export class SpeechLifecycleController {
         MAX_BUFFERED_TEXT,
       )
       this.scheduleWatchdog()
-      return
+      return 'active'
     }
 
     if (event.phase === 'energy') {
       this.claimAuthoredMouth()
       this.target.setSpeechEnergy(event.energy)
       this.scheduleWatchdog()
-      return
+      return 'active'
     }
 
     if (event.phase === 'articulation') {
       this.claimAuthoredMouth()
       this.target.setSpeechArticulation(event.articulation)
       this.scheduleWatchdog()
-      return
+      return 'active'
     }
 
     if (event.phase === 'prosody') {
       this.target.setSpeechProsody?.(event.prosody)
       this.scheduleWatchdog()
-      return
+      return 'active'
     }
 
     if (this.authored) {
       this.finishNow()
-      return
+      return 'finished'
     }
     const elapsed = Math.max(0, this.scheduler.now() - this.startedAt)
     const remaining =
       estimateAutoSpeechDurationMs(this.bufferedText, this.activeLocale) -
       elapsed
     this.scheduleFinish(Math.max(MIN_END_TAIL_MS, remaining))
+    return 'active'
   }
 
   dispose(): void {

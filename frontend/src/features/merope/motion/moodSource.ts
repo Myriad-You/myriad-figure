@@ -1,5 +1,5 @@
-import type { MeropeActivity } from '../types'
 import type { MoodBand } from '../../../components/agent/meropeVitals'
+import type { MeropeActivity } from '../types'
 import type { RigBearing } from './bearing'
 import type { MotionLeaseHandle, RigMotionCoordinator } from './coordinator'
 import type { MoodIntent } from './intents'
@@ -17,6 +17,7 @@ export class MoodMotionSource {
     arousal: DEFAULT_AROUSAL,
     activity: 'idle',
   }
+
   private band: MoodBand = moodBand(DEFAULT_MOOD, DEFAULT_AROUSAL)
   private bearing: RigBearing = standingBearingFromAffect(
     DEFAULT_MOOD,
@@ -25,7 +26,10 @@ export class MoodMotionSource {
 
   constructor(
     private readonly coordinator: RigMotionCoordinator,
-    private readonly onChange: (intent: MoodIntent, bandChanged: boolean) => void,
+    private readonly onChange: (
+      intent: MoodIntent,
+      bandChanged: boolean,
+    ) => void,
   ) {}
 
   current(): MoodIntent {

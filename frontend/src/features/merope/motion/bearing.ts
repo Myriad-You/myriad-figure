@@ -1,8 +1,8 @@
+import type { MoodBand } from '../../../components/agent/meropeVitals'
 import type {
   PerformanceBaseline,
   PerformanceDirective,
 } from '../../../services/agent/types'
-import type { MoodBand } from '../../../components/agent/meropeVitals'
 import { moodBand } from '../../../components/agent/meropeVitals'
 
 /**
@@ -17,10 +17,7 @@ export interface RigBearing extends PerformanceBaseline {
 }
 
 /** Same mapping as `motion_local::baseline_expression` without the valence step. */
-const STANDING_FROM_BAND: Record<
-  MoodBand,
-  Omit<RigBearing, 'revision'>
-> = {
+const STANDING_FROM_BAND: Record<MoodBand, Omit<RigBearing, 'revision'>> = {
   floor: {
     expression: 'withdrawn',
     posture: 'closed',

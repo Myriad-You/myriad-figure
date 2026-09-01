@@ -84,6 +84,59 @@ test('frames carry the media identity across a fast track switch', () => {
   assert.equal(source.sampleNow(20).trackId, 'qq:song-b')
 })
 
+test('duplicate face bindings compile one semantic lyric timeline', async () => {
+  let compileCount = 0
+  const source = new MusicMotionSource(
+    new RigMotionCoordinator(),
+    fakeClock(),
+    silentAudio(),
+    visible,
+    async () => {
+      compileCount += 1
+      return []
+    },
+  )
+
+  source.setTrack({
+    trackId: 'netease:song-a',
+    duration: 120,
+    lines: [{ time: 0, text: 'first line' }],
+  })
+  source.setTrack({
+    trackId: 'netease:song-a',
+    duration: 120,
+    lines: [{ time: 0, text: 'first line', translation: 'ignored' }],
+  })
+  await Promise.resolve()
+  assert.equal(compileCount, 1)
+
+  source.setTrack({
+    trackId: 'netease:song-a',
+    duration: 120,
+    lines: [{ time: 0, text: 'changed line' }],
+  })
+  await Promise.resolve()
+  assert.equal(compileCount, 2)
+})
+
+test('a duplicate face binding cannot cancel an active track-switch hold', () => {
+  const source = new MusicMotionSource(
+    new RigMotionCoordinator(),
+    fakeClock(),
+    silentAudio(),
+    visible,
+  )
+  source.setPlayback(false, false)
+  source.markSwitching()
+
+  // A second mounted face repeats the same external playback snapshot. It
+  // must not overwrite the source's newer, internal switching state.
+  source.setPlayback(false, false)
+  const frame = source.sampleNow(10)
+  assert.equal(frame.apply.release, false)
+  assert.equal(frame.apply.writeGroove, true)
+})
+
 test('playing music claims mouth and body until speech takes the mouth', () => {
   const coordinator = new RigMotionCoordinator()
   const source = new MusicMotionSource(

@@ -73,6 +73,53 @@ test('two consumers see the same speech intent; one unmount does not stop the so
   assert.equal(runtime.frame().snapshot.owners.mouth, 'idle')
 })
 
+test('visible face consumers merge capabilities and select one mood authority', () => {
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const release = runtime.retain()
+  const widget = runtime.attachLiveFaceConsumer({
+    ready: true,
+    mood: 35,
+    arousal: 72,
+    activity: 'idle',
+    capabilities: ['blink', 'head-body'],
+    priority: 1,
+  })
+  const panel = runtime.attachLiveFaceConsumer({
+    ready: false,
+    mood: 80,
+    arousal: 40,
+    activity: 'thinking',
+    capabilities: ['speech-viseme'],
+    priority: 2,
+  })
+
+  assert.equal(runtime.summaryFacts().faceVisible, true)
+  assert.deepEqual(runtime.summaryFacts().capabilities, ['blink', 'head-body'])
+  assert.equal(runtime.frame().mood?.mood, 35)
+
+  panel.update({
+    ready: true,
+    mood: 80,
+    arousal: 40,
+    activity: 'thinking',
+    capabilities: ['speech-viseme'],
+    priority: 2,
+  })
+  assert.deepEqual(runtime.summaryFacts().capabilities, [
+    'blink',
+    'head-body',
+    'speech-viseme',
+  ])
+  assert.equal(runtime.frame().mood?.mood, 80)
+  assert.equal(runtime.frame().mood?.activity, 'thinking')
+
+  panel.release()
+  widget.release()
+  assert.equal(runtime.summaryFacts().faceVisible, true)
+  release()
+  assert.equal(runtime.summaryFacts().faceVisible, false)
+})
+
 test('preview runtime ticks timed leases without a music sampler', async () => {
   const runtime = createPreviewMotionRuntime()
   const release = runtime.retain()

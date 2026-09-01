@@ -5,7 +5,6 @@ import type { SpeechIntent, SpeechTextChunk } from './intents'
 import { predictTextProsody } from '../speech/textProsody'
 import { MEROPE_SPEECH_EVENT, meropeSpeechEventDetail } from '../speechEvents'
 import { SpeechLifecycleController } from '../speechLifecycle'
-import { isLiveMotionGeneration } from './liveGeneration'
 import { compileSpeechBehaviorPlan } from './speechBehaviorPlan'
 import { SpeechMotionLease } from './speechLease'
 
@@ -57,6 +56,7 @@ export class SpeechMotionSource {
     this.controller = new SpeechLifecycleController(
       {
         setSpeechActive: (active) => {
+          if (!active) this.clearUtteranceBehavior()
           this.intent = { ...this.intent, active }
           this.flush()
         },
@@ -110,8 +110,12 @@ export class SpeechMotionSource {
       undefined,
       (busy) => {
         this.mouth.setBusy(busy)
-        if (busy) this.claimCoSpeech()
-        else this.releaseCoSpeech()
+        if (busy) {
+          this.claimCoSpeech()
+        } else {
+          this.clearUtteranceBehavior()
+          this.releaseCoSpeech()
+        }
         this.flush()
       },
     )
@@ -168,13 +172,8 @@ export class SpeechMotionSource {
   private handle(
     detail: Parameters<SpeechLifecycleController['handle']>[0],
   ): void {
-    this.controller?.handle(detail)
-    if (
-      detail.phase === 'cancel' ||
-      !isLiveMotionGeneration(detail.generation)
-    ) {
-      return
-    }
+    const disposition = this.controller?.handle(detail) ?? 'ignored'
+    if (disposition !== 'active') return
     this.prepareBehaviorPlan(detail)
     this.flush()
   }
@@ -234,6 +233,22 @@ export class SpeechMotionSource {
   private releaseCoSpeech(): void {
     this.coordinator.release(this.coSpeech)
     this.coSpeech = null
+  }
+
+  private clearUtteranceBehavior(): void {
+    this.speechBehaviorPlan = null
+    this.activeUtteranceId = null
+    this.speechStartedAtMs = 0
+    this.behaviorText = ''
+    this.behaviorLocale = undefined
+    this.externalProsody = false
+    this.queuedText = []
+    this.intent = {
+      ...this.intent,
+      prosody: null,
+      behaviorPlan: null,
+      queuedText: [],
+    }
   }
 
   private flush(): void {

@@ -1,4 +1,6 @@
 import type { PerformanceDirective } from '../../../services/agent/types'
+import type { MeropePerformanceEventDetail } from '../performanceEvents'
+import type { MeropeSpeechEventDetail } from '../speechEvents'
 import type { RigBearing } from './bearing'
 import type { BehaviorSnapshot } from './behavior'
 import type { RigMotionCoordinator } from './coordinator'
@@ -63,7 +65,7 @@ export class PerformanceMotionSource {
     if (this.listening) return
     this.controller = new PerformanceLifecycleController({
       applyPerformanceDirective: (performance) => this.publish(performance),
-      clearPerformanceDirective: () => this.clear(),
+      clearPerformanceDirective: () => this.cancel(),
     })
     if (typeof window !== 'undefined') {
       window.addEventListener(MEROPE_PERFORMANCE_EVENT, this.onPerformance)
@@ -83,12 +85,16 @@ export class PerformanceMotionSource {
     this.listening = false
   }
 
-  apply(performance: PerformanceDirective): boolean {
-    return this.publish(performance)
+  handle(detail: MeropePerformanceEventDetail): void {
+    this.controller?.handle(detail)
+  }
+
+  handleSpeech(detail: MeropeSpeechEventDetail): void {
+    this.controller?.handleSpeech(detail)
   }
 
   handleForTest(performance: PerformanceDirective): boolean {
-    return this.apply(performance)
+    return this.publish(performance)
   }
 
   private publish(performance: PerformanceDirective): boolean {
@@ -127,7 +133,7 @@ export class PerformanceMotionSource {
     return true
   }
 
-  private clear(): void {
+  private clearTransient(): void {
     this.clearSettle()
     this.leases.releaseAll()
     this.intent = {
@@ -140,12 +146,17 @@ export class PerformanceMotionSource {
     this.onChange(this.intent)
   }
 
+  private cancel(): void {
+    this.bearing = null
+    this.clearTransient()
+  }
+
   private armSettle(delayMs: number): void {
     this.clearSettle()
     const wait = Math.max(1, delayMs)
     const timer = setTimeout(() => {
       this.settleTimer = null
-      this.clear()
+      this.clearTransient()
     }, wait)
     this.settleTimer = timer
     if (typeof timer === 'object' && 'unref' in timer) timer.unref()
@@ -161,14 +172,14 @@ export class PerformanceMotionSource {
     const detail = meropePerformanceEventDetail(
       (event as CustomEvent<unknown>).detail,
     )
-    if (detail) this.controller?.handle(detail)
+    if (detail) this.handle(detail)
   }
 
   private readonly onSpeech = (event: Event): void => {
     const detail = meropeSpeechEventDetail(
       (event as CustomEvent<unknown>).detail,
     )
-    if (detail) this.controller?.handleSpeech(detail)
+    if (detail) this.handleSpeech(detail)
   }
 }
 

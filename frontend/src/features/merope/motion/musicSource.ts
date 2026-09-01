@@ -69,6 +69,31 @@ export interface MusicTrackInput {
 
 export type SingingFrameListener = (frame: SingingFrame) => void
 
+type SingingTimelineCompiler = typeof compileSingingTimeline
+
+function musicTrackInputFingerprint(track: MusicTrackInput): string {
+  const verbatim =
+    track.verbatim && track.verbatim.length > 0
+      ? track.verbatim.map((line) =>
+          (line.words ?? []).map((word) => [
+            word.time,
+            word.duration,
+            word.text,
+          ]),
+        )
+      : null
+  if (verbatim) return JSON.stringify([track.trackId, 'verbatim', verbatim])
+  const lines =
+    track.lines && track.lines.length > 0
+      ? track.lines.map((line) => [line.time, line.text])
+      : null
+  const duration =
+    typeof track.duration === 'number' && Number.isFinite(track.duration)
+      ? track.duration
+      : null
+  return JSON.stringify([track.trackId, 'lines', duration, lines])
+}
+
 /**
  * One sampler for every mounted face. Reuses the site audio analyser
  * (50ms cache) and publishes a channel-gated frame.
@@ -81,7 +106,9 @@ export class MusicMotionSource {
   private readonly coordinator: RigMotionCoordinator
   private playing = false
   private switching = false
+  private playbackInput: readonly [boolean, boolean] | null = null
   private trackId = ''
+  private trackInputFingerprint: string | null = null
   private cues: SingingCue[] = []
   private humming = true
   private compileGeneration = 0
@@ -99,17 +126,20 @@ export class MusicMotionSource {
   private behaviorSequence = 0
   private behaviorId: string | null = null
   private anticipationPegId: string | null = null
+  private readonly compileTimeline: SingingTimelineCompiler
 
   constructor(
     coordinator: RigMotionCoordinator,
     clock: MusicMotionClock,
     audio: MusicMotionAudio,
     visibility: MusicMotionVisibility,
+    compileTimeline: SingingTimelineCompiler = compileSingingTimeline,
   ) {
     this.coordinator = coordinator
     this.clock = clock
     this.audio = audio
     this.visibility = visibility
+    this.compileTimeline = compileTimeline
   }
 
   subscribe(listener: SingingFrameListener): () => void {
@@ -127,9 +157,16 @@ export class MusicMotionSource {
   }
 
   setPlayback(playing: boolean, switching: boolean): void {
+    const nextSwitching = playing ? false : switching
+    if (
+      this.playbackInput?.[0] === playing &&
+      this.playbackInput[1] === nextSwitching
+    ) {
+      return
+    }
+    this.playbackInput = [playing, nextSwitching]
     this.playing = playing
-    if (playing) this.switching = false
-    else this.switching = switching
+    this.switching = nextSwitching
     this.start()
   }
 
@@ -139,6 +176,9 @@ export class MusicMotionSource {
   }
 
   setTrack(track: MusicTrackInput): void {
+    const inputFingerprint = musicTrackInputFingerprint(track)
+    if (inputFingerprint === this.trackInputFingerprint) return
+    this.trackInputFingerprint = inputFingerprint
     const trackId = track.trackId
     if (trackId !== this.trackId) {
       if (this.trackId) this.switching = true
@@ -154,7 +194,7 @@ export class MusicMotionSource {
       return
     }
     const generation = ++this.compileGeneration
-    void compileSingingTimeline({
+    void this.compileTimeline({
       verbatim: track.verbatim,
       lines: track.lines,
       songDuration: track.duration,
