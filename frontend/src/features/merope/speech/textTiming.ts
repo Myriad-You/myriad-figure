@@ -7,6 +7,14 @@ export const VISUAL_SPEECH_MINOR_PAUSE_SECONDS = 0.18
 export const VISUAL_SPEECH_MAJOR_PAUSE_SECONDS = 0.32
 export const VISUAL_SPEECH_HESITATION_SECONDS = 0.24
 
+/**
+ * Visual speech runs slower than the voice it stands in for. With no audio the
+ * mouth is the only cue, and articulating at true speaking rate reads as
+ * chattering rather than talking. Pauses keep their natural length — only
+ * articulation stretches — so phrasing stays recognizable.
+ */
+export const VISUAL_SPEECH_ARTICULATION_SCALE = 1.28
+
 const CJK_UNIT =
   /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u
 const LATIN_OR_NUMBER_RUN = /[\p{Script=Latin}\p{Number}]+/gu
@@ -59,18 +67,23 @@ export function estimateVisualSpeechDurationMs(
     seconds += estimateSymbols(bounded.slice(cursor, index), language)
     const token = match[0]
     if (/^\p{Number}+$/u.test(token)) {
-      seconds += Math.min(0.9, Math.max(0.16, token.length * 0.15))
+      seconds +=
+        Math.min(0.9, Math.max(0.16, token.length * 0.15)) *
+        VISUAL_SPEECH_ARTICULATION_SCALE
     } else {
-      seconds += Math.min(0.78, Math.max(0.23, 0.17 + token.length * 0.052))
+      seconds +=
+        Math.min(0.78, Math.max(0.23, 0.17 + token.length * 0.052)) *
+        VISUAL_SPEECH_ARTICULATION_SCALE
     }
     cursor = index + token.length
   }
   seconds += estimateSymbols(bounded.slice(cursor), language)
   return Math.round(
-    // Runtime text-only rhythm is intentionally non-deterministic. Keep the
-    // lifecycle alive through its slower natural variants instead of cutting
-    // the final mouth cue at the nominal mean.
-    clamp(seconds * 1_160, MIN_VISUAL_SPEECH_MS, MAX_VISUAL_SPEECH_MS),
+    // Runtime text-only rhythm is intentionally non-deterministic, and the
+    // realized pace is clamped to at most 1.32x. Waiting for that ceiling costs
+    // a closed mouth for a moment; falling short of it cuts the sentence in
+    // half, which is what a hard switch at the end of speech actually is.
+    clamp(seconds * 1_320, MIN_VISUAL_SPEECH_MS, MAX_VISUAL_SPEECH_MS),
   )
 }
 
@@ -85,14 +98,14 @@ function estimateSymbols(text: string, language: string): number {
         language.startsWith('ja') ||
         /[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(symbol)
       ) {
-        seconds += 0.135
+        seconds += 0.135 * VISUAL_SPEECH_ARTICULATION_SCALE
       } else if (
         language.startsWith('ko') ||
         /\p{Script=Hangul}/u.test(symbol)
       ) {
-        seconds += 0.165
+        seconds += 0.165 * VISUAL_SPEECH_ARTICULATION_SCALE
       } else {
-        seconds += 0.195
+        seconds += 0.195 * VISUAL_SPEECH_ARTICULATION_SCALE
       }
     }
   }

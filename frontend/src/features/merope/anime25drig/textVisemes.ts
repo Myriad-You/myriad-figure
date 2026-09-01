@@ -1,5 +1,8 @@
 import type { SpeechViseme } from '../rig/articulation'
-import { visualSpeechPauseSeconds } from '../speech/textTiming'
+import {
+  VISUAL_SPEECH_ARTICULATION_SCALE,
+  visualSpeechPauseSeconds,
+} from '../speech/textTiming'
 
 export interface TextVisemeCue {
   viseme: SpeechViseme
@@ -241,7 +244,13 @@ function push(
   duration: number,
   emphasis: boolean,
 ): void {
-  output.push({ viseme, duration, emphasis })
+  // `rest` carries an authored pause; everything else is articulation.
+  output.push({
+    viseme,
+    duration:
+      viseme === 'rest' ? duration : duration * VISUAL_SPEECH_ARTICULATION_SCALE,
+    emphasis,
+  })
 }
 
 function coalesce(input: TextVisemeCue[]): TextVisemeCue[] {

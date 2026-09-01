@@ -22,6 +22,13 @@ type RandomSource = () => number
 type TextVisemeCompiler = typeof compileTextVisemes
 
 const REST_RELEASE = 0.2
+/**
+ * Syllable spacing for the fallback rhythm used before compiled visemes exist.
+ * Held near the compiled Han cadence (~0.25s) so the causal gap does not open
+ * with a mouth that chatters and then abruptly settles down.
+ */
+const FALLBACK_SYLLABLE_MIN = 0.185
+const FALLBACK_SYLLABLE_MAX = 0.275
 const TEXT_PHRASE_PACE_MIN = 0.92
 const TEXT_PHRASE_PACE_MAX = 1.08
 const TEXT_LOCAL_PACE_MIN = 0.94
@@ -245,7 +252,8 @@ export class AutoSpeechController {
         ? (now - this.phraseStartedAt) / this.phraseDuration
         : 0
     const interval =
-      this.randomRange(0.105, 0.185) * speechPhraseIntervalScale(phraseProgress)
+      this.randomRange(FALLBACK_SYLLABLE_MIN, FALLBACK_SYLLABLE_MAX) *
+      speechPhraseIntervalScale(phraseProgress)
     const emphasized = this.emphasisCooldown === 0 && this.randomUnit() < 0.14
     this.emphasisCooldown = emphasized
       ? 2
