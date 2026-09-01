@@ -1,11 +1,14 @@
 import type { PerformanceDirective } from '../../../services/agent/types'
+import type { RigBearing } from './bearing'
 import type { MotionFrame } from './intents'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { bearingDriverPatch } from '../anime25drig/performanceExpression'
 import { applyMotionFrame, createMotionApplyState } from './applyFrame'
 import { RigMotionCoordinator } from './coordinator'
 import { compilePerformanceBehaviorPlan } from './performanceBehaviorPlan'
+import { MotionRuntime } from './runtime'
 
 function recordingRig() {
   const calls: string[] = []
@@ -212,10 +215,53 @@ test('mood and activity enter the rig through the shared frame', () => {
   const host = recordingRig()
   applyMotionFrame(
     host.rig,
-    frame(coordinator, 1, { mood: { mood: 82, activity: 'thinking' } }),
+    frame(coordinator, 1, {
+      mood: { mood: 82, arousal: 48, activity: 'thinking' },
+    }),
     createMotionApplyState(),
   )
   assert.ok(host.calls.includes('mood:82:thinking'))
+})
+
+test('a standing bearing is written even without a performance round', () => {
+  const coordinator = new RigMotionCoordinator()
+  const host = recordingRig()
+  applyMotionFrame(
+    host.rig,
+    frame(coordinator, 1, {
+      bearing: {
+        expression: 'tense',
+        posture: 'neutral',
+        motionEnergy: 0.945,
+        attention: 0.4,
+        revision: 0,
+      },
+    }),
+    createMotionApplyState(),
+  )
+  assert.ok(host.calls.includes('bearing:true'))
+})
+
+test('a low mood frame reaches the Anime2.5D driver as the sad standing face', () => {
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const release = runtime.retain()
+  runtime.mood.set(30, 'idle', 40)
+  const host = recordingRig()
+  let applied: ReturnType<typeof bearingDriverPatch> | null = null
+  const rig = {
+    ...host.rig,
+    setBearing: (bearing: RigBearing | null) => {
+      applied = bearingDriverPatch(bearing)
+    },
+  }
+
+  applyMotionFrame(rig, runtime.frame(), createMotionApplyState())
+
+  assert.ok(applied)
+  assert.ok((applied.browAngSym ?? 0) <= -0.28)
+  assert.ok((applied.eyeOpenL ?? 1) < 1)
+  assert.ok((applied.mouthForm ?? 0) < -0.1)
+  release()
 })
 
 test('a music frame forwards track identity before the groove sample', () => {

@@ -6,6 +6,7 @@ import { PerformanceLifecycleController } from './performanceLifecycle'
 const performance = {
   phase: 'delivery' as const,
   moodRevision: 8,
+  motionStyle: 'even' as const,
   plan: {
     baseline: {
       expression: 'warm' as const,

@@ -1,7 +1,7 @@
 import type { SpeechArticulation, SpeechViseme } from './rig/articulation'
 import type { SpeechProsodyPlan } from './speech/prosody'
 
-export const MEROPE_SPEECH_EVENT = 'arael-merope-speech'
+export const MEROPE_SPEECH_EVENT = 'merope-speech'
 
 export type MeropeSpeechSource =
   'reply' | 'proactive' | 'interaction' | 'preview'

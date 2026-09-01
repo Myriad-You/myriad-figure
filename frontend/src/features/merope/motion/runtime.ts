@@ -56,6 +56,11 @@ export class MotionRuntime {
     this.performance = new PerformanceMotionSource(
       coordinator,
       (intent) => {
+        const style = intent.directive?.motionStyle
+        if (style && style !== this.motionStyle) {
+          this.motionStyle = style
+          this.humanPerformance.setMotionStyle(style)
+        }
         this.rememberIntents(
           intent.directive?.plan.cues.map((cue) => cue.intent) ?? [],
         )
@@ -63,8 +68,9 @@ export class MotionRuntime {
       },
       () => this.humanPerformance.snapshots(currentNow()),
     )
-    this.mood = new MoodMotionSource(coordinator, (intent) => {
+    this.mood = new MoodMotionSource(coordinator, (intent, bandChanged) => {
       this.moodIntent = intent
+      if (bandChanged) this.performance.clearBearing()
       this.emit()
     })
     this.ambient = new AmbientMotionSource(coordinator)
@@ -105,13 +111,6 @@ export class MotionRuntime {
     this.capabilities = [...new Set(capabilities)].slice(0, 12)
   }
 
-  setMotionStyle(style: RigMotionStyle): void {
-    if (style === this.motionStyle) return
-    this.motionStyle = style
-    this.humanPerformance.setMotionStyle(style)
-    this.emit()
-  }
-
   summaryFacts(): RigSummaryFacts {
     return {
       capabilities: this.capabilities,
@@ -144,7 +143,8 @@ export class MotionRuntime {
     )
     return {
       snapshot: this.coordinator.snapshot(now),
-      bearing: this.performance.currentBearing(),
+      bearing:
+        this.performance.currentBearing() ?? this.mood.currentBearing(),
       speech: hasSpeechIntent(speech)
         ? { ...speech, behaviors: speechBehaviors }
         : null,

@@ -48,7 +48,7 @@ test('a performance behavior realizes as a unit, not back into a cue', () => {
   assert.equal(unit.timing.endMs, at(behavior.timing.end!))
   assert.deepEqual(realized.reports, [
     {
-      behaviorId: 'plan-a:cue-0',
+      behaviorId: 'plan-a:cue-emphasize-0',
       result: 'accepted',
       atMs: 900,
     },

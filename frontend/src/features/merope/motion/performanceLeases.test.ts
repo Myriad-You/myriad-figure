@@ -30,6 +30,7 @@ function directive(
   return {
     phase: 'delivery',
     moodRevision: 1,
+    motionStyle: 'even',
     plan: {
       baseline: {
         expression: 'warm',

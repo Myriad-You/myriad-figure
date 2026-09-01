@@ -151,25 +151,25 @@ export const PERFORMANCE_CUE_DEFINITIONS = {
   speechless: {
     resources: FACE_GAZE_TORSO,
     sticker: true,
-    driver: (poseAmount) => ({ body: -0.18 * poseAmount, idle: false }),
+    driver: (poseAmount) => ({ body: -0.18 * poseAmount }),
     expression: (amount) => ({ speechless: amount }),
   },
   maniac: {
     resources: FACE_GAZE_TORSO,
     sticker: true,
-    driver: (poseAmount) => ({ body: 0.17 * poseAmount, idle: false }),
+    driver: (poseAmount) => ({ body: 0.17 * poseAmount }),
     expression: (amount) => ({ maniac: amount }),
   },
   silly: {
     resources: FACE_TORSO,
     sticker: true,
-    driver: (poseAmount) => ({ body: -0.15 * poseAmount, idle: false }),
+    driver: (poseAmount) => ({ body: -0.15 * poseAmount }),
     expression: (amount) => ({ silly: amount }),
   },
   lovestruck: {
     resources: FACE_GAZE_TORSO,
     sticker: true,
-    driver: (poseAmount) => ({ body: -0.14 * poseAmount, idle: false }),
+    driver: (poseAmount) => ({ body: -0.14 * poseAmount }),
     expression: (amount) => ({ lovestruck: amount }),
   },
 } satisfies Record<CueIntent, PerformanceCueDefinition>
@@ -196,23 +196,6 @@ export function performanceCueChannels(
   intent: CueIntent,
 ): readonly MotionChannel[] {
   return CUE_CHANNELS[intent]
-}
-
-export function cueDriverPatch(cue: PerformanceCue): Partial<Anime25DDriver> {
-  return intentDriverPatch(cue.intent, cue.intensity)
-}
-
-export function intentDriverPatch(
-  intent: CueIntent,
-  intensity: number,
-): Partial<Anime25DDriver> {
-  return performanceCueDefinition(intent).driver(intentPoseAmount(intensity))
-}
-
-export function cueExpressionPatch(
-  cue: PerformanceCue,
-): Partial<PerformanceExpressionOffset> {
-  return intentExpressionPatch(cue.intent, cue.intensity)
 }
 
 /**
@@ -256,10 +239,6 @@ function intentAmount(intensity: number): number {
  * range. A selected action must still read at low semantic intensity; the
  * semantic amount itself continues to scale the face without this lift.
  */
-export function cuePoseAmount(cue: PerformanceCue): number {
-  return intentPoseAmount(cue.intensity)
-}
-
 export function intentPoseAmount(intensity: number): number {
   const normalized = (intentAmount(intensity) - 0.2) / 1.2
   return 0.72 + normalized * 0.68

@@ -126,7 +126,7 @@ export class MouthTransitionController {
   }
 }
 
-export function dominantMouthMaterial(
+function dominantMouthMaterial(
   input: MouthTransitionInput,
 ): SpeechMouthMaterial {
   const scores = new Float32Array(MATERIALS.length)

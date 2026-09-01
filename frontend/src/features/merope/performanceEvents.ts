@@ -3,6 +3,7 @@ import type {
   PerformanceBaseline,
   PerformanceCue,
   PerformanceDirective,
+  RigMotionStyle,
 } from '../../services/agent/types'
 import {
   PERFORMANCE_BASELINE_EXPRESSIONS,
@@ -11,8 +12,8 @@ import {
   PERFORMANCE_POSTURES,
 } from './performanceContract'
 
-export const MEROPE_PERFORMANCE_EVENT = 'arael-merope-performance'
-export const MEROPE_STATE_EVENT = 'arael-merope-state'
+export const MEROPE_PERFORMANCE_EVENT = 'merope-performance'
+export const MEROPE_STATE_EVENT = 'merope-state'
 
 export interface MeropePerformanceEventDetail {
   text: string
@@ -165,6 +166,8 @@ export function sanitizePerformanceDirective(
   ) {
     return null
   }
+  const motionStyle = sanitizeMotionStyle(value.motionStyle)
+  if (!motionStyle) return null
   const baseline = sanitizeBaseline(value.plan.baseline)
   const cues = Array.isArray(value.plan.cues)
     ? value.plan.cues
@@ -176,8 +179,15 @@ export function sanitizePerformanceDirective(
   return {
     phase: value.phase as PerformanceDirective['phase'],
     moodRevision: Math.max(0, Math.trunc(value.moodRevision)),
+    motionStyle,
     plan: { ...(baseline ? { baseline } : {}), cues },
   }
+}
+
+function sanitizeMotionStyle(value: unknown): RigMotionStyle | null {
+  return value === 'restrained' || value === 'even' || value === 'open'
+    ? value
+    : null
 }
 
 function sanitizeBaseline(value: unknown): PerformanceBaseline | null {

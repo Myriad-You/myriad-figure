@@ -23,6 +23,7 @@ test('bounds strict-Lite semantic plans and rejects raw intents', () => {
   const performance = sanitizePerformanceDirective({
     phase: 'reaction',
     moodRevision: 123.9,
+    motionStyle: 'open',
     plan: {
       baseline: {
         expression: 'warm',
@@ -71,11 +72,37 @@ test('bounds strict-Lite semantic plans and rejects raw intents', () => {
     },
   })
   assert.equal(performance?.moodRevision, 123)
+  assert.equal(performance?.motionStyle, 'open')
   assert.equal(performance?.plan.baseline?.motionEnergy, 1.4)
   assert.equal(performance?.plan.cues.length, 3)
   assert.equal(performance?.plan.cues[0]?.atMs, 5000)
   assert.equal(performance?.plan.cues[1]?.intent, 'think')
   assert.equal(performance?.plan.cues[2]?.intent, 'dizzy')
+})
+
+test('rejects directives without a current motion style', () => {
+  const plan = {
+    phase: 'reaction',
+    moodRevision: 1,
+    plan: {
+      cues: [
+        {
+          intent: 'respond',
+          atMs: 0,
+          intensity: 1,
+          tempo: 1,
+          fadeInMs: 100,
+          fadeOutMs: 200,
+          interrupt: 'replace',
+        },
+      ],
+    },
+  }
+  assert.equal(sanitizePerformanceDirective(plan), null)
+  assert.equal(
+    sanitizePerformanceDirective({ ...plan, motionStyle: 'legacy-vivid' }),
+    null,
+  )
 })
 
 test('accepts persisted Merope state transitions for immediate face sync', () => {
@@ -122,6 +149,7 @@ test('accepts crying only as a bounded semantic performance cue', () => {
   const performance = sanitizePerformanceDirective({
     phase: 'delivery',
     moodRevision: 2,
+    motionStyle: 'even',
     plan: {
       cues: [
         {
@@ -151,6 +179,7 @@ test('accepts stylized semantic performance cues', () => {
     const performance = sanitizePerformanceDirective({
       phase: 'reaction',
       moodRevision: 3,
+      motionStyle: 'restrained',
       plan: {
         cues: [
           {

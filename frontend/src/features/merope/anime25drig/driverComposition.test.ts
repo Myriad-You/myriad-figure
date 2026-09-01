@@ -12,7 +12,7 @@ import {
   stepAnime25DDriverResponse,
 } from './driverComposition'
 import {
-  expressionCueOffset,
+  intentExpressionOffset,
   mixBoundedExpressionChannel,
 } from './performanceExpression'
 import { zeroOccupancyOffset } from './poseCompositor'
@@ -28,15 +28,7 @@ test('all shared pose producers land through one channel-weighted composition', 
   const target = { ...IDENTITY_DRIVER }
   const full = { gaze: 1, headBody: 1, expression: 1 }
   const none = { gaze: 0, headBody: 0, expression: 0 }
-  const performance = expressionCueOffset({
-    intent: 'think',
-    atMs: 0,
-    intensity: 1,
-    tempo: 1,
-    fadeInMs: 80,
-    fadeOutMs: 120,
-    interrupt: 'replace',
-  })
+  const performance = intentExpressionOffset('think', 1)
   const stylized = new StylizedExpressionMotionController().sample(
     0,
     0,
@@ -119,15 +111,7 @@ test('all shared pose producers land through one channel-weighted composition', 
 
 test('semantic and staged expression extras honor independent ownership', () => {
   const target = { ...IDENTITY_DRIVER }
-  const semantic = expressionCueOffset({
-    intent: 'dizzy',
-    atMs: 0,
-    intensity: 1,
-    tempo: 1,
-    fadeInMs: 80,
-    fadeOutMs: 120,
-    interrupt: 'replace',
-  })
+  const semantic = intentExpressionOffset('dizzy', 1)
   const controller = new StylizedExpressionMotionController()
   let stylized = controller.sample(0, 0, 0, 1, 0, 0)
   for (let frame = 1; frame <= 60; frame += 1) {
@@ -145,15 +129,7 @@ test('delight realizes its claimed bust resource through head/body ownership', (
   const target = { ...IDENTITY_DRIVER }
   const full = { gaze: 1, headBody: 1, expression: 1 }
   const none = { gaze: 0, headBody: 0, expression: 0 }
-  const performance = expressionCueOffset({
-    intent: 'delight',
-    atMs: 0,
-    intensity: 1,
-    tempo: 1,
-    fadeInMs: 80,
-    fadeOutMs: 120,
-    interrupt: 'replace',
-  })
+  const performance = intentExpressionOffset('delight', 1)
   const stylized = new StylizedExpressionMotionController().sample(
     0,
     0,

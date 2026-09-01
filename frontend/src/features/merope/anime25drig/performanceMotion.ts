@@ -7,7 +7,7 @@ import { performanceCuePriority } from '../performanceContract'
 import { DEFAULT_FRONT_HAIR_SWAY, DEFAULT_REAR_HAIR_SWAY } from './driver'
 import { cueIsSticker } from './performanceCueDefinitions'
 
-export { cueDriverPatch, cueIsSticker } from './performanceCueDefinitions'
+export { cueIsSticker } from './performanceCueDefinitions'
 
 export interface ScheduledBodyCue {
   cue: PerformanceCue
@@ -92,11 +92,11 @@ export function idleSpeechDriverPatch(
   }
 }
 
-export function cuePriority(cue: PerformanceCue): number {
+function cuePriority(cue: PerformanceCue): number {
   return performanceCuePriority(cue.intent)
 }
 
-export const MIN_STICKER_FADE_IN = 0.18
+const MIN_STICKER_FADE_IN = 0.18
 export const MIN_STICKER_FADE_OUT = 0.42
 
 /** Face and body share this envelope so they peak and release together. */
@@ -142,7 +142,7 @@ export function cueDurationMs(cue: PerformanceCue): number {
 }
 
 /** Duration the plan lays out with, before any realization writes back. */
-export function authoredCueDurationMs(cue: PerformanceCue): number {
+function authoredCueDurationMs(cue: PerformanceCue): number {
   const envelope = authoredCueEnvelope(cue)
   return Math.round((envelope.fadeIn + envelope.hold + envelope.fadeOut) * 1_000)
 }

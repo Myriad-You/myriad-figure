@@ -312,10 +312,17 @@ function clamp(value: number, minimum: number, maximum: number): number {
  *
  * "The mouth still moves" is not a defence: the mouth moving while the body is
  * dead is the exact symptom this returns 1 to prevent.
+ *
+ * The ceiling is 1 because this scales a weight, and a weight above 1 lets one
+ * source write past its authored offset into the shared accumulator. A strong
+ * unit therefore opens its channel fully and stops there. That costs nothing:
+ * quality already reaches the pose generators it belongs to — the co-speech
+ * controller and the groove take `coSpeechQuality` and `musicQuality` directly
+ * — so a boost here would scale the same extent and power a second time.
  */
 export function behaviorMotionScale(extent: number, power: number): number {
   if (extent <= 0) return 1
-  return Math.min(1.55, extent * (0.82 + power * 0.18))
+  return Math.min(1, extent * (0.82 + power * 0.18))
 }
 
 export function applyBehaviorMotionGate(

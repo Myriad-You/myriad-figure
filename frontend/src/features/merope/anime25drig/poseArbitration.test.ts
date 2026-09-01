@@ -2,6 +2,7 @@ import type { MotionChannelPolicy } from '../motion/policy'
 import type { PoseGate } from './poseArbitration'
 import type { PoseOccupancy } from './poseOccupancy'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { IDLE_MOTION_POLICY } from '../motion/policy'
 import { completeBehaviorQuality } from './behaviorMotion'
@@ -218,7 +219,26 @@ test('behaviorMotionScale modulates but never inverts a live unit', () => {
   assert.equal(behaviorMotionScale(0, 0), 1)
   assert.equal(behaviorMotionScale(1, 1), 1)
   assert.ok(behaviorMotionScale(0.2, 0) < 1)
-  assert.equal(behaviorMotionScale(1.4, 1.4), Math.min(1.55, 1.4 * (0.82 + 1.4 * 0.18)))
+})
+
+test('the gate stays a weight, so no strength is silently clamped away', () => {
+  // The compositor treats these as weights and clamps them to [0, 1]. A
+  // ceiling above that is not a boost, it is a number the next stage throws
+  // away — which is what 1.55 was doing.
+  const compositor = readFileSync(
+    new URL('./poseCompositor.ts', import.meta.url),
+    'utf8',
+  )
+  assert.match(compositor, /Math\.max\(0, Math\.min\(1, value\)\)/)
+  for (const extent of [0.35, 1, 1.96, 2.31, 4]) {
+    for (const power of [0, 0.35, 1, 1.4]) {
+      const scale = behaviorMotionScale(extent, power)
+      assert.ok(scale <= 1, `${extent}/${power} -> ${scale}`)
+      assert.ok(scale > 0, `${extent}/${power} -> ${scale}`)
+    }
+  }
+  // A unit at full authored strength opens its channel and stops there.
+  assert.equal(behaviorMotionScale(1.4, 1.4), 1)
 })
 
 function fullGate(): PoseGate {

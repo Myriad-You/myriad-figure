@@ -1,8 +1,10 @@
+import type { CueIntent } from './performanceCueDefinitions'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { intentExpressionPatch } from './performanceCueDefinitions'
 import {
   baselineDriverPatch,
-  cueDriverPatch,
   cueDurationMs,
   idleSpeechDriverPatch,
   performanceRestDriverPatch,
@@ -124,49 +126,47 @@ test('keeps active speech channels out of a full base refresh', () => {
   })
 })
 
-test('maps cues to bounded deterministic patches and durations', () => {
-  const cue = {
-    intent: 'emphasize' as const,
-    atMs: 0,
-    intensity: 1.4,
-    tempo: 1,
-    fadeInMs: 150,
-    fadeOutMs: 220,
-    interrupt: 'replace' as const,
-  }
-  assert.ok((cueDriverPatch(cue).body || 0) > 0.5)
-  assert.ok((cueDriverPatch(cue).body || 0) < 0.6)
-  assert.equal(cueDriverPatch(cue).brow, undefined)
-  assert.equal(cueDriverPatch(cue).angleY, undefined)
-  assert.equal(cueDurationMs(cue), 1_090)
+test('maps cue forms to bounded deterministic poses and durations', () => {
+  const patch = (intent: CueIntent, intensity = 1.4) =>
+    intentExpressionPatch(intent, intensity)
+  assert.ok((patch('emphasize').body || 0) > 0.5)
+  assert.ok((patch('emphasize').body || 0) < 0.6)
+  assert.equal(
+    cueDurationMs({
+      intent: 'emphasize',
+      atMs: 0,
+      intensity: 1.4,
+      tempo: 1,
+      fadeInMs: 150,
+      fadeOutMs: 220,
+      interrupt: 'replace',
+    }),
+    1_090,
+  )
 
-  const dizzy = { ...cue, intent: 'dizzy' as const }
-  assert.deepEqual(cueDriverPatch(dizzy), {})
-  const think = { ...cue, intent: 'think' as const }
-  assert.deepEqual(cueDriverPatch(think), {})
-  const cry = { ...cue, intent: 'cry' as const }
-  assert.deepEqual(cueDriverPatch(cry), {})
-  const angry = { ...cue, intent: 'angry' as const }
-  assert.ok((cueDriverPatch(angry).body || 0) > 0)
-  const speechless = { ...cue, intent: 'speechless' as const }
-  assert.equal(cueDriverPatch(speechless).idle, false)
-  const maniac = { ...cue, intent: 'maniac' as const }
-  assert.equal(cueDriverPatch(maniac).idle, false)
-  const lovestruck = { ...cue, intent: 'lovestruck' as const }
-  assert.equal(cueDriverPatch(lovestruck).idle, false)
+  // Face-only forms write no body channel at all.
+  for (const intent of ['dizzy', 'think', 'cry'] as const) {
+    assert.equal(patch(intent).body, undefined, intent)
+    assert.equal(patch(intent).armY, undefined, intent)
+    assert.equal(patch(intent).armPos, undefined, intent)
+  }
+  assert.ok((patch('angry').body || 0) > 0)
+})
+
+test('a cue form never switches secondary physics off', () => {
+  // Hair and cloth are bounded overlays, not a fifth channel a cue may own.
+  // The sticker forms used to author `idle: false` here, which reached no
+  // driver: the only reader takes it from the authored driver, not from a
+  // realized behavior. Damping during a sticker is the ambient scale's job.
+  const definitions = readFileSync(
+    new URL('./performanceCueDefinitions.ts', import.meta.url),
+    'utf8',
+  )
+  assert.doesNotMatch(definitions, /idle:/)
 })
 
 test('keeps directed body motion above idle scale at ordinary intensity', () => {
-  const cue = (intent: Parameters<typeof cueDriverPatch>[0]['intent']) =>
-    cueDriverPatch({
-      intent,
-      atMs: 0,
-      intensity: 0.55,
-      tempo: 1,
-      fadeInMs: 100,
-      fadeOutMs: 200,
-      interrupt: 'replace',
-    })
+  const cue = (intent: CueIntent) => intentExpressionPatch(intent, 0.55)
 
   for (const intent of [
     'greet',
@@ -185,7 +185,7 @@ test('keeps directed body motion above idle scale at ordinary intensity', () => 
       Math.abs(patch.body ?? 0),
       Math.abs(patch.armY ?? 0),
       Math.abs(patch.armPos ?? 0),
-      Math.abs((patch.bust ?? 2.5) - 2.5),
+      Math.abs(patch.bust ?? 0),
     )
     assert.ok(displacement >= 0.12, intent)
     assert.ok(displacement <= 0.5, intent)

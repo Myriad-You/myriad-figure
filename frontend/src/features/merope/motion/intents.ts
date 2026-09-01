@@ -35,6 +35,7 @@ export interface PerformanceIntent {
 
 export interface MoodIntent {
   mood: number
+  arousal: number
   activity: MeropeActivity
 }
 

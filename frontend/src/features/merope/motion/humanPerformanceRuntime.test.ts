@@ -1,3 +1,4 @@
+import type { PerformanceDirective } from '../../../services/agent/types'
 import type { BehaviorPlan, ScheduledBehavior } from './behavior'
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -5,6 +6,7 @@ import {
   HumanPerformanceRuntime,
   mergeBehaviorPlans,
 } from './humanPerformanceRuntime'
+import { compilePerformanceBehaviorPlan } from './performanceBehaviorPlan'
 
 function plan(
   id: string,
@@ -124,4 +126,83 @@ test('motion style changes quality at the single merge boundary', () => {
     (open?.behaviors[0]?.quality?.power ?? 0) >
       (restrained?.behaviors[0]?.quality?.power ?? 0),
   )
+})
+
+test('a refinement restating a live beat retimes it instead of restarting it', () => {
+  const directive = (atMs: number, intensity: number): PerformanceDirective => ({
+    phase: 'delivery',
+    moodRevision: 1,
+    motionStyle: 'even',
+    plan: {
+      cues: [
+        {
+          intent: 'emphasize',
+          atMs,
+          intensity,
+          tempo: 1,
+          fadeInMs: 120,
+          fadeOutMs: 200,
+          interrupt: 'replace',
+        },
+      ],
+    },
+  })
+  const runtime = new HumanPerformanceRuntime()
+  const floor = compilePerformanceBehaviorPlan(directive(0, 0.9), 1_000, 'performance')
+  runtime.frame([floor], 1_000)
+  const live = runtime.frame([floor], 1_400).behaviors[0]
+  assert.ok(live)
+  assert.equal(live.phase, 'holding')
+
+  // Lite lands late and picks the same beat. The floor is mid-hold, so its
+  // committed pegs are locked and the behavior must carry on under the new
+  // spec rather than recover and replay.
+  const refinement = compilePerformanceBehaviorPlan(
+    directive(0, 1.3),
+    1_400,
+    'performance',
+  )
+  const after = runtime.frame([refinement], 1_400).behaviors
+  assert.equal(after.length, 1)
+  assert.equal(after[0]?.id, live.id)
+  assert.equal(after[0]?.phase, 'holding')
+  assert.equal(after[0]?.startedAtMs, live.startedAtMs)
+})
+
+test('a refinement that chose a different beat recovers the old one', () => {
+  const cue = (intent: 'emphasize' | 'delight'): PerformanceDirective => ({
+    phase: 'delivery',
+    moodRevision: 1,
+    motionStyle: 'even',
+    plan: {
+      cues: [
+        {
+          intent,
+          atMs: 0,
+          intensity: 1,
+          tempo: 1,
+          fadeInMs: 120,
+          fadeOutMs: 200,
+          interrupt: 'replace',
+        },
+      ],
+    },
+  })
+  const runtime = new HumanPerformanceRuntime()
+  runtime.frame(
+    [compilePerformanceBehaviorPlan(cue('emphasize'), 0, 'performance')],
+    0,
+  )
+  const live = runtime.frame(
+    [compilePerformanceBehaviorPlan(cue('emphasize'), 0, 'performance')],
+    400,
+  ).behaviors[0]
+  assert.ok(live)
+  const after = runtime.frame(
+    [compilePerformanceBehaviorPlan(cue('delight'), 400, 'performance')],
+    400,
+  ).behaviors
+  const previous = after.find((behavior) => behavior.id === live.id)
+  assert.equal(previous?.phase, 'recovering')
+  assert.ok(after.some((behavior) => behavior.form.id === 'delight'))
 })

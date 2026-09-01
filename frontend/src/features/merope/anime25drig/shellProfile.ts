@@ -165,7 +165,7 @@ function deriveCrownRound(
   return clamp(0.08 + crownCoverage * 0.14, 0, 0.22)
 }
 
-export function deriveAnime25DTorsoShellProfile(
+function deriveAnime25DTorsoShellProfile(
   playback: Readonly<ShellProfileSource>,
 ): Anime25DTorsoShellProfile {
   const faceWidth = Math.max(

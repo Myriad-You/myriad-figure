@@ -54,7 +54,7 @@ test('compiles only transient functions and monotonic time pegs', () => {
     false,
   )
   const times = plan.pegs
-    .filter((peg) => peg.id.startsWith('plan-a:cue-0'))
+    .filter((peg) => peg.id.startsWith('plan-a:cue-emphasize-0'))
     .map((peg) => peg.atMs)
   assert.deepEqual(
     times,
@@ -94,7 +94,7 @@ test('recompiling a realized cue does not shrink it', () => {
   }
   const first = compilePerformanceBehaviorPlan(directive, 0, 'plan-1')
   const holdMs = Math.round(
-    pegAt(first, 'plan-1:cue-0:relax') - pegAt(first, 'plan-1:cue-0:stroke-end'),
+    pegAt(first, 'plan-1:cue-greet-0:relax') - pegAt(first, 'plan-1:cue-greet-0:stroke-end'),
   )
   // Feed the realized hold straight back in: peg spacing must not move.
   const second = compilePerformanceBehaviorPlan(
@@ -103,9 +103,48 @@ test('recompiling a realized cue does not shrink it', () => {
     'plan-2',
   )
   assert.equal(
-    pegAt(second, 'plan-2:cue-0:end'),
-    pegAt(first, 'plan-1:cue-0:end'),
+    pegAt(second, 'plan-2:cue-greet-0:end'),
+    pegAt(first, 'plan-1:cue-greet-0:end'),
   )
+})
+
+test('a repeated beat keeps its identity so a refinement can continue it', () => {
+  const floor = compilePerformanceBehaviorPlan(directive(), 1_000, 'performance')
+  const later = directive()
+  later.plan.cues[0] = { ...later.plan.cues[0]!, atMs: 640, intensity: 1.3 }
+  const refinement = compilePerformanceBehaviorPlan(later, 1_000, 'performance')
+  assert.deepEqual(
+    refinement.behaviors.map((behavior) => behavior.id),
+    floor.behaviors.map((behavior) => behavior.id),
+  )
+  // Same beat, restated: the scheduler must see a retime, not a replacement.
+  assert.notEqual(
+    pegAt(refinement, 'performance:cue-emphasize-0:start'),
+    pegAt(floor, 'performance:cue-emphasize-0:start'),
+  )
+  assert.equal(refinement.behaviors[0]?.intensity, 1.3)
+})
+
+test('a beat the refinement did not choose keeps a distinct identity', () => {
+  const floor = compilePerformanceBehaviorPlan(directive(), 0, 'performance')
+  const other = directive()
+  other.plan.cues[0] = { ...other.plan.cues[0]!, intent: 'delight' }
+  const refinement = compilePerformanceBehaviorPlan(other, 0, 'performance')
+  assert.notDeepEqual(
+    refinement.behaviors.map((behavior) => behavior.id),
+    floor.behaviors.map((behavior) => behavior.id),
+  )
+})
+
+test('the same intent twice in one plan stays two behaviors', () => {
+  const twice = directive()
+  const first = twice.plan.cues[0]!
+  twice.plan.cues = [first, { ...first, atMs: 900 }]
+  const plan = compilePerformanceBehaviorPlan(twice, 0, 'performance')
+  assert.deepEqual(plan.behaviors.map((behavior) => behavior.id), [
+    'performance:cue-emphasize-0',
+    'performance:cue-emphasize-1',
+  ])
 })
 
 function pegAt(plan: ReturnType<typeof compilePerformanceBehaviorPlan>, id: string): number {

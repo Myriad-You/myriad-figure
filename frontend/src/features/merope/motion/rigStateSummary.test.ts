@@ -140,6 +140,7 @@ test('acting names only the cue that is currently playing', () => {
   runtime.performance.handleForTest({
     phase: 'delivery',
     moodRevision: 1,
+    motionStyle: 'even',
     plan: { cues: [cue('think', 0), cue('greet', 2_000)] },
   })
   const started = runtime.frame().performance?.startedAtMs ?? 0
@@ -204,5 +205,55 @@ test('empty capabilities stay empty after capture', () => {
   runtime.setCapabilities([])
   const summary = captureRigStateSummary(runtime)
   assert.deepEqual(summary.capabilities, [])
+  release()
+})
+
+test('a long utterance of accents cannot crowd the director out of the list', () => {
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const release = runtime.retain()
+  const startedAtMs = performance.now() + 100
+  runtime.speech.handleForTest({
+    phase: 'start',
+    messageId: 'message-3',
+    utteranceId: 'stream-3',
+    source: 'reply',
+  })
+  runtime.speech.handleForTest({
+    phase: 'prosody',
+    messageId: 'message-3',
+    utteranceId: 'stream-3',
+    source: 'reply',
+    prosody: {
+      utteranceId: 'stream-3',
+      startedAtMs,
+      durationMs: 6_000,
+      accents: Array.from({ length: 12 }, (_, index) => ({
+        offsetMs: 200 + index * 420,
+        intensity: 0.8,
+      })),
+    },
+  })
+  runtime.performance.handleForTest({
+    phase: 'delivery',
+    moodRevision: 1,
+    motionStyle: 'even',
+    plan: { cues: [cue('greet', 0)] },
+  })
+
+  const summary = captureRigStateSummary(runtime, startedAtMs + 300)
+  const sources = summary.activeBehaviors.map((behavior) => behavior.source)
+  // Twelve prosody accents used to fill the eight slots by start time, so the
+  // director saw seven identical `emphasize` rows and none of its own acting —
+  // while being told not to repeat a function already in flight.
+  assert.ok(
+    sources.includes('performance'),
+    `director acting missing from ${JSON.stringify(summary.activeBehaviors)}`,
+  )
+  const accents = summary.activeBehaviors.filter(
+    (behavior) =>
+      behavior.source === 'coSpeech' && behavior.function === 'emphasize',
+  )
+  assert.equal(accents.length, 1)
+  assert.ok(summary.activeBehaviors.length <= 8)
   release()
 })

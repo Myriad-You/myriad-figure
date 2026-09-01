@@ -11,7 +11,10 @@ import { PerformanceLifecycleController } from '../performanceLifecycle'
 import { MEROPE_SPEECH_EVENT, meropeSpeechEventDetail } from '../speechEvents'
 import { bearingFromDirective } from './bearing'
 import { liveMotionGeneration, newMotionIntentId } from './liveGeneration'
-import { compilePerformanceBehaviorPlan } from './performanceBehaviorPlan'
+import {
+  compilePerformanceBehaviorPlan,
+  PERFORMANCE_BEHAVIOR_PLAN_ID,
+} from './performanceBehaviorPlan'
 import { PerformanceMotionLeases } from './performanceLeases'
 import { HumanReactionPolicy } from './reactionPolicy'
 
@@ -49,6 +52,11 @@ export class PerformanceMotionSource {
 
   currentBearing(): RigBearing | null {
     return this.bearing
+  }
+
+  /** Mood-band standing face takes over; a later round may revise it. */
+  clearBearing(): void {
+    this.bearing = null
   }
 
   start(): void {
@@ -97,10 +105,13 @@ export class PerformanceMotionSource {
       return true
     }
     const motionIntentId = newMotionIntentId()
+    // The intent id identifies this publish for lifecycle and telemetry; the
+    // plan is keyed by the producer so the scheduler can match beats across
+    // publishes.
     const behaviorPlan = compilePerformanceBehaviorPlan(
       selected,
       startedAtMs,
-      motionIntentId,
+      PERFORMANCE_BEHAVIOR_PLAN_ID,
     )
     const windows = this.leases.apply(selected, startedAtMs, behaviorPlan)
     this.intent = {

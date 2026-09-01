@@ -12,6 +12,7 @@ function directive(
   return {
     phase: 'delivery',
     moodRevision: 1,
+    motionStyle: 'even',
     plan: {
       cues: [
         {

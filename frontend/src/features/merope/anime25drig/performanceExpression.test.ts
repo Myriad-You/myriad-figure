@@ -1,8 +1,8 @@
 import type {
   PerformanceCue,
   PerformanceDirective,
-  PerformancePhase,
 } from '../../../services/agent/types'
+import type { Anime25DMotionUnit } from './behaviorMotion'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { compilePerformanceBehaviorPlan } from '../motion/performanceBehaviorPlan'
@@ -11,13 +11,10 @@ import {
   applyPerformanceExpressionOffset,
   baselineExpressionOffset,
   bearingDriverPatch,
-  expressionCueOffset,
+  intentExpressionOffset,
   mixBoundedExpressionChannel,
   mixEyeOpen,
-  performanceCueOrigin,
-  PerformanceDirectiveGate,
   PerformanceExpressionController,
-  performancePhaseRank,
 } from './performanceExpression'
 
 const steadyBaseline = {
@@ -43,23 +40,6 @@ function cue(
   }
 }
 
-function directive(
-  phase: PerformancePhase,
-  moodRevision: number,
-  expression: 'withdrawn' | 'subdued' | 'steady' | 'warm' = 'steady',
-  cues: PerformanceCue[] = [],
-): PerformanceDirective {
-  return {
-    phase,
-    moodRevision,
-    motionStyle: 'even',
-    plan: {
-      baseline: { ...steadyBaseline, expression },
-      cues,
-    },
-  }
-}
-
 // "Conservative" is measured against the ambient random-action band the rig
 // already plays in (brow 0.12-0.36), not against zero: a semantic cue quieter
 // than the character's own idle fidgeting reads as no cue at all.
@@ -72,30 +52,18 @@ test('maps semantic baselines and cues to legible expression offsets', () => {
     ...steadyBaseline,
     expression: 'withdrawn',
   })
-  const delight = expressionCueOffset({
-    ...cue('delight'),
-    intensity: 1.4,
-  })
-  const dizzy = expressionCueOffset({
-    ...cue('dizzy'),
-    intensity: 1.4,
-  })
-  const think = expressionCueOffset({
-    ...cue('think'),
-    intensity: 1.4,
-  })
-  const cry = expressionCueOffset({
-    ...cue('cry'),
-    intensity: 1.2,
-  })
-  const angry = expressionCueOffset(cue('angry'))
-  const speechless = expressionCueOffset(cue('speechless'))
-  const maniac = expressionCueOffset(cue('maniac'))
-  const silly = expressionCueOffset(cue('silly'))
-  const lovestruck = expressionCueOffset(cue('lovestruck'))
+  const delight = intentExpressionOffset('delight', 1.4)
+  const dizzy = intentExpressionOffset('dizzy', 1.4)
+  const think = intentExpressionOffset('think', 1.4)
+  const cry = intentExpressionOffset('cry', 1.2)
+  const angry = intentExpressionOffset('angry', 1)
+  const speechless = intentExpressionOffset('speechless', 1)
+  const maniac = intentExpressionOffset('maniac', 1)
+  const silly = intentExpressionOffset('silly', 1)
+  const lovestruck = intentExpressionOffset('lovestruck', 1)
 
   assert.ok(warm.mouthForm > 0 && warm.mouthForm <= 0.16)
-  assert.ok(withdrawn.eyeOpen < 0 && withdrawn.eyeOpen >= -0.08)
+  assert.ok(withdrawn.eyeOpen <= -0.16 && withdrawn.eyeOpen >= -0.22)
   assert.ok(Math.abs(delight.mouthForm) <= 0.26)
   assert.ok(Math.abs(delight.angleY) > 0.16)
   assert.ok(Math.abs(delight.angleY) <= 0.18)
@@ -146,6 +114,52 @@ test('maps semantic baselines and cues to legible expression offsets', () => {
   ])
 })
 
+test('irritation is the one baseline that opens the eye while the brow drops', () => {
+  const ladder = (['withdrawn', 'subdued', 'steady', 'warm'] as const).map(
+    (expression) => baselineExpressionOffset({ ...steadyBaseline, expression }),
+  )
+  const tense = baselineExpressionOffset({ ...steadyBaseline, expression: 'tense' })
+
+  // The four-rung ladder is one valence axis: nothing on it can lower the brow
+  // without also closing the eye, so low mood with high arousal had nowhere to
+  // land and wore the flat face instead.
+  for (const rung of ladder) {
+    assert.ok(rung.eyeOpen <= 0, 'a ladder rung opened the eye')
+  }
+  assert.ok(tense.eyeOpen > 0)
+  assert.ok(tense.brow < Math.min(...ladder.map((rung) => rung.brow)))
+  assert.ok(tense.brow <= -0.28)
+  assert.ok(tense.browAngSym >= 0.4)
+  assert.ok(tense.mouthForm < 0)
+  assert.ok(tense.irisScale < Math.min(...ladder.map((rung) => rung.irisScale)))
+  // A bearing, not the angry sticker: knitted brow without the vein mark.
+  assert.equal(tense.anger ?? 0, 0)
+})
+
+test('the two low-valence standing faces use distinct sad brow geometry', () => {
+  const withdrawn = baselineExpressionOffset({
+    ...steadyBaseline,
+    expression: 'withdrawn',
+  })
+  const subdued = baselineExpressionOffset({
+    ...steadyBaseline,
+    expression: 'subdued',
+  })
+
+  // Negative symmetric rotation lifts the inner ends of the two brows — the
+  // same readable sad direction as `cry`, without taking over eyes or mouth.
+  assert.ok(withdrawn.browAngSym <= -0.55)
+  assert.ok(subdued.browAngSym <= -0.28)
+  assert.ok(withdrawn.browAngSym < subdued.browAngSym)
+  assert.ok(withdrawn.eyeOpen < subdued.eyeOpen)
+  assert.ok(withdrawn.mouthForm < subdued.mouthForm)
+  assert.ok(withdrawn.irisScale < subdued.irisScale)
+  assert.equal(withdrawn.eyeCry, 0)
+  assert.equal(subdued.eyeCry, 0)
+  assert.equal(withdrawn.anger, 0)
+  assert.equal(subdued.anger, 0)
+})
+
 test('gives every directed pose a legible low-intensity movement floor', () => {
   for (const intent of [
     'greet',
@@ -162,10 +176,7 @@ test('gives every directed pose a legible low-intensity movement floor', () => {
     'silly',
     'lovestruck',
   ] as const) {
-    const offset = expressionCueOffset({
-      ...cue(intent),
-      intensity: 0.55,
-    })
+    const offset = intentExpressionOffset(intent, 0.55)
     const displacement = Math.max(
       Math.abs(offset.angleY),
       Math.abs(offset.angleZ),
@@ -179,7 +190,7 @@ test('gives every directed pose a legible low-intensity movement floor', () => {
   }
 
   for (const intent of ['dizzy', 'cry'] as const) {
-    const offset = expressionCueOffset(cue(intent))
+    const offset = intentExpressionOffset(intent, 1)
     assert.equal(offset.angleY, 0, intent)
     assert.equal(offset.angleZ, 0, intent)
     assert.equal(offset.body, 0, intent)
@@ -199,9 +210,16 @@ test('maps additive bearing offsets onto absolute driver neutrals', () => {
   assert.equal(steady.eyeOpenL, 1)
   assert.equal(steady.eyeOpenR, 1)
   assert.equal(steady.irisScale, 1)
-  assert.equal(withdrawn.eyeOpenL, 0.92)
-  assert.equal(withdrawn.eyeOpenR, 0.92)
-  assert.equal(withdrawn.irisScale, 0.965)
+  assert.equal(withdrawn.eyeOpenL, 0.8)
+  assert.equal(withdrawn.eyeOpenR, 0.8)
+  assert.equal(withdrawn.irisScale, 0.945)
+  const tense = bearingDriverPatch({
+    ...steadyBaseline,
+    expression: 'tense',
+  })
+  assert.ok((tense.brow ?? 0) <= -0.28)
+  assert.ok((tense.browAngSym ?? 0) >= 0.4)
+  assert.ok((tense.eyeOpenL ?? 0) > 1)
   assert.equal(cleared.eyeOpenL, 1)
   assert.equal(cleared.irisScale, 1)
   assert.equal('bust' in steady, false)
@@ -321,54 +339,69 @@ test('soft-limits additive expression near manual channel extremes', () => {
   }
 })
 
-test('eases baseline changes without a first-frame jump or frame allocation', () => {
-  const expression = new PerformanceExpressionController()
-  assert.equal(expression.play(directive('delivery', 1, 'warm'), 0), true)
-  const first = expression.sample(0)
-  assert.deepEqual(
-    { ...first },
-    {
-      brow: 0,
-      browAngSym: 0,
-      eyeOpen: 0,
-      eyeDizzy: 0,
-      eyeSqueeze: 0,
-      eyeCry: 0,
-      eyeX: 0,
-      eyeY: 0,
-      mouthForm: 0,
-      irisScale: 0,
-      angleY: 0,
-      angleZ: 0,
-      body: 0,
-      armY: 0,
-      armPos: 0,
-      bust: 0,
-      anger: 0,
-      speechless: 0,
-      maniac: 0,
-      silly: 0,
-      lovestruck: 0,
-    },
+/** Schedules cues the way the player does: compile, realize, restate. */
+function playUnits(
+  controller: PerformanceExpressionController,
+  cues: PerformanceCue[],
+  atSeconds = 0,
+): readonly Anime25DMotionUnit[] {
+  const originMs = atSeconds * 1_000
+  const plan = compilePerformanceBehaviorPlan(
+    { phase: 'delivery', moodRevision: 1, motionStyle: 'even', plan: { cues } },
+    originMs,
+    'performance',
   )
+  const { units } = realizeAnime25DBehaviorPlan(plan, originMs)
+  controller.playBehaviorUnits(units, atSeconds, originMs)
+  return units
+}
+
+const ZERO_SAMPLE = {
+  brow: 0,
+  browAngSym: 0,
+  eyeOpen: 0,
+  eyeDizzy: 0,
+  eyeSqueeze: 0,
+  eyeCry: 0,
+  eyeX: 0,
+  eyeY: 0,
+  mouthForm: 0,
+  irisScale: 0,
+  angleY: 0,
+  angleZ: 0,
+  body: 0,
+  armY: 0,
+  armPos: 0,
+  bust: 0,
+  anger: 0,
+  speechless: 0,
+  maniac: 0,
+  silly: 0,
+  lovestruck: 0,
+} as const
+
+test('sample reuses one offset object and starts every frame at rest', () => {
+  const expression = new PerformanceExpressionController()
+  const first = expression.sample(0)
+  assert.deepEqual({ ...first }, { ...ZERO_SAMPLE })
   const next = expression.sample(1 / 60)
+  // The bearing is a base pose the player installs; this controller holds no
+  // second copy of it, so with nothing scheduled it stays at zero — and it
+  // must not allocate a new offset per frame.
   assert.equal(first, next)
-  assert.ok(next.mouthForm > 0 && next.mouthForm < 0.12)
+  assert.deepEqual({ ...next }, { ...ZERO_SAMPLE })
 })
 
-test('produces equivalent baseline easing at 30 and 60 FPS', () => {
+test('attention easing is equivalent at 30 and 60 FPS', () => {
   const thirty = new PerformanceExpressionController()
   const sixty = new PerformanceExpressionController()
-  thirty.play(directive('delivery', 1, 'withdrawn'), 0)
-  sixty.play(directive('delivery', 1, 'withdrawn'), 0)
+  thirty.setBearingAttention(1)
+  sixty.setBearingAttention(1)
+  // Prime both clocks: the first sample only establishes `lastTime`.
+  thirty.sample(0)
+  sixty.sample(0)
   for (let frame = 1; frame <= 30; frame += 1) thirty.sample(frame / 30)
   for (let frame = 1; frame <= 60; frame += 1) sixty.sample(frame / 60)
-
-  const atThirty = { ...thirty.sample(1) }
-  const atSixty = { ...sixty.sample(1) }
-  for (const key of Object.keys(atThirty) as Array<keyof typeof atThirty>) {
-    assert.ok(Math.abs(atThirty[key] - atSixty[key]) < 1e-9)
-  }
   assert.ok(
     Math.abs(thirty.getAmbientMotionScale() - sixty.getAmbientMotionScale()) <
       1e-9,
@@ -378,338 +411,134 @@ test('produces equivalent baseline easing at 30 and 60 FPS', () => {
 test('uses attention only to symmetrically restrain ambient wandering', () => {
   const focused = new PerformanceExpressionController()
   const unfocused = new PerformanceExpressionController()
-  focused.play(
-    {
-      ...directive('delivery', 1),
-      plan: {
-        baseline: { ...steadyBaseline, attention: 1 },
-        cues: [],
-      },
-    },
-    0,
-  )
-  unfocused.play(
-    {
-      ...directive('delivery', 1),
-      plan: {
-        baseline: { ...steadyBaseline, attention: 0 },
-        cues: [],
-      },
-    },
-    0,
-  )
+  focused.setBearingAttention(1)
+  unfocused.setBearingAttention(0)
   for (let frame = 1; frame <= 60; frame += 1) {
     focused.sample(frame / 60)
     unfocused.sample(frame / 60)
   }
-
   assert.ok(focused.getAmbientMotionScale() < 0.71)
   assert.equal(unfocused.getAmbientMotionScale(), 1)
 })
 
-test('fades a semantic cue in and out back to its baseline', () => {
+test('fades a semantic behavior in and out back to rest', () => {
   const expression = new PerformanceExpressionController()
-  expression.play(directive('delivery', 1, 'steady', [cue('question')]), 0)
-
+  const [unit] = playUnits(expression, [cue('question')])
+  assert.ok(unit)
   assert.equal(expression.sample(0).brow, 0)
-  assert.ok(expression.sample(0.05).brow > 0)
-  assert.equal(expression.sample(0.2).brow, 0.26)
-  assert.ok(Math.abs(expression.sample(1.03).brow) < 1e-9)
+  const rising = expression.sample(unit.timing.strokePeakMs / 2_000).brow
+  assert.ok(rising > 0)
+  const peak = expression.sample(unit.timing.strokePeakMs / 1_000).brow
+  assert.ok(peak > rising)
+  // The amplitude that matters is legibility against the rig's own idle band
+  // (brow 0.12-0.36), not a decimal in the driver.
+  assert.ok(peak >= 0.12, `${peak} is quieter than an idle fidget`)
+  assert.ok(Math.abs(expression.sample(unit.timing.endMs! / 1_000).brow) < 1e-9)
 })
 
-test('does not replay an expired cue after a long rendering gap', () => {
+test('does not replay a behavior that already ended before this frame', () => {
   const expression = new PerformanceExpressionController()
-  expression.play(directive('delivery', 1, 'steady', [cue('question')]), 10)
-  assert.equal(expression.sample(10).brow, 0)
-  assert.equal(expression.sample(18).brow, 0)
-
-  const restoredPlayer = new PerformanceExpressionController()
-  restoredPlayer.play(
-    directive('delivery', 1, 'steady', [cue('question')]),
-    18,
-    10,
+  const plan = compilePerformanceBehaviorPlan(
+    {
+      phase: 'delivery',
+      moodRevision: 1,
+      motionStyle: 'even',
+      plan: { cues: [cue('question')] },
+    },
+    10_000,
+    'performance',
   )
-  assert.equal(restoredPlayer.sample(18).brow, 0)
+  const { units } = realizeAnime25DBehaviorPlan(plan, 10_000)
+  // A remount hands the body a plan whose behaviors are already finished. The
+  // rig state summary has told the director they are over; replaying them
+  // would contradict what the backend was told.
+  expression.playBehaviorUnits(units, 18, 18_000)
+  assert.equal(expression.sample(18).brow, 0)
+  assert.equal(expression.getScheduledCueCount(), 0)
 })
 
-test('prunes expired expression cues during long-lived proactive playback', () => {
+test('a remount resumes a behavior mid-flight instead of replaying it', () => {
+  const plan = compilePerformanceBehaviorPlan(
+    {
+      phase: 'delivery',
+      moodRevision: 1,
+      motionStyle: 'even',
+      plan: { cues: [cue('question')] },
+    },
+    0,
+    'performance',
+  )
+  const { units } = realizeAnime25DBehaviorPlan(plan, 0)
+  const peakSeconds = units[0]!.timing.strokePeakMs / 1_000
+
+  const fresh = new PerformanceExpressionController()
+  fresh.playBehaviorUnits(units, 0, 0)
+  const atPeak = fresh.sample(peakSeconds).brow
+
+  // The same plan reaching a player whose clock starts at zero 300ms later.
+  const remounted = new PerformanceExpressionController()
+  remounted.playBehaviorUnits(units, 0, 300)
+  assert.ok(
+    Math.abs(remounted.sample(peakSeconds - 0.3).brow - atPeak) < 1e-9,
+    'the plan restarted from the top instead of resuming',
+  )
+})
+
+test('prunes expired cues during long-lived playback', () => {
   const controller = new PerformanceExpressionController()
   for (let index = 0; index < 80; index += 1) {
-    controller.play(
-      directive('proactive', 12, 'steady', [
-        {
-          ...cue('notify'),
-          intensity: 0.8 + index / 1_000,
-        },
-      ]),
-      index * 2,
-    )
+    playUnits(controller, [{ ...cue('notify'), intensity: 0.8 }], index * 2)
     controller.sample(index * 2 + 1.9)
   }
   assert.ok(controller.getScheduledCueCount() <= 1)
 })
 
-test('bounds duplicate history during a long-lived mood revision', () => {
-  const gate = new PerformanceDirectiveGate()
-  const first = directive('proactive', 7, 'steady', [cue('listen')])
-  assert.equal(gate.accept(first), 'supersede')
-  for (let index = 1; index <= 32; index += 1) {
-    assert.equal(
-      gate.accept(
-        directive('proactive', 7, 'steady', [cue('listen', 'replace', index)]),
-      ),
-      'accept',
-    )
-  }
-  assert.equal(gate.accept(first), 'accept')
-  assert.equal(gate.accept(first), 'reject')
-})
-
-test('queues cues after the active envelope instead of stacking them', () => {
+test('replacing a behavior crossfades instead of cutting the active face', () => {
   const expression = new PerformanceExpressionController()
-  expression.play(
-    directive('delivery', 1, 'steady', [
-      cue('question'),
-      cue('notify', 'queue'),
-    ]),
-    0,
-  )
-
-  assert.ok(expression.sample(0.5).angleZ > 0)
-  assert.ok(expression.sample(1.07).angleZ < 0)
+  playUnits(expression, [cue('maniac')])
+  const held = poseMagnitude(expression.sample(0.3))
+  assert.ok(held > 0)
+  playUnits(expression, [cue('greet')], 0.3)
+  // The outgoing sticker must release through its own fade, not vanish on the
+  // first sample after the replacement lands.
+  assert.ok(poseMagnitude(expression.sample(0.31)) > 0)
 })
 
-test('applies if-lower only when its priority exceeds the active cue', () => {
-  const keepsHigher = new PerformanceExpressionController()
-  keepsHigher.play(
-    directive('delivery', 1, 'steady', [
-      cue('delight'),
-      cue('respond', 'if-lower'),
-    ]),
-    0,
-  )
-  assert.ok(keepsHigher.sample(0.2).mouthForm > 0)
-
-  const replacesLower = new PerformanceExpressionController()
-  replacesLower.play(
-    directive('delivery', 1, 'steady', [
-      cue('respond'),
-      cue('notify', 'if-lower'),
-    ]),
-    0,
-  )
-  assert.ok(replacesLower.sample(0.2).angleZ < 0)
-})
-
-test('does not resume an older cue after a replacement finishes', () => {
+test('stopping an active sticker releases it into rest', () => {
   const expression = new PerformanceExpressionController()
-  const longRespond = {
-    ...cue('respond'),
-    tempo: 0.5,
-  }
-  expression.play(
-    directive('delivery', 1, 'steady', [
-      longRespond,
-      cue('notify', 'replace', 200),
-    ]),
-    0,
-  )
-
-  assert.ok(expression.sample(0.4).angleZ < 0)
-  assert.deepEqual(
-    { ...expression.sample(1.5) },
-    {
-      brow: 0,
-      browAngSym: 0,
-      eyeOpen: 0,
-      eyeDizzy: 0,
-      eyeSqueeze: 0,
-      eyeCry: 0,
-      eyeX: 0,
-      eyeY: 0,
-      mouthForm: 0,
-      irisScale: 0,
-      angleY: 0,
-      angleZ: 0,
-      body: 0,
-      armY: 0,
-      armPos: 0,
-      bust: 0,
-      anger: 0,
-      speechless: 0,
-      maniac: 0,
-      silly: 0,
-      lovestruck: 0,
-    },
-  )
+  playUnits(expression, [cue('maniac')])
+  assert.ok(poseMagnitude(expression.sample(0.3)) > 0)
+  expression.stopBehaviors(0.3)
+  assert.equal(poseMagnitude(expression.sample(2)), 0)
 })
 
-test('cancels pending lower-phase cues when the same turn advances', () => {
+test('stop releases every scheduled behavior and restores ambient motion', () => {
   const expression = new PerformanceExpressionController()
-  expression.play(
-    directive('reaction', 2, 'steady', [cue('question', 'replace', 900)]),
-    0,
-  )
-  expression.play(directive('delivery', 2, 'warm'), 0.2)
-
-  assert.equal(expression.sample(1).angleZ, 0)
-  assert.ok(expression.sample(1).mouthForm > 0)
+  expression.setBearingAttention(1)
+  playUnits(expression, [cue('greet')])
+  assert.ok(poseMagnitude(expression.sample(0.3)) > 0)
+  expression.stop(0.3)
+  for (let frame = 1; frame <= 120; frame += 1) expression.sample(0.3 + frame / 60)
+  assert.equal(poseMagnitude(expression.sample(3)), 0)
+  assert.ok(expression.getAmbientMotionScale() > 0.99)
 })
 
-test('rejects stale phases and duplicate plans but accepts independent proactive plans', () => {
+test('face and body of one behavior peak in the same envelope window', () => {
   const expression = new PerformanceExpressionController()
-  const reaction = directive('reaction', 4, 'steady', [cue('listen')])
-  const delivery = directive('delivery', 4, 'warm', [cue('respond')])
-  assert.equal(expression.play(reaction, 0), true)
-  assert.equal(expression.play(delivery, 0.1), true)
-  assert.equal(expression.play(directive('reaction', 4, 'subdued'), 0.2), false)
-  assert.equal(expression.play(directive('delivery', 4, 'warm'), 0.3), true)
-  assert.equal(expression.play(directive('proactive', 4, 'warm'), 0.4), true)
-  assert.equal(expression.play(delivery, 0.5), false)
-  assert.equal(expression.play(directive('outcome', 3), 0.6), false)
-  assert.equal(performancePhaseRank('proactive'), null)
-  assert.equal(performancePhaseRank('mood'), null)
+  const [unit] = playUnits(expression, [cue('greet')])
+  assert.ok(unit)
+  const peak = expression.sample(unit.timing.strokePeakMs / 1_000)
+  assert.ok(Math.abs(peak.brow) > 0)
+  assert.ok(Math.abs(peak.angleY) > 0 || Math.abs(peak.body) > 0)
 })
 
-test('replacing a cue crossfades instead of cutting the active face', () => {
+test('replacing a behavior releases face and body together', () => {
   const expression = new PerformanceExpressionController()
-  expression.play(
-    directive('delivery', 1, 'steady', [
-      cue('maniac'),
-      cue('silly', 'replace', 200),
-    ]),
-    0,
-  )
-  const duringHold = expression.sample(0.19)
-  assert.ok((duringHold.maniac ?? 0) > 0.9)
-  assert.equal(duringHold.silly ?? 0, 0)
-  const crossing = expression.sample(0.35)
-  assert.ok((crossing.maniac ?? 0) > 0.3)
-  assert.ok((crossing.silly ?? 0) > 0)
-  const afterRelease = expression.sample(0.7)
-  assert.ok((afterRelease.maniac ?? 0) < 0.05)
-  assert.ok((afterRelease.silly ?? 0) > 0.9)
-})
-
-test('stopping an active sticker releases it into the resting baseline', () => {
-  const expression = new PerformanceExpressionController()
-  expression.play(directive('delivery', 1, 'warm', [cue('maniac')]), 0)
-  for (let frame = 1; frame <= 12; frame += 1) {
-    expression.sample(frame / 60)
-  }
-  const beforeStop = expression.sample(0.2)
-  const beforeManiac = beforeStop.maniac ?? 0
-  const beforeMouth = beforeStop.mouthForm
-  assert.ok(beforeManiac > 0.9)
-  expression.stop(0.2)
-  const atStop = expression.sample(0.2)
-  assert.equal(atStop.maniac ?? 0, beforeManiac)
-  assert.ok(atStop.mouthForm > 0)
-  assert.equal(atStop.mouthForm, beforeMouth)
-  const midManiac = expression.sample(0.28).maniac ?? 0
-  assert.ok(midManiac > 0)
-  assert.ok(midManiac < beforeManiac)
-  for (let frame = 1; frame <= 60; frame += 1) {
-    expression.sample(0.2 + frame / 60)
-  }
-  const settled = expression.sample(1.2)
-  assert.ok((settled.maniac ?? 0) < 0.001)
-  assert.ok(settled.mouthForm < 0.001)
-})
-
-test('a later phase of the same turn releases the live face instead of dropping it', () => {
-  const expression = new PerformanceExpressionController()
-  expression.play(directive('reaction', 2, 'steady', [cue('maniac')]), 0)
-  const live = expression.sample(0.15)
-  assert.ok((live.maniac ?? 0) > 0.9)
-  expression.play(directive('delivery', 2, 'warm'), 0.15)
-  const handingOff = expression.sample(0.16)
-  assert.ok((handingOff.maniac ?? 0) > 0.5)
-  for (let frame = 1; frame <= 60; frame += 1) {
-    expression.sample(0.15 + frame / 60)
-  }
-  const landed = expression.sample(1.15)
-  assert.ok((landed.maniac ?? 0) < 0.001)
-  assert.ok(landed.mouthForm > 0)
-})
-
-test('releases the semantic baseline smoothly when stopped', () => {
-  const expression = new PerformanceExpressionController()
-  expression.play(directive('delivery', 1, 'warm'), 0)
-  for (let frame = 1; frame <= 60; frame += 1) {
-    expression.sample(frame / 60)
-  }
-  const beforeStop = expression.sample(1).mouthForm
-  expression.stop(1)
-  const atStop = expression.sample(1).mouthForm
-  for (let frame = 1; frame <= 60; frame += 1) {
-    expression.sample(1 + frame / 60)
-  }
-  const released = expression.sample(2).mouthForm
-
-  assert.equal(atStop, beforeStop)
-  assert.ok(released > 0)
-  assert.ok(released < 0.001)
-})
-
-test('face and body of one cue peak in the same envelope window', () => {
-  const expression = new PerformanceExpressionController()
-  expression.play(directive('delivery', 1, 'steady', [cue('greet')]), 0)
-  const fadeIn = 0.1
-  const holdMid = fadeIn + 0.36
-  const peak = expression.sample(holdMid)
-  assert.ok(peak.brow > 0.01)
-  assert.ok(peak.body > 0.04)
-  assert.ok(peak.armY > 0.05)
-  const after = expression.sample(2.5)
-  assert.ok(Math.abs(after.body) < 0.001)
-  assert.ok(Math.abs(after.armY) < 0.001)
-})
-
-test('replacing a cue releases face and body together', () => {
-  const expression = new PerformanceExpressionController()
-  expression.play(directive('delivery', 1, 'steady', [cue('greet')]), 0)
-  const greetPeak = expression.sample(0.4)
-  assert.ok(greetPeak.body > 0.04)
-  expression.play(
-    directive('delivery', 1, 'steady', [cue('emphasize', 'replace', 0)]),
-    0.4,
-  )
-  const handingOff = expression.sample(0.41)
-  assert.ok(handingOff.body > 0)
-  for (let frame = 1; frame <= 48; frame += 1) {
-    expression.sample(0.4 + frame / 60)
-  }
-  const landed = expression.sample(1.2)
-  assert.ok(landed.body > 0.1)
-  assert.ok(Math.abs(landed.armY) < 0.02)
-})
-
-test('restates a plan origin as an age on the player clock', () => {
-  // The plan started 0.4s ago on the wall clock; the player is at t=12.
-  assert.ok(Math.abs(performanceCueOrigin(12, 100.6, 101) - 11.6) < 1e-9)
-  // No origin, a future origin, or a broken clock all mean "start now".
-  assert.equal(performanceCueOrigin(12, undefined, 101), 12)
-  assert.equal(performanceCueOrigin(12, 101.5, 101), 12)
-  assert.equal(performanceCueOrigin(12, Number.NaN, 101), 12)
-  assert.equal(performanceCueOrigin(12, Number.POSITIVE_INFINITY, 101), 12)
-})
-
-test('a remount resumes a plan instead of replaying it from the top', () => {
-  const fresh = new PerformanceExpressionController()
-  fresh.play(directive('delivery', 1, 'steady', [cue('question')]), 0)
-  assert.ok(fresh.sample(0.3).brow > 0)
-
-  // The same plan handed to a fresh player three seconds later. Its beat is
-  // long over, and the rig state summary already reports it as finished, so
-  // replaying it from the top would contradict what the backend was told.
-  const remounted = new PerformanceExpressionController()
-  remounted.play(
-    directive('delivery', 1, 'steady', [cue('question')]),
-    0,
-    performanceCueOrigin(0, 98, 101),
-  )
-  assert.equal(remounted.sample(0.3).brow, 0)
+  playUnits(expression, [cue('greet')])
+  expression.sample(0.2)
+  playUnits(expression, [], 0.2)
+  const settled = expression.sample(3)
+  assert.equal(Math.abs(settled.brow) + Math.abs(settled.angleY) + Math.abs(settled.body), 0)
 })
 
 function poseMagnitude(
@@ -793,4 +622,63 @@ test('a behavior dropped from the plan releases instead of playing on', () => {
   controller.playBehaviorUnits([], peakSeconds, peakSeconds * 1_000)
   const released = unit.timing.endMs! / 1_000
   assert.equal(poseMagnitude(controller.sample(released)), 0)
+})
+
+test('a beat restated with more force reaches the face, not only the body', () => {
+  const stronger: PerformanceDirective = {
+    ...heldDirective,
+    plan: {
+      cues: [{ ...heldDirective.plan.cues[0]!, intensity: 1.4 }],
+    },
+  }
+  const floor = realizeAnime25DBehaviorPlan(
+    compilePerformanceBehaviorPlan(heldDirective, 0, 'performance'),
+    0,
+  )
+  const refined = realizeAnime25DBehaviorPlan(
+    compilePerformanceBehaviorPlan(stronger, 0, 'performance'),
+    0,
+  )
+  // Stable ids are what let the scheduler carry a beat across a refinement.
+  // The expression controller keys on the same id, so it has to notice that
+  // the beat behind that id changed — otherwise the body follows Lite while
+  // the face keeps playing the deterministic floor.
+  assert.equal(refined.units[0]?.behaviorId, floor.units[0]?.behaviorId)
+  assert.ok(refined.units[0]!.intensity > floor.units[0]!.intensity)
+
+  const peakSeconds = floor.units[0]!.timing.strokePeakMs / 1_000
+  const controller = new PerformanceExpressionController()
+  controller.playBehaviorUnits(floor.units, 0, 0)
+  controller.sample(peakSeconds / 2)
+  const weak = poseMagnitude(controller.sample(peakSeconds))
+
+  const refinedController = new PerformanceExpressionController()
+  refinedController.playBehaviorUnits(floor.units, 0, 0)
+  refinedController.sample(peakSeconds / 2)
+  // The wall clock and the player clock must agree, the way the player passes
+  // them: `nowMs` is the same instant as `peakSeconds / 2`.
+  refinedController.playBehaviorUnits(
+    refined.units,
+    peakSeconds / 2,
+    peakSeconds * 500,
+  )
+  assert.ok(
+    poseMagnitude(refinedController.sample(peakSeconds)) > weak,
+    'the refinement never reached the pose',
+  )
+})
+
+test('a beat that leaves the plan and returns is scheduled again', () => {
+  const realized = realizeAnime25DBehaviorPlan(
+    compilePerformanceBehaviorPlan(heldDirective, 0, 'performance'),
+    0,
+  )
+  const unit = realized.units[0]!
+  const controller = new PerformanceExpressionController()
+  controller.playBehaviorUnits(realized.units, 0, 0)
+  // Release clears the signature, so an identical restatement is not mistaken
+  // for the cue that is already fading out.
+  controller.playBehaviorUnits([], 0.05, 50)
+  controller.playBehaviorUnits(realized.units, 0.05, 50)
+  assert.ok(poseMagnitude(controller.sample(unit.timing.strokePeakMs / 1_000)) > 0)
 })

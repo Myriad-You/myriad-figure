@@ -131,6 +131,7 @@ test('realizer feedback reaches the behavior lifecycle', () => {
   runtime.performance.handleForTest({
     phase: 'delivery',
     moodRevision: 1,
+    motionStyle: 'even',
     plan: {
       cues: [
         {
@@ -170,6 +171,7 @@ test('a same-strength refinement updates bearing without replaying the reaction'
   const first = {
     phase: 'delivery' as const,
     moodRevision: 3,
+    motionStyle: 'even' as const,
     plan: {
       baseline: {
         expression: 'steady' as const,
@@ -203,5 +205,77 @@ test('a same-strength refinement updates bearing without replaying the reaction'
   assert.equal(refined.performance?.behaviorPlan?.id, planId)
   assert.equal(refined.performance?.directive?.plan.cues.length, 0)
   assert.equal(refined.bearing?.expression, 'warm')
+  release()
+})
+
+test('each round motion style reaches the shared behavior quality layer', () => {
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const release = runtime.retain()
+  const directive = {
+    phase: 'delivery' as const,
+    moodRevision: 1,
+    motionStyle: 'open' as const,
+    plan: {
+      cues: [
+        {
+          intent: 'respond' as const,
+          atMs: 0,
+          intensity: 1,
+          tempo: 1,
+          fadeInMs: 80,
+          fadeOutMs: 120,
+          interrupt: 'replace' as const,
+        },
+      ],
+    },
+  }
+  runtime.performance.handleForTest(directive)
+  const openExtent = runtime.frame().behaviorPlan?.behaviors[0]?.quality?.extent
+  assert.equal(runtime.summaryFacts().motionStyle, 'open')
+
+  runtime.performance.handleForTest({
+    ...directive,
+    moodRevision: 2,
+    motionStyle: 'restrained',
+  })
+  const restrainedExtent =
+    runtime.frame().behaviorPlan?.behaviors[0]?.quality?.extent
+  assert.equal(runtime.summaryFacts().motionStyle, 'restrained')
+  assert.ok(openExtent != null && restrainedExtent != null)
+  assert.ok(openExtent > restrainedExtent)
+  release()
+})
+
+test('irritation wears the tense standing face before any performance round', () => {
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const release = runtime.retain()
+  runtime.mood.set(30, 'idle', 70)
+  assert.equal(runtime.frame().bearing?.expression, 'tense')
+  runtime.mood.set(30, 'idle', 40)
+  assert.equal(runtime.frame().bearing?.expression, 'subdued')
+  release()
+})
+
+test('a mood-band change drops a stale performance bearing', () => {
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const release = runtime.retain()
+  runtime.mood.set(70, 'idle', 48)
+  runtime.performance.handleForTest({
+    phase: 'mood',
+    moodRevision: 1,
+    motionStyle: 'even',
+    plan: {
+      baseline: {
+        expression: 'warm',
+        posture: 'open',
+        motionEnergy: 1,
+        attention: 0.5,
+      },
+      cues: [],
+    },
+  })
+  assert.equal(runtime.frame().bearing?.expression, 'warm')
+  runtime.mood.set(30, 'idle', 70)
+  assert.equal(runtime.frame().bearing?.expression, 'tense')
   release()
 })
