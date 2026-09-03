@@ -7,6 +7,7 @@ import { PoseResponseController } from '../anime25drig/poseResponse'
 import { MUSIC_QUALITY } from '../motion/musicReaction'
 import { musicSignalAt } from './musicSignal.test-support'
 import {
+  MAX_PHASE_CATCHUP,
   MIN_SINGING_NOD_INTERVAL_SECONDS,
   SingingGrooveController,
   singingNodBeatStride,
@@ -254,4 +255,85 @@ test('a participation change still arrives, it only stops stepping', () => {
   const listening = run(1, MUSIC_QUALITY.listen, 'listen')
   const singing = run(30, MUSIC_QUALITY.sing, 'sing')
   assert.notDeepEqual(singing, listening)
+})
+
+test('losing the lock is not losing the music', () => {
+  // Measured over 46 excerpts of a real library: the tempo estimate is a
+  // median over eight onset gaps, and on music with dense low-band onsets a
+  // quarter of them crossed the confidence threshold 20-40 times a minute.
+  // Each crossing handed the body the generic fallback and took it back — a
+  // different sway speed entirely, up to 1.98x, twice a second.
+  const BPM = 150
+  const lockedPeriod = (60 * 8) / BPM // swayBeats is 8 above 118bpm
+  const fallbackPeriod = 1 / 0.18
+
+  // A solid lock, then confidence that never reaches the threshold again but
+  // never reaches zero either: the estimate is uncertain, the music is not gone.
+  const uncertain = (time: number) =>
+    musicSignalAt(time, {
+      bpm: BPM,
+      confidence: time < 10 ? 0.6 : 0.2 + 0.05 * Math.sin(time * Math.PI * 2),
+    })
+
+  const samples = play({ duration: 50, signal: uncertain }).filter(
+    (sample) => sample.t > 20,
+  )
+  const crossings: number[] = []
+  for (let i = 1; i < samples.length; i += 1) {
+    if (samples[i - 1]!.raw.angleZ <= 0 && samples[i]!.raw.angleZ > 0) {
+      crossings.push(samples[i]!.t)
+    }
+  }
+  assert.ok(crossings.length > 2, 'no roll oscillation to measure')
+  const period = (crossings.at(-1)! - crossings[0]!) / (crossings.length - 1)
+
+  assert.ok(
+    Math.abs(period - lockedPeriod) < Math.abs(period - fallbackPeriod),
+    `roll period ${period}s sits nearer the fallback ${fallbackPeriod}s than the tempo ${lockedPeriod}s it had agreed on`,
+  )
+})
+
+test('catching the beat is a transition, not a jump', () => {
+  // `phase` is the one driver the whole body reads: torso, head, arms and the
+  // gaze arc are all sines of it, so a correction applied to it moves every
+  // limb at once. Adding the beat error straight in bounded nothing — measured
+  // across 46 excerpts of a real library and discarding the first eight
+  // seconds of each, a tenth of all frames still had the sway running 46% off
+  // its own speed, and the worst track reached 105%.
+  const BPM = 150
+  const controller = new SingingGrooveController()
+  controller.setTrack('catch-up')
+
+  // Free-run first so the body is a long way from the beat, then hand it a
+  // confident tempo: the largest correction the lock ever asks for.
+  let previousPhase: number | null = null
+  let worst = 0
+  for (let frame = 0; frame <= 30 * 60; frame += 1) {
+    const time = frame / 60
+    controller.sample(
+      time,
+      true,
+      musicSignalAt(time, { bpm: BPM, confidence: time < 12 ? 0 : 0.9 }),
+      MUSIC_QUALITY.listen,
+      'listen',
+    )
+    const internals = controller as unknown as {
+      phase: number
+      frequency: number
+    }
+    if (previousPhase !== null && internals.frequency > 1e-6) {
+      let advance = internals.phase - previousPhase
+      if (advance < -0.5) advance += 1
+      if (advance > 0.5) advance -= 1
+      const speed = advance * 60
+      const off = Math.abs(speed - internals.frequency) / internals.frequency
+      if (time > 1 && off > worst) worst = off
+    }
+    previousPhase = internals.phase
+  }
+
+  assert.ok(
+    worst <= MAX_PHASE_CATCHUP + 0.02,
+    `the beat dragged the sway ${(worst * 100).toFixed(0)}% off its own speed`,
+  )
 })

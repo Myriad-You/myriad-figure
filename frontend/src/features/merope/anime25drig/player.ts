@@ -168,6 +168,16 @@ import {
 } from './torsoDeformation'
 import { compileProgram, createAtlasTexture, loadImage } from './webglRuntime'
 
+/**
+ * How fast the pointer gains and gives up the head.
+ *
+ * Asymmetric on purpose, and in the same direction as every other handoff in
+ * this rig: the character should look over promptly, and should not drop your
+ * gaze the instant the cursor clips the edge of its bounding box.
+ */
+const POINTER_ATTACK_RATE = 16
+const POINTER_RELEASE_RATE = 5.5
+
 interface SecondaryMotionPose {
   angleX: number
   angleY: number
@@ -356,6 +366,8 @@ export class Anime25DPlayer {
   private collarClip: CollarClipMesh | null = null
   private jawEmphasis = 0
   private readonly mouse = { x: 0, y: 0, inside: false }
+  /** How much of the head the pointer currently owns, 0-1. */
+  private pointerAuthority = 0
   private policy: MotionChannelPolicy = { ...IDLE_MOTION_POLICY }
   private disposed = false
 
@@ -530,9 +542,13 @@ export class Anime25DPlayer {
   }
 
   setMouse(x: number, y: number, inside: boolean): void {
+    this.mouse.inside = inside
+    // A pointer that has left has no position. Keeping the last one lets the
+    // head ease away from where the cursor actually was; taking the zero the
+    // leave handler sends would make the release a move to centre instead.
+    if (!inside) return
     this.mouse.x = x
     this.mouse.y = y
-    this.mouse.inside = inside
   }
 
   setMotionPolicy(policy: MotionChannelPolicy): void {
@@ -771,11 +787,22 @@ export class Anime25DPlayer {
       this.target.mouse && allowsPointerGaze(this.policy.gaze)
         ? this.mouse
         : { x: 0, y: 0, inside: false }
+    // Look over promptly, let go unhurriedly — the same asymmetry the pose
+    // gate and occupancy already use when a source gains or loses a channel.
+    const pointerWanted = pointer.inside ? 1 : 0
+    this.pointerAuthority +=
+      (pointerWanted - this.pointerAuthority) *
+      (1 -
+        Math.exp(
+          -(pointerWanted > this.pointerAuthority
+            ? POINTER_ATTACK_RATE
+            : POINTER_RELEASE_RATE) * dt,
+        ))
     const tgt = prepareAnime25DWorkingTarget(
       this.workingTarget,
       this.target,
       pointer,
-      t,
+      this.pointerAuthority,
     )
     // Known cues and prosody are sampled slightly ahead to compensate the
     // display plus driver response. Observed input and physics remain at `t`.
@@ -841,6 +868,11 @@ export class Anime25DPlayer {
       behaviorMotion.musicQuality,
       behaviorMotion.musicMode,
     )
+    // How much of the mouth is not currently carrying a voice. A sticker face
+    // only takes the mouth once the character has stopped talking; a cue
+    // landing mid-delivery would otherwise freeze the lip sync.
+    this.sillyMouthShare +=
+      ((vocalizing ? 0 : 1) - this.sillyMouthShare) * (1 - Math.exp(-7 * dt))
     const sticker = Math.max(
       stylizedTargets.anger,
       stylizedTargets.speechless,
@@ -901,7 +933,7 @@ export class Anime25DPlayer {
       tgt,
       semanticExpression,
       stylized,
-      vocalizing,
+      this.sillyMouthShare,
       gate.performance.expression,
       gate.stylized.expression,
     )
@@ -915,10 +947,6 @@ export class Anime25DPlayer {
       gatedSpeechExpression,
     )
     applyAnime25DSpeechExtras(tgt, speech, gatedSpeechExpression)
-    // The omega mouth only takes over once the character has stopped talking;
-    // a cue landing mid-delivery would otherwise freeze the lip sync.
-    this.sillyMouthShare +=
-      ((vocalizing ? 0 : 1) - this.sillyMouthShare) * (1 - Math.exp(-7 * dt))
     applyAnime25DSillyMouthOwnership(
       tgt,
       smoothAnime25DUnit(stylizedTargets.silly) * this.sillyMouthShare,

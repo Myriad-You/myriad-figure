@@ -58,6 +58,33 @@ const MANNER_KEYS = Object.keys(MANNER_REST) as (keyof typeof MANNER_REST)[]
 const MODE_RATE = 7
 
 /**
+ * Confidence at which the tempo estimate may set the sway speed.
+ *
+ * The estimate is a median over the last eight onset gaps, and on music with
+ * dense low-band onsets it churns: measured across 46 excerpts of a real
+ * library, this threshold was crossed 20-40 times a minute on a quarter of
+ * them. Losing the lock is not the same as losing the music, so the speed we
+ * last agreed on is kept rather than handed back to the generic fallback and
+ * taken again — the swing was up to 1.98x, twice a second.
+ */
+const LOCK_CONFIDENCE = 0.45
+
+/**
+ * How far the beat may drag the sway off its own speed while catching up.
+ *
+ * `phase` is the one driver the whole body reads — torso, head, arms and the
+ * gaze arc are all sines of it — so a correction applied to it moves every
+ * limb at once. Adding the error straight in bounded nothing: measured across
+ * 46 excerpts of a real library, the phase velocity swung between 0.18 and
+ * 0.51 cycles per second against a nominal 0.21, so the body sped up and slowed
+ * down by two to three times while nothing about the music had changed.
+ *
+ * Catching up is a transition, not a jump. The body may run this much faster
+ * or slower than its own tempo to get back on the beat, and no more.
+ */
+export const MAX_PHASE_CATCHUP = 0.35
+
+/**
  * Multilevel entrainment: slow weight transfer, softer head following, optional
  * committed accents and persistent motifs. No pose springs here: the player's
  * one C2 response carries actual position/velocity/acceleration across sources.
@@ -91,6 +118,8 @@ export class SingingGrooveController {
   private seed = 0x5E71C3
   private trackId: string | null = null
   private armMotion = false
+  /** Sway rate of the last agreed tempo, kept while evidence is still present. */
+  private lockedFrequency = 0
   /**
    * The manner fields the pose reads on every frame.
    *
@@ -144,7 +173,7 @@ export class SingingGrooveController {
     const freshness = 1 - smooth((age - 0.15) / 0.3)
     const evidence = signal?.beatFrame
     const confidence = enabled ? (evidence?.confidence ?? 0) * freshness : 0
-    const locked = confidence >= 0.45 && (evidence?.bpm ?? 0) > 0
+    const locked = confidence >= LOCK_CONFIDENCE && (evidence?.bpm ?? 0) > 0
     const bpm = locked ? evidence!.bpm : 0
     const mediaTime = signal
       ? signal.sampleTimeSeconds + Math.min(age, 0.15)
@@ -199,14 +228,19 @@ export class SingingGrooveController {
     // permits a stable phase preference instead of snapping on each onset.
     if (bpm > 118) this.swayBeats = 8
     else if (bpm > 0 && bpm < 106) this.swayBeats = 4
-    const targetFrequency = locked
-      ? bpm / (60 * this.swayBeats)
+    if (locked) this.lockedFrequency = bpm / (60 * this.swayBeats)
+    // Evidence gone, not merely uncertain: release the tempo and free-run.
+    else if (confidence <= 0) this.lockedFrequency = 0
+    const targetFrequency = this.lockedFrequency
+      ? this.lockedFrequency
       : 0.18 * clamp((quality?.tempo ?? 0.82) / 0.82, 0.7, 1.25)
     this.frequency = approach(this.frequency, targetFrequency, dt, 2)
     this.phase += dt * this.frequency * (active ? 1 : this.amplitude)
     if (locked && active) {
       const error = wrap(beatPosition / this.swayBeats + 0.12 - this.phase)
-      this.phase += error * (1 - Math.exp(-dt * 0.75 * confidence))
+      const pull = error * (1 - Math.exp(-dt * 0.75 * confidence))
+      const limit = this.frequency * dt * MAX_PHASE_CATCHUP
+      this.phase += clamp(pull, -limit, limit)
     }
     this.phase %= 1
 
