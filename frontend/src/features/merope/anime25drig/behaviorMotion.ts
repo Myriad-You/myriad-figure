@@ -1,5 +1,10 @@
 import type { BehaviorKind, BehaviorQuality } from '../motion/behavior'
 import type { MusicMode } from '../singing/musicSignal'
+import {
+  MAX_RECOVERY_MS,
+  MIN_RECOVERY_MS,
+  NOMINAL_RECOVERY_MS,
+} from '../motion/behaviorScheduler'
 import { isMusicMode } from '../singing/musicSignal'
 
 export interface Anime25DMotionUnit {
@@ -40,6 +45,13 @@ interface MutableBehaviorMotionSample {
   musicMode: MusicMode
 }
 
+interface UnitRelease {
+  /** Envelope level the unit was last drawn at. */
+  from: number
+  startedAt: number
+  duration: number
+}
+
 interface LocalMotionUnit extends Omit<Anime25DMotionUnit, 'timing'> {
   timing: {
     start: number
@@ -50,6 +62,10 @@ interface LocalMotionUnit extends Omit<Anime25DMotionUnit, 'timing'> {
     relax: number | null
     end: number | null
   }
+  /** Last sampled envelope, so a retreat can start from what was drawn. */
+  envelope: number
+  /** Set once the unit leaves the plan; a second restatement never restarts it. */
+  release: UnitRelease | null
 }
 
 const DEFAULT_QUALITY: BehaviorQuality = {
@@ -72,6 +88,14 @@ const DEFAULT_QUALITY: BehaviorQuality = {
  */
 export class Anime25DBehaviorMotionController {
   private units: LocalMotionUnit[] = []
+  /**
+   * The player writes on its own clock and reads one `predictedControlTime`
+   * ahead of it. A retreat that starts on the write clock is therefore already
+   * a whole lead into itself on its first frame — 42% of a short one — which
+   * is a snap toward rest, not a retreat. The drawn value belongs to the read
+   * clock, so the retreat away from it starts there too.
+   */
+  private lastSampledAt = Number.NaN
   private readonly output: MutableBehaviorMotionSample = {
     coSpeech: 0,
     coSpeechPower: 0,
@@ -89,7 +113,7 @@ export class Anime25DBehaviorMotionController {
   ): void {
     const localOrigin = finite(playerTimeSeconds)
     const wallNow = finite(nowMs)
-    this.units = units
+    const next: LocalMotionUnit[] = units
       .filter((unit) => unit.family === 'co-speech' || unit.family === 'music')
       .map((unit) => ({
         ...unit,
@@ -112,15 +136,49 @@ export class Anime25DBehaviorMotionController {
               ? null
               : localTime(unit.timing.endMs, wallNow, localOrigin),
         },
+        envelope: 0,
+        release: null,
       }))
+    const restated = new Set(next.map((unit) => unit.behaviorId))
+    for (const unit of this.units) {
+      if (restated.has(unit.behaviorId)) continue
+      if (unit.release) {
+        // Already retreating. Restating the plan is one release, not
+        // permission to start the retreat over from the top.
+        next.push(unit)
+      } else if (unit.envelope > 0) {
+        next.push(releasingUnit(unit, this.releaseOrigin(localOrigin)))
+      }
+    }
+    this.units = next
   }
 
-  clear(): void {
-    this.units = []
+  /**
+   * Retires every live unit through the same retreat a plan revision uses.
+   *
+   * This is the stop command, not teardown: the expression controller it is
+   * called beside releases its cues rather than erasing them, and a body whose
+   * head snapped straight while its face eased out was the visible half of
+   * that disagreement.
+   */
+  clear(playerTimeSeconds: number): void {
+    const now = finite(playerTimeSeconds)
+    const releasing: LocalMotionUnit[] = []
+    for (const unit of this.units) {
+      const origin = this.releaseOrigin(now)
+      if (unit.release) releasing.push(unit)
+      else if (unit.envelope > 0) releasing.push(releasingUnit(unit, origin))
+    }
+    this.units = releasing
+  }
+
+  private releaseOrigin(fallback: number): number {
+    return Number.isFinite(this.lastSampledAt) ? this.lastSampledAt : fallback
   }
 
   sample(timeSeconds: number): Readonly<Anime25DBehaviorMotionSample> {
     const now = finite(timeSeconds)
+    this.lastSampledAt = now
     this.output.coSpeech = 0
     this.output.coSpeechPower = 0
     this.output.music = 0
@@ -130,10 +188,27 @@ export class Anime25DBehaviorMotionController {
     copyQuality(this.output.musicQuality, DEFAULT_QUALITY)
     let write = 0
     for (const unit of this.units) {
-      if (unit.timing.end !== null && now >= unit.timing.end) continue
+      if (unit.release) {
+        if (now >= unit.release.startedAt + unit.release.duration) {
+          unit.envelope = 0
+          continue
+        }
+      } else if (unit.timing.end !== null && now >= unit.timing.end) {
+        unit.envelope = 0
+        continue
+      }
       this.units[write] = unit
       write += 1
-      const envelope = unitEnvelope(unit.timing, now, unit.quality)
+      const envelope = unit.release
+        ? unit.release.from *
+          (1 -
+            smoothProgress(
+              unit.release.startedAt,
+              unit.release.startedAt + unit.release.duration,
+              now,
+            ))
+        : unitEnvelope(unit.timing, now, unit.quality)
+      unit.envelope = envelope
       if (envelope <= 0) continue
       const density = scaleAroundDefault(unit.quality.density, 0.8, 0.18)
       const extent =
@@ -174,6 +249,36 @@ export function completeBehaviorQuality(
     rebound: clamp(finiteOr(quality?.rebound, 0.35), 0, 1.4),
     asymmetry: clamp(finiteOr(quality?.asymmetry, 0.2), 0, 1.4),
     density: clamp(finiteOr(quality?.density, 0.8), 0.2, 1.5),
+  }
+}
+
+/**
+ * A unit that left the plan retreats from the level it was last drawn at.
+ *
+ * Without this the extent stepped straight to zero on the frame the plan
+ * changed — the body dropped a half-finished gesture while the face, which
+ * has always released its cues from their current value, eased out of the
+ * same beat. The retreat is shaped like the scheduler's own: further out and
+ * slower delivery take longer to put away, inside the same bounds.
+ */
+function releasingUnit(
+  unit: LocalMotionUnit,
+  startedAt: number,
+): LocalMotionUnit {
+  const level = clamp(unit.envelope, 0, 1)
+  const tempo = clamp(unit.quality.tempo, 0.45, 1.7)
+  const durationMs = clamp(
+    (NOMINAL_RECOVERY_MS *
+      (0.45 + 0.55 * level) *
+      clamp(unit.quality.extent, 0.2, 1.6)) /
+      tempo,
+    MIN_RECOVERY_MS,
+    MAX_RECOVERY_MS,
+  )
+  return {
+    ...unit,
+    envelope: level,
+    release: { from: level, startedAt, duration: durationMs / 1_000 },
   }
 }
 

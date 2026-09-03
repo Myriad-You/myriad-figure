@@ -112,7 +112,7 @@ import {
   deriveAnime25DMotionEnvelopeProfile,
   projectAnime25DMotionEnvelope,
 } from './motionEnvelope'
-import { predictedControlTime } from './motionPrediction'
+import { monotonicControlTime } from './motionPrediction'
 import {
   deformAnime25DFaceJawPoint,
   deformAnime25DMouthPoint,
@@ -143,8 +143,14 @@ import {
 } from './poseArbitration'
 import { zeroOccupancyOffset } from './poseCompositor'
 import { PoseOccupancyController } from './poseOccupancy'
-import { PoseResponseController } from './poseResponse'
-import { RandomActionController } from './randomAction'
+import {
+  PoseResponseController,
+  resolvePoseResponseScale,
+} from './poseResponse'
+import {
+  DIRECTED_BODY_BLOCK_LEVEL,
+  RandomActionController,
+} from './randomAction'
 import { createAnime25DRendererBindings, drawAnime25DFrame } from './renderer'
 import { resolveAnime25DRenderSurface } from './runtimePolicy'
 import {
@@ -294,6 +300,10 @@ export class Anime25DPlayer {
 
   private readonly ambientMotion = new AmbientMotionController()
   private readonly behaviorMotion = new Anime25DBehaviorMotionController()
+  /** Manner of the last composed frame; feeds both the lead and the filter. */
+  private responseScale = 1
+  /** Monotonic read clock for scheduled controllers. */
+  private controlTime = 0
   private readonly occupancy = new PoseOccupancyController()
   private readonly poseGate = new PoseGateController()
   private readonly randomAction = new RandomActionController()
@@ -578,7 +588,7 @@ export class Anime25DPlayer {
   }
 
   clearBehaviorMotionUnits(): void {
-    this.behaviorMotion.clear()
+    this.behaviorMotion.clear(this.time)
     this.performanceExpression.stopBehaviors(this.time)
   }
 
@@ -769,7 +779,21 @@ export class Anime25DPlayer {
     )
     // Known cues and prosody are sampled slightly ahead to compensate the
     // display plus driver response. Observed input and physics remain at `t`.
-    const controlTime = predictedControlTime(t)
+    // The lead uses the previous frame's manner: the scale is derived from
+    // controllers that are themselves sampled at `controlTime`, so reading it
+    // here would be circular. It varies slowly, and one frame of lag on a
+    // compensation term is far cheaper than sampling everything twice.
+    //
+    // Clamped forward because the lead is no longer constant. A shrinking lead
+    // subtracts from the clock every scheduled controller reads on, and a frame
+    // shorter than the shrink would hand them a time earlier than the last one
+    // — every envelope would step backwards at once.
+    const controlTime = monotonicControlTime(
+      this.controlTime,
+      t,
+      this.responseScale,
+    )
+    this.controlTime = controlTime
     const behaviorMotion = this.behaviorMotion.sample(controlTime)
     const semanticExpression = this.performanceExpression.sample(controlTime)
     const stylizedTargets = resolveAnime25DStylizedTargets(
@@ -832,7 +856,13 @@ export class Anime25DPlayer {
       automation: this.target.rand,
       sticker,
     })
-    const randomAction = this.randomAction.sample(t, this.target.rand, false)
+    // A live directed beat owns the body; the idle layer steps aside instead
+    // of writing the same channels underneath it.
+    const randomAction = this.randomAction.sample(
+      t,
+      this.target.rand,
+      this.performanceExpression.getActiveLevel() >= DIRECTED_BODY_BLOCK_LEVEL,
+    )
     const ambient = this.ambientMotion.sample(t, this.target.rand)
     const thinking = this.thinkingMotion.sample(t, this.target.thinking)
     const breath = idleBreathOffset(t, this.breathPose)
@@ -906,12 +936,33 @@ export class Anime25DPlayer {
       this.target.blink,
       stylizedTargets.maniac > 0.03 || stylizedTargets.silly > 0.03,
     )
+    // The director's manner reaches the one filter that decides how a pose
+    // becomes the next one. Everything above this line spends quality on how
+    // big and how paced a motion is; without this the delivery's speed was
+    // the rig's constant, whatever the plan asked for.
+    this.responseScale = resolvePoseResponseScale([
+      {
+        weight:
+          this.performanceExpression.getActiveLevel() *
+          gate.performance.headBody,
+        quality: this.performanceExpression.getActiveQuality(),
+      },
+      {
+        weight: behaviorMotion.coSpeech * gate.coSpeech.headBody,
+        quality: behaviorMotion.coSpeechQuality,
+      },
+      {
+        weight: behaviorMotion.music * gate.groove.headBody,
+        quality: behaviorMotion.musicQuality,
+      },
+    ])
     stepAnime25DDriverResponse(
       this.current,
       this.target,
       tgt,
       this.poseResponse,
       dt,
+      this.responseScale,
     )
     // Physics follows the actual continuous pose, not a separately filtered
     // copy of the desired pose that can disagree during a handoff.

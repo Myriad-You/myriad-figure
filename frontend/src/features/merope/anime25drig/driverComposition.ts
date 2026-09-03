@@ -494,8 +494,9 @@ export function stepAnime25DDriverResponse(
   target: Readonly<Anime25DDriver>,
   poseResponse: PoseResponseController,
   elapsedSeconds: number,
+  responseScale = 1,
 ): void {
-  poseResponse.step(current, target, elapsedSeconds)
+  poseResponse.step(current, target, elapsedSeconds, responseScale)
   const rate = Math.min(1, elapsedSeconds * 14)
   for (const key of DRIVER_KEYS) {
     if (isContinuousPoseKey(key)) continue

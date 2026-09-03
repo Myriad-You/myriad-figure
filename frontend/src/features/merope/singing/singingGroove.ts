@@ -46,6 +46,17 @@ const ZERO: SingingGroovePose = {
 const FIRST: Motif = { roll: 0.8, yaw: 0.3, torso: 0.58, offset: 0, nods: 0.7 }
 const TAU = Math.PI * 2
 
+/** Manner with no plan installed, and the rate it and the mode move at. */
+const MANNER_REST = {
+  extent: 1.08,
+  density: 0.7,
+  asymmetry: 0.36,
+  directness: 0.58,
+  fluidity: 0.92,
+}
+const MANNER_KEYS = Object.keys(MANNER_REST) as (keyof typeof MANNER_REST)[]
+const MODE_RATE = 7
+
 /**
  * Multilevel entrainment: slow weight transfer, softer head following, optional
  * committed accents and persistent motifs. No pose springs here: the player's
@@ -80,6 +91,16 @@ export class SingingGrooveController {
   private seed = 0x5E71C3
   private trackId: string | null = null
   private armMotion = false
+  /**
+   * The manner fields the pose reads on every frame.
+   *
+   * `modeAmount` next to them has always been eased, but the quality vector
+   * behind it was applied raw, so a participation change stepped the yaw,
+   * roll and torso amplitudes within one frame instead of moving to them.
+   * `power` and `rebound` are absent on purpose: a nod reads those once when
+   * it commits, and a step in a decision is not a step in a pose.
+   */
+  private readonly manner = { ...MANNER_REST }
 
   setArmMotion(enabled: boolean): void {
     this.armMotion = enabled
@@ -150,8 +171,16 @@ export class SingingGrooveController {
       this.modeAmount,
       mode === 'sing' ? 1 : mode === 'hum' ? 0.4 : 0,
       dt,
-      7,
+      MODE_RATE,
     )
+    for (const key of MANNER_KEYS) {
+      this.manner[key] = approach(
+        this.manner[key],
+        quality?.[key] ?? MANNER_REST[key],
+        dt,
+        MODE_RATE,
+      )
+    }
 
     const phraseStart = signal?.phrase?.start
     const phraseChanged =
@@ -209,14 +238,14 @@ export class SingingGrooveController {
       phraseTarget = attack * release * phrase.confidence
     }
     this.phraseAmount = approach(this.phraseAmount, phraseTarget, dt, 12)
-    const density = clamp(quality?.density ?? 0.7, 0.2, 1.5)
-    const asymmetry = clamp(quality?.asymmetry ?? 0.36, 0, 1.4)
+    const density = clamp(this.manner.density, 0.2, 1.5)
+    const asymmetry = clamp(this.manner.asymmetry, 0, 1.4)
     const extent =
       this.amplitude *
       (0.82 + 0.18 * this.modeAmount) *
-      clamp((quality?.extent ?? 1.08) / 1.08, 0.6, 1.2)
+      clamp(this.manner.extent / 1.08, 0.6, 1.2)
     const torsoWave = Math.sin(TAU * this.phase)
-    const headDelay = 0.06 + clamp(quality?.fluidity ?? 0.92, 0.2, 1.4) * 0.075
+    const headDelay = 0.06 + clamp(this.manner.fluidity, 0.2, 1.4) * 0.075
     const headWave = Math.sin(TAU * (this.phase - this.frequency * headDelay))
     const arc = Math.sin(TAU * (this.phase - 0.16))
     this.output.body = extent * (torsoWave * torso + offset * 0.12)
@@ -224,7 +253,7 @@ export class SingingGrooveController {
       extent * (headWave * roll + offset * (0.3 + asymmetry * 0.2))
     this.output.angleX =
       extent *
-      ((arc * yaw * clamp(quality?.directness ?? 0.58, 0.3, 1.2)) / 0.58 +
+      ((arc * yaw * clamp(this.manner.directness, 0.3, 1.2)) / 0.58 +
         offset * 0.14)
     // Modest downward accents. Phrase lift is not pitch-frequency tracking.
     this.output.angleY =

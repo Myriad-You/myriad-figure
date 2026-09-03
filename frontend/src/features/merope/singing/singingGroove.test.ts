@@ -205,3 +205,53 @@ test('30, 60, and 120 fps keep the same slow musical movement', () => {
     assert.ok(error < 0.045, `${fps} fps differs ${error}`)
   }
 })
+
+test('a participation change moves the pose no faster than the groove itself', () => {
+  const groove = new SingingGrooveController()
+  const at = (time: number): MusicMotionSignal => musicSignalAt(time)
+  let time = 0
+  const step = (quality: BehaviorQuality, mode: MusicMode) => {
+    time += 1 / 60
+    return { ...groove.sample(time, true, at(time), quality, mode) }
+  }
+  for (let frame = 0; frame < 180; frame += 1) {
+    step(MUSIC_QUALITY.listen, 'listen')
+  }
+
+  // An ordinary frame of the sway, for scale.
+  const before = step(MUSIC_QUALITY.listen, 'listen')
+  const ordinary = step(MUSIC_QUALITY.listen, 'listen')
+  const walk = Math.max(
+    ...(['angleX', 'angleZ', 'body'] as const).map((key) =>
+      Math.abs(ordinary[key] - before[key]),
+    ),
+  )
+
+  // `modeAmount` was always eased; the quality vector behind it was not, so
+  // switching participation stepped yaw, roll and torso in a single frame.
+  const changed = step(MUSIC_QUALITY.hum, 'hum')
+  for (const key of ['angleX', 'angleZ', 'body'] as const) {
+    const jump = Math.abs(changed[key] - ordinary[key])
+    assert.ok(
+      jump <= walk * 1.6,
+      `${key} moved ${jump} on a mode change against an ordinary ${walk}`,
+    )
+  }
+})
+
+test('a participation change still arrives, it only stops stepping', () => {
+  const groove = new SingingGrooveController()
+  let time = 0
+  const run = (frames: number, quality: BehaviorQuality, mode: MusicMode) => {
+    let pose = groove.sample(time, true, musicSignalAt(time), quality, mode)
+    for (let frame = 0; frame < frames; frame += 1) {
+      time += 1 / 60
+      pose = groove.sample(time, true, musicSignalAt(time), quality, mode)
+    }
+    return { ...pose }
+  }
+  run(180, MUSIC_QUALITY.listen, 'listen')
+  const listening = run(1, MUSIC_QUALITY.listen, 'listen')
+  const singing = run(30, MUSIC_QUALITY.sing, 'sing')
+  assert.notDeepEqual(singing, listening)
+})
