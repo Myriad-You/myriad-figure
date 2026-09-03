@@ -303,10 +303,58 @@ export function requiredUniform(
   return location
 }
 
+/**
+ * `crossOrigin=anonymous` turns the fetch into a CORS request. Same-origin
+ * atlas URLs (`/api/merope/rig/assets/…`) must not use it: if the visitor's
+ * Origin is missing from CORS_ORIGINS the image errors and the live face
+ * falls back to the master portrait. Display `<img>` tags do not set this,
+ * which is why guests still saw the portrait.
+ */
+export function atlasUrlNeedsCors(
+  url: string,
+  pageHref =
+    typeof window !== 'undefined' && window.location?.href
+      ? window.location.href
+      : '',
+): boolean {
+  if (!pageHref) return false
+  try {
+    return new URL(url, pageHref).origin !== new URL(pageHref).origin
+  } catch {
+    return false
+  }
+}
+
+const MAX_CACHED_ATLAS_IMAGES = 3
+const cachedAtlasImages = new Map<string, HTMLImageElement>()
+
+function cachedAtlasImage(url: string): HTMLImageElement | undefined {
+  const image = cachedAtlasImages.get(url)
+  if (image?.complete && image.naturalWidth > 0) return image
+  if (image) cachedAtlasImages.delete(url)
+  return undefined
+}
+
+function storeAtlasImage(url: string, image: HTMLImageElement): void {
+  cachedAtlasImages.delete(url)
+  cachedAtlasImages.set(url, image)
+  while (cachedAtlasImages.size > MAX_CACHED_ATLAS_IMAGES) {
+    const oldest = cachedAtlasImages.keys().next().value
+    if (!oldest) break
+    cachedAtlasImages.delete(oldest)
+  }
+}
+
+export function resetCachedAtlasImagesForTests(): void {
+  cachedAtlasImages.clear()
+}
+
 export function loadImage(
   url: string,
   signal?: AbortSignal,
 ): Promise<HTMLImageElement> {
+  const cached = cachedAtlasImage(url)
+  if (cached) return Promise.resolve(cached)
   return new Promise((resolve, reject) => {
     const image = new Image()
     let settled = false
@@ -327,8 +375,12 @@ export function loadImage(
         reject(error)
       })
     }
-    image.crossOrigin = 'anonymous'
-    image.onload = () => finish(() => resolve(image))
+    if (atlasUrlNeedsCors(url)) image.crossOrigin = 'anonymous'
+    image.onload = () =>
+      finish(() => {
+        storeAtlasImage(url, image)
+        resolve(image)
+      })
     image.onerror = () =>
       finish(() => reject(new Error('Anime2.5DRig atlas failed to load')))
     if (signal?.aborted) {

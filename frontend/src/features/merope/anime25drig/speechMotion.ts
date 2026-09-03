@@ -4,6 +4,15 @@ import {
   isMajorVisualSpeechPause,
   visualSpeechPauseActivity,
 } from '../speech/textTiming'
+import {
+  SPEECH_ACCENT_BROW_ATTACK,
+  SPEECH_ACCENT_BROW_RELEASE,
+  SPEECH_ACCENT_HEAD_ATTACK,
+  SPEECH_ACCENT_HEAD_DELAY,
+  SPEECH_ACCENT_HEAD_RELEASE,
+  SPEECH_TEXT_ACCENT_ATTACK,
+  SPEECH_TEXT_ACCENT_RELEASE,
+} from './speechExpression'
 import { compileTextVisemes } from './textVisemes'
 
 export interface AutoSpeechPose {
@@ -322,12 +331,17 @@ export class AutoSpeechController {
     this.output.phraseActivity = this.resolvePhraseActivity(now)
     const emphasisElapsed = now - this.emphasisStartedAt
     // Brows anticipate the visual beat while the smaller nod lands after it.
-    this.output.browAccent = attackReleasePulse(emphasisElapsed, 0, 0.065, 0.2)
+    this.output.browAccent = attackReleasePulse(
+      emphasisElapsed,
+      0,
+      SPEECH_ACCENT_BROW_ATTACK,
+      SPEECH_ACCENT_BROW_RELEASE,
+    )
     this.output.headAccent = attackReleasePulse(
       emphasisElapsed,
-      0.045,
-      0.1,
-      0.22,
+      SPEECH_ACCENT_HEAD_DELAY,
+      SPEECH_ACCENT_HEAD_ATTACK,
+      SPEECH_ACCENT_HEAD_RELEASE,
     )
     return this.output
   }
@@ -436,7 +450,12 @@ export class AutoSpeechController {
       (cue.viseme === 'rest' ? visualSpeechPauseActivity(cue.duration) : 1)
     const accent =
       this.activeTextAccentIndex === this.textCueIndex
-        ? attackReleasePulse(now - this.textCueStartedAt, 0, 0.055, 0.18)
+        ? attackReleasePulse(
+          now - this.textCueStartedAt,
+          0,
+          SPEECH_TEXT_ACCENT_ATTACK,
+          SPEECH_TEXT_ACCENT_RELEASE,
+        )
         : 0
     this.output.browAccent = accent
     this.output.headAccent = accent * smootherstep(progress)

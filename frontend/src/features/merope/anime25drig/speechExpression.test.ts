@@ -93,8 +93,9 @@ test('derives a delayed visual beat from authored energy without frame allocatio
   const expression = new CoSpeechExpressionController()
   const neutral = expression.sample(0, true, 0, 0, 0, 0)
   const onset = expression.sample(0.1, true, 0.8, 0, 0, 0)
-  const browLead = { ...expression.sample(0.14, true, 0.8, 0, 0, 0) }
-  const headFollow = { ...expression.sample(0.18, true, 0.8, 0, 0, 0) }
+  // Same points of the accent's own shape as before; its arrival doubled.
+  const browLead = { ...expression.sample(0.18, true, 0.8, 0, 0, 0) }
+  const headFollow = { ...expression.sample(0.26, true, 0.8, 0, 0, 0) }
 
   assert.equal(neutral, onset)
   assert.ok(browLead.brow > 0.04)

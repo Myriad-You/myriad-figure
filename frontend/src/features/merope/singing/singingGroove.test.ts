@@ -7,6 +7,8 @@ import { PoseResponseController } from '../anime25drig/poseResponse'
 import { MUSIC_QUALITY } from '../motion/musicReaction'
 import { musicSignalAt } from './musicSignal.test-support'
 import {
+  ENTRY_HELD_BACK_SHARE,
+  ENTRY_OFF_TEMPO_BEYOND,
   MAX_PHASE_CATCHUP,
   MIN_SINGING_NOD_INTERVAL_SECONDS,
   SingingGrooveController,
@@ -335,5 +337,180 @@ test('catching the beat is a transition, not a jump', () => {
   assert.ok(
     worst <= MAX_PHASE_CATCHUP + 0.02,
     `the beat dragged the sway ${(worst * 100).toFixed(0)}% off its own speed`,
+  )
+})
+
+test('a body still swaying keeps the tempo it was swaying to', () => {
+  // Confidence drops to zero the instant the music is taken away. Releasing
+  // the tempo there let the sway slow to the generic idle drift while it was
+  // still shrinking, which reads as running out of power rather than stopping.
+  // Over 42 real excerpts with a sway to wind down, holding it took 84% off
+  // how far the tempo moves while the body is still visibly swaying to it.
+  const BPM = 128
+  const swayTarget = BPM / (60 * 8)
+  const controller = new SingingGrooveController()
+  controller.setTrack('leaving')
+  const internals = controller as unknown as {
+    amplitude: number
+    frequency: number
+  }
+
+  for (let frame = 0; frame <= 10 * 60; frame += 1) {
+    const time = frame / 60
+    controller.sample(
+      time,
+      true,
+      musicSignalAt(time, { bpm: BPM, confidence: 0.85 }),
+      MUSIC_QUALITY.listen,
+      'listen',
+    )
+  }
+  assert.ok(internals.amplitude > 0.9, 'expected a settled sway to wind down')
+
+  // Music gone: no signal at all, which is what the rig is handed on release.
+  let heldWhileMoving = true
+  for (let frame = 1; frame <= 45; frame += 1) {
+    controller.sample(10 + frame / 60, false, null, undefined, 'listen')
+    if (internals.amplitude > 0.2) {
+      const off = Math.abs(internals.frequency - swayTarget) / swayTarget
+      if (off > 0.05) heldWhileMoving = false
+    }
+  }
+  assert.ok(
+    heldWhileMoving,
+    'the sway changed speed on the way out instead of finishing at its own tempo',
+  )
+})
+
+test('the body joins in small until it has the timing', () => {
+  // Entering music the sway used to reach nine tenths of its size in a quarter
+  // second while the speed took more than twice that to settle, so it swung at
+  // full size and then changed tempo underneath itself. Adopting the tempo
+  // faster was tried and measured worse on real music: the estimate churns, so
+  // arriving sooner arrives at a wrong value sooner.
+  const BPM = 128
+  const swayTarget = BPM / (60 * 8) // swayBeats is 8 above 118bpm
+  const controller = new SingingGrooveController()
+  controller.setTrack('joining')
+  const internals = controller as unknown as {
+    amplitude: number
+    frequency: number
+  }
+
+  // Standing still first, so the speed has a long way to travel on arrival.
+  for (let frame = 0; frame <= 3 * 60; frame += 1) {
+    controller.sample(frame / 60, false, null, undefined, 'listen')
+  }
+
+  let whileOffTempo = 0
+  let settled = 0
+  for (let frame = 1; frame <= 8 * 60; frame += 1) {
+    const time = 3 + frame / 60
+    controller.sample(
+      time,
+      true,
+      musicSignalAt(time, { bpm: BPM, confidence: 0.85 }),
+      MUSIC_QUALITY.listen,
+      'listen',
+    )
+    const off = Math.abs(internals.frequency - swayTarget) / swayTarget
+    if (off > ENTRY_OFF_TEMPO_BEYOND) {
+      whileOffTempo = Math.max(whileOffTempo, internals.amplitude)
+    }
+    if (time > 6) settled = internals.amplitude
+  }
+
+  assert.ok(
+    whileOffTempo <= ENTRY_HELD_BACK_SHARE + 0.05,
+    `swayed to ${whileOffTempo} while still off the tempo it had been given`,
+  )
+  // And it does open up: this holds the size back, it does not cap it.
+  assert.ok(settled > 0.9, `settled sway is only ${settled}`)
+})
+
+test('a fast drum pattern is not a reason to nod faster', () => {
+  // Without a lock the accent was taken from whichever onset passed a coin
+  // flip. On dense percussion that put the head jab against its own cooldown:
+  // 23 nods a minute on tracks with three or more onsets a second against 4.6
+  // on everything else, three quarters of them while the beat was not locked.
+  const nodsOver = (onsetEverySeconds: number): number => {
+    const controller = new SingingGrooveController()
+    controller.setTrack(`onsets-${onsetEverySeconds}`)
+    const internals = controller as unknown as { lastNodAt: number }
+    let previous = internals.lastNodAt
+    let nods = 0
+    for (let frame = 1; frame <= 90 * 60; frame += 1) {
+      const time = frame / 60
+      const phase = time % onsetEverySeconds
+      controller.sample(
+        time,
+        true,
+        {
+          // No tempo the clock will trust, which is the case this covers.
+          ...musicSignalAt(time, { bpm: 0, confidence: 0 }),
+          audio: { energy: 0.7, bass: 0.6, pulse: 0.6, presence: 0.4 },
+          beatFrame: {
+            bpm: 0,
+            confidence: 0,
+            beatCount: 0,
+            beatPhase: 0,
+            beatCrossed: false,
+            onset: phase < 1 / 60,
+          },
+        },
+        MUSIC_QUALITY.listen,
+        'listen',
+      )
+      if (internals.lastNodAt !== previous) {
+        previous = internals.lastNodAt
+        nods += 1
+      }
+    }
+    return nods
+  }
+
+  const dense = nodsOver(0.15) // ~6.7 hits a second
+  const spaced = nodsOver(0.6) // beat-spaced hits
+  assert.ok(spaced > 0, 'beat-spaced onsets should still earn accents')
+  assert.ok(
+    dense <= spaced,
+    `a hi-hat pattern earned ${dense} nods against ${spaced} for beat-spaced hits`,
+  )
+})
+
+test('an accent placed without a lock is a smaller one', () => {
+  // The head accent is where most of the pitch movement lives. Placed on the
+  // beat it reads as musical; placed on whichever onset happened to arrive it
+  // reads as a twitch, and dense percussion is where the beat is least often
+  // locked. Refusing to place one at all measured best and left the sparse
+  // music that never locks without any accent, so the guess is kept and made
+  // a smaller one.
+  const peakDip = (confidence: number): number => {
+    const controller = new SingingGrooveController()
+    controller.setTrack(`accent-${confidence}`)
+    let deepest = 0
+    for (let frame = 1; frame <= 40 * 60; frame += 1) {
+      const time = frame / 60
+      const pose = controller.sample(
+        time,
+        true,
+        {
+          ...musicSignalAt(time, { bpm: 120, confidence }),
+          audio: { energy: 0.7, bass: 0.6, pulse: 0.6, presence: 0.4 },
+        },
+        MUSIC_QUALITY.listen,
+        'listen',
+      )
+      deepest = Math.min(deepest, pose.angleY)
+    }
+    return deepest
+  }
+
+  const known = peakDip(0.9)
+  const guessed = peakDip(0.2)
+  assert.ok(known < -0.01, 'a confident beat should still earn a real accent')
+  assert.ok(
+    guessed > known * 0.75,
+    `a guessed accent dipped to ${guessed} against ${known} for a known beat`,
   )
 })

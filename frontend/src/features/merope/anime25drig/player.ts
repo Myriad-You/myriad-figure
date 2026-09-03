@@ -152,7 +152,10 @@ import {
   RandomActionController,
 } from './randomAction'
 import { createAnime25DRendererBindings, drawAnime25DFrame } from './renderer'
-import { resolveAnime25DRenderSurface } from './runtimePolicy'
+import {
+  resolveAnime25DRenderSurface,
+  shouldApplyAnime25DResize,
+} from './runtimePolicy'
 import {
   deformAnime25DHairPoint,
   deformAnime25DSecondaryPoint,
@@ -370,6 +373,7 @@ export class Anime25DPlayer {
   private pointerAuthority = 0
   private policy: MotionChannelPolicy = { ...IDLE_MOTION_POLICY }
   private disposed = false
+  private atlasAbort: AbortController | null = null
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -381,6 +385,11 @@ export class Anime25DPlayer {
       premultipliedAlpha: true,
       stencil: true,
       antialias: true,
+      // Default false: the browser may discard the back buffer as soon as
+      // requestAnimationFrame stops (tab hidden, IO says off-screen). The
+      // canvas then goes transparent — the live face "vanishes after a while".
+      preserveDrawingBuffer: true,
+      powerPreference: 'low-power',
     })
     if (!gl) throw new Error(currentCopy().merope.anime25dWebglFailed)
     this.gl = gl
@@ -505,7 +514,15 @@ export class Anime25DPlayer {
   }
 
   async loadAtlas(url: string): Promise<void> {
-    const image = await loadImage(url)
+    this.atlasAbort?.abort()
+    const atlasAbort = new AbortController()
+    this.atlasAbort = atlasAbort
+    const image = await loadImage(url, atlasAbort.signal)
+    if (this.disposed || atlasAbort.signal.aborted) return
+    if (this.atlasTexture) {
+      this.gl.deleteTexture(this.atlasTexture)
+      this.atlasTexture = null
+    }
     this.atlasTexture = createAtlasTexture(this.gl, image)
     const compiled = compileAnime25DGpuLayers(
       this.gl,
@@ -680,6 +697,7 @@ export class Anime25DPlayer {
   }
 
   resize(cssWidth: number, cssHeight: number, devicePixelRatio: number): void {
+    if (!shouldApplyAnime25DResize(cssWidth, cssHeight)) return
     const { width: pixelWidth, height: pixelHeight } = this.playback.pixelCanvas
     const surface = resolveAnime25DRenderSurface({
       sourceWidth: pixelWidth,
@@ -694,8 +712,10 @@ export class Anime25DPlayer {
         canvas.width = surface.bufferWidth
       if (canvas.height !== surface.bufferHeight)
         canvas.height = surface.bufferHeight
-      canvas.style.width = `${surface.displayWidth}px`
-      canvas.style.height = `${surface.displayHeight}px`
+      const nextWidth = `${surface.displayWidth}px`
+      const nextHeight = `${surface.displayHeight}px`
+      if (canvas.style.width !== nextWidth) canvas.style.width = nextWidth
+      if (canvas.style.height !== nextHeight) canvas.style.height = nextHeight
     }
     this.renderFrame.viewWidth = pixelWidth
     this.renderFrame.viewHeight = pixelHeight
@@ -759,7 +779,10 @@ export class Anime25DPlayer {
   }
 
   dispose(): void {
+    if (this.disposed) return
     this.disposed = true
+    this.atlasAbort?.abort()
+    this.atlasAbort = null
     const { gl } = this
     for (const layer of this.layers) {
       gl.deleteBuffer(layer.vertexBuffer)

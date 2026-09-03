@@ -280,8 +280,10 @@ test('leads an emphasized syllable with the brow before the head nod', () => {
   const speech = new AutoSpeechController(() => 0)
   speech.sample(0, true)
   speech.sample(0.08, true)
-  const anticipation = { ...speech.sample(0.12, true) }
-  const followingNod = { ...speech.sample(0.16, true) }
+  // Sampled at the same points of the accent's own shape as before: the
+  // arrival doubled, so 40ms and 80ms into it are now 0.16s and 0.24s.
+  const anticipation = { ...speech.sample(0.16, true) }
+  const followingNod = { ...speech.sample(0.24, true) }
 
   assert.ok(anticipation.phraseActivity > 0)
   assert.ok(anticipation.browAccent > 0.4)
