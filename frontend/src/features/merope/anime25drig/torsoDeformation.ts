@@ -13,10 +13,18 @@ const HEAD_YAW_SHARE = 0.45
 const BODY_YAW_SHARE = 0.1
 const YAW_RESPONSE = 2.5
 const MIN_GARMENT_SHAPE_TRANSMISSION = 0.4
+
+/**
+ * A sleeve hangs beside the torso cylinder rather than being wrapped on it, so
+ * it takes most of the garment's turn but not all of it. What it does not take
+ * is what the arm follower spends as lag.
+ */
+export const SLEEVE_TORSO_TRANSMISSION = 0.85
+
 const CHEST_FIELD_LIMIT = 1.5
 const CHEST_FIELD_FEATHER = 0.28
 
-export type Anime25DTorsoShellMode = 'full' | 'collar'
+export type Anime25DTorsoShellMode = 'full' | 'collar' | 'sleeve' | 'neck'
 
 export interface Anime25DTorsoYawState {
   value: number
@@ -52,12 +60,16 @@ export function anime25DTorsoShellModeForLayer(
   source: Pick<Anime25DPlaybackLayer, 'group' | 'role'>,
 ): Anime25DTorsoShellMode | null {
   if (source.group !== 'body') return null
+  if (source.role === 'neck') return 'neck'
   if (source.role === 'collar-front' || source.role === 'collar-back') {
     return 'collar'
   }
   if (source.role === 'topwear' || source.role === 'bottomwear') {
     return 'full'
   }
+  // A sleeve that does not turn with the garment lets the garment slide out
+  // from under it, which reads as two separate cut-outs rather than one body.
+  if (source.role === 'handwear') return 'sleeve'
   return null
 }
 

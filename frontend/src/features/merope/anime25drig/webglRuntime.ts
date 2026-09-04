@@ -29,6 +29,7 @@ uniform float u_opacity;
 uniform float u_cry_time;
 uniform float u_cry;
 uniform vec4 u_atlas_rect;
+uniform vec2 u_neck_surface_fade;
 out vec4 out_color;
 
 vec2 atlas_uv(vec2 local_uv) {
@@ -123,7 +124,11 @@ void main() {
     color = dry_eye + moving_water * (1.0 - dry_eye.a);
   }
   if (color.a < u_cut) discard;
-  out_color = color * u_opacity;
+  float neck_opacity = 1.0;
+  if (u_neck_surface_fade.y > u_neck_surface_fade.x) {
+    neck_opacity -= smoothstep(u_neck_surface_fade.x, u_neck_surface_fade.y, local_uv.y);
+  }
+  out_color = color * (u_opacity * neck_opacity);
 }`
 
 export interface CroppedLayerPixels {

@@ -12,6 +12,7 @@ export interface Anime25DRenderableLayer {
   renderKind: Anime25DRenderKind
   retainWhenHidden: boolean
   cryDirection: number
+  neckSurfaceFade?: { start: number; end: number }
 }
 
 export type Anime25DRenderKind = 'ordinary' | 'neck' | 'eyewhite' | 'iris'
@@ -32,6 +33,7 @@ export interface Anime25DRendererBindings {
   cryTime: WebGLUniformLocation
   cry: WebGLUniformLocation
   atlasRect: WebGLUniformLocation
+  neckSurfaceFade: WebGLUniformLocation
 }
 
 export interface Anime25DRenderFrame {
@@ -59,6 +61,7 @@ export function createAnime25DRendererBindings(
     cryTime: requiredUniform(gl, program, 'u_cry_time'),
     cry: requiredUniform(gl, program, 'u_cry'),
     atlasRect: requiredUniform(gl, program, 'u_atlas_rect'),
+    neckSurfaceFade: requiredUniform(gl, program, 'u_neck_surface_fade'),
   }
   gl.useProgram(program)
   gl.uniform1i(requiredUniform(gl, program, 'u_texture'), 0)
@@ -108,6 +111,11 @@ export function drawAnime25DFrame(
     }
     gl.uniformMatrix3fv(bindings.layerTransform, false, layer.layerTransform)
     gl.uniform1f(bindings.opacity, opacity)
+    gl.uniform2f(
+      bindings.neckSurfaceFade,
+      layer.neckSurfaceFade?.start ?? 0,
+      layer.neckSurfaceFade?.end ?? 0,
+    )
     gl.uniform1f(bindings.cry, layer.cryDirection * frame.eyeCry)
     gl.uniform4f(
       bindings.atlasRect,

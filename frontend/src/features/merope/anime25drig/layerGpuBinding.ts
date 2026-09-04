@@ -4,6 +4,7 @@ import type { CollarClipMesh } from './collarRuntime'
 import type { Anime25DLayerDeformationPlan } from './deformationDependencies'
 import type { Anime25DDriver } from './driver'
 import type { Anime25DExpressionDeformationBinding } from './expressionDeformation'
+import type { Anime25DLayerAttachment } from './layerAttachment'
 import type { Anime25DLayerSpringBinding } from './layerBinding'
 import type { Anime25DUpstreamFeatureInput } from './layerDeformation'
 import type { Anime25DLayerDeformationExtension } from './layerDeformationPolicy'
@@ -11,6 +12,8 @@ import type { Anime25DMouthDeformationKind } from './mouthDeformation'
 import type { Anime25DRenderableLayer } from './renderer'
 import type { Anime25DSecondaryDeformationBinding } from './secondaryDeformation'
 import type { Anime25DPlayback, Anime25DShellProfile } from './types'
+import type { CroppedLayerPixels } from './webglRuntime'
+import { isAnime25DRigidAttachment } from '../rig/anime25dLayerSemantics'
 import { sampleChestWeight } from './chestPhysics'
 import { buildFrontCollarContactModel } from './collarContact'
 import { createCollarClipMesh, disposeCollarClipMesh } from './collarRuntime'
@@ -19,11 +22,13 @@ import {
   resolveAnime25DDeformationDependencies,
 } from './deformationDependencies'
 import { resolveAnime25DExpressionDeformation } from './expressionDeformation'
+import { bindAnime25DLayerAttachment } from './layerAttachment'
 import { buildAnime25DLayerBinding } from './layerBinding'
 import { bindAnime25DUpstreamFeature } from './layerDeformation'
 import { resolveAnime25DLayerDeformationPolicy } from './layerDeformationPolicy'
 import { writeIdentityLayerTransform } from './layerTransform'
 import { resolveAnime25DMouthDeformation } from './mouthDeformation'
+import { resolveAnime25DNeckSurface } from './neckSurface'
 import { createAnime25DSecondaryDeformationBinding } from './secondaryDeformation'
 import {
   anime25DShellModeForLayer,
@@ -62,6 +67,7 @@ export interface Anime25DGpuLayer extends Anime25DRenderableLayer {
   collarContact: FrontCollarContactModel | null
   deformationPlan: Anime25DLayerDeformationPlan
   geometryDirty: boolean
+  attachment: Anime25DLayerAttachment | null
 }
 
 export interface Anime25DCompiledGpuLayers {
@@ -156,6 +162,7 @@ export function compileAnime25DGpuLayers(
           ? sampleAnime25DHairlinePinWeights(rest, source, rows, shellProfile)
           : null
       const deformationPolicy = resolveAnime25DLayerDeformationPolicy({
+        rigidAttachment: isAnime25DRigidAttachment(source),
         baseRole,
         fade: source.fade,
         hairPhysics: source.phys === 'hair',
@@ -262,7 +269,51 @@ export function compileAnime25DGpuLayers(
         collarContact,
         deformationPlan,
         geometryDirty: false,
+        attachment: null,
       })
+    }
+    // Seam evidence and shared attachment hosts reuse one transient pixel cache.
+    const bindingPixels = new Map<
+      Anime25DPlayback['layers'][number],
+      CroppedLayerPixels | null
+    >()
+    const readBindingPixels = (source: Anime25DPlayback['layers'][number]) => {
+      if (!bindingPixels.has(source))
+        bindingPixels.set(source, readLayerPixels(atlasImage, source))
+      return bindingPixels.get(source) ?? null
+    }
+    const neckSurface = resolveAnime25DNeckSurface(
+      playback.layers,
+      playback.anchors,
+      readBindingPixels,
+    )
+    if (neckSurface) {
+      const neckIndex = layers.findIndex(
+        (layer) => layer.source === neckSurface.neck,
+      )
+      const bodyIndex = layers.findIndex(
+        (layer) => layer.source === neckSurface.body,
+      )
+      const neckLayer = layers[neckIndex]
+      neckLayer.neckSurfaceFade = {
+        start: neckSurface.fadeStart,
+        end: neckSurface.fadeEnd,
+      }
+      // Preserve every other drawing's relative order, especially neckwear.
+      if (neckIndex < bodyIndex) {
+        layers.splice(neckIndex, 1)
+        layers.splice(bodyIndex, 0, neckLayer)
+      }
+    }
+    for (const layer of layers) {
+      layer.attachment = bindAnime25DLayerAttachment(
+        layer.source,
+        layers,
+        playback.anchors,
+        chestWeightField,
+        playback.pixelCanvas.width,
+        readBindingPixels,
+      )
     }
     return { layers, collarClip }
   } catch (error) {

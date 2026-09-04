@@ -44,9 +44,15 @@ test('binds body garments fully and both split-collar layers through one field',
     assert.equal(anime25DTorsoShellModeForLayer(source), 'collar')
     assert.equal(anime25DLayerUsesTorsoShell(source), true)
   }
+  const sleeve = { group: 'body' as const, role: 'handwear' }
+  assert.equal(anime25DTorsoShellModeForLayer(sleeve), 'sleeve')
+  assert.equal(anime25DLayerUsesTorsoShell(sleeve), true)
+  assert.equal(
+    anime25DTorsoShellModeForLayer({ group: 'body', role: 'neck' }),
+    'neck',
+  )
   for (const source of [
-    { group: 'body', role: 'neck' },
-    { group: 'body', role: 'handwear' },
+    { group: 'body', role: 'neckwear' },
     { group: 'head', role: 'topwear' },
   ] as const) {
     assert.equal(anime25DTorsoShellModeForLayer(source), null)

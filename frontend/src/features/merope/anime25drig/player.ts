@@ -44,9 +44,11 @@ import type {
 import type { Anime25DPlayback, Anime25DShellProfile } from './types'
 import { currentCopy } from '../../../i18n/localeCopy'
 import { allowsPointerGaze, IDLE_MOTION_POLICY } from '../motion/policy'
+import { resolveAnime25DLayerSemantics } from '../rig/anime25dLayerSemantics'
 import { SingingGrooveController } from '../singing/singingGroove'
 import { noteTurnTraceFrame } from '../turnTrace'
 import { AmbientMotionController } from './ambientMotion'
+import { ArmFollowController } from './armFollow'
 import { Anime25DBehaviorMotionController } from './behaviorMotion'
 import {
   buildChestWeightField,
@@ -67,6 +69,7 @@ import {
 import {
   BODY_HEAD_FOLLOW,
   deformCollarClipMesh,
+  disposeCollarClipMesh,
   uploadCollarClipMesh,
 } from './collarRuntime'
 import { cryTearHorizontalOffset, cryTearVerticalOffset } from './cryMotion'
@@ -105,6 +108,7 @@ import {
   jawTravelPixels,
   stepJawMotion,
 } from './jawMotion'
+import { writeAnime25DAttachmentTransform } from './layerAttachment'
 import { deformAnime25DUpstreamFeaturePoint } from './layerDeformation'
 import { compileAnime25DGpuLayers } from './layerGpuBinding'
 import { writeAnime25DLayerGlobalTransform } from './layerTransform'
@@ -225,10 +229,27 @@ export interface Anime25DDebugSnapshot {
   current: Anime25DDriver
 }
 
+function releaseCompiledGpu(
+  gl: WebGL2RenderingContext,
+  layers: readonly Anime25DGpuLayer[],
+  collarClip: CollarClipMesh | null,
+  texture: WebGLTexture | null,
+): void {
+  for (const layer of layers) {
+    if (layer.vertexBuffer) gl.deleteBuffer(layer.vertexBuffer)
+    if (layer.uvBuffer) gl.deleteBuffer(layer.uvBuffer)
+    if (layer.indexBuffer) gl.deleteBuffer(layer.indexBuffer)
+    if (layer.vao) gl.deleteVertexArray(layer.vao)
+  }
+  if (collarClip) disposeCollarClipMesh(gl, collarClip)
+  if (texture) gl.deleteTexture(texture)
+}
+
 export class Anime25DPlayer {
   private readonly gl: WebGL2RenderingContext
-  private readonly playback: Anime25DPlayback
-  private readonly shellProfile: Anime25DShellProfile
+  private playback!: Anime25DPlayback
+  private rigManifest: MeropeRigManifest | undefined
+  private shellProfile!: Anime25DShellProfile
   private readonly program: WebGLProgram
   private readonly rendererBindings: Anime25DRendererBindings
   private readonly renderFrame: Anime25DRenderFrame = {
@@ -268,7 +289,7 @@ export class Anime25DPlayer {
     narrow: 0,
   }
 
-  private readonly mouthMorphSources: Anime25DMouthMorphSources
+  private mouthMorphSources!: Anime25DMouthMorphSources
   private readonly opacityFrame: Anime25DOpacityFrame =
     createAnime25DOpacityFrame()
 
@@ -276,10 +297,10 @@ export class Anime25DPlayer {
     createAnime25DDeformationChangeState()
 
   private readonly deformationPoint = { x: 0, y: 0 }
-  private readonly deformationFrame: Anime25DMouthDeformationFrame &
+  private deformationFrame!: Anime25DMouthDeformationFrame &
     Anime25DExpressionDeformationFrame
 
-  private readonly secondaryDeformationFrame: Anime25DSecondaryDeformationFrame
+  private secondaryDeformationFrame!: Anime25DSecondaryDeformationFrame
 
   private readonly shellRotation: Anime25DShellRotation = {
     active: false,
@@ -291,6 +312,11 @@ export class Anime25DPlayer {
 
   private readonly torsoYaw: Anime25DTorsoYawState = { value: 0 }
 
+  /** Passive sleeve response to the torso, derived rather than authored. */
+  private readonly armFollow = new ArmFollowController()
+
+  private armSwing = 0
+
   private readonly torsoShellRotation: Anime25DTorsoShellRotation = {
     active: false,
     yawCosine: 1,
@@ -298,10 +324,10 @@ export class Anime25DPlayer {
   }
 
   private shellActivation = 0
-  private readonly collarMotion: CollarMotionPose
-  private readonly hairSpringFrame: Anime25DHairSpringFrame
+  private collarMotion!: CollarMotionPose
+  private hairSpringFrame!: Anime25DHairSpringFrame
 
-  private readonly mouthTransition: MouthTransitionController
+  private mouthTransition!: MouthTransitionController
   private activeMouthMaterial: SpeechMouthMaterial = 'mouthClose'
   private sillyMouthShare = 1
 
@@ -352,20 +378,20 @@ export class Anime25DPlayer {
   private readonly chestTarget = { x: 0, y: 0 }
   private readonly chestSpringTarget = { x: 0, y: 0 }
   private readonly chestParentTarget = { x: 0, y: 0 }
-  private readonly chestDynamics: ChestDynamicsTuning
-  private readonly chestField: ChestSpatialField
-  private readonly chestGeometry: ChestMotionGeometry
-  private readonly chestRegion: ChestDeformationRegion
-  private readonly chestWeightField: ChestWeightField | null
+  private chestDynamics!: ChestDynamicsTuning
+  private chestField!: ChestSpatialField
+  private chestGeometry!: ChestMotionGeometry
+  private chestRegion!: ChestDeformationRegion
+  private chestWeightField: ChestWeightField | null = null
   private readonly jaw = createJawMotionState()
-  private readonly jawTravel: number
-  private readonly motionEnvelopeProfile: Anime25DMotionEnvelopeProfile
+  private jawTravel = 0
+  private motionEnvelopeProfile!: Anime25DMotionEnvelopeProfile
   private readonly motionEnvelopeResult = {
     clippedEnergy: 0,
     transferredEnergy: 0,
   }
 
-  private readonly neckDepth: number
+  private neckDepth = 0
   private collarClip: CollarClipMesh | null = null
   private jawEmphasis = 0
   private readonly mouse = { x: 0, y: 0, inside: false }
@@ -393,7 +419,69 @@ export class Anime25DPlayer {
     })
     if (!gl) throw new Error(currentCopy().merope.anime25dWebglFailed)
     this.gl = gl
+    this.program = compileProgram(gl)
+    this.rendererBindings = createAnime25DRendererBindings(gl, this.program)
+    this.applyPackage(playback, rigManifest)
+  }
+
+  /**
+   * Swap the authored package on the live WebGL context.
+   * The last outfit keeps drawing until the next atlas is bound.
+   */
+  async replaceLivePackage(
+    playback: Anime25DPlayback,
+    rigManifest: MeropeRigManifest | undefined,
+    atlasUrl: string,
+  ): Promise<void> {
+    this.atlasAbort?.abort()
+    const atlasAbort = new AbortController()
+    this.atlasAbort = atlasAbort
+    const image = await loadImage(atlasUrl, atlasAbort.signal)
+    if (this.disposed || atlasAbort.signal.aborted) return
+    const resolved: Anime25DPlayback = {
+      ...playback,
+      layers: playback.layers.map(resolveAnime25DLayerSemantics),
+    }
+    const chestWeightField = chestProfileUsesGeometryWeights(
+      resolved.chestProfile,
+    )
+      ? buildChestWeightField(rigManifest)
+      : null
+    const compiled = compileAnime25DGpuLayers(
+      this.gl,
+      this.program,
+      resolved,
+      resolved.shellProfile,
+      this.current,
+      chestWeightField,
+      image,
+    )
+    const nextTexture = createAtlasTexture(this.gl, image)
+    if (this.disposed || atlasAbort.signal.aborted) {
+      releaseCompiledGpu(this.gl, compiled.layers, compiled.collarClip, nextTexture)
+      return
+    }
+    this.applyPackage(playback, rigManifest)
+    releaseCompiledGpu(this.gl, this.layers, this.collarClip, this.atlasTexture)
+    this.atlasTexture = nextTexture
+    this.layers = compiled.layers
+    this.collarClip = compiled.collarClip
+  }
+
+  async loadAtlas(url: string): Promise<void> {
+    await this.replaceLivePackage(this.playback, this.rigManifest, url)
+  }
+
+  private applyPackage(
+    playback: Anime25DPlayback,
+    rigManifest?: MeropeRigManifest,
+  ): void {
+    playback = {
+      ...playback,
+      layers: playback.layers.map(resolveAnime25DLayerSemantics),
+    }
     this.playback = playback
+    this.rigManifest = rigManifest
     this.shellProfile = playback.shellProfile
     this.motionEnvelopeProfile = deriveAnime25DMotionEnvelopeProfile(
       playback,
@@ -467,6 +555,7 @@ export class Anime25DPlayer {
       specialHeadOffset: 0,
       highCollar: this.motionEnvelopeProfile.highCollar,
       breath: 0,
+      armSwing: 0,
       chestCenterX: this.chestRegion.centerX,
       chestRegionCenterY: this.chestRegion.centerY,
       chestMotionCenterY: this.chestRegion.centerY,
@@ -509,32 +598,6 @@ export class Anime25DPlayer {
       faceCenterY: anchors.face.cy,
       time: 0,
     }
-    this.program = compileProgram(gl)
-    this.rendererBindings = createAnime25DRendererBindings(gl, this.program)
-  }
-
-  async loadAtlas(url: string): Promise<void> {
-    this.atlasAbort?.abort()
-    const atlasAbort = new AbortController()
-    this.atlasAbort = atlasAbort
-    const image = await loadImage(url, atlasAbort.signal)
-    if (this.disposed || atlasAbort.signal.aborted) return
-    if (this.atlasTexture) {
-      this.gl.deleteTexture(this.atlasTexture)
-      this.atlasTexture = null
-    }
-    this.atlasTexture = createAtlasTexture(this.gl, image)
-    const compiled = compileAnime25DGpuLayers(
-      this.gl,
-      this.program,
-      this.playback,
-      this.shellProfile,
-      this.current,
-      this.chestWeightField,
-      image,
-    )
-    this.layers = compiled.layers
-    this.collarClip = compiled.collarClip
   }
 
   setTarget(partial: Partial<Anime25DDriver>): void {
@@ -783,24 +846,11 @@ export class Anime25DPlayer {
     this.disposed = true
     this.atlasAbort?.abort()
     this.atlasAbort = null
-    const { gl } = this
-    for (const layer of this.layers) {
-      gl.deleteBuffer(layer.vertexBuffer)
-      gl.deleteBuffer(layer.uvBuffer)
-      gl.deleteBuffer(layer.indexBuffer)
-      gl.deleteVertexArray(layer.vao)
-    }
-    if (this.atlasTexture) gl.deleteTexture(this.atlasTexture)
-    this.atlasTexture = null
-    if (this.collarClip) {
-      gl.deleteBuffer(this.collarClip.vertexBuffer)
-      gl.deleteBuffer(this.collarClip.uvBuffer)
-      gl.deleteBuffer(this.collarClip.indexBuffer)
-      gl.deleteVertexArray(this.collarClip.vao)
-      this.collarClip = null
-    }
-    gl.deleteProgram(this.program)
+    releaseCompiledGpu(this.gl, this.layers, this.collarClip, this.atlasTexture)
     this.layers = []
+    this.collarClip = null
+    this.atlasTexture = null
+    this.gl.deleteProgram(this.program)
   }
 
   private smoothDriver(dt: number): void {
@@ -974,6 +1024,15 @@ export class Anime25DPlayer {
       tgt,
       smoothAnime25DUnit(stylizedTargets.silly) * this.sillyMouthShare,
     )
+    // The sleeves answer the torso the frame after it actually moved, then
+    // spend the same rigid-arm allowance every authored gesture spends.
+    const armFollow = this.armFollow.step(
+      this.torsoYaw.value,
+      dt,
+      this.motionEnvelopeProfile.rigidArm.limit,
+    )
+    tgt.armY += armFollow.lift
+    this.armSwing = armFollow.swing
     projectAnime25DMotionEnvelope(
       tgt,
       this.motionEnvelopeProfile,
@@ -1145,6 +1204,7 @@ export class Anime25DPlayer {
     secondaryDeformationFrame.headBreathOffset = breathHead * 1.6
     secondaryDeformationFrame.specialHeadOffset = specialHeadOffset
     secondaryDeformationFrame.breath = breath
+    secondaryDeformationFrame.armSwing = this.armSwing
     secondaryDeformationFrame.chestMotionCenterY = chestCenterY
     if (secondaryDeformationFrame.torsoChestShape) {
       secondaryDeformationFrame.torsoChestShape.centerY = chestCenterY
@@ -1212,7 +1272,13 @@ export class Anime25DPlayer {
       const source = layer.source
       const bn = layer.baseRole
       const isHead = source.group === 'head'
-      if (layer.shaderGlobalTransform) {
+      if (layer.attachment) {
+        writeAnime25DAttachmentTransform(
+          layer.attachment,
+          secondaryDeformationFrame,
+          layer.layerTransform,
+        )
+      } else if (layer.shaderGlobalTransform) {
         writeAnime25DLayerGlobalTransform(
           {
             headFollow: isHead

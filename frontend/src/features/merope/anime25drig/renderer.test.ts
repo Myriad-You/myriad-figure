@@ -80,6 +80,70 @@ test('collar clip is the sole geometry source for a replaced neck', () => {
   assert.equal(anime25DLayerUsesOwnGeometry('ordinary', true), true)
 })
 
+test('open-neck fading is draw-local and is reset before accessories and collar stencils', () => {
+  const calls: string[] = []
+  let boundVao = 'none'
+  const gl = fakeGl(
+    calls,
+    (vao) => {
+      boundVao = vao
+    },
+    () => boundVao,
+  )
+  const openNeck = renderLayer('open-neck', 'neck', 1, 12)
+  openNeck.neckSurfaceFade = { start: 0.8, end: 0.95 }
+  const frame = {
+    viewWidth: 900,
+    viewHeight: 1200,
+    bodyPivotX: 450,
+    bodyPivotY: 780,
+    bodyRotationCosine: 1,
+    bodyRotationSine: 0,
+    time: 0,
+    eyeCry: 0,
+  }
+  drawAnime25DFrame(
+    gl,
+    {} as WebGLProgram,
+    fakeBindings(),
+    [
+      renderLayer('topwear', 'ordinary', 1, 18),
+      openNeck,
+      renderLayer('neckwear', 'ordinary', 1, 6),
+    ],
+    {} as WebGLTexture,
+    null,
+    frame,
+  )
+  drawAnime25DFrame(
+    gl,
+    {} as WebGLProgram,
+    fakeBindings(),
+    [renderLayer('collared-neck', 'neck', 1, 12)],
+    {} as WebGLTexture,
+    { vao: 'clip', indexCount: 6 } as unknown as CollarClipMesh,
+    frame,
+  )
+  assert.deepEqual(
+    calls.filter(
+      (call) =>
+        call.startsWith('uniform2f:neckSurfaceFade') ||
+        call.startsWith('draw:'),
+    ),
+    [
+      'uniform2f:neckSurfaceFade:0:0',
+      'draw:topwear:18',
+      'uniform2f:neckSurfaceFade:0.8:0.95',
+      'draw:open-neck:12',
+      'uniform2f:neckSurfaceFade:0:0',
+      'draw:neckwear:6',
+      'uniform2f:neckSurfaceFade:0:0',
+      'draw:clip:6',
+      'draw:clip:6',
+    ],
+  )
+})
+
 test('renderer clears the frame but submits no layers before atlas readiness', () => {
   const calls: string[] = []
   let boundVao = 'none'
@@ -158,6 +222,7 @@ function fakeBindings(): Anime25DRendererBindings {
     cryTime: location('cryTime'),
     cry: location('cry'),
     atlasRect: location('atlasRect'),
+    neckSurfaceFade: location('neckSurfaceFade'),
   }
 }
 
@@ -181,7 +246,8 @@ function fakeGl(
     clearColor: () => calls.push('clearColor'),
     clear: () => calls.push('clear'),
     useProgram: () => calls.push('useProgram'),
-    uniform2f: () => calls.push('uniform2f'),
+    uniform2f: (location: WebGLUniformLocation, x: number, y: number) =>
+      calls.push(`uniform2f:${location}:${x}:${y}`),
     uniform4f: () => calls.push('uniform4f'),
     uniform1f: () => calls.push('uniform1f'),
     uniformMatrix3fv: () => calls.push('uniformMatrix3fv'),
