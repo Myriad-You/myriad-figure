@@ -170,6 +170,7 @@ import { AutoSpeechController } from './speechMotion'
 import { StylizedExpressionMotionController } from './stylizedExpressionMotion'
 import { ThinkingMotionController } from './thinkingMotion'
 import {
+  anime25DTorsoYawFollow,
   resolveAnime25DTorsoChestShape,
   stepAnime25DTorsoShellRotation,
 } from './torsoDeformation'
@@ -1083,6 +1084,7 @@ export class Anime25DPlayer {
       this.current.body,
       dt,
       this.torsoShellRotation,
+      anime25DTorsoYawFollow(this.shellProfile.torso, this.current.bodyYaw),
     )
   }
 

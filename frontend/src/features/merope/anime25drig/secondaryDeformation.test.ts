@@ -1039,3 +1039,12 @@ test('an undivided sleeve layer is lifted, never pulled apart', () => {
   deformAnime25DSecondaryPoint(flat, 100, restY, 0, single, torsoTurnFrame(0, 0))
   assert.ok(point.y < flat.y - 1, `${point.y} ${flat.y}`)
 })
+
+test('an outboard sleeve drawing is still carried by the turn', () => {
+  // Anchored past the torso silhouette, where the bare cylinder projection
+  // would send it the other way from the garment.
+  const garment = turnedX(bodyBinding('topwear', null), 0.45, 0)
+  const outboard = turnedX(bodyBinding('handwear', 'R', { x: 200, w: 60 }), 0.45, 0, 230)
+  assert.ok(garment > 0)
+  assert.ok(outboard > 0, `${outboard}`)
+})

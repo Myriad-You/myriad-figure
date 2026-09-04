@@ -26,6 +26,7 @@ import {
 } from './collarRuntime'
 import { deformAnime25DShellPoint } from './shellDeformation'
 import {
+  anime25DSleeveAnchorX,
   anime25DTorsoShellOffsetX,
   deformAnime25DTorsoShellPoint,
   SLEEVE_TORSO_TRANSMISSION,
@@ -329,7 +330,7 @@ export function deformAnime25DSecondaryPoint(
     // one; evaluating the turn once at the layer's own anchor moves it
     // without changing its width.
     point.x += anime25DTorsoShellOffsetX(
-      binding.handwearAnchorX,
+      anime25DSleeveAnchorX(binding.handwearAnchorX, frame.torsoProfile),
       frame.torsoProfile,
       frame.torsoShellRotation,
       frame.torsoShellBlend * SLEEVE_TORSO_TRANSMISSION,
