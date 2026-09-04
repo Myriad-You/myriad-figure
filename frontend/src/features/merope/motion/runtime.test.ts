@@ -1,3 +1,4 @@
+import type { PerformanceDirective } from '../../../services/agent/types'
 import type { MusicMotionSource, SingingFrame } from './musicSource'
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -22,6 +23,29 @@ function stubMusic(): MusicMotionSource & { listeners: number } {
     },
   } as MusicMotionSource & { listeners: number }
 }
+
+test('delivery reaches the scheduler while acknowledgement recovers', () => {
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const reaction: PerformanceDirective = {
+    phase: 'reaction', moodRevision: 42, motionStyle: 'even',
+    plan: { cues: [{
+      intent: 'respond', atMs: 0, intensity: 1, tempo: 1,
+      fadeInMs: 80, fadeOutMs: 400, interrupt: 'if-lower',
+    }] },
+  }
+  runtime.performance.handleForTest(reaction)
+  runtime.frame()
+  runtime.performance.handleForTest({
+    ...reaction, phase: 'delivery',
+    plan: { cues: [{ ...reaction.plan.cues[0]!, intent: 'maniac' }] },
+  })
+  const frame = runtime.frame()
+  assert.ok(frame.behaviors.some((behavior) => behavior.form.id === 'maniac'))
+  assert.ok(frame.behaviors.some((behavior) =>
+    behavior.form.id === 'respond' && behavior.phase === 'recovering',
+  ))
+  assert.equal(frame.snapshot.owners.mouth, 'idle')
+})
 
 test('stopping speech drops queued viseme text so a remount does not replay it', () => {
   const runtime = new MotionRuntime(new RigMotionCoordinator())

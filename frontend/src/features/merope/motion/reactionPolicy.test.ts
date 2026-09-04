@@ -40,7 +40,10 @@ function activeMusic(): BehaviorSnapshot {
     form: { family: 'music', id: 'listen' },
     phase: 'holding',
     startedAtMs: 0,
-    strokeAtMs: 100,
+    readyAtMs: 40,
+    strokeStartAtMs: 70,
+    strokePeakAtMs: 100,
+    strokeEndAtMs: 180,
     relaxAtMs: null,
     endsAtMs: null,
     remainingMs: null,
@@ -61,6 +64,35 @@ test('habituation removes a duplicate refinement but permits a stronger reaction
       .cues.length,
     1,
   )
+})
+
+test('the same turn can hand acknowledgement over to expressive delivery', () => {
+  const reaction: BehaviorSnapshot = {
+    ...activeMusic(),
+    source: 'performance',
+    function: 'acknowledge',
+    form: {
+      family: 'performance-cue',
+      id: 'respond',
+      parameters: { phase: 'reaction', moodRevision: 1 },
+    },
+  }
+  const selected = new HumanReactionPolicy().select(
+    directive('maniac', 'if-lower'), [reaction], 100,
+  )
+  assert.equal(selected.directive.plan.cues[0]?.intent, 'maniac')
+  assert.equal(selected.decisions[0]?.reason, 'selected')
+
+  for (const parameters of [
+    { phase: 'reaction', moodRevision: 2 },
+    { phase: 'delivery', moodRevision: 1 },
+  ]) {
+    const other = { ...reaction, form: { ...reaction.form, parameters } }
+    const blocked = new HumanReactionPolicy().select(
+      directive('maniac', 'if-lower'), [other], 100,
+    )
+    assert.equal(blocked.decisions[0]?.reason, 'resource-busy')
+  }
 })
 
 test('if-lower follows channel priority instead of treating music specially', () => {

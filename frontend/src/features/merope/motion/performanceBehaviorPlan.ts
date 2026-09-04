@@ -88,7 +88,11 @@ export function compilePerformanceBehaviorPlan(
       form: {
         family: 'performance-cue',
         id: item.cue.intent,
-        parameters: { tempo: item.cue.tempo },
+        parameters: {
+          tempo: item.cue.tempo,
+          phase: directive.phase,
+          moodRevision: directive.moodRevision,
+        },
       },
       intensity: clamp(item.cue.intensity, 0.2, 1.4),
       quality: cueQuality(

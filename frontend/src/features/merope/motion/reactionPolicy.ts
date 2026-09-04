@@ -63,6 +63,7 @@ export class HumanReactionPolicy {
       if (
         cue.interrupt === 'if-lower' &&
         blocking.some((behavior) =>
+          !handsOffToDelivery(directive, behavior) &&
           blocksIfLower(performanceCueChannels(cue.intent), behavior),
         )
       ) {
@@ -140,6 +141,24 @@ export class HumanReactionPolicy {
     })
     if (this.memory.length > MAX_REACTION_MEMORY) this.memory.shift()
   }
+}
+
+/**
+ * Acknowledgement yields to the same turn's actual reply, not to other turns.
+ * The shared scheduler still recovers the outgoing beat; this only stops the
+ * semantic admission gate from discarding its successor at equal priority.
+ */
+function handsOffToDelivery(
+  directive: PerformanceDirective,
+  behavior: BehaviorSnapshot,
+): boolean {
+  return (
+    (directive.phase === 'delivery' || directive.phase === 'outcome') &&
+    behavior.source === 'performance' &&
+    behavior.form.family === 'performance-cue' &&
+    behavior.form.parameters?.phase === 'reaction' &&
+    behavior.form.parameters?.moodRevision === directive.moodRevision
+  )
 }
 
 function refractoryMs(cue: PerformanceCue): number {
