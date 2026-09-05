@@ -50,7 +50,8 @@ export function compileSpeechBehaviorPlan(
     confidence: 1,
   })
   plan.accents.forEach((accent, index) => {
-    const prefix = `${planId}:${accent.textOffset === undefined ? `accent-${index}` : `text-${accent.textOffset}`}`
+    if (accent.gesture === 'none') return
+    const prefix = speechAccentBehaviorId(plan.utteranceId, accent, index)
     const strokePeakAt = plan.startedAtMs + accent.offsetMs
     const holdMs =
       accent.gesture === 'laugh'
@@ -73,11 +74,17 @@ export function compileSpeechBehaviorPlan(
     behaviors.push({
       id: prefix,
       function:
-        accent.gesture === 'question'
-          ? 'uncertain'
-          : accent.gesture === 'laugh'
-            ? 'express'
-            : 'emphasize',
+        accent.gesture === 'hesitate'
+          ? 'prepareSpeech'
+          : accent.gesture === 'check-in'
+            ? 'attend'
+            : accent.gesture === 'tease'
+              ? 'express'
+              : accent.gesture === 'question'
+                ? 'uncertain'
+                : accent.gesture === 'laugh'
+                  ? 'express'
+                  : 'emphasize',
       kind: 'oneShot',
       source: 'coSpeech',
       resources: ['face.expression', 'body.head', 'body.torso'],
@@ -107,6 +114,14 @@ export function compileSpeechBehaviorPlan(
     })
   })
   return { id: planId, originMs: plan.startedAtMs, pegs, behaviors }
+}
+
+export function speechAccentBehaviorId(
+  utteranceId: string,
+  accent: SpeechProsodyPlan['accents'][number],
+  index: number,
+): string {
+  return `speech:${utteranceId}:${accent.textOffset === undefined ? `accent-${index}` : `text-${accent.textOffset}`}`
 }
 
 function peg(id: string, atMs: number): TimePeg {

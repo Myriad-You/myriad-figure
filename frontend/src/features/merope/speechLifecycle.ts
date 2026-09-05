@@ -10,7 +10,7 @@ export interface SpeechLifecycleTarget {
   setAutoSpeech: (active: boolean) => void
   setSpeechEnergy: (energy: number | null) => void
   setSpeechArticulation: (articulation: SpeechArticulation) => void
-  setSpeechProsody?: (prosody: SpeechProsodyPlan | null) => void
+  setSpeechProsody?: (prosody: SpeechProsodyPlan | null, text?: string) => void
   enqueueSpeechText: (text: string, locale?: string) => void
 }
 
@@ -127,7 +127,7 @@ export class SpeechLifecycleController {
     }
 
     if (event.phase === 'prosody') {
-      this.target.setSpeechProsody?.(event.prosody)
+      this.target.setSpeechProsody?.(event.prosody, event.text)
       this.scheduleWatchdog()
       return 'active'
     }

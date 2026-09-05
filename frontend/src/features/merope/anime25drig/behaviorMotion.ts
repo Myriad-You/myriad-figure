@@ -6,6 +6,8 @@ import {
   NOMINAL_RECOVERY_MS,
 } from '../motion/behaviorScheduler'
 import { isMusicMode } from '../singing/musicSignal'
+import { SPEECH_GESTURES } from '../speech/phraseGestures'
+import { SpeechFormTransition } from './speechFormTransition'
 
 export interface Anime25DMotionUnit {
   behaviorId: string
@@ -49,6 +51,9 @@ interface MutableBehaviorMotionSample {
 
 /** Relative shares; the common co-speech gate applies the envelope once. */
 export interface CoSpeechGestureMix {
+  hesitate: number
+  tease: number
+  'check-in': number
   question: number
   contrast: number
   laugh: number
@@ -76,6 +81,7 @@ interface LocalMotionUnit extends Omit<Anime25DMotionUnit, 'timing'> {
   envelope: number
   /** Set once the unit leaves the plan; a second restatement never restarts it. */
   release: UnitRelease | null
+  speechForm: SpeechFormTransition | null
 }
 
 const DEFAULT_QUALITY: BehaviorQuality = {
@@ -107,7 +113,15 @@ export class Anime25DBehaviorMotionController {
    */
   private lastSampledAt = Number.NaN
   private readonly output: MutableBehaviorMotionSample = {
-    coSpeechGesture: { question: 0, contrast: 0, laugh: 0, laughPulse: 0 },
+    coSpeechGesture: {
+      question: 0,
+      contrast: 0,
+      laugh: 0,
+      laughPulse: 0,
+      hesitate: 0,
+      tease: 0,
+      'check-in': 0,
+    },
     coSpeech: 0,
     coSpeechPower: 0,
     coSpeechQuality: { ...DEFAULT_QUALITY },
@@ -124,6 +138,7 @@ export class Anime25DBehaviorMotionController {
   ): void {
     const localOrigin = finite(playerTimeSeconds)
     const wallNow = finite(nowMs)
+    const previous = new Map(this.units.map((unit) => [unit.behaviorId, unit]))
     const next: LocalMotionUnit[] = units
       .filter((unit) => unit.family === 'co-speech' || unit.family === 'music')
       .map((unit) => ({
@@ -149,7 +164,25 @@ export class Anime25DBehaviorMotionController {
         },
         envelope: 0,
         release: null,
+        speechForm: null,
       }))
+    for (const unit of next) {
+      const old = previous.get(unit.behaviorId)
+      // A second event can cancel before the next sample. Retain the level
+      // actually drawn, even though this publish has not been sampled yet.
+      if (old?.family === unit.family) unit.envelope = old.envelope
+      if (unit.family !== 'co-speech') continue
+      if (old?.speechForm && !old.release && old.envelope > 0) {
+        unit.speechForm = old.speechForm
+        unit.speechForm.revise(
+          unit.form,
+          this.releaseOrigin(localOrigin),
+          unit.timing.strokePeak,
+        )
+      } else {
+        unit.speechForm = new SpeechFormTransition(unit.form)
+      }
+    }
     const restated = new Set(next.map((unit) => unit.behaviorId))
     for (const unit of this.units) {
       if (restated.has(unit.behaviorId)) continue
@@ -193,6 +226,7 @@ export class Anime25DBehaviorMotionController {
     this.output.coSpeech = 0
     const gesture = this.output.coSpeechGesture
     gesture.question = gesture.contrast = gesture.laugh = gesture.laughPulse = 0
+    gesture.hesitate = gesture.tease = gesture['check-in'] = 0
     this.output.coSpeechPower = 0
     this.output.music = 0
     this.output.musicPower = 0
@@ -231,17 +265,17 @@ export class Anime25DBehaviorMotionController {
         density
       const power = envelope * clamp(unit.quality.power, 0.35, 1.4)
       if (unit.family === 'co-speech') {
-        if (
-          unit.form === 'question' ||
-          unit.form === 'contrast' ||
-          unit.form === 'laugh'
-        ) {
-          gesture[unit.form] += extent
-          if (unit.form === 'laugh') {
+        const formShares = unit.speechForm?.sample(now)
+        if (formShares) {
+          for (const form of SPEECH_GESTURES)
+            gesture[form] += extent * formShares[form]
+          if (formShares.laugh > 0) {
             // A short chuckle follows this behavior's resolved clock. Never
             // restart an oscillator on a new frame or a plan restatement.
             gesture.laughPulse +=
-              extent * Math.sin((now - unit.timing.strokePeak) * Math.PI * 4)
+              extent *
+              formShares.laugh *
+              Math.sin((now - unit.timing.strokePeak) * Math.PI * 4)
           }
         }
         if (extent >= this.output.coSpeech) {
@@ -261,13 +295,21 @@ export class Anime25DBehaviorMotionController {
     this.units.length = write
     const denominator = Math.max(
       this.output.coSpeech,
-      gesture.question + gesture.contrast + gesture.laugh,
+      gesture.question +
+        gesture.contrast +
+        gesture.laugh +
+        gesture.hesitate +
+        gesture.tease +
+        gesture['check-in'],
     )
     if (denominator > 0) {
       gesture.question /= denominator
       gesture.contrast /= denominator
       gesture.laugh /= denominator
       gesture.laughPulse /= denominator
+      gesture.hesitate /= denominator
+      gesture.tease /= denominator
+      gesture['check-in'] /= denominator
     }
     return this.output
   }
@@ -301,6 +343,7 @@ function releasingUnit(
   unit: LocalMotionUnit,
   startedAt: number,
 ): LocalMotionUnit {
+  unit.speechForm?.freeze(startedAt)
   const level = clamp(unit.envelope, 0, 1)
   const tempo = clamp(unit.quality.tempo, 0.45, 1.7)
   const durationMs = clamp(

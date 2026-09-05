@@ -122,9 +122,7 @@ test('a unit that leaves the plan retreats from the level it was drawn at', () =
   assert.ok(held > 0.5)
 
   controller.replace([], 1_550, 5.55)
-  const retreat = [5.56, 5.6, 5.64].map(
-    (at) => controller.sample(at).coSpeech,
-  )
+  const retreat = [5.56, 5.6, 5.64].map((at) => controller.sample(at).coSpeech)
   // The first retreating frame continues from what was on screen. Stepping
   // straight to zero dropped a half-finished gesture on the frame the plan
   // changed, while the face eased out of the very same beat.
@@ -186,4 +184,76 @@ test('a retreat loses one frame to the read clock, not one whole lead', () => {
   const next = controller.sample(predictedControlTime(at)).coSpeech
   assert.ok(next > drawn * 0.8, `retreat opened at ${next} from ${drawn}`)
   assert.ok(next < drawn)
+})
+
+test('a preparing speech revision starts at the drawn shape on the prediction read clock', () => {
+  const controller = new Anime25DBehaviorMotionController()
+  const original = { ...unit(), form: 'question' }
+  controller.replace([original], 1_000, 5)
+  const readAt = predictedControlTime(5.2)
+  const before = { ...controller.sample(readAt).coSpeechGesture }
+  const extent = controller.sample(readAt).coSpeech
+  const revised = { ...original, form: 'hesitate' }
+  controller.replace([revised], 1_200, 5.2)
+  assert.deepEqual(controller.sample(readAt).coSpeechGesture, before)
+  assert.equal(controller.sample(readAt).coSpeech, extent)
+  const arriving = { ...controller.sample(readAt + 0.03).coSpeechGesture }
+  assert.ok(arriving.question > 0 && arriving.hesitate > 0)
+  // Streaming republishes may continue during the arrival; never restart it.
+  controller.replace([revised], 1_230, 5.23)
+  const restated = controller.sample(readAt + 0.03).coSpeechGesture
+  for (const form of ['question', 'hesitate'] as const) {
+    assert.ok(Math.abs(restated[form] - arriving[form]) < 1e-12)
+  }
+  assert.equal(controller.sample(5.4).coSpeechGesture.hesitate, 1)
+  const reference = new Anime25DBehaviorMotionController()
+  reference.replace([original], 1_000, 5)
+  assert.equal(controller.sample(5.4).coSpeech, reference.sample(5.4).coSpeech)
+})
+
+test('cancelling a shape revision releases what was drawn, without finishing the new pose', () => {
+  const controller = new Anime25DBehaviorMotionController()
+  const original = { ...unit(), form: 'question' }
+  controller.replace([original], 1_000, 5)
+  controller.sample(5.2)
+  controller.replace([{ ...original, form: 'tease' }], 1_200, 5.2)
+  const drawn = { ...controller.sample(5.24).coSpeechGesture }
+  controller.clear(5.24)
+  assert.deepEqual(controller.sample(5.26).coSpeechGesture, drawn)
+  assert.ok(controller.sample(5.26).coSpeech > 0)
+  controller.replace([], 1_280, 5.28)
+  assert.equal(controller.sample(6).coSpeech, 0)
+  assert.equal(controller.sample(6).coSpeechGesture.tease, 0)
+})
+
+test('cancellation between a restatement and the next frame keeps the last drawn level', () => {
+  for (const family of ['co-speech', 'music'] as const) {
+    const controller = new Anime25DBehaviorMotionController()
+    const original = unit(family)
+    controller.replace([original], 1_000, 5)
+    const drawn = controller.sample(5.35)
+    const extent = family === 'music' ? drawn.music : drawn.coSpeech
+    controller.replace([original], 1_350, 5.35)
+    // No render sample occurs between these two events.
+    controller.clear(5.35)
+    const releasing = controller.sample(5.35)
+    assert.equal(
+      family === 'music' ? releasing.music : releasing.coSpeech,
+      extent,
+    )
+    const ended = controller.sample(6)
+    assert.equal(family === 'music' ? ended.music : ended.coSpeech, 0)
+  }
+})
+
+test('an unseen future beat adopts its correction directly, with no obsolete pose or extra delay', () => {
+  const controller = new Anime25DBehaviorMotionController()
+  const original = { ...unit(), form: 'question' }
+  controller.replace([original], 1_000, 5)
+  assert.equal(controller.sample(5.05).coSpeech, 0)
+  controller.replace([{ ...original, form: 'hesitate' }], 1_050, 5.05)
+  const first = controller.sample(5.11)
+  assert.ok(first.coSpeech > 0)
+  assert.equal(first.coSpeechGesture.hesitate, 1)
+  assert.equal(first.coSpeechGesture.question, 0)
 })

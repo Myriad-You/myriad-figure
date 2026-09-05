@@ -12,6 +12,7 @@ import {
   PERFORMANCE_INTERRUPT_MODES,
   PERFORMANCE_POSTURES,
 } from './performanceContract'
+import { sanitizeSpeechPhrases } from './speech/phrasePlan'
 
 export const MEROPE_PERFORMANCE_EVENT = 'merope-performance'
 export const MEROPE_STATE_EVENT = 'merope-state'
@@ -55,14 +56,23 @@ export function resolveLoadedMeropeAffect(snapshot: {
   const revision = snapshot.moodRevision ?? 0
   dispatchMeropeState({
     mood: {
-      before: mood, after: mood, arousalBefore: arousal, arousalAfter: arousal,
-      bandBefore: moodBand(mood, arousal), bandAfter: moodBand(mood, arousal),
-      delta: 0, cause: 'state_snapshot', revision,
+      before: mood,
+      after: mood,
+      arousalBefore: arousal,
+      arousalAfter: arousal,
+      bandBefore: moodBand(mood, arousal),
+      bandAfter: moodBand(mood, arousal),
+      delta: 0,
+      cause: 'state_snapshot',
+      revision,
     },
     activity: snapshot.activity ?? 'idle',
   })
   if (currentState && currentState.mood.revision > revision) {
-    return { mood: currentState.mood.after, arousal: currentState.mood.arousalAfter ?? arousal }
+    return {
+      mood: currentState.mood.after,
+      arousal: currentState.mood.arousalAfter ?? arousal,
+    }
   }
   return { mood, arousal }
 }
@@ -100,7 +110,8 @@ export function meropePerformanceEventDetail(
     value.generation > 0
       ? Math.min(1_000_000_000, Math.trunc(value.generation))
       : 0
-  const runId = typeof value.runId === 'string' ? value.runId.trim().slice(0, 160) : ''
+  const runId =
+    typeof value.runId === 'string' ? value.runId.trim().slice(0, 160) : ''
   const motionIntentId =
     typeof value.motionIntentId === 'string'
       ? value.motionIntentId.trim().slice(0, 160)
@@ -118,7 +129,12 @@ export function meropePerformanceEventDetail(
 
 export function dispatchMeropeState(value: unknown): void {
   const detail = meropeStateEventDetail(value)
-  if (!detail || (currentState && detail.mood.revision <= currentState.mood.revision)) return
+  if (
+    !detail ||
+    (currentState && detail.mood.revision <= currentState.mood.revision)
+  ) {
+    return
+  }
   currentState = detail
   if (typeof window === 'undefined') return
   window.dispatchEvent(
@@ -218,11 +234,13 @@ export function sanitizePerformanceDirective(
         .filter((cue): cue is PerformanceCue => cue !== null)
     : []
   if (!baseline && cues.length === 0) return null
+  const phrases = sanitizeSpeechPhrases(value.phrases)
   return {
     phase: value.phase as PerformanceDirective['phase'],
     moodRevision: Math.max(0, Math.trunc(value.moodRevision)),
     motionStyle,
     plan: { ...(baseline ? { baseline } : {}), cues },
+    ...(phrases.length ? { phrases } : {}),
   }
 }
 

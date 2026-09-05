@@ -27,6 +27,7 @@ export type MeropeSpeechEventDetail =
   | (SpeechEventBase & {
       phase: 'prosody'
       prosody: SpeechProsodyPlan
+      text?: string
     })
   | (Omit<SpeechEventBase, 'utteranceId'> & {
       phase: 'cancel'
@@ -135,7 +136,16 @@ export function meropeSpeechEventDetail(
   }
   if (phase === 'prosody') {
     const prosody = sanitizeProsody(value.prosody, utteranceId)
-    return prosody ? { ...base, phase, prosody } : null
+    return prosody
+      ? {
+          ...base,
+          phase,
+          prosody,
+          ...(typeof value.text === 'string'
+            ? { text: value.text.slice(0, 2_000) }
+            : {}),
+        }
+      : null
   }
   return null
 }
@@ -169,8 +179,9 @@ function sanitizeProsody(
         {
           offsetMs: clamp(accent.offsetMs, 0, 30_000),
           intensity: clamp(accent.intensity, 0, 1),
-          ...(SPEECH_GESTURES.includes(accent.gesture as SpeechGesture)
-            ? { gesture: accent.gesture as SpeechGesture }
+          ...(accent.gesture === 'none' ||
+          SPEECH_GESTURES.includes(accent.gesture as SpeechGesture)
+            ? { gesture: accent.gesture as SpeechGesture | 'none' }
             : {}),
           ...(typeof accent.textOffset === 'number' &&
           Number.isInteger(accent.textOffset) &&

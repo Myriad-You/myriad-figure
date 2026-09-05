@@ -186,7 +186,8 @@ active layered package
 
 Agent reply speech enters through `speechEvents.ts`. The lifecycle controller
 handles streamed chunks, complete replies, interruption, and proactive lines,
-then drives the mounted `RigCharacter`. Real audio energy or phoneme events own
+then publishes into `../motion/speechSource.ts`, not directly into a player.
+Real audio energy or phoneme events own
 the mouth when present; otherwise the bounded local auto-prosody controller is
 used. The bridge reuses fixed typed arrays; the jaw and chest paths use fixed
 scalar state with constant-time spring arithmetic. Clothing analysis never runs
@@ -195,6 +196,35 @@ inside the render loop.
 Without a live Anime2.5D package, `RigCharacter` draws the master portrait as a
 still image. Manifests do not carry clip stacks. There is no separate global
 face overlay.
+
+### Speech delivery ownership
+
+- `../speech/phrasePlan.ts` grounds the director's optional `phrases` in unique
+  response fragments. It annotates existing prosody anchors; it does not invent
+  another clock. Quotes/code/URLs and ambiguous fragments are not acted from
+  these annotations. Missing matches keep local delivery rather than guessing.
+- `../motion/speechSource.ts` keeps raw timing separate from annotated delivery.
+  Direction is bounded in memory and scoped by source, generation and message;
+  consecutive TTS segments retain that message's direction. Actual speech
+  events own the utterance lifetime and cancellation.
+- `../motion/humanPerformanceRuntime.ts` merges speech, music and performance
+  candidates. Its resolved pegs are authoritative. Phrase revisions preserve
+  committed beats; same-meaning director coverage can suppress future ones.
+- `../anime25drig/behaviorMotion.ts` realizes speech shape shares under the
+  existing unit envelope. `speechFormTransition.ts` smooths a changed shape
+  from the drawn mixture without adding a new behavior or moving its peak.
+  An unseen beat changes directly; cancellation releases the drawn level.
+- `../motion/applyFrame.ts` forwards changes in gesture as well as timing.
+  `../anime25drig/speechExpression.ts` respects `none` in its TTS accent path,
+  while keeping normal speech activity and later unsuppressed accents.
+
+These are separate responsibilities, not interchangeable fallbacks. `none`
+suppresses an accent, not all body motion or the mouth. An unmatched fragment,
+a phrase crossing TTS segment boundaries, or a revision arriving after
+commitment may leave local delivery unchanged. Unit tests establish routing,
+timing and numeric continuity; they do not establish live-model interpretation
+quality or visually validate every outfit. No extra model call, per-frame
+network trace or second renderer is needed for this path.
 
 ## Module ownership
 
@@ -212,7 +242,7 @@ face overlay.
 
 ```sh
 cd frontend
-pnpm exec tsx --test "src/features/merope/**/*.test.ts"
+pnpm exec tsx --test "src/features/merope/**/*.test.ts" "src/features/merope/*.test.ts"
 pnpm exec eslint src/features/merope
 pnpm typecheck
 ```

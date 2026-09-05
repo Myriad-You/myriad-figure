@@ -1,7 +1,19 @@
+import type {
+  PerformanceDirective,
+  SpeechPhrase,
+} from '../../../services/agent/types'
+import type { MeropePerformanceEventDetail } from '../performanceEvents'
 import type { SpeechArticulation } from '../rig/articulation'
-import type { BehaviorPlan } from './behavior'
+import type { PhraseCoverage } from '../speech/phrasePlan'
+import type { SpeechProsodyPlan } from '../speech/prosody'
+import type { BehaviorPlan, BehaviorSnapshot } from './behavior'
 import type { MotionLeaseHandle, RigMotionCoordinator } from './coordinator'
 import type { SpeechIntent, SpeechTextChunk } from './intents'
+import {
+  directorPhraseCoverage,
+  refineSpeechPhrases,
+  sanitizeSpeechPhrases,
+} from '../speech/phrasePlan'
 import { continueTextProsody, predictTextProsody } from '../speech/textProsody'
 import { MEROPE_SPEECH_EVENT, meropeSpeechEventDetail } from '../speechEvents'
 import { SpeechLifecycleController } from '../speechLifecycle'
@@ -28,6 +40,14 @@ export class SpeechMotionSource {
   private behaviorLocale: string | undefined
   private externalProsody = false
   private textComplete = false
+  private messageKey: string | null = null
+  private rawProsody: SpeechProsodyPlan | null = null
+  private prosodyText = ''
+  private readonly direction = new Map<
+    string,
+    { phrases: SpeechPhrase[]; coverage: PhraseCoverage[] }
+  >()
+
   private intent: SpeechIntent = {
     active: false,
     autoSpeech: false,
@@ -44,6 +64,7 @@ export class SpeechMotionSource {
   constructor(
     private readonly coordinator: RigMotionCoordinator,
     private readonly onChange: (intent: SpeechIntent) => void,
+    private readonly activeBehaviors: () => readonly BehaviorSnapshot[] = () => [],
   ) {
     this.mouth = new SpeechMotionLease(coordinator)
   }
@@ -73,15 +94,15 @@ export class SpeechMotionSource {
           this.intent = { ...this.intent, articulation, energy: null }
           this.flush()
         },
-        setSpeechProsody: (prosody) => {
+        setSpeechProsody: (prosody, text) => {
           if (prosody) {
             this.externalProsody = true
-            this.speechBehaviorPlan = compileSpeechBehaviorPlan(prosody)
-            this.intent = {
-              ...this.intent,
-              prosody,
-              behaviorPlan: this.speechBehaviorPlan,
-            }
+            this.prosodyText = text ?? ''
+            // handle() binds the accepted event's message before publishing.
+            // A segment may open with prosody; never annotate it with the
+            // previous segment's direction, even for a single emission.
+            this.rawProsody = prosody
+            return
           } else {
             this.externalProsody = false
             if (this.activeUtteranceId) {
@@ -136,6 +157,7 @@ export class SpeechMotionSource {
     this.mouth.release()
     this.releaseCoSpeech()
     this.listening = false
+    this.direction.clear()
     this.queuedText = []
     this.textSeq = 0
     this.speechBehaviorPlan = null
@@ -173,6 +195,8 @@ export class SpeechMotionSource {
   private handle(
     detail: Parameters<SpeechLifecycleController['handle']>[0],
   ): void {
+    if (detail.phase === 'cancel')
+      this.direction.delete(speechMessageKey(detail))
     const disposition = this.controller?.handle(detail) ?? 'ignored'
     if (disposition !== 'active') return
     this.prepareBehaviorPlan(detail)
@@ -183,6 +207,7 @@ export class SpeechMotionSource {
     detail: Parameters<SpeechLifecycleController['handle']>[0],
   ): void {
     if (detail.phase === 'cancel') return
+    this.messageKey = speechMessageKey(detail)
     if (
       detail.phase === 'start' ||
       this.activeUtteranceId !== detail.utteranceId
@@ -197,6 +222,8 @@ export class SpeechMotionSource {
     if (detail.locale) this.behaviorLocale = detail.locale
     if (detail.phase === 'prosody') {
       this.externalProsody = true
+      if (this.rawProsody)
+        this.publishProsody(this.rawProsody, this.prosodyText)
       return
     }
     if (detail.phase === 'chunk') {
@@ -221,13 +248,58 @@ export class SpeechMotionSource {
         startedAtMs: this.speechStartedAtMs,
         streaming: !this.textComplete,
       }),
-      this.intent.prosody,
+      this.rawProsody,
       currentNow(),
     )
-    this.speechBehaviorPlan = compileSpeechBehaviorPlan(predictedProsody)
+    this.publishProsody(predictedProsody, this.behaviorText)
+  }
+
+  applyDirector(
+    directive: PerformanceDirective,
+    event: MeropePerformanceEventDetail | undefined,
+    plan: BehaviorPlan | null,
+  ): void {
+    if (!event?.messageId) return
+    const key = speechMessageKey({ ...event, messageId: event.messageId })
+    const old = this.direction.get(key)
+    const phrases = sanitizeSpeechPhrases(directive.phrases)
+    const coverage = [
+      ...(old?.coverage ?? []),
+      ...directorPhraseCoverage(plan, this.activeBehaviors()),
+    ].slice(-12)
+    this.direction.set(key, {
+      phrases: phrases.length ? phrases : (old?.phrases ?? []),
+      coverage,
+    })
+    while (this.direction.size > 8)
+      this.direction.delete(this.direction.keys().next().value!)
+    if (key === this.messageKey && this.rawProsody) {
+      this.publishProsody(
+        this.rawProsody,
+        this.externalProsody ? this.prosodyText : this.behaviorText,
+      )
+      this.flush()
+    }
+  }
+
+  private publishProsody(base: SpeechProsodyPlan, text: string): void {
+    this.rawProsody = base
+    const direction = this.messageKey
+      ? this.direction.get(this.messageKey)
+      : undefined
+    const prosody = refineSpeechPhrases(
+      base,
+      text,
+      direction?.phrases ?? [],
+      direction?.coverage ?? [],
+      this.intent.prosody,
+      this.activeBehaviors(),
+      currentNow(),
+    )
+    this.speechBehaviorPlan = compileSpeechBehaviorPlan(prosody)
     this.intent = {
       ...this.intent,
-      prosody: predictedProsody,
+      prosody,
       behaviorPlan: this.speechBehaviorPlan,
     }
   }
@@ -244,6 +316,9 @@ export class SpeechMotionSource {
   }
 
   private clearUtteranceBehavior(): void {
+    this.messageKey = null
+    this.rawProsody = null
+    this.prosodyText = ''
     this.speechBehaviorPlan = null
     this.activeUtteranceId = null
     this.speechStartedAtMs = 0
@@ -262,6 +337,14 @@ export class SpeechMotionSource {
   private flush(): void {
     this.onChange(this.intent)
   }
+}
+
+function speechMessageKey(event: {
+  source: string
+  messageId: string
+  generation?: number
+}): string {
+  return JSON.stringify([event.source, event.generation ?? 0, event.messageId])
 }
 
 function currentNow(): number {

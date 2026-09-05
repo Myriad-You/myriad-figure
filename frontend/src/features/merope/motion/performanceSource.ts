@@ -2,7 +2,7 @@ import type { PerformanceDirective } from '../../../services/agent/types'
 import type { MeropePerformanceEventDetail } from '../performanceEvents'
 import type { MeropeSpeechEventDetail } from '../speechEvents'
 import type { RigBearing } from './bearing'
-import type { BehaviorSnapshot } from './behavior'
+import type { BehaviorPlan, BehaviorSnapshot } from './behavior'
 import type { RigMotionCoordinator } from './coordinator'
 import type { PerformanceIntent } from './intents'
 import {
@@ -49,6 +49,11 @@ export class PerformanceMotionSource {
     coordinator: RigMotionCoordinator,
     private readonly onChange: (intent: PerformanceIntent) => void,
     private readonly externalBehaviors: () => readonly BehaviorSnapshot[] = () => [],
+    private readonly onDirective: (
+      directive: PerformanceDirective,
+      event: MeropePerformanceEventDetail | undefined,
+      plan: BehaviorPlan | null,
+    ) => void = () => {},
   ) {
     this.leases = new PerformanceMotionLeases(coordinator)
   }
@@ -130,8 +135,13 @@ export class PerformanceMotionSource {
         currentMeropeState()?.mood.revision ?? 0,
       )
     }
-    if (!performance.plan.baseline && performance.plan.cues.length === 0)
+    if (
+      !performance.plan.baseline &&
+      performance.plan.cues.length === 0 &&
+      !performance.phrases?.length
+    ) {
       return false
+    }
     this.bearing = bearingFromDirective(performance) ?? this.bearing
     const selection = this.reactionPolicy.select(
       performance,
@@ -156,6 +166,7 @@ export class PerformanceMotionSource {
     }
     if (selected.plan.cues.length === 0) {
       this.intent = { ...this.intent, directive: selected }
+      this.onDirective(selected, event, null)
       this.onChange(this.intent)
       return true
     }
@@ -180,6 +191,7 @@ export class PerformanceMotionSource {
       behaviors: [],
     }
     this.armSettle(windows.planUntilMs - startedAtMs)
+    this.onDirective(selected, event, behaviorPlan)
     this.onChange(this.intent)
     return true
   }

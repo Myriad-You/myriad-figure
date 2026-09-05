@@ -4,7 +4,7 @@ import type { VisemeSpan } from './visemeTimeline'
 export interface SpeechAccentAnchor {
   /** Stable boundary in normalized text; audio-only accents use their order. */
   textOffset?: number
-  gesture?: SpeechGesture
+  gesture?: SpeechGesture | 'none'
   /** Milliseconds from the first audible sample. */
   offsetMs: number
   intensity: number

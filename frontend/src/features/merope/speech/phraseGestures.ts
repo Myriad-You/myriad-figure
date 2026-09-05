@@ -1,5 +1,20 @@
-export const SPEECH_GESTURES = ['question', 'contrast', 'laugh'] as const
+export const SPEECH_GESTURES = [
+  'question',
+  'contrast',
+  'laugh',
+  'hesitate',
+  'tease',
+  'check-in',
+] as const
 export type SpeechGesture = (typeof SPEECH_GESTURES)[number]
+
+/** Mask quoted/code content without moving the speech plan's UTF-16 anchors. */
+export function unquotedSpeechText(text: string): string {
+  return text.replace(
+    /```[\s\S]*?(?:```|$)|`[^`]*(?:`|$)|“[^”]*(?:”|$)|‘[^’]*(?:’|$)|「[^」]*(?:」|$)|『[^』]*(?:』|$)|"[^"]*(?:"|$)|https?:\/\/\S+/gu,
+    (match) => ' '.repeat(match.length),
+  )
+}
 
 /** Conservative delivery cues, not an appraisal of the speaker's mood. */
 export function speechPhraseGestures(
@@ -8,10 +23,7 @@ export function speechPhraseGestures(
 ): Array<{ textOffset: number; gesture: SpeechGesture }> {
   // Preserve UTF-16 offsets used by the prosody plan. Unfinished quotations
   // and code remain inert while streaming, rather than briefly being acted.
-  const unquoted = text.replace(
-    /```[\s\S]*?(?:```|$)|`[^`]*(?:`|$)|“[^”]*(?:”|$)|‘[^’]*(?:’|$)|「[^」]*(?:」|$)|『[^』]*(?:』|$)|"[^"]*(?:"|$)|https?:\/\/\S+/gu,
-    (match) => ' '.repeat(match.length),
-  )
+  const unquoted = unquotedSpeechText(text)
   const cues: Array<{ textOffset: number; gesture: SpeechGesture }> = []
   for (const match of unquoted.matchAll(/[?？]+/gu))
     cues.push({ textOffset: match.index!, gesture: 'question' })

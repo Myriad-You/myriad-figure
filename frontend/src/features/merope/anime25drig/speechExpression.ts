@@ -86,10 +86,14 @@ export class CoSpeechExpressionController {
     if (!plan) return
     const ageSeconds = Math.max(0, wallNowMs - plan.startedAtMs) / 1_000
     const origin = playerTimeSeconds - ageSeconds
-    this.plannedAccents = plan.accents.map((accent) => ({
-      at: origin + accent.offsetMs / 1_000,
-      intensity: unitInterval(accent.intensity),
-    }))
+    // Suppression removes the visual beat, not the speech plan. Keep its
+    // duration below so the energy fallback cannot recreate the same nod.
+    this.plannedAccents = plan.accents
+      .filter((accent) => accent.gesture !== 'none')
+      .map((accent) => ({
+        at: origin + accent.offsetMs / 1_000,
+        intensity: unitInterval(accent.intensity),
+      }))
     this.plannedUntil = origin + plan.durationMs / 1_000
     while (
       this.plannedAccentIndex < this.plannedAccents.length &&
@@ -233,7 +237,11 @@ export class CoSpeechExpressionController {
     const contrast = gesture?.contrast ?? 0
     const laugh = gesture?.laugh ?? 0
     const pulse = gesture?.laughPulse ?? 0
-    const generic = 1 - Math.min(1, question + contrast + laugh)
+    const hesitate = gesture?.hesitate ?? 0
+    const tease = gesture?.tease ?? 0
+    const checkIn = gesture?.['check-in'] ?? 0
+    const generic =
+      1 - Math.min(1, question + contrast + laugh + hesitate + tease + checkIn)
     // The scheduled envelope already owns arrival/recovery. Do not put these
     // normalized shares into the generic smoothing history: that leaves a
     // residual pose when the finished unit's gate returns to its fallback.
@@ -242,25 +250,42 @@ export class CoSpeechExpressionController {
       this.output.brow * generic +
       question * 0.1 +
       contrast * 0.055 +
-      laugh * 0.035
+      laugh * 0.035 +
+      hesitate * 0.025 +
+      tease * 0.065 +
+      checkIn * 0.055
     this.rendered.eyeOpen =
-      this.output.eyeOpen * generic + question * 0.025 - laugh * 0.14
+      this.output.eyeOpen * generic +
+      question * 0.025 -
+      laugh * 0.14 -
+      hesitate * 0.03 -
+      tease * 0.06 +
+      checkIn * 0.025
     this.rendered.angleY =
       this.output.angleY * generic -
       question * 0.085 +
       contrast * 0.07 +
       laugh * 0.035 +
-      pulse * 0.09
+      pulse * 0.09 +
+      hesitate * 0.045 -
+      tease * 0.065 +
+      checkIn * 0.055
     this.rendered.angleZ =
       this.output.angleZ * generic +
       question * 0.19 -
       contrast * 0.16 +
-      laugh * 0.07
+      laugh * 0.07 -
+      hesitate * 0.1 +
+      tease * 0.14 +
+      checkIn * 0.035
     this.rendered.body =
       this.output.body * generic +
       question * 0.16 -
       contrast * 0.28 +
-      pulse * 0.23
+      pulse * 0.23 -
+      hesitate * 0.1 +
+      tease * 0.18 +
+      checkIn * 0.15
     return this.rendered
   }
 }
