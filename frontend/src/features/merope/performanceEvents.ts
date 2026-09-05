@@ -5,6 +5,7 @@ import type {
   PerformanceDirective,
   RigMotionStyle,
 } from '../../services/agent/types'
+import { moodBand } from '../../components/agent/meropeVitals'
 import {
   PERFORMANCE_BASELINE_EXPRESSIONS,
   PERFORMANCE_CUE_INTENTS,
@@ -27,6 +28,42 @@ export interface MeropePerformanceEventDetail {
 export interface MeropeStateEventDetail {
   mood: MoodTransition
   activity: string
+}
+
+// One ordered snapshot for the current authenticated addressee. Both the run
+// stream and the long-lived notification stream feed this same state outlet.
+let currentState: MeropeStateEventDetail | null = null
+
+export function currentMeropeState(): MeropeStateEventDetail | null {
+  return currentState
+}
+
+export function resetMeropeState(): void {
+  currentState = null
+}
+
+/** A slow GET must not undo a newer live event; a fresh GET repairs a missed event. */
+export function resolveLoadedMeropeAffect(snapshot: {
+  mood?: number
+  arousal?: number
+  moodRevision?: number
+  activity?: string
+}): { mood: number; arousal: number } {
+  const mood = snapshot.mood ?? 70
+  const arousal = snapshot.arousal ?? 48
+  const revision = snapshot.moodRevision ?? 0
+  dispatchMeropeState({
+    mood: {
+      before: mood, after: mood, arousalBefore: arousal, arousalAfter: arousal,
+      bandBefore: moodBand(mood, arousal), bandAfter: moodBand(mood, arousal),
+      delta: 0, cause: 'state_snapshot', revision,
+    },
+    activity: snapshot.activity ?? 'idle',
+  })
+  if (currentState && currentState.mood.revision > revision) {
+    return { mood: currentState.mood.after, arousal: currentState.mood.arousalAfter ?? arousal }
+  }
+  return { mood, arousal }
 }
 
 export function dispatchMeropePerformance(detail: unknown): void {
@@ -78,7 +115,9 @@ export function meropePerformanceEventDetail(
 
 export function dispatchMeropeState(value: unknown): void {
   const detail = meropeStateEventDetail(value)
-  if (!detail || typeof window === 'undefined') return
+  if (!detail || (currentState && detail.mood.revision <= currentState.mood.revision)) return
+  currentState = detail
+  if (typeof window === 'undefined') return
   window.dispatchEvent(
     new CustomEvent<MeropeStateEventDetail>(MEROPE_STATE_EVENT, {
       detail,

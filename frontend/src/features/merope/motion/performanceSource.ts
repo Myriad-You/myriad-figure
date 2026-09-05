@@ -6,8 +6,11 @@ import type { BehaviorSnapshot } from './behavior'
 import type { RigMotionCoordinator } from './coordinator'
 import type { PerformanceIntent } from './intents'
 import {
+  currentMeropeState,
   MEROPE_PERFORMANCE_EVENT,
+  MEROPE_STATE_EVENT,
   meropePerformanceEventDetail,
+  meropeStateEventDetail,
 } from '../performanceEvents'
 import { PerformanceLifecycleController } from '../performanceLifecycle'
 import { MEROPE_SPEECH_EVENT, meropeSpeechEventDetail } from '../speechEvents'
@@ -39,6 +42,7 @@ export class PerformanceMotionSource {
   }
 
   private listening = false
+  private preview = false
 
   constructor(
     coordinator: RigMotionCoordinator,
@@ -70,6 +74,7 @@ export class PerformanceMotionSource {
     if (typeof window !== 'undefined') {
       window.addEventListener(MEROPE_PERFORMANCE_EVENT, this.onPerformance)
       window.addEventListener(MEROPE_SPEECH_EVENT, this.onSpeech)
+      window.addEventListener(MEROPE_STATE_EVENT, this.onState)
     }
     this.listening = true
   }
@@ -79,6 +84,7 @@ export class PerformanceMotionSource {
     if (typeof window !== 'undefined') {
       window.removeEventListener(MEROPE_PERFORMANCE_EVENT, this.onPerformance)
       window.removeEventListener(MEROPE_SPEECH_EVENT, this.onSpeech)
+      window.removeEventListener(MEROPE_STATE_EVENT, this.onState)
     }
     this.controller?.dispose()
     this.controller = null
@@ -86,6 +92,7 @@ export class PerformanceMotionSource {
   }
 
   handle(detail: MeropePerformanceEventDetail): void {
+    this.preview = detail.source === 'preview'
     this.controller?.handle(detail)
   }
 
@@ -99,6 +106,11 @@ export class PerformanceMotionSource {
 
   private publish(performance: PerformanceDirective): boolean {
     const startedAtMs = currentNow()
+    // Mood can finish evaluating while the reply's director is still running.
+    // Keep that reply's gesture, but never reinstall its outdated standing face.
+    if (!this.preview) {
+      performance = performanceAtMoodRevision(performance, currentMeropeState()?.mood.revision ?? 0)
+    }
     this.bearing = bearingFromDirective(performance) ?? this.bearing
     const selected = this.reactionPolicy.select(
       performance,
@@ -175,12 +187,28 @@ export class PerformanceMotionSource {
     if (detail) this.handle(detail)
   }
 
+  private readonly onState = (event: Event): void => {
+    if (this.preview) return
+    const detail = meropeStateEventDetail((event as CustomEvent<unknown>).detail)
+    if (!detail || !this.bearing || this.bearing.revision >= detail.mood.revision) return
+    this.clearBearing()
+    this.onChange(this.intent)
+  }
+
   private readonly onSpeech = (event: Event): void => {
     const detail = meropeSpeechEventDetail(
       (event as CustomEvent<unknown>).detail,
     )
     if (detail) this.handleSpeech(detail)
   }
+}
+
+export function performanceAtMoodRevision(
+  performance: PerformanceDirective,
+  revision: number,
+): PerformanceDirective {
+  if (performance.moodRevision >= revision || !performance.plan.baseline) return performance
+  return { ...performance, plan: { cues: performance.plan.cues } }
 }
 
 function currentNow(): number {
