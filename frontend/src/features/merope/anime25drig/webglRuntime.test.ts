@@ -139,6 +139,8 @@ test('releases partial mesh allocations when WebGL runs out of buffers', () => {
 test('live player keeps the last frame when animation pauses', () => {
   const player = readFileSync(new URL('./player.ts', import.meta.url), 'utf8')
   assert.match(player, /preserveDrawingBuffer:\s*true/)
+  assert.match(player, /WEBGL_lose_context/)
+  assert.match(player, /isConnected/)
 })
 
 test('same-origin atlas URLs skip CORS so guest origins can load the live face', () => {
@@ -200,6 +202,40 @@ test('reuses a decoded atlas image when the live player remounts', async () => {
     const reused = await loadImage('/atlas-reuse.png')
     assert.equal(created, 1)
     assert.equal(reused, image)
+  } finally {
+    globalThis.Image = NativeImage
+    resetCachedAtlasImagesForTests()
+  }
+})
+
+test('decoded atlas cache keeps only the latest image', async () => {
+  resetCachedAtlasImagesForTests()
+  const images: FakeImage[] = []
+  const NativeImage = globalThis.Image
+  const TestImage = function () {
+    const createdImage = new FakeImage()
+    images.push(createdImage)
+    return createdImage
+  }
+  globalThis.Image = TestImage as unknown as typeof Image
+  const finish = (image: FakeImage) => {
+    image.complete = true
+    image.naturalWidth = 8
+    image.onload?.(new Event('load'))
+  }
+  try {
+    const firstPending = loadImage('/atlas-a.png')
+    finish(images[0])
+    await firstPending
+    const secondPending = loadImage('/atlas-b.png')
+    finish(images[1])
+    await secondPending
+    assert.equal(images[0].src, '')
+    const firstAgain = loadImage('/atlas-a.png')
+    finish(images[2])
+    await firstAgain
+    assert.equal(images.length, 3)
+    assert.equal(images[1].src, '')
   } finally {
     globalThis.Image = NativeImage
     resetCachedAtlasImagesForTests()

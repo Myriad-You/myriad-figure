@@ -1,5 +1,6 @@
 import type { BehaviorQuality } from '../motion/behavior'
 import type { SpeechProsodyPlan } from '../speech/prosody'
+import type { CoSpeechGestureMix } from './behaviorMotion'
 
 /**
  * How long a spoken accent takes to arrive.
@@ -60,6 +61,8 @@ export class CoSpeechExpressionController {
     body: 0,
   }
 
+  private readonly rendered: CoSpeechExpressionOffset = { ...this.output }
+
   private previousEnergy = 0
   private accentStartedAt = Number.NEGATIVE_INFINITY
   private nextAccentAt = 0
@@ -104,6 +107,7 @@ export class CoSpeechExpressionController {
     browAccent: number,
     headAccent: number,
     quality?: Readonly<BehaviorQuality>,
+    gesture?: Readonly<CoSpeechGestureMix>,
   ): Readonly<CoSpeechExpressionOffset> {
     const now = Number.isFinite(timeSeconds) ? Math.max(0, timeSeconds) : 0
     const dt = Number.isFinite(this.lastTime)
@@ -187,7 +191,7 @@ export class CoSpeechExpressionController {
       this.output.angleY = this.targetOffset.angleY
       this.output.angleZ = this.targetOffset.angleZ
       this.output.body = this.targetOffset.body
-      return this.output
+      return this.composeGesture(gesture)
     }
     this.output.brow = stepRelease(
       this.output.brow,
@@ -219,7 +223,45 @@ export class CoSpeechExpressionController {
       dt,
       4.2 * responseScale,
     )
-    return this.output
+    return this.composeGesture(gesture)
+  }
+
+  private composeGesture(
+    gesture?: Readonly<CoSpeechGestureMix>,
+  ): Readonly<CoSpeechExpressionOffset> {
+    const question = gesture?.question ?? 0
+    const contrast = gesture?.contrast ?? 0
+    const laugh = gesture?.laugh ?? 0
+    const pulse = gesture?.laughPulse ?? 0
+    const generic = 1 - Math.min(1, question + contrast + laugh)
+    // The scheduled envelope already owns arrival/recovery. Do not put these
+    // normalized shares into the generic smoothing history: that leaves a
+    // residual pose when the finished unit's gate returns to its fallback.
+    // Replace the generic beat; articulation still owns the mouth completely.
+    this.rendered.brow =
+      this.output.brow * generic +
+      question * 0.1 +
+      contrast * 0.055 +
+      laugh * 0.035
+    this.rendered.eyeOpen =
+      this.output.eyeOpen * generic + question * 0.025 - laugh * 0.14
+    this.rendered.angleY =
+      this.output.angleY * generic -
+      question * 0.085 +
+      contrast * 0.07 +
+      laugh * 0.035 +
+      pulse * 0.09
+    this.rendered.angleZ =
+      this.output.angleZ * generic +
+      question * 0.19 -
+      contrast * 0.16 +
+      laugh * 0.07
+    this.rendered.body =
+      this.output.body * generic +
+      question * 0.16 -
+      contrast * 0.28 +
+      pulse * 0.23
+    return this.rendered
   }
 }
 

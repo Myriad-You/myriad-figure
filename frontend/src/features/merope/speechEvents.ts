@@ -1,5 +1,7 @@
 import type { SpeechArticulation, SpeechViseme } from './rig/articulation'
+import type { SpeechGesture } from './speech/phraseGestures'
 import type { SpeechProsodyPlan } from './speech/prosody'
+import { SPEECH_GESTURES } from './speech/phraseGestures'
 
 export const MEROPE_SPEECH_EVENT = 'merope-speech'
 
@@ -167,6 +169,15 @@ function sanitizeProsody(
         {
           offsetMs: clamp(accent.offsetMs, 0, 30_000),
           intensity: clamp(accent.intensity, 0, 1),
+          ...(SPEECH_GESTURES.includes(accent.gesture as SpeechGesture)
+            ? { gesture: accent.gesture as SpeechGesture }
+            : {}),
+          ...(typeof accent.textOffset === 'number' &&
+          Number.isInteger(accent.textOffset) &&
+          accent.textOffset >= 0 &&
+          accent.textOffset <= 2_000
+            ? { textOffset: accent.textOffset }
+            : {}),
         },
       ]
     })

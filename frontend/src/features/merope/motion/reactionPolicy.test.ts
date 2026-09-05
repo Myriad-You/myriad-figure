@@ -74,22 +74,33 @@ test('the same turn can hand acknowledgement over to expressive delivery', () =>
     form: {
       family: 'performance-cue',
       id: 'respond',
-      parameters: { phase: 'reaction', moodRevision: 1 },
+      parameters: {
+        phase: 'reaction',
+        moodRevision: 1,
+        performanceScope: 'run-1',
+      },
     },
   }
   const selected = new HumanReactionPolicy().select(
-    directive('maniac', 'if-lower'), [reaction], 100,
+    { ...directive('maniac', 'if-lower'), moodRevision: 9 },
+    [reaction],
+    100,
+    'run-1',
   )
   assert.equal(selected.directive.plan.cues[0]?.intent, 'maniac')
   assert.equal(selected.decisions[0]?.reason, 'selected')
 
   for (const parameters of [
-    { phase: 'reaction', moodRevision: 2 },
-    { phase: 'delivery', moodRevision: 1 },
+    { phase: 'reaction', moodRevision: 1, performanceScope: 'run-other' },
+    { phase: 'delivery', moodRevision: 1, performanceScope: 'run-1' },
+    { phase: 'reaction', moodRevision: 1 },
   ]) {
     const other = { ...reaction, form: { ...reaction.form, parameters } }
     const blocked = new HumanReactionPolicy().select(
-      directive('maniac', 'if-lower'), [other], 100,
+      directive('maniac', 'if-lower'),
+      [other],
+      100,
+      'run-1',
     )
     assert.equal(blocked.decisions[0]?.reason, 'resource-busy')
   }

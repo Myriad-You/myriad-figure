@@ -1,6 +1,10 @@
+import type { SpeechGesture } from './phraseGestures'
 import type { VisemeSpan } from './visemeTimeline'
 
 export interface SpeechAccentAnchor {
+  /** Stable boundary in normalized text; audio-only accents use their order. */
+  textOffset?: number
+  gesture?: SpeechGesture
   /** Milliseconds from the first audible sample. */
   offsetMs: number
   intensity: number

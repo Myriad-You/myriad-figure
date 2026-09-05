@@ -223,3 +223,8 @@ test('accepts stylized semantic performance cues', () => {
     assert.equal(performance?.plan.cues[0]?.intent, intent)
   }
 })
+test('performance envelope carries a bounded run id independently of the semantic director plan', () => {
+  const event = meropePerformanceEventDetail({ text: 'reply', source: 'reply', runId: `  ${'r'.repeat(200)}  ` })
+  assert.equal(event?.runId, 'r'.repeat(160))
+  assert.equal(meropePerformanceEventDetail({ text: 'reply', runId: 42 })?.runId, undefined)
+})

@@ -28,6 +28,7 @@ export interface ReactionSelection {
 }
 
 interface ReactionMemory {
+  scope?: string
   intent: PerformanceCue['intent']
   intensity: number
   selectedAtMs: number
@@ -48,6 +49,8 @@ export class HumanReactionPolicy {
     directive: PerformanceDirective,
     active: readonly BehaviorSnapshot[],
     nowMs: number,
+    scope?: string,
+    generation = 0,
   ): ReactionSelection {
     const selected: PerformanceCue[] = []
     const decisions: ReactionDecision[] = []
@@ -62,9 +65,15 @@ export class HumanReactionPolicy {
       )
       if (
         cue.interrupt === 'if-lower' &&
-        blocking.some((behavior) =>
-          !handsOffToDelivery(directive, behavior) &&
-          blocksIfLower(performanceCueChannels(cue.intent), behavior),
+        blocking.some(
+          (behavior) =>
+            !acceptsPerformanceHandoff(
+              directive,
+              behavior,
+              scope,
+              generation,
+              cue.intent,
+            ) && blocksIfLower(performanceCueChannels(cue.intent), behavior),
         )
       ) {
         decisions.push({
@@ -74,7 +83,7 @@ export class HumanReactionPolicy {
         })
         continue
       }
-      if (this.isHabituated(cue, nowMs)) {
+      if (this.isHabituated(cue, nowMs, scope)) {
         decisions.push({
           intent: cue.intent,
           reason: 'habituated',
@@ -105,7 +114,7 @@ export class HumanReactionPolicy {
         })
       }
       selected.push(cue)
-      this.remember(cue, nowMs + cue.atMs)
+      this.remember(cue, nowMs + cue.atMs, scope)
     }
     return {
       directive: {
@@ -120,10 +129,17 @@ export class HumanReactionPolicy {
     return this.memory
   }
 
-  private isHabituated(cue: PerformanceCue, nowMs: number): boolean {
+  private isHabituated(
+    cue: PerformanceCue,
+    nowMs: number,
+    scope?: string,
+  ): boolean {
     const recent = [...this.memory]
       .reverse()
-      .find((entry) => entry.intent === cue.intent)
+      .find(
+        (entry) =>
+          entry.intent === cue.intent && (!scope || entry.scope === scope),
+      )
     if (!recent) return false
     const elapsed = nowMs + cue.atMs - recent.selectedAtMs
     return (
@@ -133,8 +149,13 @@ export class HumanReactionPolicy {
     )
   }
 
-  private remember(cue: PerformanceCue, selectedAtMs: number): void {
+  private remember(
+    cue: PerformanceCue,
+    selectedAtMs: number,
+    scope?: string,
+  ): void {
     this.memory.push({
+      ...(scope ? { scope } : {}),
       intent: cue.intent,
       intensity: cue.intensity,
       selectedAtMs,
@@ -144,20 +165,40 @@ export class HumanReactionPolicy {
 }
 
 /**
- * Acknowledgement yields to the same turn's actual reply, not to other turns.
- * The shared scheduler still recovers the outgoing beat; this only stops the
- * semantic admission gate from discarding its successor at equal priority.
+ * Same-turn beats can be refined; acknowledgement yields to delivery. A newer
+ * live Chat generation supersedes its predecessor. The shared scheduler owns
+ * recovery, so admission never restarts or directly clears a pose.
  */
-function handsOffToDelivery(
+function acceptsPerformanceHandoff(
   directive: PerformanceDirective,
   behavior: BehaviorSnapshot,
+  scope: string | undefined,
+  generation: number,
+  intent: PerformanceCue['intent'],
 ): boolean {
+  if (
+    !scope ||
+    behavior.source !== 'performance' ||
+    behavior.form.family !== 'performance-cue'
+  ) {
+    return false
+  }
+  const previous = behavior.form.parameters
+  // A new live Chat generation replaces its predecessor, with scheduler-owned
+  // recovery. A mood revision is affect state, never proof of turn identity.
+  if (
+    generation > 0 &&
+    typeof previous?.generation === 'number' &&
+    previous.generation > 0 &&
+    previous.generation < generation
+  ) {
+    return true
+  }
   return (
-    (directive.phase === 'delivery' || directive.phase === 'outcome') &&
-    behavior.source === 'performance' &&
-    behavior.form.family === 'performance-cue' &&
-    behavior.form.parameters?.phase === 'reaction' &&
-    behavior.form.parameters?.moodRevision === directive.moodRevision
+    previous?.performanceScope === scope &&
+    (behavior.form.id === intent ||
+      ((directive.phase === 'delivery' || directive.phase === 'outcome') &&
+        previous?.phase === 'reaction'))
   )
 }
 

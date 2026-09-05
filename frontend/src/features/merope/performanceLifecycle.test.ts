@@ -329,3 +329,67 @@ test('explicit preview and interaction intents may intentionally repeat the same
     assert.equal(played.length, 2)
   }
 })
+
+test('cancel after text completion still clears the retained landing exactly once', () => {
+  let stopped = 0
+  const controller = new PerformanceLifecycleController({
+    applyPerformanceDirective: () => true,
+    clearPerformanceDirective: () => {
+      stopped += 1
+    },
+  })
+  controller.handle(firstPlan)
+  controller.handleSpeech({
+    phase: 'end',
+    source: 'reply',
+    messageId: 'delivery',
+  })
+  assert.equal(stopped, 0)
+  controller.handleSpeech({
+    phase: 'cancel',
+    source: 'reply',
+    messageId: 'delivery',
+  })
+  controller.handleSpeech({
+    phase: 'cancel',
+    source: 'reply',
+    messageId: 'delivery',
+  })
+  assert.equal(stopped, 1)
+})
+
+test('cancel of a completed old reply cannot clear a newer reply', () => {
+  let stopped = 0
+  const controller = new PerformanceLifecycleController({
+    applyPerformanceDirective: () => true,
+    clearPerformanceDirective: () => {
+      stopped += 1
+    },
+  })
+  controller.handle(firstPlan)
+  controller.handleSpeech({
+    phase: 'end',
+    source: 'reply',
+    messageId: 'delivery',
+  })
+  controller.handle({ ...firstPlan, messageId: 'new-reply' })
+  controller.handleSpeech({
+    phase: 'cancel',
+    source: 'reply',
+    messageId: 'delivery',
+  })
+  assert.equal(stopped, 0)
+  controller.handleSpeech({
+    phase: 'cancel',
+    source: 'reply',
+    messageId: 'new-reply',
+  })
+  assert.equal(stopped, 1)
+})
+
+test('final response without stream run metadata cannot replay the same message plan', () => {
+  const { controller, played } = recordingController()
+  controller.handle({ ...firstPlan, runId: 'run-1', motionIntentId: 'stream' })
+  controller.handle({ ...firstPlan, motionIntentId: 'final' })
+  assert.equal(played.length, 1)
+})

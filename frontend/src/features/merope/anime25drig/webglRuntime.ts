@@ -226,6 +226,9 @@ export function readLayerPixels(
     }
   } catch {
     return null
+  } finally {
+    crop.width = 0
+    crop.height = 0
   }
 }
 
@@ -330,7 +333,7 @@ export function atlasUrlNeedsCors(
   }
 }
 
-const MAX_CACHED_ATLAS_IMAGES = 3
+const MAX_CACHED_ATLAS_IMAGES = 1
 const cachedAtlasImages = new Map<string, HTMLImageElement>()
 
 function cachedAtlasImage(url: string): HTMLImageElement | undefined {
@@ -346,7 +349,9 @@ function storeAtlasImage(url: string, image: HTMLImageElement): void {
   while (cachedAtlasImages.size > MAX_CACHED_ATLAS_IMAGES) {
     const oldest = cachedAtlasImages.keys().next().value
     if (!oldest) break
+    const evicted = cachedAtlasImages.get(oldest)
     cachedAtlasImages.delete(oldest)
+    if (evicted && evicted !== image) evicted.src = ''
   }
 }
 

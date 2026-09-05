@@ -14,8 +14,9 @@ import {
 } from '../performanceEvents'
 import { PerformanceLifecycleController } from '../performanceLifecycle'
 import { MEROPE_SPEECH_EVENT, meropeSpeechEventDetail } from '../speechEvents'
+import { markTurnTrace } from '../turnTrace'
 import { bearingFromDirective } from './bearing'
-import { liveMotionGeneration, newMotionIntentId } from './liveGeneration'
+import { newMotionIntentId } from './liveGeneration'
 import {
   compilePerformanceBehaviorPlan,
   PERFORMANCE_BEHAVIOR_PLAN_ID,
@@ -68,7 +69,8 @@ export class PerformanceMotionSource {
   start(): void {
     if (this.listening) return
     this.controller = new PerformanceLifecycleController({
-      applyPerformanceDirective: (performance) => this.publish(performance),
+      applyPerformanceDirective: (performance, event) =>
+        this.publish(performance, event),
       clearPerformanceDirective: () => this.cancel(),
     })
     if (typeof window !== 'undefined') {
@@ -92,7 +94,6 @@ export class PerformanceMotionSource {
   }
 
   handle(detail: MeropePerformanceEventDetail): void {
-    this.preview = detail.source === 'preview'
     this.controller?.handle(detail)
   }
 
@@ -100,23 +101,59 @@ export class PerformanceMotionSource {
     this.controller?.handleSpeech(detail)
   }
 
-  handleForTest(performance: PerformanceDirective): boolean {
-    return this.publish(performance)
+  handleForTest(
+    performance: PerformanceDirective,
+    event?: MeropePerformanceEventDetail,
+  ): boolean {
+    return this.publish(performance, event)
   }
 
-  private publish(performance: PerformanceDirective): boolean {
+  private publish(
+    performance: PerformanceDirective,
+    event?: MeropePerformanceEventDetail,
+  ): boolean {
+    this.preview = event?.source === 'preview'
+    const scope =
+      event && (event.runId || event.messageId)
+        ? JSON.stringify([
+            event.source,
+            event.generation ?? 0,
+            event.runId ?? event.messageId,
+          ])
+        : undefined
     const startedAtMs = currentNow()
     // Mood can finish evaluating while the reply's director is still running.
     // Keep that reply's gesture, but never reinstall its outdated standing face.
     if (!this.preview) {
-      performance = performanceAtMoodRevision(performance, currentMeropeState()?.mood.revision ?? 0)
+      performance = performanceAtMoodRevision(
+        performance,
+        currentMeropeState()?.mood.revision ?? 0,
+      )
     }
+    if (!performance.plan.baseline && performance.plan.cues.length === 0)
+      return false
     this.bearing = bearingFromDirective(performance) ?? this.bearing
-    const selected = this.reactionPolicy.select(
+    const selection = this.reactionPolicy.select(
       performance,
       this.externalBehaviors(),
       startedAtMs,
-    ).directive
+      scope,
+      event?.generation,
+    )
+    const selected = selection.directive
+    if (!this.preview) {
+      for (const decision of selection.decisions) {
+        markTurnTrace('performance_decision', {
+          intent: decision.intent,
+          reason: decision.reason,
+          atMs: decision.atMs,
+          phase: performance.phase,
+          generation: event?.generation ?? 0,
+          ...(event?.runId ? { runId: event.runId } : {}),
+          ...(event?.messageId ? { messageId: event.messageId } : {}),
+        })
+      }
+    }
     if (selected.plan.cues.length === 0) {
       this.intent = { ...this.intent, directive: selected }
       this.onChange(this.intent)
@@ -130,13 +167,15 @@ export class PerformanceMotionSource {
       selected,
       startedAtMs,
       PERFORMANCE_BEHAVIOR_PLAN_ID,
+      scope,
+      event?.generation,
     )
     const windows = this.leases.apply(selected, startedAtMs, behaviorPlan)
     this.intent = {
       directive: selected,
       startedAtMs,
       motionIntentId,
-      generation: liveMotionGeneration() || undefined,
+      generation: event?.generation,
       behaviorPlan,
       behaviors: [],
     }
@@ -189,8 +228,16 @@ export class PerformanceMotionSource {
 
   private readonly onState = (event: Event): void => {
     if (this.preview) return
-    const detail = meropeStateEventDetail((event as CustomEvent<unknown>).detail)
-    if (!detail || !this.bearing || this.bearing.revision >= detail.mood.revision) return
+    const detail = meropeStateEventDetail(
+      (event as CustomEvent<unknown>).detail,
+    )
+    if (
+      !detail ||
+      !this.bearing ||
+      this.bearing.revision >= detail.mood.revision
+    ) {
+      return
+    }
     this.clearBearing()
     this.onChange(this.intent)
   }
@@ -207,7 +254,8 @@ export function performanceAtMoodRevision(
   performance: PerformanceDirective,
   revision: number,
 ): PerformanceDirective {
-  if (performance.moodRevision >= revision || !performance.plan.baseline) return performance
+  if (performance.moodRevision >= revision || !performance.plan.baseline)
+    return performance
   return { ...performance, plan: { cues: performance.plan.cues } }
 }
 

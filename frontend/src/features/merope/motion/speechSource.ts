@@ -2,7 +2,7 @@ import type { SpeechArticulation } from '../rig/articulation'
 import type { BehaviorPlan } from './behavior'
 import type { MotionLeaseHandle, RigMotionCoordinator } from './coordinator'
 import type { SpeechIntent, SpeechTextChunk } from './intents'
-import { predictTextProsody } from '../speech/textProsody'
+import { continueTextProsody, predictTextProsody } from '../speech/textProsody'
 import { MEROPE_SPEECH_EVENT, meropeSpeechEventDetail } from '../speechEvents'
 import { SpeechLifecycleController } from '../speechLifecycle'
 import { compileSpeechBehaviorPlan } from './speechBehaviorPlan'
@@ -27,6 +27,7 @@ export class SpeechMotionSource {
   private behaviorText = ''
   private behaviorLocale: string | undefined
   private externalProsody = false
+  private textComplete = false
   private intent: SpeechIntent = {
     active: false,
     autoSpeech: false,
@@ -189,6 +190,7 @@ export class SpeechMotionSource {
       this.activeUtteranceId = detail.utteranceId
       this.speechStartedAtMs = currentNow()
       this.behaviorText = ''
+      this.textComplete = false
       this.behaviorLocale = detail.locale
       this.externalProsody = false
     }
@@ -200,6 +202,7 @@ export class SpeechMotionSource {
     if (detail.phase === 'chunk') {
       this.behaviorText = `${this.behaviorText}${detail.text}`.slice(0, 2_000)
     }
+    if (detail.phase === 'end') this.textComplete = true
     if (this.externalProsody) return
     this.planFromPredictedText(detail.utteranceId)
   }
@@ -210,12 +213,17 @@ export class SpeechMotionSource {
    * falls back here rather than leaving the plan null.
    */
   private planFromPredictedText(utteranceId: string): void {
-    const predictedProsody = predictTextProsody({
-      utteranceId,
-      text: this.behaviorText,
-      ...(this.behaviorLocale ? { locale: this.behaviorLocale } : {}),
-      startedAtMs: this.speechStartedAtMs,
-    })
+    const predictedProsody = continueTextProsody(
+      predictTextProsody({
+        utteranceId,
+        text: this.behaviorText,
+        ...(this.behaviorLocale ? { locale: this.behaviorLocale } : {}),
+        startedAtMs: this.speechStartedAtMs,
+        streaming: !this.textComplete,
+      }),
+      this.intent.prosody,
+      currentNow(),
+    )
     this.speechBehaviorPlan = compileSpeechBehaviorPlan(predictedProsody)
     this.intent = {
       ...this.intent,

@@ -56,12 +56,13 @@ test('delivery reaches the scheduler while acknowledgement recovers', () => {
       fadeInMs: 80, fadeOutMs: 400, interrupt: 'if-lower',
     }] },
   }
-  runtime.performance.handleForTest(reaction)
+  const event = { text: '', source: 'reply' as const, runId: 'run-42', messageId: 'reply-42' }
+  runtime.performance.handleForTest(reaction, event)
   runtime.frame()
   runtime.performance.handleForTest({
     ...reaction, phase: 'delivery',
     plan: { cues: [{ ...reaction.plan.cues[0]!, intent: 'maniac' }] },
-  })
+  }, event)
   const frame = runtime.frame()
   assert.ok(frame.behaviors.some((behavior) => behavior.form.id === 'maniac'))
   assert.ok(frame.behaviors.some((behavior) =>

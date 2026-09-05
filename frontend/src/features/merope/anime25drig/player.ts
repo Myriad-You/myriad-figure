@@ -852,6 +852,16 @@ export class Anime25DPlayer {
     this.collarClip = null
     this.atlasTexture = null
     this.gl.deleteProgram(this.program)
+    // Chrome keeps a detached canvas's drawing buffer until loseContext.
+    // A canvas still in the document must keep the context: getContext('webgl2')
+    // returns the lost one, so Strict Mode's effect replay would then fail.
+    try {
+      const surface = this.gl.canvas
+      if (surface instanceof HTMLCanvasElement && surface.isConnected) return
+      this.gl.getExtension('WEBGL_lose_context')?.loseContext()
+    } catch {
+      /* ignore */
+    }
   }
 
   private smoothDriver(dt: number): void {
@@ -928,6 +938,7 @@ export class Anime25DPlayer {
       speech.browAccent,
       speech.headAccent,
       behaviorMotion.coSpeechQuality,
+      behaviorMotion.coSpeechGesture,
     )
     const singing = this.target.singing
     const vocalizing =

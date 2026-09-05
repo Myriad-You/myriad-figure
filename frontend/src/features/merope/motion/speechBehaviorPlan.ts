@@ -9,18 +9,15 @@ export function compileSpeechBehaviorPlan(
   const pegs: TimePeg[] = []
   const behaviors: ScheduledBehavior[] = []
   const presence = `${planId}:presence`
-  const presenceEnd = plan.startedAtMs + Math.max(1, plan.durationMs)
+  // Presence belongs to the speech lifecycle, not a provisional duration.
+  // Otherwise an initial empty stream completes this state after 650ms and
+  // later clauses cannot extend its already committed end peg.
   pegs.push(
     peg(`${presence}:start`, plan.startedAtMs),
     peg(`${presence}:ready`, plan.startedAtMs + 35),
     peg(`${presence}:stroke-start`, plan.startedAtMs + 55),
     peg(`${presence}:stroke-peak`, plan.startedAtMs + 80),
     peg(`${presence}:stroke-end`, plan.startedAtMs + 110),
-    peg(
-      `${presence}:relax`,
-      Math.max(plan.startedAtMs + 110, presenceEnd - 120),
-    ),
-    peg(`${presence}:end`, presenceEnd),
   )
   behaviors.push({
     id: presence,
@@ -35,8 +32,8 @@ export function compileSpeechBehaviorPlan(
       strokeStart: `${presence}:stroke-start`,
       strokePeak: `${presence}:stroke-peak`,
       strokeEnd: `${presence}:stroke-end`,
-      relax: `${presence}:relax`,
-      end: `${presence}:end`,
+      relax: null,
+      end: null,
     },
     form: { family: 'co-speech', id: 'presence' },
     intensity: 0.58,
@@ -53,20 +50,34 @@ export function compileSpeechBehaviorPlan(
     confidence: 1,
   })
   plan.accents.forEach((accent, index) => {
-    const prefix = `${planId}:accent-${index}`
+    const prefix = `${planId}:${accent.textOffset === undefined ? `accent-${index}` : `text-${accent.textOffset}`}`
     const strokePeakAt = plan.startedAtMs + accent.offsetMs
+    const holdMs =
+      accent.gesture === 'laugh'
+        ? 580
+        : accent.gesture === 'question'
+          ? 260
+          : accent.gesture === 'contrast'
+            ? 180
+            : 58
+    const releaseMs = accent.gesture ? 360 : 128
     pegs.push(
       peg(`${prefix}:start`, strokePeakAt - 140),
       peg(`${prefix}:ready`, strokePeakAt - 82),
       peg(`${prefix}:stroke-start`, strokePeakAt - 44),
       peg(`${prefix}:stroke-peak`, strokePeakAt),
-      peg(`${prefix}:stroke-end`, strokePeakAt + 58),
-      peg(`${prefix}:relax`, strokePeakAt + 142),
-      peg(`${prefix}:end`, strokePeakAt + 270),
+      peg(`${prefix}:stroke-end`, strokePeakAt + holdMs),
+      peg(`${prefix}:relax`, strokePeakAt + holdMs + 84),
+      peg(`${prefix}:end`, strokePeakAt + holdMs + 84 + releaseMs),
     )
     behaviors.push({
       id: prefix,
-      function: 'emphasize',
+      function:
+        accent.gesture === 'question'
+          ? 'uncertain'
+          : accent.gesture === 'laugh'
+            ? 'express'
+            : 'emphasize',
       kind: 'oneShot',
       source: 'coSpeech',
       resources: ['face.expression', 'body.head', 'body.torso'],
@@ -80,7 +91,7 @@ export function compileSpeechBehaviorPlan(
         relax: `${prefix}:relax`,
         end: `${prefix}:end`,
       },
-      form: { family: 'co-speech', id: 'accent' },
+      form: { family: 'co-speech', id: accent.gesture ?? 'accent' },
       intensity: accent.intensity,
       quality: {
         extent: 0.92 + accent.intensity * 0.22,

@@ -331,7 +331,7 @@ export function behaviorMotionScale(extent: number, power: number): number {
 
 export function applyBehaviorMotionGate(
   gate: PoseGate,
-  motion: Readonly<Anime25DBehaviorMotionSample>,
+  motion: Readonly<Omit<Anime25DBehaviorMotionSample, 'coSpeechGesture'>>,
 ): PoseGate {
   const coSpeech = behaviorMotionScale(motion.coSpeech, motion.coSpeechPower)
   const music = behaviorMotionScale(motion.music, motion.musicPower)

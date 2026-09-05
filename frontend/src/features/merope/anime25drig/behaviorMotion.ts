@@ -26,6 +26,7 @@ export interface Anime25DMotionUnit {
 }
 
 export interface Anime25DBehaviorMotionSample {
+  coSpeechGesture: Readonly<CoSpeechGestureMix>
   coSpeech: number
   coSpeechPower: number
   coSpeechQuality: Readonly<BehaviorQuality>
@@ -36,6 +37,7 @@ export interface Anime25DBehaviorMotionSample {
 }
 
 interface MutableBehaviorMotionSample {
+  coSpeechGesture: CoSpeechGestureMix
   coSpeech: number
   coSpeechPower: number
   coSpeechQuality: BehaviorQuality
@@ -43,6 +45,14 @@ interface MutableBehaviorMotionSample {
   musicPower: number
   musicQuality: BehaviorQuality
   musicMode: MusicMode
+}
+
+/** Relative shares; the common co-speech gate applies the envelope once. */
+export interface CoSpeechGestureMix {
+  question: number
+  contrast: number
+  laugh: number
+  laughPulse: number
 }
 
 interface UnitRelease {
@@ -97,6 +107,7 @@ export class Anime25DBehaviorMotionController {
    */
   private lastSampledAt = Number.NaN
   private readonly output: MutableBehaviorMotionSample = {
+    coSpeechGesture: { question: 0, contrast: 0, laugh: 0, laughPulse: 0 },
     coSpeech: 0,
     coSpeechPower: 0,
     coSpeechQuality: { ...DEFAULT_QUALITY },
@@ -180,6 +191,8 @@ export class Anime25DBehaviorMotionController {
     const now = finite(timeSeconds)
     this.lastSampledAt = now
     this.output.coSpeech = 0
+    const gesture = this.output.coSpeechGesture
+    gesture.question = gesture.contrast = gesture.laugh = gesture.laughPulse = 0
     this.output.coSpeechPower = 0
     this.output.music = 0
     this.output.musicPower = 0
@@ -218,6 +231,19 @@ export class Anime25DBehaviorMotionController {
         density
       const power = envelope * clamp(unit.quality.power, 0.35, 1.4)
       if (unit.family === 'co-speech') {
+        if (
+          unit.form === 'question' ||
+          unit.form === 'contrast' ||
+          unit.form === 'laugh'
+        ) {
+          gesture[unit.form] += extent
+          if (unit.form === 'laugh') {
+            // A short chuckle follows this behavior's resolved clock. Never
+            // restart an oscillator on a new frame or a plan restatement.
+            gesture.laughPulse +=
+              extent * Math.sin((now - unit.timing.strokePeak) * Math.PI * 4)
+          }
+        }
         if (extent >= this.output.coSpeech) {
           this.output.coSpeech = extent
           copyQuality(this.output.coSpeechQuality, unit.quality)
@@ -233,6 +259,16 @@ export class Anime25DBehaviorMotionController {
       }
     }
     this.units.length = write
+    const denominator = Math.max(
+      this.output.coSpeech,
+      gesture.question + gesture.contrast + gesture.laugh,
+    )
+    if (denominator > 0) {
+      gesture.question /= denominator
+      gesture.contrast /= denominator
+      gesture.laugh /= denominator
+      gesture.laughPulse /= denominator
+    }
     return this.output
   }
 }
