@@ -29,6 +29,7 @@ import { resolveAnime25DLayerDeformationPolicy } from './layerDeformationPolicy'
 import { writeIdentityLayerTransform } from './layerTransform'
 import { resolveAnime25DMouthDeformation } from './mouthDeformation'
 import { resolveAnime25DNeckSurface } from './neckSurface'
+import { canLiftNeckwearOverSkin } from './neckwearOcclusion'
 import { createAnime25DSecondaryDeformationBinding } from './secondaryDeformation'
 import {
   anime25DShellModeForLayer,
@@ -298,12 +299,37 @@ export function compileAnime25DGpuLayers(
       neckLayer.neckSurfaceFade = {
         start: neckSurface.fadeStart,
         end: neckSurface.fadeEnd,
+        contour: neckSurface.contour,
       }
-      // Preserve every other drawing's relative order, especially neckwear.
       if (neckIndex < bodyIndex) {
         layers.splice(neckIndex, 1)
         layers.splice(bodyIndex, 0, neckLayer)
       }
+      // See-through may put the necklace before the skin-bearing topwear.
+      // Moving only the neck would still bury that independent drawing under
+      // both skin surfaces. Lift overlapping neckwear with the recovered neck.
+      const recoveredNeckIndex = layers.indexOf(neckLayer)
+      const accessories = layers.filter(
+        (layer, index) =>
+          index < recoveredNeckIndex &&
+          layer.source.role === 'neckwear' &&
+          layer.source.x < neckSurface.neck.x + neckSurface.neck.w &&
+          layer.source.x + layer.source.w > neckSurface.neck.x &&
+          layer.source.y < neckSurface.neck.y + neckSurface.neck.h &&
+          layer.source.y + layer.source.h > neckSurface.neck.y &&
+          canLiftNeckwearOverSkin(
+            layer.source,
+            neckSurface.neck,
+            neckSurface.body,
+            layers
+              .slice(index + 1, recoveredNeckIndex)
+              .map((entry) => entry.source),
+            readBindingPixels,
+          ),
+      )
+      for (const accessory of accessories)
+        layers.splice(layers.indexOf(accessory), 1)
+      layers.splice(layers.indexOf(neckLayer) + 1, 0, ...accessories)
     }
     for (const layer of layers) {
       layer.attachment = bindAnime25DLayerAttachment(

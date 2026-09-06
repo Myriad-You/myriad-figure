@@ -91,7 +91,11 @@ test('open-neck fading is draw-local and is reset before accessories and collar 
     () => boundVao,
   )
   const openNeck = renderLayer('open-neck', 'neck', 1, 12)
-  openNeck.neckSurfaceFade = { start: 0.8, end: 0.95 }
+  openNeck.neckSurfaceFade = {
+    start: 0.8,
+    end: 0.95,
+    contour: { left: 0.1, right: 0.9, bands: new Float32Array(32).fill(0.85) },
+  }
   const frame = {
     viewWidth: 900,
     viewHeight: 1200,
@@ -123,6 +127,20 @@ test('open-neck fading is draw-local and is reset before accessories and collar 
     {} as WebGLTexture,
     { vao: 'clip', indexCount: 6 } as unknown as CollarClipMesh,
     frame,
+  )
+  assert.deepEqual(
+    calls.filter(
+      (call) =>
+        call.startsWith('uniform2f:neckSurfaceBounds') ||
+        call.startsWith('uniform2fv:neckSurfaceContour'),
+    ),
+    [
+      'uniform2f:neckSurfaceBounds:0:0',
+      'uniform2f:neckSurfaceBounds:0.1:0.9',
+      'uniform2fv:neckSurfaceContour:32',
+      'uniform2f:neckSurfaceBounds:0:0',
+      'uniform2f:neckSurfaceBounds:0:0',
+    ],
   )
   assert.deepEqual(
     calls.filter(
@@ -223,6 +241,8 @@ function fakeBindings(): Anime25DRendererBindings {
     cry: location('cry'),
     atlasRect: location('atlasRect'),
     neckSurfaceFade: location('neckSurfaceFade'),
+    neckSurfaceContour: location('neckSurfaceContour'),
+    neckSurfaceBounds: location('neckSurfaceBounds'),
   }
 }
 
@@ -248,6 +268,8 @@ function fakeGl(
     useProgram: () => calls.push('useProgram'),
     uniform2f: (location: WebGLUniformLocation, x: number, y: number) =>
       calls.push(`uniform2f:${location}:${x}:${y}`),
+    uniform2fv: (location: WebGLUniformLocation, values: Float32Array) =>
+      calls.push(`uniform2fv:${location}:${values.length}`),
     uniform4f: () => calls.push('uniform4f'),
     uniform1f: () => calls.push('uniform1f'),
     uniformMatrix3fv: () => calls.push('uniformMatrix3fv'),

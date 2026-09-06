@@ -1,5 +1,6 @@
 import type { Anime25DPlaybackLayer } from './types'
 import { currentCopy } from '../../../i18n/localeCopy'
+import { NECK_SURFACE_COLUMNS } from './neckSurfaceContour'
 
 const VERTEX_SHADER = `#version 300 es
 in vec2 a_pos;
@@ -30,6 +31,8 @@ uniform float u_cry_time;
 uniform float u_cry;
 uniform vec4 u_atlas_rect;
 uniform vec2 u_neck_surface_fade;
+uniform vec2 u_neck_surface_bounds;
+uniform vec2 u_neck_surface_contour[${NECK_SURFACE_COLUMNS}];
 out vec4 out_color;
 
 vec2 atlas_uv(vec2 local_uv) {
@@ -126,7 +129,15 @@ void main() {
   if (color.a < u_cut) discard;
   float neck_opacity = 1.0;
   if (u_neck_surface_fade.y > u_neck_surface_fade.x) {
-    neck_opacity -= smoothstep(u_neck_surface_fade.x, u_neck_surface_fade.y, local_uv.y);
+    vec2 band = u_neck_surface_fade;
+    if (u_neck_surface_bounds.y > u_neck_surface_bounds.x) {
+      float column = clamp((local_uv.x - u_neck_surface_bounds.x)
+        / (u_neck_surface_bounds.y - u_neck_surface_bounds.x), 0.0, 1.0)
+        * ${NECK_SURFACE_COLUMNS - 1}.0;
+      int left = min(int(floor(column)), ${NECK_SURFACE_COLUMNS - 2});
+      band = mix(u_neck_surface_contour[left], u_neck_surface_contour[left + 1], column - float(left));
+    }
+    neck_opacity -= smoothstep(band.x, band.y, local_uv.y);
   }
   out_color = color * (u_opacity * neck_opacity);
 }`
@@ -320,10 +331,9 @@ export function requiredUniform(
  */
 export function atlasUrlNeedsCors(
   url: string,
-  pageHref =
-    typeof window !== 'undefined' && window.location?.href
-      ? window.location.href
-      : '',
+  pageHref = typeof window !== 'undefined' && window.location?.href
+    ? window.location.href
+    : '',
 ): boolean {
   if (!pageHref) return false
   try {

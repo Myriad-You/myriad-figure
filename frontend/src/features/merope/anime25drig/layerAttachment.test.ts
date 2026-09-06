@@ -474,16 +474,17 @@ function frame(
   yaw: number,
   roll = 0,
   breath = 0,
+  pitch = 0,
 ): Anime25DSecondaryDeformationFrame {
   const rotation = { active: false, yawCosine: 1, yawSine: 0 }
   stepAnime25DTorsoShellRotation({ value: yaw * 0.45 }, yaw, 0, 0, rotation)
   const headRotation = { ...rotation, pitchCosine: 1, pitchSine: 0 }
-  writeAnime25DShellRotation(yaw, 0, headRotation)
+  writeAnime25DShellRotation(yaw, pitch, headRotation)
   const top = anchors.face.y1 + anchors.faceScale * 5
   return {
-    expression: { ...IDENTITY_DRIVER, angleX: yaw },
+    expression: { ...IDENTITY_DRIVER, angleX: yaw, angleY: pitch },
     faceScale: anchors.faceScale,
-    headAngleY: 0,
+    headAngleY: pitch,
     headRotationCosine: Math.cos(roll),
     headRotationSine: Math.sin(roll),
     neckPivotX: anchors.neckPivot.x,
@@ -518,3 +519,40 @@ function frame(
     torsoShellRotation: rotation,
   }
 }
+
+test('125 combined poses keep the neck mesh unfolded and its lower join near the garment', () => {
+  const neckBinding = hosts[1].secondaryDeformation
+  const bodyBinding = hosts[2].secondaryDeformation
+  const at = (x: number, y: number, binding: typeof neckBinding,
+    pose: Anime25DSecondaryDeformationFrame) => {
+    const point = { x, y }
+    deformAnime25DSecondaryPoint(point, x, y, 0, binding, pose)
+    assert.ok(Number.isFinite(point.x) && Number.isFinite(point.y))
+    return point
+  }
+  for (const yaw of [-1, -0.5, 0, 0.5, 1]) {
+    for (const pitch of [-1, -0.5, 0, 0.5, 1]) {
+      for (const roll of [-0.35, -0.175, 0, 0.175, 0.35]) {
+        const pose = frame(yaw, roll, 0.5, pitch)
+        for (let row = 0; row < 10; row++) {
+          for (let column = 0; column < 6; column++) {
+            const x = neck.x + column * neck.w / 6
+            const y = neck.y + row * neck.h / 10
+            const a = at(x, y, neckBinding, pose)
+            const b = at(x + neck.w / 6, y, neckBinding, pose)
+            const c = at(x, y + neck.h / 10, neckBinding, pose)
+            const area = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+            assert.ok(area > 0, `folded neck at ${yaw},${pitch},${roll}`)
+          }
+        }
+        for (const x of [neck.x + neck.w * 0.25, anchors.neckPivot.x, neck.x + neck.w * 0.75]) {
+          const y = anchors.neckBottom - 10
+          const a = at(x, y, neckBinding, pose)
+          const b = at(x, y, bodyBinding, pose)
+          assert.ok(Math.hypot(a.x - b.x, a.y - b.y) < neck.w * 0.04,
+            `join drift at ${yaw},${pitch},${roll}: ${Math.hypot(a.x-b.x,a.y-b.y)}`)
+        }
+      }
+    }
+  }
+})

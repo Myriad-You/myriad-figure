@@ -1,4 +1,5 @@
 import type { CollarClipMesh } from './collarRuntime'
+import type { NeckSurfaceContour } from './neckSurfaceContour'
 import type { Anime25DFrameWork } from './performanceTelemetry'
 import type { Anime25DPlaybackLayer } from './types'
 import { requiredUniform } from './webglRuntime'
@@ -12,7 +13,7 @@ export interface Anime25DRenderableLayer {
   renderKind: Anime25DRenderKind
   retainWhenHidden: boolean
   cryDirection: number
-  neckSurfaceFade?: { start: number; end: number }
+  neckSurfaceFade?: { start: number; end: number; contour?: NeckSurfaceContour }
 }
 
 export type Anime25DRenderKind = 'ordinary' | 'neck' | 'eyewhite' | 'iris'
@@ -34,6 +35,8 @@ export interface Anime25DRendererBindings {
   cry: WebGLUniformLocation
   atlasRect: WebGLUniformLocation
   neckSurfaceFade: WebGLUniformLocation
+  neckSurfaceContour: WebGLUniformLocation
+  neckSurfaceBounds: WebGLUniformLocation
 }
 
 export interface Anime25DRenderFrame {
@@ -62,6 +65,12 @@ export function createAnime25DRendererBindings(
     cry: requiredUniform(gl, program, 'u_cry'),
     atlasRect: requiredUniform(gl, program, 'u_atlas_rect'),
     neckSurfaceFade: requiredUniform(gl, program, 'u_neck_surface_fade'),
+    neckSurfaceContour: requiredUniform(
+      gl,
+      program,
+      'u_neck_surface_contour[0]',
+    ),
+    neckSurfaceBounds: requiredUniform(gl, program, 'u_neck_surface_bounds'),
   }
   gl.useProgram(program)
   gl.uniform1i(requiredUniform(gl, program, 'u_texture'), 0)
@@ -116,6 +125,13 @@ export function drawAnime25DFrame(
       layer.neckSurfaceFade?.start ?? 0,
       layer.neckSurfaceFade?.end ?? 0,
     )
+    const contour = layer.neckSurfaceFade?.contour
+    gl.uniform2f(
+      bindings.neckSurfaceBounds,
+      contour?.left ?? 0,
+      contour?.right ?? 0,
+    )
+    if (contour) gl.uniform2fv(bindings.neckSurfaceContour, contour.bands)
     gl.uniform1f(bindings.cry, layer.cryDirection * frame.eyeCry)
     gl.uniform4f(
       bindings.atlasRect,
