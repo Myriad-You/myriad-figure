@@ -12,6 +12,7 @@ import { HumanPerformanceRuntime } from './humanPerformanceRuntime'
 import { MoodMotionSource } from './moodSource'
 import { PerformanceMotionSource } from './performanceSource'
 import { SpeechMotionSource } from './speechSource'
+import { TouchMotionSource } from './touchSource'
 
 export type MotionFrameListener = (frame: MotionFrame) => void
 
@@ -48,6 +49,7 @@ export class MotionRuntime {
   readonly performance: PerformanceMotionSource
   readonly mood: MoodMotionSource
   readonly ambient: AmbientMotionSource
+  readonly touch: TouchMotionSource
   private readonly humanPerformance = new HumanPerformanceRuntime()
   private readonly musicSource: MusicMotionSource | null
   private readonly listeners = new Set<MotionFrameListener>()
@@ -69,6 +71,7 @@ export class MotionRuntime {
     musicSource: MusicMotionSource | null = null,
   ) {
     this.coordinator = coordinator
+    this.touch = new TouchMotionSource(coordinator, () => this.emit())
     this.musicSource = musicSource
     this.speech = new SpeechMotionSource(
       coordinator,
@@ -122,6 +125,7 @@ export class MotionRuntime {
       this.stopPreviewClock()
       this.speech.stop()
       this.performance.stop()
+      this.touch.release()
       this.mood.release()
       this.ambient.release()
       this.unsubMusic?.()
@@ -180,6 +184,7 @@ export class MotionRuntime {
         speech.behaviorPlan,
         performance.behaviorPlan,
         this.musicFrame?.behaviorPlan,
+        this.touch.current(),
       ],
       now,
     )

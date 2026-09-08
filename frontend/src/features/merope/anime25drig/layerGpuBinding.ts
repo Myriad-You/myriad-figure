@@ -45,6 +45,8 @@ import {
 export interface Anime25DGpuLayer extends Anime25DRenderableLayer {
   baseRole: string
   rest: Float32Array
+  atlasUvs: Float32Array
+  indices: Uint16Array
   deformed: Float32Array
   cols: number
   rows: number
@@ -247,6 +249,8 @@ export function compileAnime25DGpuLayers(
         baseRole,
         rest,
         deformed: deformationPolicy.localDynamic ? rest.slice() : rest,
+        atlasUvs,
+        indices,
         cols,
         rows,
         vao: mesh?.vao ?? null,

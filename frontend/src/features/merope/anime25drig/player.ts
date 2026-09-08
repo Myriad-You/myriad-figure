@@ -41,6 +41,7 @@ import type {
   Anime25DTorsoShellRotation,
   Anime25DTorsoYawState,
 } from './torsoDeformation'
+import type { TouchAtlas, TouchPaintLayer, VisibleTouchHit } from './touchVisibility'
 import type { Anime25DPlayback, Anime25DShellProfile } from './types'
 import { currentCopy } from '../../../i18n/localeCopy'
 import { allowsPointerGaze, IDLE_MOTION_POLICY } from '../motion/policy'
@@ -176,6 +177,8 @@ import {
   resolveAnime25DTorsoChestShape,
   stepAnime25DTorsoShellRotation,
 } from './torsoDeformation'
+import { touchPointInView } from './touchHitTest'
+import { hitTestVisibleTouch, readTouchAtlas } from './touchVisibility'
 import { compileProgram, createAtlasTexture, loadImage } from './webglRuntime'
 
 /**
@@ -268,6 +271,8 @@ export class Anime25DPlayer {
 
   private layers: Anime25DGpuLayer[] = []
   private atlasTexture: WebGLTexture | null = null
+  private touchAtlas: TouchAtlas | null = null
+  private touchLayers: TouchPaintLayer[] = []
   private readonly performanceTelemetry = new Anime25DPerformanceTelemetry()
   private readonly current: Anime25DDriver = { ...IDENTITY_DRIVER }
   private readonly target: Anime25DDriver = { ...IDENTITY_DRIVER }
@@ -462,6 +467,7 @@ export class Anime25DPlayer {
       image,
     )
     const nextTexture = createAtlasTexture(this.gl, image)
+    const touchAtlas = readTouchAtlas(image)
     if (this.disposed || atlasAbort.signal.aborted) {
       releaseCompiledGpu(
         this.gl,
@@ -476,10 +482,35 @@ export class Anime25DPlayer {
     this.atlasTexture = nextTexture
     this.layers = compiled.layers
     this.collarClip = compiled.collarClip
+    this.touchAtlas = touchAtlas
+    this.touchLayers = this.layers.map((layer) => {
+      const mesh = layer.renderKind === 'neck' && this.collarClip
+        ? this.collarClip : layer
+      return {
+        paint: layer,
+        mesh: {
+          positions: mesh.deformed,
+          atlasUvs: mesh.atlasUvs,
+          indices: mesh.indices,
+          layerTransform: layer.layerTransform,
+        },
+      }
+    })
   }
 
   async loadAtlas(url: string): Promise<void> {
     await this.replaceLivePackage(this.playback, this.rigManifest, url)
+  }
+
+  /** Read-only contact query against the latest submitted pose and paint order. */
+  hitTestTouch(clientX: number, clientY: number): VisibleTouchHit | null {
+    const canvas = this.gl.canvas
+    if (this.disposed || !this.touchAtlas || !(canvas instanceof HTMLCanvasElement)) return null
+    const point = touchPointInView(clientX, clientY, canvas.getBoundingClientRect(), {
+      width: this.renderFrame.viewWidth,
+      height: this.renderFrame.viewHeight,
+    })
+    return point ? hitTestVisibleTouch(point.x, point.y, this.touchLayers, this.touchAtlas, this.renderFrame) : null
   }
 
   private applyPackage(
@@ -861,6 +892,8 @@ export class Anime25DPlayer {
     this.layers = []
     this.collarClip = null
     this.atlasTexture = null
+    this.touchAtlas = null
+    this.touchLayers = []
     this.gl.deleteProgram(this.program)
     // Chrome keeps a detached canvas's drawing buffer until loseContext.
     // A canvas still in the document must keep the context: getContext('webgl2')
