@@ -1350,6 +1350,13 @@ export class Anime25DPlayer {
           layer.layerTransform,
         )
       }
+      // A high collar replaces the ordinary neck mesh with collarClip. Its
+      // layer still supplies paint uniforms, but owns no position buffer.
+      // Do not deform/mark it dirty and later upload into a null binding.
+      if (!layer.vertexBuffer) {
+        layer.geometryDirty = false
+        continue
+      }
       if (!layer.localDynamic) {
         if (work) {
           work.shaderOnlyLayers += 1

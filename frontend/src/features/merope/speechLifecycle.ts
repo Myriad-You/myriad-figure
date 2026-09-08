@@ -56,6 +56,7 @@ export class SpeechLifecycleController {
   private speechActive = false
   private notifiedBusy = false
   private timer: unknown = null
+  private readonly cancelled = new Set<string>()
   private readonly scheduler: SpeechLifecycleScheduler
   private readonly occupancy?: SpeechOccupancy
 
@@ -71,6 +72,11 @@ export class SpeechLifecycleController {
 
   handle(event: MeropeSpeechEventDetail): SpeechLifecycleDisposition {
     if (event.phase === 'cancel') {
+      this.cancelled.add(
+        JSON.stringify([event.messageId, event.utteranceId ?? null]),
+      )
+      if (this.cancelled.size > 64)
+        this.cancelled.delete(this.cancelled.values().next().value!)
       if (
         this.activeMessageId === event.messageId &&
         (!event.utteranceId || event.utteranceId === this.activeUtteranceId)
@@ -87,8 +93,21 @@ export class SpeechLifecycleController {
     }
 
     if (event.phase === 'start') {
+      // An explicit start may intentionally reuse an utterance (e.g. replay).
+      // Delayed chunks/energy alone may never resurrect a cancelled mouth.
+      this.cancelled.delete(JSON.stringify([event.messageId, null]))
+      this.cancelled.delete(
+        JSON.stringify([event.messageId, event.utteranceId]),
+      )
       this.start(event.messageId, event.utteranceId, event.locale)
       return 'active'
+    }
+
+    if (
+      this.cancelled.has(JSON.stringify([event.messageId, null])) ||
+      this.cancelled.has(JSON.stringify([event.messageId, event.utteranceId]))
+    ) {
+      return 'ignored'
     }
 
     if (!this.matches(event.messageId, event.utteranceId)) {
@@ -159,6 +178,7 @@ export class SpeechLifecycleController {
 
   dispose(): void {
     this.finishNow()
+    this.cancelled.clear()
   }
 
   private start(messageId: string, utteranceId: string, locale?: string): void {
