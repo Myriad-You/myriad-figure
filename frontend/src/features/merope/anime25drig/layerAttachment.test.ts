@@ -523,8 +523,12 @@ function frame(
 test('125 combined poses keep the neck mesh unfolded and its lower join near the garment', () => {
   const neckBinding = hosts[1].secondaryDeformation
   const bodyBinding = hosts[2].secondaryDeformation
-  const at = (x: number, y: number, binding: typeof neckBinding,
-    pose: Anime25DSecondaryDeformationFrame) => {
+  const at = (
+    x: number,
+    y: number,
+    binding: typeof neckBinding,
+    pose: Anime25DSecondaryDeformationFrame,
+  ) => {
     const point = { x, y }
     deformAnime25DSecondaryPoint(point, x, y, 0, binding, pose)
     assert.ok(Number.isFinite(point.x) && Number.isFinite(point.y))
@@ -536,8 +540,8 @@ test('125 combined poses keep the neck mesh unfolded and its lower join near the
         const pose = frame(yaw, roll, 0.5, pitch)
         for (let row = 0; row < 10; row++) {
           for (let column = 0; column < 6; column++) {
-            const x = neck.x + column * neck.w / 6
-            const y = neck.y + row * neck.h / 10
+            const x = neck.x + (column * neck.w) / 6
+            const y = neck.y + (row * neck.h) / 10
             const a = at(x, y, neckBinding, pose)
             const b = at(x + neck.w / 6, y, neckBinding, pose)
             const c = at(x, y + neck.h / 10, neckBinding, pose)
@@ -545,12 +549,18 @@ test('125 combined poses keep the neck mesh unfolded and its lower join near the
             assert.ok(area > 0, `folded neck at ${yaw},${pitch},${roll}`)
           }
         }
-        for (const x of [neck.x + neck.w * 0.25, anchors.neckPivot.x, neck.x + neck.w * 0.75]) {
+        for (const x of [
+          neck.x + neck.w * 0.25,
+          anchors.neckPivot.x,
+          neck.x + neck.w * 0.75,
+        ]) {
           const y = anchors.neckBottom - 10
           const a = at(x, y, neckBinding, pose)
           const b = at(x, y, bodyBinding, pose)
-          assert.ok(Math.hypot(a.x - b.x, a.y - b.y) < neck.w * 0.04,
-            `join drift at ${yaw},${pitch},${roll}: ${Math.hypot(a.x-b.x,a.y-b.y)}`)
+          assert.ok(
+            Math.hypot(a.x - b.x, a.y - b.y) < neck.w * 0.04,
+            `join drift at ${yaw},${pitch},${roll}: ${Math.hypot(a.x - b.x, a.y - b.y)}`,
+          )
         }
       }
     }

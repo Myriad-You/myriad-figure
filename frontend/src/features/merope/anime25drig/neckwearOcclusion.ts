@@ -26,7 +26,6 @@ export function canLiftNeckwearOverSkin(
         layer !== accessory &&
         layer !== neck &&
         layer !== body &&
-        layer.role !== 'neckwear' &&
         overlaps(accessory, layer),
     )
     .map((layer) => ({ layer, image: readPixels(layer) }))

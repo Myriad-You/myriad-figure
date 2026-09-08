@@ -241,20 +241,34 @@ test('transparent padding preserves the world-space join and contour', () => {
   const padded = { ...f.neck, x: 390, y: 480, w: 60, h: 140 }
   const image = pixels(60, 140, (x, y) => {
     if (x < 10 || x >= 50 || y < 20 || y >= 120) return [0, 0, 0, 0]
-    return [...f.neckPixels.pixels.subarray(((y - 20) * 40 + x - 10) * 4,
-      ((y - 20) * 40 + x - 10) * 4 + 4)]
+    return [
+      ...f.neckPixels.pixels.subarray(
+        ((y - 20) * 40 + x - 10) * 4,
+        ((y - 20) * 40 + x - 10) * 4 + 4,
+      ),
+    ]
   })
   f.images.set(padded, image)
   const actual = resolveAnime25DNeckSurface([padded, f.body], anchors, f.read)!
   assert.ok(actual)
-  assert.equal(padded.y + actual.fadeStart * padded.h,
-    f.neck.y + expected.fadeStart * f.neck.h)
-  assert.equal(padded.y + actual.fadeEnd * padded.h,
-    f.neck.y + expected.fadeEnd * f.neck.h)
-  for (let i = 0; i < 32; i++) assert.ok(Math.abs(
-    padded.y + actual.contour.bands[i] * padded.h -
-    f.neck.y - expected.contour.bands[i] * f.neck.h,
-  ) < 0.00002)
+  assert.equal(
+    padded.y + actual.fadeStart * padded.h,
+    f.neck.y + expected.fadeStart * f.neck.h,
+  )
+  assert.equal(
+    padded.y + actual.fadeEnd * padded.h,
+    f.neck.y + expected.fadeEnd * f.neck.h,
+  )
+  for (let i = 0; i < 32; i++) {
+    assert.ok(
+      Math.abs(
+        padded.y +
+          actual.contour.bands[i] * padded.h -
+          f.neck.y -
+          expected.contour.bands[i] * f.neck.h,
+      ) < 0.00002,
+    )
+  }
 })
 
 test('resampling and mild colour noise do not switch open skin into garment topology', () => {
@@ -264,9 +278,11 @@ test('resampling and mild colour noise do not switch open skin into garment topo
     const read = (source: Anime25DPlaybackLayer) => {
       const image = f.read(source)!
       return pixels(image.width * scale, image.height * scale, (x, y) => {
-        const offset = (Math.floor(y / scale) * image.width + Math.floor(x / scale)) * 4
+        const offset =
+          (Math.floor(y / scale) * image.width + Math.floor(x / scale)) * 4
         return [...image.pixels.subarray(offset, offset + 4)].map((v, i) =>
-          i < 3 ? v + ((x + y) % 3 - 1) : v)
+          i < 3 ? v + (((x + y) % 3) - 1) : v,
+        )
       })
     }
     const actual = resolveAnime25DNeckSurface(f.layers, anchors, read)!

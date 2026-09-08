@@ -38,7 +38,7 @@ export function opaquePixelBounds(
 /**
  * Refine an already verified, fully supported skin join. Every column remains
  * inside that safe band: local shadows cannot push the fade into unknown art.
- * Small neighbourhoods and bounded adjacent slopes reject single-pixel edges.
+ * Small neighbourhoods and smoothed adjacent bands reject single-pixel edges.
  */
 export function buildNeckSurfaceContour(
   width: number,
