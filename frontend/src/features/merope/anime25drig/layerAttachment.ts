@@ -168,12 +168,12 @@ export function bindAnime25DLayerAttachment(
   if (!isAnime25DRigidAttachment(source)) return null
   const samples = attachmentFootprint(source, readPixels?.(source) ?? null)
   const totalWeight = samples.reduce((sum, point) => sum + point.weight, 0)
-  const x =
+  let x =
     totalWeight > 0
       ? samples.reduce((sum, point) => sum + point.x * point.weight, 0) /
         totalWeight
       : source.x + source.w / 2
-  const y =
+  let y =
     totalWeight > 0
       ? samples.reduce((sum, point) => sum + point.y * point.weight, 0) /
         totalWeight
@@ -239,6 +239,17 @@ export function bindAnime25DLayerAttachment(
   // Keep its semantic surface fallback instead of losing shell follow in that case.
   host ??= fallbackHost
   if (!host) return null
+  // Anchor the supported root, not the centre of a pendant protruding beyond
+  // its surface. This also keeps mesh sampling inside the actual contact.
+  const hostPixels = readPixels?.(host.source)
+  if (hostPixels && samples.length) {
+    const supported = samples.filter(p => attachmentCoverage([p], host!.source, hostPixels) > 0.5)
+    const mass = supported.reduce((sum,p) => sum+p.weight,0)
+    if (mass > 0) {
+      x = supported.reduce((sum,p) => sum+p.x*p.weight,0)/mass
+      y = supported.reduce((sum,p) => sum+p.y*p.weight,0)/mass
+    }
+  }
   const binding = { ...host.secondaryDeformation }
   binding.shaderGlobalTransform = false
   binding.chestWeights =
