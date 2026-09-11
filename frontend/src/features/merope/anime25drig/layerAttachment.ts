@@ -7,10 +7,15 @@ import type { Anime25DPlaybackAnchors, Anime25DPlaybackLayer } from './types'
 import { isAnime25DRigidAttachment } from '../rig/anime25dLayerSemantics'
 import { sampleChestWeight } from './chestPhysics'
 import { deformAnime25DSecondaryPoint } from './secondaryDeformation'
+import { bindAttachmentMesh, sampleAttachmentMesh } from './attachmentMesh'
+import type { AttachmentMeshSample } from './attachmentMesh'
 
 interface AttachmentHost {
   source: Anime25DPlaybackLayer
   secondaryDeformation: Anime25DSecondaryDeformationBinding
+  rest?: Float32Array
+  deformed?: Float32Array
+  indices?: Uint16Array
 }
 
 export interface Anime25DAttachmentPixels {
@@ -93,11 +98,62 @@ function attachmentCoverage(
 
 export interface Anime25DLayerAttachment {
   hostName: string
+  hostSource?: Anime25DPlaybackLayer
+  meshSamples?: [AttachmentMeshSample, AttachmentMeshSample]
   x: number
   y: number
   binding: Anime25DSecondaryDeformationBinding
   origin: { x: number; y: number }
   tangent: { x: number; y: number }
+}
+
+export interface Anime25DNeckwearBridge {
+  upper: Anime25DLayerAttachment
+  lower: Anime25DLayerAttachment
+  weights: Float32Array
+  upperMatrix: Float32Array
+  lowerMatrix: Float32Array
+}
+
+export function bindNeckwearBridge(
+  source: Anime25DPlaybackLayer, hosts: readonly AttachmentHost[],
+  anchors: Anime25DPlaybackAnchors, chestWeights: ChestWeightField | null,
+  canvasWidth: number, rest: Float32Array, readPixels: ReadAttachmentPixels,
+): Anime25DNeckwearBridge | null {
+  if (source.role !== 'neckwear' || source.y >= anchors.neckBottom || source.y + source.h <= anchors.neckBottom) return null
+  const samples = attachmentFootprint(source, readPixels(source))
+  const upperPoints = samples.filter(p => p.y < anchors.neckBottom)
+  const lowerPoints = samples.filter(p => p.y >= anchors.neckBottom)
+  if (upperPoints.length < 8 || lowerPoints.length < 8) return null
+  const bind = (points: AttachmentSample[], role: string) => {
+    const candidates = hosts.filter(h => h.source.role === role)
+    if (candidates.length !== 1) return null
+    const pixels = readPixels(candidates[0].source)
+    if (!pixels || attachmentCoverage(points, candidates[0].source, pixels) < 0.75) return null
+    const mass = points.reduce((s,p)=>s+p.weight,0)
+    const x=points.reduce((s,p)=>s+p.x*p.weight,0)/mass
+    const y=points.reduce((s,p)=>s+p.y*p.weight,0)/mass
+    return bindAnime25DLayerAttachment({...source,x:x-0.5,y:y-0.5,w:1,h:1}, candidates, anchors, chestWeights, canvasWidth)
+  }
+  const upper=bind(upperPoints,'neck'), lower=bind(lowerPoints,'topwear')
+  if(!upper || !lower) return null
+  const span=Math.max(1, Math.min(source.h*0.35, (anchors.neckBottom-anchors.neckTop)*0.5))
+  const weights=Float32Array.from({length:rest.length/2},(_,i)=>{
+    const t=Math.max(0,Math.min(1,(rest[i*2+1]-(anchors.neckBottom-span/2))/span))
+    return t*t*(3-2*t)
+  })
+  return {upper,lower,weights,upperMatrix:new Float32Array(9),lowerMatrix:new Float32Array(9)}
+}
+
+export function deformNeckwearBridge(bridge: Anime25DNeckwearBridge, frame: Readonly<Anime25DSecondaryDeformationFrame>, rest: Float32Array, output: Float32Array): void {
+  writeAnime25DAttachmentTransform(bridge.upper,frame,bridge.upperMatrix)
+  writeAnime25DAttachmentTransform(bridge.lower,frame,bridge.lowerMatrix)
+  const a=bridge.upperMatrix,b=bridge.lowerMatrix
+  for(let i=0;i<bridge.weights.length;i++) {
+    const x=rest[i*2],y=rest[i*2+1],w=bridge.weights[i]
+    output[i*2]=(a[0]*x+a[3]*y+a[6])*(1-w)+(b[0]*x+b[3]*y+b[6])*w
+    output[i*2+1]=(a[1]*x+a[4]*y+a[7])*(1-w)+(b[1]*x+b[4]*y+b[7])*w
+  }
 }
 
 /** Neckwear is an upstream region, not a material */
@@ -125,7 +181,7 @@ export function bindAnime25DLayerAttachment(
   const roles =
     source.group === 'head'
       ? source.role === 'headwear'
-        ? ['front-hair', 'face']
+        ? ['front-hair', 'back-hair', 'face']
         : source.role === 'earwear'
           ? ['ears', 'face']
           : ['face']
@@ -134,6 +190,7 @@ export function bindAnime25DLayerAttachment(
         : ['topwear', 'bottomwear', 'neck']
   let host: AttachmentHost | undefined
   let fallbackHost: AttachmentHost | undefined
+  let bestCoverage = -1
   for (const role of roles) {
     let distance = Number.POSITIVE_INFINITY
     let coverage = -1
@@ -169,11 +226,15 @@ export function bindAnime25DLayerAttachment(
       ) {
         distance = nextDistance
         coverage = nextCoverage
-        host = candidate
+        if (nextCoverage > bestCoverage) {
+          host = candidate
+          bestCoverage = nextCoverage
+        }
       }
     }
     fallbackHost ??= roleFallback
-    if (host) break
+    // Compare evidence across semantic roles, not just fragments of the first role.
+    if (host && !readPixels) break
   }
   // Keep its semantic surface fallback instead of losing shell follow in that case.
   host ??= fallbackHost
@@ -193,8 +254,14 @@ export function bindAnime25DLayerAttachment(
       : null
   binding.hairlinePinWeights = null
   binding.frontHairParallaxScale = null
+  const mesh = host.rest && host.deformed && host.indices && !host.secondaryDeformation.shaderGlobalTransform
+    ? { rest: host.rest, deformed: host.deformed, indices: host.indices } : null
+  const originSample = mesh ? bindAttachmentMesh(mesh, x, y) : null
+  const tangentSample = mesh ? bindAttachmentMesh(mesh, x + 1, y) : null
   return {
     hostName: host.source.name,
+    hostSource: host.source,
+    meshSamples: originSample && tangentSample ? [originSample, tangentSample] : undefined,
     x,
     y,
     binding,
@@ -214,8 +281,13 @@ export function writeAnime25DAttachmentTransform(
   origin.y = y
   tangent.x = x + 1
   tangent.y = y
-  deformAnime25DSecondaryPoint(origin, x, y, 0, binding, frame)
-  deformAnime25DSecondaryPoint(tangent, x + 1, y, 1, binding, frame)
+  if (attachment.meshSamples) {
+    sampleAttachmentMesh(attachment.meshSamples[0], origin)
+    sampleAttachmentMesh(attachment.meshSamples[1], tangent)
+  } else {
+    deformAnime25DSecondaryPoint(origin, x, y, 0, binding, frame)
+    deformAnime25DSecondaryPoint(tangent, x + 1, y, 1, binding, frame)
+  }
   const dx = tangent.x - origin.x
   const dy = tangent.y - origin.y
   const length = Math.hypot(dx, dy)

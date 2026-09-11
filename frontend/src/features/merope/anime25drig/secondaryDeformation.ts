@@ -100,6 +100,7 @@ export interface Anime25DSecondaryDeformationBinding {
   handwear: boolean
   handwearSide: Anime25DPlaybackLayer['side']
   handwearAnchorX: number
+  shoulderContact?: { weights: Float32Array, torso: Anime25DSecondaryDeformationBinding } | null
   frontHair: boolean
   frontHairParallaxScale: Float32Array | null
   chestWeights: Float32Array | null
@@ -156,7 +157,20 @@ export function deformAnime25DSecondaryPoint(
   vertex: number,
   binding: Readonly<Anime25DSecondaryDeformationBinding>,
   frame: Readonly<Anime25DSecondaryDeformationFrame>,
+  applyShoulderContact = true,
 ): void {
+  const contact = applyShoulderContact ? binding.shoulderContact : null
+  const contactWeight = contact?.weights[vertex] ?? 0
+  if (contact && contactWeight > 0) {
+    const torsoPoint = { x: point.x, y: point.y }
+    deformAnime25DSecondaryPoint(torsoPoint, restX, restY, vertex, contact.torso, frame)
+    // Evaluate the unpinned arm once, then blend whole transforms. All body
+    // breathing, shell and chest terms match at the seam, not just yaw.
+    deformAnime25DSecondaryPoint(point, restX, restY, vertex, binding, frame, false)
+    point.x += (torsoPoint.x - point.x) * contactWeight
+    point.y += (torsoPoint.y - point.y) * contactWeight
+    return
+  }
   const { source } = binding
   let collarBodyWeight = 1
   if (!binding.shaderGlobalTransform) {

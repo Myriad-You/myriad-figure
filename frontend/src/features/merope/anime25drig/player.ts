@@ -113,6 +113,7 @@ import {
   stepJawMotion,
 } from './jawMotion'
 import { writeAnime25DAttachmentTransform } from './layerAttachment'
+import { deformNeckwearBridge } from './layerAttachment'
 import { deformAnime25DUpstreamFeaturePoint } from './layerDeformation'
 import { compileAnime25DGpuLayers } from './layerGpuBinding'
 import { writeAnime25DLayerGlobalTransform } from './layerTransform'
@@ -1280,7 +1281,11 @@ export class Anime25DPlayer {
       }
     }
     for (const layer of this.layers) {
-      const visible = shouldDeformLayer(layer.source, layer.frameOpacity)
+      const visible = shouldDeformLayer(layer.source, layer.frameOpacity) || this.layers.some(
+        child => (child.attachment?.hostSource === layer.source ||
+          child.neckwearBridge?.upper.hostSource === layer.source ||
+          child.neckwearBridge?.lower.hostSource === layer.source) && shouldDeformLayer(child.source, child.frameOpacity),
+      )
       const updateLocalGeometry = layer.deformationPlan.cacheable
         ? shouldUpdateAnime25DLayerGeometry(
             layer.deformationPlan,
@@ -1295,13 +1300,7 @@ export class Anime25DPlayer {
       const source = layer.source
       const bn = layer.baseRole
       const isHead = source.group === 'head'
-      if (layer.attachment) {
-        writeAnime25DAttachmentTransform(
-          layer.attachment,
-          secondaryDeformationFrame,
-          layer.layerTransform,
-        )
-      } else if (layer.shaderGlobalTransform) {
+      if (!layer.attachment && layer.shaderGlobalTransform) {
         writeAnime25DLayerGlobalTransform(
           {
             headFollow: isHead
@@ -1449,6 +1448,17 @@ export class Anime25DPlayer {
         continue
       }
       layer.geometryDirty = true
+    }
+    // Hosts may be later in draw order. Resolve attachments only after all host
+    // vertices include this frame's shell, breathing and hair physics.
+    for (const layer of this.layers) {
+      if (layer.neckwearBridge && shouldDeformLayer(layer.source, layer.frameOpacity)) {
+        deformNeckwearBridge(layer.neckwearBridge, secondaryDeformationFrame, layer.rest, layer.deformed)
+        layer.layerTransform.set([1,0,0,0,1,0,0,0,1])
+        layer.geometryDirty = true
+      } else if (layer.attachment) writeAnime25DAttachmentTransform(
+        layer.attachment, secondaryDeformationFrame, layer.layerTransform,
+      )
     }
   }
 

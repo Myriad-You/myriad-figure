@@ -940,6 +940,24 @@ test('a turning garment carries the sleeve instead of sliding out from under it'
   )
 })
 
+test('exposed shoulder seam shares body motion while the distal arm stays free', () => {
+  const torso = bodyBinding('topwear', null)
+  const arm = bodyBinding('handwear', 'L')
+  arm.shoulderContact = { weights: new Float32Array([1]), torso }
+  for (const yaw of [-0.6, 0, 0.6]) {
+    for (const lift of [-1, 0, 1]) {
+      const frame = torsoTurnFrame(yaw, 0.8, lift)
+      frame.expression.armPos = lift
+      frame.breath = 0.8
+      const rest = {x: 90, y: 100}
+      assert.deepEqual(deformSecondary(rest, arm, frame), deformSecondary(rest, torso, frame))
+      arm.shoulderContact.weights[0] = 0
+      assert.deepEqual(deformSecondary(rest, arm, frame), deformSecondary(rest, bodyBinding('handwear', 'L'), frame))
+      arm.shoulderContact.weights[0] = 1
+    }
+  }
+})
+
 test('turning does not change how wide either sleeve is', () => {
   for (const side of ['L', 'R'] as const) {
     const binding = bodyBinding('handwear', side)

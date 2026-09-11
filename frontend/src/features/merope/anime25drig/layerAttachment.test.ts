@@ -14,6 +14,8 @@ import {
 import { IDENTITY_DRIVER } from './driver'
 import {
   bindAnime25DLayerAttachment,
+  bindNeckwearBridge,
+  deformNeckwearBridge,
   writeAnime25DAttachmentTransform,
 } from './layerAttachment'
 import { resolveAnime25DLayerDeformationPolicy } from './layerDeformationPolicy'
@@ -56,6 +58,32 @@ const source = {
 }
 const shell = deriveAnime25DShellProfile(source)
 const chest = deriveGeometryChestProfile(source)
+
+test('headwear chooses supported back hair over unsupported front hair', () => {
+  const art=layer('headwear','head',10,10,10,10)
+  const front=layer('front-hair','head',0,0,30,30)
+  const back=layer('back-hair','head',0,0,30,30)
+  const attachment=bindAnime25DLayerAttachment(art,[host(front),host(back)],anchors,null,1024,
+    l=>pixels(30,30,()=>l!==front))
+  assert.equal(attachment?.hostName,back.name)
+})
+
+test('cross-surface neckwear follows both ends without mutating rest geometry', () => {
+  const rest=new Float32Array([520,690,520,800])
+  const bridge=bindNeckwearBridge(necklace,hosts,anchors,null,1024,rest,
+    l=>pixels(Math.round(l.w),Math.round(l.h),()=>true))
+  assert.ok(bridge)
+  assert.equal(bridge.weights[0],0)
+  assert.equal(bridge.weights[1],1)
+  const output=rest.slice()
+  deformNeckwearBridge(bridge,frame(0.7),rest,output)
+  const a=transform(bridge.upperMatrix,rest[0],rest[1])
+  const b=transform(bridge.lowerMatrix,rest[2],rest[3])
+  assert.ok(Math.hypot(output[0]-a.x,output[1]-a.y)<1e-3)
+  assert.ok(Math.hypot(output[2]-b.x,output[3]-b.y)<1e-3)
+  assert.deepEqual([...rest],[520,690,520,800])
+  assert.equal(bindNeckwearBridge(necklace,hosts,anchors,null,1024,rest,()=>null),null)
+})
 
 test('neckwear and unknown body ornaments ride the garment, not a separate projection', () => {
   for (const decoration of [
@@ -358,7 +386,10 @@ test('GPU compilation actually binds independent accessories to their surfaces',
       assert.ok(drawing?.attachment)
       assert.equal(drawing.attachment.hostName, parent)
       assert.equal(drawing.localDynamic, false)
-      assert.equal(drawing.deformed, drawing.rest)
+      if (drawing.neckwearBridge) {
+        assert.notEqual(drawing.deformed, drawing.rest)
+        assert.deepEqual(drawing.deformed, drawing.rest)
+      } else assert.equal(drawing.deformed, drawing.rest)
       writeAnime25DAttachmentTransform(
         drawing.attachment,
         frame(0.8),
