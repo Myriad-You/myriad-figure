@@ -20,15 +20,7 @@ type SpeechOwnedDriver = Pick<
   'mouthForm' | 'mouthOpen' | 'talk'
 >
 
-/**
- * How hard the body carries itself, from the baseline the director chose.
- *
- * Posture is deliberately absent: `writeBaselineOffset` already puts the same
- * body/armY/armPos on the composed pose every frame, and duplicating it here
- * would apply it twice. This patch owns only what the per-frame offset cannot
- * reach — secondary motion and softness — which is the half of `motionEnergy`
- * that never made it to the rig.
- */
+/** This patch owns only what the per-frame offset cannot reach */
 export function baselineDriverPatch(
   baseline: PerformanceBaseline,
 ): Partial<Anime25DDriver> {
@@ -45,7 +37,6 @@ export function baselineDriverPatch(
   }
 }
 
-/** Secondary-motion defaults, for when no baseline is installed. */
 export function restEnergyDriverPatch(): Partial<Anime25DDriver> {
   return {
     physAmp: DEFAULT_REAR_HAIR_SWAY,
@@ -71,8 +62,6 @@ export function performanceRestDriverPatch(
     blink: true,
     phys: true,
     ...(baseline ? baselineDriverPatch(baseline) : {}),
-    // Thinking has a dedicated constrained loop, so full autonomous actions
-    // remain off even when a semantic baseline is currently installed.
     thinking,
     rand: !thinking,
   }
@@ -99,26 +88,17 @@ function cuePriority(cue: PerformanceCue): number {
 const MIN_STICKER_FADE_IN = 0.18
 export const MIN_STICKER_FADE_OUT = 0.42
 
-/** Face and body share this envelope so they peak and release together. */
 export function cueVisualEnvelope(cue: PerformanceCue): {
   fadeIn: number
   hold: number
   fadeOut: number
 } {
-  // A scheduled cue carries the hold the scheduler resolved; only an
-  // unscheduled one is guessed from tempo.
   return {
     ...authoredCueEnvelope(cue),
     ...(cue.holdMs == null ? {} : { hold: Math.max(0.24, cue.holdMs / 1_000) }),
   }
 }
 
-/**
- * The envelope the plan authors, ignoring any hold a previous realization
- * wrote back. The planner must not read its own output: peg spacing derives
- * from this, and feeding a realized hold back in would shrink the cue on
- * every recompile.
- */
 export function authoredCueEnvelope(cue: PerformanceCue): {
   fadeIn: number
   hold: number
@@ -135,22 +115,16 @@ export function authoredCueEnvelope(cue: PerformanceCue): {
   }
 }
 
-/** Playback duration, including a scheduler-resolved hold. */
 export function cueDurationMs(cue: PerformanceCue): number {
   const envelope = cueVisualEnvelope(cue)
   return Math.round((envelope.fadeIn + envelope.hold + envelope.fadeOut) * 1_000)
 }
 
-/** Duration the plan lays out with, before any realization writes back. */
 function authoredCueDurationMs(cue: PerformanceCue): number {
   const envelope = authoredCueEnvelope(cue)
   return Math.round((envelope.fadeIn + envelope.hold + envelope.fadeOut) * 1_000)
 }
 
-/**
- * Prevents throttled browser timers from replaying an already-expired pose,
- * and respects an interval shortened by a later replacement cue.
- */
 export function scheduledBodyCueRemainingDurationMs(
   scheduled: ScheduledBodyCue,
   nowMs: number,

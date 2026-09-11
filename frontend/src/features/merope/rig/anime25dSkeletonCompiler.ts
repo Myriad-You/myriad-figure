@@ -300,9 +300,6 @@ export function buildAnime25DLayerSources(
       id: `a25d-${layer.id}`,
       textureId: 'atlas',
       textureBounds: layer.textureBounds,
-      // ag-psd exposes this PSD bottom-to-top. Anime2.5DRig deliberately
-      // overrides that order with its semantic depth table, then keeps the PSD
-      // order as a stable tie-break for numbered/repeated layers.
       zIndex: Math.round(depth * 100) * 100 + Math.round(layer.order),
       opacity: 1,
       slot: layer.slot,

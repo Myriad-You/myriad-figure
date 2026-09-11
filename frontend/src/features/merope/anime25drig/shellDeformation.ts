@@ -45,7 +45,6 @@ export function writeAnime25DShellRotation(
   target.pitchSine = Math.sin(pitch)
 }
 
-/** The fixed scalp region is authored in head-radius units and feathered outside. */
 export function anime25DHairlinePinWeight(
   x: number,
   y: number,
@@ -67,11 +66,7 @@ export function anime25DHairlinePinWeight(
   return 1 - smoothstep(outside / pin.feather)
 }
 
-/**
- * Samples the scalp attachment once per mesh. Authored profiles preserve the
- * fork's calibrated rectangle; anchor-derived profiles use the imported strand
- * roots and a release spanning at least two mesh rows.
- */
+/** Authored profiles preserve the fork's calibrated rectangle */
 export function sampleAnime25DHairlinePinWeights(
   rest: Float32Array,
   source: Readonly<Anime25DPlaybackLayer>,
@@ -157,10 +152,7 @@ function interpolatedStrandRootY(
   return total > 1e-6 ? rootY / total : nearestRootY
 }
 
-/**
- * Applies only the shell projection delta. Zero yaw/pitch is therefore an exact
- * identity for existing front-facing assets, regardless of their shell depth.
- */
+/** Applies only the shell projection delta. */
 export function deformAnime25DShellPoint(
   point: Anime25DMutableShellPoint,
   restY: number,

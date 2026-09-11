@@ -221,7 +221,6 @@ test('a participation change moves the pose no faster than the groove itself', (
     step(MUSIC_QUALITY.listen, 'listen')
   }
 
-  // An ordinary frame of the sway, for scale.
   const before = step(MUSIC_QUALITY.listen, 'listen')
   const ordinary = step(MUSIC_QUALITY.listen, 'listen')
   const walk = Math.max(
@@ -230,8 +229,6 @@ test('a participation change moves the pose no faster than the groove itself', (
     ),
   )
 
-  // `modeAmount` was always eased; the quality vector behind it was not, so
-  // switching participation stepped yaw, roll and torso in a single frame.
   const changed = step(MUSIC_QUALITY.hum, 'hum')
   for (const key of ['angleX', 'angleZ', 'body'] as const) {
     const jump = Math.abs(changed[key] - ordinary[key])
@@ -260,17 +257,10 @@ test('a participation change still arrives, it only stops stepping', () => {
 })
 
 test('losing the lock is not losing the music', () => {
-  // Measured over 46 excerpts of a real library: the tempo estimate is a
-  // median over eight onset gaps, and on music with dense low-band onsets a
-  // quarter of them crossed the confidence threshold 20-40 times a minute.
-  // Each crossing handed the body the generic fallback and took it back — a
-  // different sway speed entirely, up to 1.98x, twice a second.
   const BPM = 150
-  const lockedPeriod = (60 * 8) / BPM // swayBeats is 8 above 118bpm
+  const lockedPeriod = (60 * 8) / BPM
   const fallbackPeriod = 1 / 0.18
 
-  // A solid lock, then confidence that never reaches the threshold again but
-  // never reaches zero either: the estimate is uncertain, the music is not gone.
   const uncertain = (time: number) =>
     musicSignalAt(time, {
       bpm: BPM,
@@ -296,18 +286,10 @@ test('losing the lock is not losing the music', () => {
 })
 
 test('catching the beat is a transition, not a jump', () => {
-  // `phase` is the one driver the whole body reads: torso, head, arms and the
-  // gaze arc are all sines of it, so a correction applied to it moves every
-  // limb at once. Adding the beat error straight in bounded nothing — measured
-  // across 46 excerpts of a real library and discarding the first eight
-  // seconds of each, a tenth of all frames still had the sway running 46% off
-  // its own speed, and the worst track reached 105%.
   const BPM = 150
   const controller = new SingingGrooveController()
   controller.setTrack('catch-up')
 
-  // Free-run first so the body is a long way from the beat, then hand it a
-  // confident tempo: the largest correction the lock ever asks for.
   let previousPhase: number | null = null
   let worst = 0
   for (let frame = 0; frame <= 30 * 60; frame += 1) {
@@ -341,11 +323,6 @@ test('catching the beat is a transition, not a jump', () => {
 })
 
 test('a body still swaying keeps the tempo it was swaying to', () => {
-  // Confidence drops to zero the instant the music is taken away. Releasing
-  // the tempo there let the sway slow to the generic idle drift while it was
-  // still shrinking, which reads as running out of power rather than stopping.
-  // Over 42 real excerpts with a sway to wind down, holding it took 84% off
-  // how far the tempo moves while the body is still visibly swaying to it.
   const BPM = 128
   const swayTarget = BPM / (60 * 8)
   const controller = new SingingGrooveController()
@@ -367,7 +344,6 @@ test('a body still swaying keeps the tempo it was swaying to', () => {
   }
   assert.ok(internals.amplitude > 0.9, 'expected a settled sway to wind down')
 
-  // Music gone: no signal at all, which is what the rig is handed on release.
   let heldWhileMoving = true
   for (let frame = 1; frame <= 45; frame += 1) {
     controller.sample(10 + frame / 60, false, null, undefined, 'listen')
@@ -383,13 +359,8 @@ test('a body still swaying keeps the tempo it was swaying to', () => {
 })
 
 test('the body joins in small until it has the timing', () => {
-  // Entering music the sway used to reach nine tenths of its size in a quarter
-  // second while the speed took more than twice that to settle, so it swung at
-  // full size and then changed tempo underneath itself. Adopting the tempo
-  // faster was tried and measured worse on real music: the estimate churns, so
-  // arriving sooner arrives at a wrong value sooner.
   const BPM = 128
-  const swayTarget = BPM / (60 * 8) // swayBeats is 8 above 118bpm
+  const swayTarget = BPM / (60 * 8)
   const controller = new SingingGrooveController()
   controller.setTrack('joining')
   const internals = controller as unknown as {
@@ -397,7 +368,6 @@ test('the body joins in small until it has the timing', () => {
     frequency: number
   }
 
-  // Standing still first, so the speed has a long way to travel on arrival.
   for (let frame = 0; frame <= 3 * 60; frame += 1) {
     controller.sample(frame / 60, false, null, undefined, 'listen')
   }
@@ -424,15 +394,10 @@ test('the body joins in small until it has the timing', () => {
     whileOffTempo <= ENTRY_HELD_BACK_SHARE + 0.05,
     `swayed to ${whileOffTempo} while still off the tempo it had been given`,
   )
-  // And it does open up: this holds the size back, it does not cap it.
   assert.ok(settled > 0.9, `settled sway is only ${settled}`)
 })
 
 test('a fast drum pattern is not a reason to nod faster', () => {
-  // Without a lock the accent was taken from whichever onset passed a coin
-  // flip. On dense percussion that put the head jab against its own cooldown:
-  // 23 nods a minute on tracks with three or more onsets a second against 4.6
-  // on everything else, three quarters of them while the beat was not locked.
   const nodsOver = (onsetEverySeconds: number): number => {
     const controller = new SingingGrooveController()
     controller.setTrack(`onsets-${onsetEverySeconds}`)
@@ -446,7 +411,6 @@ test('a fast drum pattern is not a reason to nod faster', () => {
         time,
         true,
         {
-          // No tempo the clock will trust, which is the case this covers.
           ...musicSignalAt(time, { bpm: 0, confidence: 0 }),
           audio: { energy: 0.7, bass: 0.6, pulse: 0.6, presence: 0.4 },
           beatFrame: {
@@ -469,8 +433,8 @@ test('a fast drum pattern is not a reason to nod faster', () => {
     return nods
   }
 
-  const dense = nodsOver(0.15) // ~6.7 hits a second
-  const spaced = nodsOver(0.6) // beat-spaced hits
+  const dense = nodsOver(0.15)
+  const spaced = nodsOver(0.6)
   assert.ok(spaced > 0, 'beat-spaced onsets should still earn accents')
   assert.ok(
     dense <= spaced,
@@ -479,12 +443,6 @@ test('a fast drum pattern is not a reason to nod faster', () => {
 })
 
 test('an accent placed without a lock is a smaller one', () => {
-  // The head accent is where most of the pitch movement lives. Placed on the
-  // beat it reads as musical; placed on whichever onset happened to arrive it
-  // reads as a twitch, and dense percussion is where the beat is least often
-  // locked. Refusing to place one at all measured best and left the sparse
-  // music that never locks without any accent, so the guess is kept and made
-  // a smaller one.
   const peakDip = (confidence: number): number => {
     const controller = new SingingGrooveController()
     controller.setTrack(`accent-${confidence}`)

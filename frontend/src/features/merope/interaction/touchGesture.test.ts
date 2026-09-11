@@ -30,6 +30,22 @@ test('stationary contact becomes hold using supplied time, without pointermove c
   assert.equal(tracker.end(sample(5000))?.gesture, 'hold')
 })
 
+test('recent completed taps remain evidence during the next press and hold, but not across regions or pauses', () => {
+  const tracker = new TouchGestureTracker()
+  for (let i = 0; i < 3; i++) {
+    tracker.begin(sample(i * 200, 0, 'face'))
+    tracker.end(sample(i * 200 + 80, 0, 'face'))
+  }
+  assert.equal(tracker.begin(sample(600, 0, 'face'))?.repeatCount, 3)
+  assert.equal(tracker.update(sample(1200, 0, 'face'))?.repeatCount, 3)
+  assert.equal(tracker.update(sample(1250, 0, 'hair'))?.repeatCount, 0)
+  tracker.end(sample(1300, 0, 'hair'))
+  tracker.begin(sample(1500, 0, 'face'))
+  tracker.end(sample(1580, 0, 'face'))
+  assert.equal(tracker.begin(sample(2500, 0, 'face'))?.repeatCount, 0)
+  tracker.reset(2600)
+})
+
 test('linear strokes are sampling-rate independent and keep the same contact identity', () => {
   for (const hz of [30, 60, 120, 240]) {
     const tracker = new TouchGestureTracker()

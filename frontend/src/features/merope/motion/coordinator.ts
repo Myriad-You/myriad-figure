@@ -34,10 +34,6 @@ export interface MotionClaimOptions {
 
 const IDLE: MotionSourceId = 'idle'
 
-/**
- * Runtime motion leases for every mounted face. One process-wide owner;
- * each producer holds its own handle and can only release that handle.
- */
 export class RigMotionCoordinator {
   private readonly leases = new Map<string, PrivateLease>()
   private generation = 0

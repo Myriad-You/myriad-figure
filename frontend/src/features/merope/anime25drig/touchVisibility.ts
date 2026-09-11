@@ -6,7 +6,7 @@ import { hitTestTouchMesh, sampleTouchAlpha } from './touchHitTest'
 export interface TouchPaintLayer {
   paint: Pick<Anime25DRenderableLayer,
     'source' | 'renderKind' | 'frameOpacity' | 'retainWhenHidden' | 'neckSurfaceFade' | 'cryDirection'>
-  /** Must be the replacement mesh for a clipped neck, never the old mesh. */
+  /** Must be the replacement mesh for a clipped neck, never mesh. */
   mesh: TouchMesh | null
 }
 
@@ -22,7 +22,6 @@ export interface VisibleTouchHit extends TouchMeshHit {
   region: TouchRegion | null
 }
 
-/** One byte per atlas texel; never retain an extra full RGBA image for picking. */
 export function readTouchAtlas(image: HTMLImageElement): TouchAtlas | null {
   const canvas = document.createElement('canvas')
   canvas.width = image.naturalWidth || image.width
@@ -36,7 +35,6 @@ export function readTouchAtlas(image: HTMLImageElement): TouchAtlas | null {
     for (let i = 0; i < alpha.length; i++) alpha[i] = pixels[i * 4 + 3]
     return { alpha, width: canvas.width, height: canvas.height }
   } catch {
-    // An unreadable atlas disables touch, not rendering and not alpha checking.
     return null
   } finally {
     canvas.width = 0
@@ -44,7 +42,7 @@ export function readTouchAtlas(image: HTMLImageElement): TouchAtlas | null {
   }
 }
 
-/** Pure CPU picking. Call only on contact samples, never as a render pass. */
+/** Call only on contact samples, never as a render pass. */
 export function hitTestVisibleTouch(
   x: number,
   y: number,
@@ -66,21 +64,19 @@ export function hitTestVisibleTouch(
   for (let index = layers.length - 1; index >= 0; index--) {
     const { paint, mesh } = layers[index]
     if (!mesh || !Number.isFinite(paint.frameOpacity) || paint.frameOpacity < 0.004) continue
-    // Tear fragments move their UVs in the fragment shader. They are a visual
-    // effect, not a touchable body surface; let the underlying face be picked.
+    // They are a visual effect, not a touchable body surface
     if (paint.cryDirection !== 0) continue
     const hit = hitTestTouchMesh(x, y, mesh, frame)
     if (!hit) continue
     if (paint.renderKind === 'iris' && !eyeVisible(paint.source.side)) continue
     const opacity = alphaAt(hit) * paint.frameOpacity * touchNeckOpacity(paint, hit)
-    // An interaction threshold, deliberately stricter than a visible AA fringe.
     if (opacity < 0.1) continue
     return { ...hit, layerIndex: index, region: touchRegionForRole(paint.source.role) }
   }
   return null
 }
 
-/** Use already resolved upstream roles. Never substring-match asset names. */
+/** Never substring-match asset names. */
 export function touchRegionForRole(role: string): TouchRegion | null {
   if (role === 'front-hair' || role === 'back-hair') return 'hair'
   if (['headwear', 'earwear', 'eyewear', 'neckwear', 'handwear'].includes(role)) return 'accessory'

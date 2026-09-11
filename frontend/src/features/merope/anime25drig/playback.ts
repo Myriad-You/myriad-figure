@@ -22,7 +22,6 @@ export interface Anime25DPlaybackBuildLayer {
   strands: Array<{ x: number; rootY: number; tipY: number }>
 }
 
-/** Raw `rig.anchors` from Anime2.5DRig `buildRig`. */
 export interface Anime25DRiggerAnchors {
   face: {
     cx: number
@@ -57,7 +56,6 @@ export interface Anime25DPlaybackBuildInput {
   mouthProfile: Anime25DMouthProfile
 }
 
-/** Translate Anime2.5DRig document anchors into the 3:4 content frame. */
 export function remapRiggerAnchors(
   anchors: Anime25DRiggerAnchors,
   frame: { x: number; y: number; width: number; height: number },

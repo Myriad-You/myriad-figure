@@ -136,8 +136,6 @@ test('an unsplit pale high collar cannot qualify merely by resembling skin', () 
 
 test('an open collar with a local pendant shadow uses a strongly seeded blend band', () => {
   const f = fixture()
-  // The garment covers just over half the upper corridor, but begins below
-  // twelve fully exposed neck rows. Its lower join has a small local shadow.
   f.body.y = 532
   f.images.set(
     f.neck,

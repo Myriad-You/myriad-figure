@@ -59,8 +59,6 @@ test('emphasis opens the mouth further and never past the bound', () => {
   assert.equal(visemeAmount(-1, false), 0)
 })
 
-// Han characters alone cannot say whether a line is Chinese or Japanese, and
-// reading Japanese kanji as pinyin gives the wrong mouth for the sentence.
 test('the locale decides how han characters are read', async () => {
   const japanese = await compileTextVisemes('日本語', 'ja-JP')
   const chinese = await compileTextVisemes('日本語', 'zh-CN')

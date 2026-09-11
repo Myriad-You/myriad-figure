@@ -15,7 +15,6 @@ export type RigPsdImportReply =
   | { prepared: PreparedAnime25DRigImport }
   | { error: string }
 
-/** One worker owns decoding through PNG packing; no UI-thread compile fallback. */
 export function importRigPsdInWorker(
   request: RigPsdImportRequest,
   signal?: AbortSignal,

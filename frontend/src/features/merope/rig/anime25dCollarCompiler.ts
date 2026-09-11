@@ -63,25 +63,12 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value))
 }
 
-/**
- * Recover the three-layer high-collar topology lost when See-through flattens
- * all clothing into one topwear raster:
- *
- *   rear collar -> neck -> front collar / remaining topwear
- *
- * Detection requires both alpha overlap and broad material differences from
- * the neck in the upper corridor. A copied neck (including its shadows) is not
- * a collar, and a thin chain cannot establish garment topology. Once detected,
- * perceptual color segmentation finds the broad, darker collar region joined
- * to the upper edge before any depth decision is made. The aligned master then
- * separates visible neck from clothing and protects front-facing detail.
- */
 export function splitHighCollarOcclusion(
   layers: RasterLayer[],
   anchors: Anime25DRiggerAnchors,
   sourceReference?: Anime25DSourceReference,
 ): RasterLayer[] {
-  // Authored/already compiled topology is authoritative. Never split it again.
+  // Never split it again.
   if (
     layers.some(
       (layer) => layer.role === 'collar-front' || layer.role === 'collar-back',
@@ -96,9 +83,7 @@ export function splitHighCollarOcclusion(
         candidates.push({ neck, topwear })
     }
   }
-  // The runtime has one neck aperture. Several independently overlapping
-  // garments/necks cannot safely be inferred as that one topology. Abstain
-  // instead of selecting the first fragment or silently merging their art.
+  // Several independently overlapping garments/necks cannot safely be inferred as that one topology.
   if (candidates.length !== 1) return layers
   const { neck, topwear } = candidates[0]
 
@@ -129,10 +114,7 @@ export function splitHighCollarOcclusion(
         exposedBottom,
       )
     : undefined
-  // Keep the reference-assisted path stable. A standalone PSD needs a full
-  // front/rear partition because there is no visible master pixel to classify
-  // the overlap; a rear-only color mask would move the entire front collar
-  // behind the neck.
+  // Keep the reference-assisted path stable.
   const colorRearMask = trustedSourceReference
     ? segmentRearCollarByColor(neck, topwear, exposedTop, exposedBottom, false)
     : undefined
@@ -185,8 +167,7 @@ export function splitHighCollarOcclusion(
       const standaloneFrontAmount =
         standaloneBlend >= 0 ? 1 - standaloneBlend : 0
       const fallbackRearAmount =
-        // Geometry partitions only a positively identified garment. It is
-        // still needed for real, uniformly coloured standalone collars.
+        // Geometry partitions only a positively identified garment.
         !colorRearMask && !referenceMask && !standaloneMask
           ? geometricRearAmount
           : 0
@@ -301,9 +282,7 @@ export function splitHighCollarOcclusion(
   const topwearIndex = layers.indexOf(topwear)
   const insertionIndex = Math.min(neckIndex, topwearIndex)
   const output = layers.filter((layer) => layer !== neck && layer !== topwear)
-  // Playback paints in array order rather than consulting semantic depth. Keep
-  // the actual raster order identical to the intended collar topology so
-  // uncertain topwear pixels cannot be painted back over the neck.
+  // Playback paints in array order rather than consulting semantic depth.
   output.splice(insertionIndex, 0, remainingTopwear, rearCollar, neck)
   if (frontCollar) output.splice(insertionIndex + 3, 0, frontCollar)
   return output
@@ -413,12 +392,6 @@ function cropRasterPixels(
   return output
 }
 
-/**
- * A manually selected PSD can outlive the site's current master portrait.
- * Reject that stale pairing before using master pixels as semantic truth.
- * Median agreement across identity-bearing regions tolerates inpainting and
- * local occlusion while still separating different characters and outfits.
- */
 function sourceReferenceAgreesWithLayers(
   reference: Anime25DSourceReference,
   layers: RasterLayer[],
@@ -482,14 +455,6 @@ function sourceReferenceAgreesWithLayers(
   return median >= COLLAR_REFERENCE_MIN_AGREEMENT
 }
 
-/**
- * Split the collar palette before assigning depth. K-means operates in OKLab
- * so luminance differences remain useful across pale, saturated, and dark
- * outfits. A trusted reference keeps the conservative dark-component mask;
- * standalone PSDs instead follow the largest darker upper-edge material
- * through the collar geometry and classify the complementary overlap as the
- * front collar.
- */
 function segmentRearCollarByColor(
   neck: RasterLayer,
   topwear: RasterLayer,
@@ -597,10 +562,6 @@ function segmentRearCollarByColor(
   let rearLabel = -1
   let rearSeedCount = 0
   if (standalone) {
-    // The rear lining is normally darker than the upper collar as a whole,
-    // but pale outfits can have only a small luminance gap. Prefer the largest
-    // upper-edge cluster that is meaningfully darker; falling back to the
-    // dominant cluster still supports nearly monochrome collars.
     centroids.forEach((centroid, index) => {
       const count = seedCounts[index]
       if (
@@ -797,11 +758,7 @@ function collarColorMaskAt(
   return mask.data[localY * mask.width + localX]
 }
 
-/**
- * Feather only the internal front/rear seam of a standalone PSD mask. Pixels
- * outside the classified overlap are ignored, preserving the source layer's
- * own antialiased outer contour while avoiding a rigid cut between two meshes.
- */
+/** Feather only the internal front/rear seam of a standalone PSD mask. */
 function collarStandaloneRearAmount(
   mask: CollarReferenceMask | undefined,
   x: number,

@@ -66,7 +66,6 @@ export function mergeSpeechPhrases(
 ): SpeechPhrase[] {
   const phrases = new Map(previous.map((phrase) => [phrase.text, phrase]))
   for (const phrase of sanitizeSpeechPhrases(incoming)) {
-    // A correction (including `none`) replaces and refreshes just this fragment.
     phrases.delete(phrase.text)
     phrases.set(phrase.text, phrase)
   }
@@ -92,7 +91,6 @@ export function directorPhraseCoverage(
   })
 }
 
-/** Same commitment boundary as refinement; never invent a second speech clock. */
 export function upcomingSpeechText(
   base: SpeechProsodyPlan,
   text: string,
@@ -109,8 +107,6 @@ export function upcomingSpeechText(
       future = true
     }
   })
-  // Strip quotes before slicing, so a cut inside a quote cannot turn another
-  // person's words into this character's emotional evidence.
   return future ? unquotedSpeechText(text.normalize('NFKC')).slice(from) : ''
 }
 
@@ -128,7 +124,7 @@ function accentCommitment(
   )
 }
 
-/** Only a future beat can change delivery; the scheduler owns commitment. */
+/** Only a future beat can change delivery */
 export function refineSpeechPhrases(
   base: SpeechProsodyPlan,
   text: string,

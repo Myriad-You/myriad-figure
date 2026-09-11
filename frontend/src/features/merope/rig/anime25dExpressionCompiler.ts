@@ -194,8 +194,6 @@ function synthesizeMissingCryEyes(
       side,
       group: 'head',
       left: Math.round(eye.icx - bitmap.width / 2),
-      // Anchor the squeeze mark by eye width so a longer tear canvas extends
-      // downward without moving the eye artwork or the tear root.
       top: Math.round(eyeMarkCenterY - bitmap.width * 0.305),
       width: bitmap.width,
       height: bitmap.height,
@@ -270,13 +268,9 @@ function synthesizeMissingSillyEyes(
       })
     }
     if (!hasIris) {
-      // The character's own iris art always wins; the generated disc only
-      // covers portraits that ship no separate iris layer at all.
       const bitmap =
         (irides && createSillyIrisFromArtwork(irides, size.iris)) ??
         createSillyIrisBitmap(size.iris, palette, side)
-      // Seeded apart by a fixed share of the room, so the rest of it stays
-      // available to the runtime drift and neither eye reaches the rim.
       const room = sillyIrisTravelRoom(size)
       const divergentX =
         (side === 'left' ? -1 : 1) * room.x * SILLY_IRIS_REST_SHARE
@@ -483,9 +477,6 @@ function synthesizeMissingManiacEyeShadows(
       side,
       group: 'head',
       left: Math.round(eye.icx + inwardOffset - bitmap.width / 2),
-      // Sink the shadow into the eyewhite edge. Its lower depth lets the
-      // eyewhite crop the overlap, so the visible shadow starts flush with the
-      // lower lid instead of floating on the cheek.
       top: Math.round(eye.y1 - eyeHeight * 0.22),
       width: bitmap.width,
       height: bitmap.height,

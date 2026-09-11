@@ -72,7 +72,6 @@ export function dispatchMeropeSpeech(detail: unknown): void {
   )
 }
 
-/** Dispatch a complete non-streamed reply through the same lifecycle as SSE. */
 export function dispatchMeropeSpeechUtterance(
   utterance: SpeechUtteranceInput,
 ): void {

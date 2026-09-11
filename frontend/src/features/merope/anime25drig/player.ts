@@ -1,4 +1,5 @@
 import type { PerformanceBaseline } from '../../../services/agent/types'
+import type { PresentedTouchReaction } from '../interaction/touchReaction'
 import type { MotionChannelPolicy } from '../motion/policy'
 import type { MeropeRigManifest } from '../rig/types'
 import type { MusicMotionSignal } from '../singing/musicSignal'
@@ -181,13 +182,6 @@ import { touchPointInView } from './touchHitTest'
 import { hitTestVisibleTouch, readTouchAtlas } from './touchVisibility'
 import { compileProgram, createAtlasTexture, loadImage } from './webglRuntime'
 
-/**
- * How fast the pointer gains and gives up the head.
- *
- * Asymmetric on purpose, and in the same direction as every other handoff in
- * this rig: the character should look over promptly, and should not drop your
- * gaze the instant the cursor clips the edge of its bounding box.
- */
 const POINTER_ATTACK_RATE = 16
 const POINTER_RELEASE_RATE = 5.5
 
@@ -349,9 +343,7 @@ export class Anime25DPlayer {
 
   private readonly ambientMotion = new AmbientMotionController()
   private readonly behaviorMotion = new Anime25DBehaviorMotionController()
-  /** Manner of the last composed frame; feeds both the lead and the filter. */
   private responseScale = 1
-  /** Monotonic read clock for scheduled controllers. */
   private controlTime = 0
   private readonly occupancy = new PoseOccupancyController()
   private readonly poseGate = new PoseGateController()
@@ -371,6 +363,12 @@ export class Anime25DPlayer {
   private stylizedMotion: Readonly<StylizedExpressionMotion> | null = null
   private stylizedHeadShare = 1
   private readonly performanceExpression = new PerformanceExpressionController()
+  private presentedTouch: PresentedTouchReaction | null = null
+
+  getPresentedTouch(): PresentedTouchReaction | null {
+    return this.presentedTouch
+  }
+
   /** Reused so the per-frame pose composition never allocates. */
   private readonly composedPose = zeroOccupancyOffset()
   private readonly breathPose = { angleX: 0, angleY: 0, angleZ: 0, body: 0 }
@@ -405,7 +403,6 @@ export class Anime25DPlayer {
   private collarClip: CollarClipMesh | null = null
   private jawEmphasis = 0
   private readonly mouse = { x: 0, y: 0, inside: false }
-  /** How much of the head the pointer currently owns, 0-1. */
   private pointerAuthority = 0
   private policy: MotionChannelPolicy = { ...IDLE_MOTION_POLICY }
   private disposed = false
@@ -421,9 +418,6 @@ export class Anime25DPlayer {
       premultipliedAlpha: true,
       stencil: true,
       antialias: true,
-      // Default false: the browser may discard the back buffer as soon as
-      // requestAnimationFrame stops (tab hidden, IO says off-screen). The
-      // canvas then goes transparent — the live face "vanishes after a while".
       preserveDrawingBuffer: true,
       powerPreference: 'low-power',
     })
@@ -434,10 +428,7 @@ export class Anime25DPlayer {
     this.applyPackage(playback, rigManifest)
   }
 
-  /**
-   * Swap the authored package on the live WebGL context.
-   * The last outfit keeps drawing until the next atlas is bound.
-   */
+  /** The last outfit keeps drawing until the next atlas is bound. */
   async replaceLivePackage(
     playback: Anime25DPlayback,
     rigManifest: MeropeRigManifest | undefined,
@@ -502,7 +493,6 @@ export class Anime25DPlayer {
     await this.replaceLivePackage(this.playback, this.rigManifest, url)
   }
 
-  /** Read-only contact query against the latest submitted pose and paint order. */
   hitTestTouch(clientX: number, clientY: number): VisibleTouchHit | null {
     const canvas = this.gl.canvas
     if (this.disposed || !this.touchAtlas || !(canvas instanceof HTMLCanvasElement)) return null
@@ -665,9 +655,6 @@ export class Anime25DPlayer {
 
   setMouse(x: number, y: number, inside: boolean): void {
     this.mouse.inside = inside
-    // A pointer that has left has no position. Keeping the last one lets the
-    // head ease away from where the cursor actually was; taking the zero the
-    // leave handler sends would make the release a move to centre instead.
     if (!inside) return
     this.mouse.x = x
     this.mouse.y = y
@@ -709,14 +696,6 @@ export class Anime25DPlayer {
     this.speechMotion.clear(this.time)
   }
 
-  /**
-   * The one body entry point for a realized plan.
-   *
-   * Units are routed by family, not by output shape: modulating families reach
-   * the pose generators they scale, and performance units carry their own pose
-   * to the expression controller. Restating the whole live set is what makes
-   * this safe to call on every plan revision.
-   */
   setBehaviorMotionUnits(
     units: readonly Anime25DMotionUnit[],
     nowMs: number,
@@ -834,8 +813,6 @@ export class Anime25DPlayer {
     const substeps = animationSubstepCount(catchup)
     const dt = catchup / substeps
     const dropped = elapsed > 0.05
-    // Skip the stale part of a long stall so expired cues are not replayed,
-    // then integrate the most recent bounded tail in stable substeps.
     this.time += elapsed - catchup
     if (!this.performanceTelemetry.shouldSample()) {
       for (let step = 0; step < substeps; step += 1) {
@@ -895,9 +872,7 @@ export class Anime25DPlayer {
     this.touchAtlas = null
     this.touchLayers = []
     this.gl.deleteProgram(this.program)
-    // Chrome keeps a detached canvas's drawing buffer until loseContext.
-    // A canvas still in the document must keep the context: getContext('webgl2')
-    // returns the lost one, so Strict Mode's effect replay would then fail.
+    // A canvas still in the document must keep the context
     try {
       const surface = this.gl.canvas
       if (surface instanceof HTMLCanvasElement && surface.isConnected) return
@@ -914,8 +889,6 @@ export class Anime25DPlayer {
       this.target.mouse && allowsPointerGaze(this.policy.gaze)
         ? this.mouse
         : { x: 0, y: 0, inside: false }
-    // Look over promptly, let go unhurriedly — the same asymmetry the pose
-    // gate and occupancy already use when a source gains or loses a channel.
     const pointerWanted = pointer.inside ? 1 : 0
     this.pointerAuthority +=
       (pointerWanted - this.pointerAuthority) *
@@ -931,17 +904,6 @@ export class Anime25DPlayer {
       pointer,
       this.pointerAuthority,
     )
-    // Known cues and prosody are sampled slightly ahead to compensate the
-    // display plus driver response. Observed input and physics remain at `t`.
-    // The lead uses the previous frame's manner: the scale is derived from
-    // controllers that are themselves sampled at `controlTime`, so reading it
-    // here would be circular. It varies slowly, and one frame of lag on a
-    // compensation term is far cheaper than sampling everything twice.
-    //
-    // Clamped forward because the lead is no longer constant. A shrinking lead
-    // subtracts from the clock every scheduled controller reads on, and a frame
-    // shorter than the shrink would hand them a time earlier than the last one
-    // — every envelope would step backwards at once.
     const controlTime = monotonicControlTime(
       this.controlTime,
       t,
@@ -949,7 +911,7 @@ export class Anime25DPlayer {
     )
     this.controlTime = controlTime
     const behaviorMotion = this.behaviorMotion.sample(controlTime)
-    const semanticExpression = this.performanceExpression.sample(controlTime)
+    const semanticExpression = this.performanceExpression.sample(controlTime, tgt)
     const stylizedTargets = resolveAnime25DStylizedTargets(
       this.stylizedTargets,
       tgt,
@@ -963,9 +925,6 @@ export class Anime25DPlayer {
       stylizedTargets.silly,
       stylizedTargets.lovestruck,
     )
-    // Sticker-local geometry is authored inside the expression envelope. Pose
-    // ownership controls its visibility and shared face/body contribution, but
-    // must not shrink or otherwise attenuate the artwork a second time.
     this.stylizedMotion = stylized
     const performanceMotionScale =
       this.performanceExpression.getAmbientMotionScale()
@@ -996,9 +955,7 @@ export class Anime25DPlayer {
       behaviorMotion.musicQuality,
       behaviorMotion.musicMode,
     )
-    // How much of the mouth is not currently carrying a voice. A sticker face
-    // only takes the mouth once the character has stopped talking; a cue
-    // landing mid-delivery would otherwise freeze the lip sync.
+    // A sticker face only takes the mouth once the character has stopped talking
     this.sillyMouthShare +=
       ((vocalizing ? 0 : 1) - this.sillyMouthShare) * (1 - Math.exp(-7 * dt))
     const sticker = Math.max(
@@ -1016,8 +973,6 @@ export class Anime25DPlayer {
       automation: this.target.rand,
       sticker,
     })
-    // A live directed beat owns the body; the idle layer steps aside instead
-    // of writing the same channels underneath it.
     const randomAction = this.randomAction.sample(
       t,
       this.target.rand,
@@ -1026,8 +981,6 @@ export class Anime25DPlayer {
     const ambient = this.ambientMotion.sample(t, this.target.rand)
     const thinking = this.thinkingMotion.sample(t, this.target.thinking)
     const breath = idleBreathOffset(t, this.breathPose)
-    // Ownership and situation resolve to one weight per source per channel;
-    // nothing below this line invents a scale of its own.
     const gate = this.poseGate.sample(
       dt,
       applyBehaviorMotionGate(
@@ -1035,12 +988,11 @@ export class Anime25DPlayer {
           performance: performanceMotionScale,
           stylized: stylized.ambientScale,
           randomAmbient: randomAction.ambientScale,
+          touch: this.performanceExpression.getTouchShare(),
         }),
         behaviorMotion,
       ),
     )
-    // The renderer-local pulse shares the source's continuous weight. Actual
-    // head/body kinematics are carried once by the final pose response below.
     this.stylizedHeadShare = gate.stylized.headBody
     applyAnime25DComposedPose(
       tgt,
@@ -1079,8 +1031,6 @@ export class Anime25DPlayer {
       tgt,
       smoothAnime25DUnit(stylizedTargets.silly) * this.sillyMouthShare,
     )
-    // The sleeves answer the torso the frame after it actually moved, then
-    // spend the same rigid-arm allowance every authored gesture spends.
     const armFollow = this.armFollow.step(
       this.torsoYaw.value,
       dt,
@@ -1102,10 +1052,6 @@ export class Anime25DPlayer {
       this.target.blink,
       stylizedTargets.maniac > 0.03 || stylizedTargets.silly > 0.03,
     )
-    // The director's manner reaches the one filter that decides how a pose
-    // becomes the next one. Everything above this line spends quality on how
-    // big and how paced a motion is; without this the delivery's speed was
-    // the rig's constant, whatever the plan asked for.
     this.responseScale = resolvePoseResponseScale([
       {
         weight:
@@ -1150,8 +1096,6 @@ export class Anime25DPlayer {
         ) > 0.03,
       Math.max(this.current.eyeOpenL, this.current.eyeOpenR),
     )
-    // Physics follows the actual continuous pose, not a separately filtered
-    // copy of the desired pose that can disagree during a handoff.
     captureAnime25DSecondaryMotion(this.secondaryCurrent, this.current)
     stepAnime25DTorsoShellRotation(
       this.torsoYaw,
@@ -1216,8 +1160,7 @@ export class Anime25DPlayer {
     const npy = A.neckPivot.y
     const bpx = A.bodyPivot.x
     const bpy = A.bodyPivot.y
-    // One coordinate system for all sources and physics. Music extent is
-    // authored before composition/envelope/response, never after them.
+    // Music extent is authored before composition/envelope/response, never after them.
     const az = e.angleZ * 0.07
     const ay = e.angleY
     const cz = Math.cos(az)
@@ -1383,8 +1326,6 @@ export class Anime25DPlayer {
           layer.layerTransform,
         )
       }
-      // A high collar replaces the ordinary neck mesh with collarClip. Its
-      // layer still supplies paint uniforms, but owns no position buffer.
       // Do not deform/mark it dirty and later upload into a null binding.
       if (!layer.vertexBuffer) {
         layer.geometryDirty = false
@@ -1547,5 +1488,7 @@ export class Anime25DPlayer {
       this.renderFrame,
       work,
     )
+    const sampled = this.performanceExpression.getSampledTouch()
+    this.presentedTouch = sampled ? { ...sampled, atMs: performance.now() } : null
   }
 }

@@ -322,13 +322,6 @@ export function requiredUniform(
   return location
 }
 
-/**
- * `crossOrigin=anonymous` turns the fetch into a CORS request. Same-origin
- * atlas URLs (`/api/merope/rig/assets/…`) must not use it: if the visitor's
- * Origin is missing from CORS_ORIGINS the image errors and the live face
- * falls back to the master portrait. Display `<img>` tags do not set this,
- * which is why guests still saw the portrait.
- */
 export function atlasUrlNeedsCors(
   url: string,
   pageHref = typeof window !== 'undefined' && window.location?.href

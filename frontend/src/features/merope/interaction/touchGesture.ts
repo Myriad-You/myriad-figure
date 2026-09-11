@@ -1,18 +1,18 @@
-/** Pointer evidence only: a mouse cannot measure force or emotional intent. */
+/** Pointer evidence only */
 export type TouchRegion = 'hair' | 'face' | 'body' | 'accessory'
 export type TouchGesture = 'contact' | 'hold' | 'stroke' | 'tap'
 
 export interface TouchSample {
   pointerId: number
   atMs: number
-  /** Screen-space displacement measured in character widths, not moving UVs. */
   x: number
   y: number
-  /** Recomputed from the visible character, including during stationary holds. */
   region: TouchRegion | null
 }
 
 export interface TouchObservation {
+  /** Canvas-relative contact, local only */
+  position?: { x: number; y: number }
   id: number
   phase: 'start' | 'update' | 'end' | 'cancel'
   gesture: TouchGesture
@@ -39,14 +39,12 @@ interface Contact {
   maxY: number
 }
 
-// Product thresholds, not biological constants. Keep them independent of DPI
-// and pointer event frequency. No event-count-based "petting" detector.
+// Product thresholds, not biological constants.
 const HOLD_MS = 400
 const STROKE_DISTANCE = 0.12
 const TAP_DISTANCE = 0.035
 const REPEAT_GAP_MS = 850
 
-/** One pointer owns one contact. The caller supplies time and visible hits. */
 export class TouchGestureTracker {
   private sequence = 0
   private contact: Contact | null = null
@@ -58,6 +56,10 @@ export class TouchGestureTracker {
 
   begin(sample: TouchSample): TouchObservation | null {
     if (this.contact || !validSample(sample) || !sample.region) return null
+    if (this.previousTap && (this.previousTap.region !== sample.region
+      || sample.atMs - this.previousTap.atMs > REPEAT_GAP_MS
+      || sample.atMs < this.previousTap.atMs)) { this.previousTap = null
+}
     this.contact = {
       id: ++this.sequence,
       start: { ...sample },
@@ -95,6 +97,7 @@ export class TouchGestureTracker {
     contact.distance += distance
     contact.speed +=
       (distance / (dt / 1000) - contact.speed) * -Math.expm1(-dt / 120)
+    if (contact.region !== sample.region) this.previousTap = null
     contact.region = sample.region
     contact.last = { ...sample }
     contact.minX = Math.min(contact.minX, sample.x)
@@ -160,7 +163,6 @@ export class TouchGestureTracker {
     return result
   }
 
-  /** Identity/asset changes clear repetition even when no pointer is down. */
   reset(atMs: number): TouchObservation | null {
     const result = this.cancel(atMs)
     this.previousTap = null
@@ -178,7 +180,7 @@ export class TouchGestureTracker {
       distance: contact.distance,
       speed: contact.speed,
       repeatCount:
-        contact.gesture === 'tap' ? (this.previousTap?.count ?? 1) : 0,
+        contact.gesture === 'tap' ? (this.previousTap?.count ?? 1) : (this.previousTap?.count ?? 0),
       x: contact.last.x,
       y: contact.last.y,
     }

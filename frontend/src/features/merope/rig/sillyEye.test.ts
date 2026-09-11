@@ -30,7 +30,6 @@ test('reserves enough room that a drifting iris never leaves the sclera', () => 
     const size = sillyEyeGeneratedSize(eye)
     const room = sillyIrisTravelRoom(size)
     assert.ok(room.x > 0 && room.y > 0)
-    // Import seeds the divergence, the runtime loop spends the rest.
     const restX = room.x * SILLY_IRIS_REST_SHARE
     const restY = room.y * SILLY_IRIS_REST_SHARE
     const driftX = SILLY_IRIS_DRIFT_LIMIT.x * (eye.x1 - eye.x0)
@@ -75,7 +74,6 @@ test('draws a filled round eye instead of a thin expression mark', () => {
   assert.ok(opaque > left.width * left.height * 0.6)
   assert.equal(alphaAt(left, 0.5, 0.5), 255)
   assert.equal(alphaAt(left, 0.02, 0.02), 0)
-  // A thick dark rim reads as the wide-open cartoon eye the pose needs.
   assert.ok(colorAt(left, 0.5, 0.03) + 40 < colorAt(left, 0.5, 0.5))
   // Both eyes come from the same anchor, so only the tilt may differ.
   assert.notDeepEqual([...left.data], [...right.data])
@@ -88,7 +86,6 @@ test('reuses the drawn iris rather than inventing a replacement', () => {
   assert.equal(bitmap.height, 40)
   assert.equal(alphaAt(bitmap, 0.02, 0.02), 0)
 
-  // The authored hues survive the resample, including where they sit.
   const center = rgbAt(bitmap, 0.5, 0.5)
   assert.ok(center.red > 200 && center.blue < 90, 'iris body keeps its colour')
   const upperLeft = rgbAt(bitmap, 0.205, 0.205)

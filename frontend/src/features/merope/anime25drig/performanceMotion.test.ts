@@ -26,8 +26,6 @@ test('keeps semantic face ownership out of the non-manual energy patch', () => {
   assert.equal(patch.eyeOpenL, undefined)
 })
 
-// writeBaselineOffset composes posture onto the pose every frame; a second
-// copy on the driver would apply it twice.
 test('leaves posture to the per-frame pose offset', () => {
   for (const posture of ['closed', 'neutral', 'open'] as const) {
     const patch = baselineDriverPatch({
@@ -155,9 +153,6 @@ test('maps cue forms to bounded deterministic poses and durations', () => {
 
 test('a cue form never switches secondary physics off', () => {
   // Hair and cloth are bounded overlays, not a fifth channel a cue may own.
-  // The sticker forms used to author `idle: false` here, which reached no
-  // driver: the only reader takes it from the authored driver, not from a
-  // realized behavior. Damping during a sticker is the ambient scale's job.
   const definitions = readFileSync(
     new URL('./performanceCueDefinitions.ts', import.meta.url),
     'utf8',

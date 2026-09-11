@@ -228,8 +228,7 @@ test('a duplicate face binding cannot cancel an active track-switch hold', () =>
   source.setPlayback(false, false)
   source.markSwitching()
 
-  // A second mounted face repeats the same external playback snapshot. It
-  // must not overwrite the source's newer, internal switching state.
+  // It must not overwrite the source's newer, internal switching state.
   source.setPlayback(false, false)
   const frame = source.sampleNow(10)
   assert.equal(frame.apply.release, false)
@@ -385,7 +384,6 @@ test('reconnects the analyser when the player swaps its audio element', () => {
   source.sampleNow(20)
   assert.equal(connected.length, 1)
 
-  // The player rebuilt its element; the analyser must follow it there.
   current = { paused: false, currentTime: 0 }
   source.sampleNow(30)
   assert.equal(connected.length, 2)

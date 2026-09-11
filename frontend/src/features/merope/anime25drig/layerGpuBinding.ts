@@ -78,7 +78,6 @@ export interface Anime25DCompiledGpuLayers {
   collarClip: CollarClipMesh | null
 }
 
-/** Compiles all stable atlas, mesh, deformation, and stencil bindings once. */
 export function compileAnime25DGpuLayers(
   gl: WebGL2RenderingContext,
   program: WebGLProgram,
@@ -277,7 +276,6 @@ export function compileAnime25DGpuLayers(
         attachment: null,
       })
     }
-    // Seam evidence and shared attachment hosts reuse one transient pixel cache.
     const bindingPixels = new Map<
       Anime25DPlayback['layers'][number],
       CroppedLayerPixels | null
@@ -309,9 +307,7 @@ export function compileAnime25DGpuLayers(
         layers.splice(neckIndex, 1)
         layers.splice(bodyIndex, 0, neckLayer)
       }
-      // See-through may put the necklace before the skin-bearing topwear.
-      // Moving only the neck would still bury that independent drawing under
-      // both skin surfaces. Lift overlapping neckwear with the recovered neck.
+      // Moving only the neck would still bury that independent drawing under both skin surfaces.
       const recoveredNeckIndex = layers.indexOf(neckLayer)
       const accessories = layers.filter(
         (layer, index) =>

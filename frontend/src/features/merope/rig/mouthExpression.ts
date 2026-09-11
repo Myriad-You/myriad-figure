@@ -30,7 +30,6 @@ const MANIAC_TONGUE_HIGHLIGHT_RAIL: readonly Point[] = [
   [-0.18, 0.91],
 ]
 
-/** Sizes regular glyphs from the neutral mouth and the extreme laugh from the face. */
 export function mouthExpressionGeneratedSizes(
   source: {
     width: number
@@ -134,7 +133,7 @@ export function mouthExpressionGeneratedSizes(
   }
 }
 
-/** Samples only color identity; generated geometry remains deterministic. */
+/** Samples only color identity */
 export function sampleMouthExpressionPalette(
   source: Uint8ClampedArray | undefined,
 ): MouthExpressionPalette {
@@ -185,10 +184,6 @@ export function sampleMouthExpressionPalette(
   }
 }
 
-/**
- * Draws cel-style anime mouth variants without canvas or runtime AI.
- * Four sub-pixel samples keep the checked-in result stable and cheap to import.
- */
 export function createMouthExpressionBitmap(
   kind: MouthExpressionKind,
   requestedSize: Readonly<MouthExpressionSize>,
@@ -309,7 +304,6 @@ export function createMouthExpressionBitmap(
   return { width, height, data }
 }
 
-/** Face-locked cheek wedges flanking the manic mouth. */
 export function createManiacMouthShadowBitmap(
   requestedSize: Readonly<MouthExpressionSize>,
   palette: Readonly<MouthExpressionPalette>,
@@ -472,7 +466,6 @@ function openOuterPath(): Point[] {
   ]
 }
 
-/** Broad, slightly uneven anime vowel shape for E/I-family articulation. */
 function wideOuterPath(): Point[] {
   return [
     [-0.91, -0.2],
@@ -491,7 +484,6 @@ function wideOuterPath(): Point[] {
   ]
 }
 
-/** Compact rounded O/U-family shape; intentionally not a perfect ellipse. */
 function roundOuterPath(): Point[] {
   return [
     [-0.4, -0.77],
@@ -547,10 +539,6 @@ function cryOuterPath(): Point[] {
   ]
 }
 
-/**
- * Front-facing anime laugh with a deep cavity and heavy lower tongue.
- * Cubic sampling avoids the sticker-like polygon facets of ordinary visemes.
- */
 function maniacOuterPath(): Point[] {
   const output: Point[] = []
   appendCubic(
@@ -572,7 +560,6 @@ function maniacOuterPath(): Point[] {
   return output
 }
 
-/** Small cat-like open mouth that can collapse continuously into an omega. */
 function sillyOuterPath(): Point[] {
   const output: Point[] = []
   appendCubic(output, [-0.72, -0.36], [-0.5, -0.58], [-0.2, -0.48], [0, -0.38])

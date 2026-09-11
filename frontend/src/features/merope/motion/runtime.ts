@@ -39,10 +39,6 @@ export interface LiveFaceConsumer {
 
 const MAX_RECENT = 6
 
-/**
- * Single motion outlet for one coordinator. Sources publish intents here;
- * mounted rigs only subscribe.
- */
 export class MotionRuntime {
   readonly coordinator: RigMotionCoordinator
   readonly speech: SpeechMotionSource
@@ -97,6 +93,7 @@ export class MotionRuntime {
     )
     this.mood = new MoodMotionSource(coordinator, (intent, bandChanged) => {
       this.moodIntent = intent
+      this.touch.setAffect(intent.mood, intent.arousal, currentNow())
       if (bandChanged) this.performance.clearBearing()
       this.emit()
     })
@@ -118,7 +115,10 @@ export class MotionRuntime {
         this.startPreviewClock()
       }
     }
+    let retained = true
     return () => {
+      if (!retained) return
+      retained = false
       this.retains -= 1
       if (this.retains > 0) return
       this.retains = 0
@@ -185,6 +185,7 @@ export class MotionRuntime {
         performance.behaviorPlan,
         this.musicFrame?.behaviorPlan,
         this.touch.current(),
+        this.touch.speechContinuation(now, messageId => this.speech.hasPlayback({ messageId, source: 'proactive' })),
       ],
       now,
     )
@@ -304,7 +305,6 @@ function hasSpeechIntent(
   )
 }
 
-/** Production faces: music may occupy the body; semantic reactions stay explicit. */
 export function createLiveMotionRuntime(
   coordinator: RigMotionCoordinator,
   musicSource: MusicMotionSource | null,

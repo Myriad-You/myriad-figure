@@ -101,8 +101,7 @@ export async function prepareAnime25DRigPsd(
   const staticSeeThroughMouth = hasStaticSeeThroughMouth(psd)
   const working = flattenPsdForRigger(psd)
   Rigger.cleanPsdLayers(working)
-  // The reference accepts a missing face; the production portrait contract does
-  // not. A named but empty/hidden face must never silently acquire guessed pivots.
+  // A named but empty/hidden face must never silently acquire guessed pivots.
   if (
     !working.children?.some(
       (layer) =>
@@ -248,8 +247,7 @@ function hasStaticSeeThroughMouth(psd: Psd): boolean {
 
 function toRiggerLayerName(value: string | undefined): string {
   let kebab = normalizeAnime25DLayerName(value)
-  // The reference rigger handles face/hair/garment slots. Extra drawings retain
-  // their full source identity instead of losing depth/side fragment suffixes.
+  // Extra drawings retain their full source identity instead of losing depth/side fragment suffixes.
   const role = anime25DBaseRole(kebab)
   if (isAnime25DRigidAttachment({ role: role ?? 'unknown' })) {
     return kebab.replace(/-/g, '_')
@@ -279,9 +277,6 @@ function flattenPsdForRigger(psd: Psd): Psd {
     .map((layer) => {
       const pixels = layer.imageData
       if (!validPixelData(pixels)) return layer
-      // Bake source opacity once into the copied pixels. All downstream stages
-      // (collar evidence, generated artwork and atlas) see the same composition;
-      // no second runtime multiplier or asset-contract field is needed.
       const data = new Uint8ClampedArray(pixels.data)
       const opacity = layer.opacity ?? 1
       if (opacity !== 1) {

@@ -23,12 +23,10 @@ export interface SpeechLifecycleScheduler {
   clearTimeout: (timer: unknown) => void
 }
 
-/** Mutable occupancy flag; the mouth lease follows this through onBusyChange. */
 export interface SpeechOccupancy {
   current: boolean
 }
 
-/** Whether the motion layer may derive co-speech behavior from this event. */
 export type SpeechLifecycleDisposition = 'active' | 'finished' | 'ignored'
 
 const MIN_END_TAIL_MS = 180
@@ -40,11 +38,6 @@ const defaultScheduler: SpeechLifecycleScheduler = {
   clearTimeout: (timer) => globalThis.clearTimeout(timer as number),
 }
 
-/**
- * Bridges reply lifecycle events to one rig without adding work to its frame loop.
- * Audio energy or phoneme articulation owns the mouth as soon as it arrives;
- * otherwise streamed text drives the bounded visual-viseme controller.
- */
 export class SpeechLifecycleController {
   private activeMessageId: string | null = null
   private activeUtteranceId: string | null = null
@@ -93,8 +86,6 @@ export class SpeechLifecycleController {
     }
 
     if (event.phase === 'start') {
-      // An explicit start may intentionally reuse an utterance (e.g. replay).
-      // Delayed chunks/energy alone may never resurrect a cancelled mouth.
       this.cancelled.delete(JSON.stringify([event.messageId, null]))
       this.cancelled.delete(
         JSON.stringify([event.messageId, event.utteranceId]),
@@ -112,9 +103,7 @@ export class SpeechLifecycleController {
 
     if (!this.matches(event.messageId, event.utteranceId)) {
       if (event.phase === 'end') return 'ignored'
-      // A sampled frame may open an idle mouth but must not evict a live
-      // utterance. The live-conversation analyser and a streamed reply are
-      // different producers; being loud does not make one the owner.
+      // A sampled frame may open an idle mouth but must not evict a live utterance.
       if (this.speechActive && event.phase !== 'chunk') {
         noteTurnTraceDrop('foreign_speech_frame')
         return 'ignored'
@@ -214,8 +203,7 @@ export class SpeechLifecycleController {
   }
 
   private scheduleWatchdog(): void {
-    // Queued visual speech is still productive work. Only an empty/stalled
-    // producer (or missing audio callbacks) uses the short watchdog.
+    // Only an empty/stalled producer (or missing audio callbacks) uses the short watchdog.
     this.scheduleFinish(
       Math.max(
         STALLED_SPEECH_TIMEOUT_MS,

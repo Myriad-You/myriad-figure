@@ -9,7 +9,6 @@ import { IDENTITY_DRIVER } from './driver'
 export type CueIntent = PerformanceCue['intent']
 
 export interface PerformanceCueDefinition {
-  /** Renderer-neutral body resources this cue's pose writes. Authored here. */
   resources: readonly BehaviorResource[]
   sticker?: true
   driver: (amount: number) => Partial<Anime25DDriver>
@@ -37,10 +36,6 @@ const FACE_GAZE_TORSO = [
 ] as const
 const FACE_TORSO_ARMS_BUST = [...FACE_TORSO_ARMS, 'secondary.bust'] as const
 
-/**
- * One factual definition for each semantic cue. Rendering patches, stylized
- * classification and lease occupancy are all derived from this registry.
- */
 export const PERFORMANCE_CUE_DEFINITIONS = {
   greet: {
     resources: FACE_TORSO_ARMS,
@@ -55,9 +50,6 @@ export const PERFORMANCE_CUE_DEFINITIONS = {
   },
   respond: {
     resources: FACE_TORSO,
-    // Acknowledgement is the deterministic default, so it must remain
-    // readable even when semantic refinement is unavailable: head leads and
-    // the torso follows at lower amplitude.
     driver: (poseAmount) => ({ body: 0.2 * poseAmount }),
     expression: (amount, poseAmount) => ({
       angleY: -0.12 * poseAmount,
@@ -174,10 +166,7 @@ export const PERFORMANCE_CUE_DEFINITIONS = {
   },
 } satisfies Record<CueIntent, PerformanceCueDefinition>
 
-/**
- * Coarse channels are derived, never authored: two hand-kept lists drift, and
- * only `resources` describes what the pose actually writes.
- */
+/** Coarse channels are derived, never authored */
 const CUE_CHANNELS = Object.fromEntries(
   Object.entries(PERFORMANCE_CUE_DEFINITIONS).map(([intent, definition]) => [
     intent,
@@ -191,22 +180,12 @@ export function performanceCueDefinition(
   return PERFORMANCE_CUE_DEFINITIONS[intent]
 }
 
-/** Exclusive channels this cue can write, projected from its resources. */
 export function performanceCueChannels(
   intent: CueIntent,
 ): readonly MotionChannel[] {
   return CUE_CHANNELS[intent]
 }
 
-/**
- * The pose a cue form writes at a given amplitude.
- *
- * A realized behavior carries a form and an amplitude; `PerformanceCue` is the
- * director's wire shape, and its remaining fields (`atMs`, the three envelope
- * durations, `interrupt`) are scheduling, already resolved by the time a body
- * asks for a pose. Taking the two that matter keeps callers from rebuilding a
- * cue just to ask what a form looks like.
- */
 export function intentExpressionPatch(
   intent: CueIntent,
   intensity: number,
@@ -234,11 +213,6 @@ function intentAmount(intensity: number): number {
   return Math.max(0.2, Math.min(1.4, intensity))
 }
 
-/**
- * Body motion has a perceptual floor while preserving the director's dynamic
- * range. A selected action must still read at low semantic intensity; the
- * semantic amount itself continues to scale the face without this lift.
- */
 export function intentPoseAmount(intensity: number): number {
   const normalized = (intentAmount(intensity) - 0.2) / 1.2
   return 0.72 + normalized * 0.68

@@ -24,11 +24,6 @@ const ZERO_POSE: ThinkingMotionPose = {
   mouthScale: 0,
 }
 
-/**
- * A constrained thinking loop: the eyes select a nearby thought point first,
- * then the head, brow, and closed-mouth shape settle after it. The output
- * object is reused so the render loop does not allocate.
- */
 export class ThinkingMotionController {
   private readonly from: ThinkingMotionPose = { ...ZERO_POSE }
   private readonly to: ThinkingMotionPose = { ...ZERO_POSE }
@@ -58,8 +53,6 @@ export class ThinkingMotionController {
     if (enabled !== this.enabled) {
       this.enabled = enabled
       if (enabled) {
-        // Let the authored thinking pose settle before the first visible
-        // refocus instead of changing both layers on the same frame.
         this.nextShiftAt = now + this.randomRange(0.18, 0.32)
       } else {
         this.beginTransition(now, ZERO_POSE, {
@@ -215,7 +208,6 @@ function smootherstep(value: number): number {
   return bounded * bounded * bounded * (bounded * (bounded * 6 - 15) + 10)
 }
 
-/** A zero-velocity head start with a restrained inertial settle near the end. */
 function settlingProgress(value: number): number {
   const bounded = clamp(value, 0, 1)
   if (bounded === 0 || bounded === 1) return bounded

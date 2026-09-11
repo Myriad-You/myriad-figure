@@ -1,17 +1,23 @@
 import type { TouchObservation, TouchRegion } from './touchGesture'
 import { TouchGestureTracker } from './touchGesture'
 
-/** Shared DOM lifecycle for the single live canvas; previews explicitly opt out. */
 export function bindCharacterTouch(
   canvas: HTMLCanvasElement,
   hit: (x: number, y: number) => { region: TouchRegion | null } | null,
   emit: (touch: TouchObservation, now: number) => void,
+  cancelReaction: () => void,
 ): () => void {
   const tracker = new TouchGestureTracker()
   let pointer: { id: number; x: number; y: number; width: number } | null = null
   let frame = 0
   const send = (observation: TouchObservation | null, now: number) => {
-    if (observation) emit(observation, now)
+    if (observation && pointer) {
+      const rect = canvas.getBoundingClientRect()
+      emit({ ...observation, position: {
+        x: Math.max(-1, Math.min(1, (pointer.x - rect.left) / Math.max(1, rect.width) * 2 - 1)),
+        y: Math.max(-1, Math.min(1, (pointer.y - rect.top) / Math.max(1, rect.height) * 2 - 1)),
+      } }, now)
+    }
   }
   const sample = (now: number) => {
     const p = pointer!
@@ -30,6 +36,7 @@ export function bindCharacterTouch(
     const now = performance.now()
     send(tracker.reset(now), now)
     releaseCapture()
+    cancelReaction()
   }
   const tick = () => {
     if (!pointer) return
@@ -78,6 +85,7 @@ export function bindCharacterTouch(
   canvas.addEventListener('pointercancel', pointerCancel)
   canvas.addEventListener('lostpointercapture', pointerCancel)
   window.addEventListener('blur', cancel)
+  window.addEventListener('auth-state-changed', cancel)
   document.addEventListener('visibilitychange', visibility)
   return () => {
     cancel()
@@ -87,6 +95,7 @@ export function bindCharacterTouch(
     canvas.removeEventListener('pointercancel', pointerCancel)
     canvas.removeEventListener('lostpointercapture', pointerCancel)
     window.removeEventListener('blur', cancel)
+    window.removeEventListener('auth-state-changed', cancel)
     document.removeEventListener('visibilitychange', visibility)
   }
 }

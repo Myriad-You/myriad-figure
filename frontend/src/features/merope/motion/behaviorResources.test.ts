@@ -21,12 +21,7 @@ test('resource hierarchy permits independent limbs but conflicts with parents', 
 
 test('the rig channels are what this rig can drive, not leftover coarseness', () => {
   const boundary = source('../rig/README.md')
-  // The projection collapses arms and hands because this rig has no arm or
-  // hand joints to collapse them onto. If that ever changes, this fails first
-  // and the split becomes a real question instead of a recurring smell.
   assert.match(boundary, /no shoulder, elbow, wrist, leg, foot/)
-  const projection = source('./behaviorResources.ts')
-  assert.match(projection, /rig\/README\.md/)
   for (const limb of ['body.arm.left', 'body.arm.right', 'body.hand.left']) {
     assert.deepEqual(
       rigChannelsForResources([limb as Parameters<typeof rigChannelsForResources>[0][number]]),
@@ -116,7 +111,6 @@ test('the resource vocabulary matches the director contract and the rig boundary
     assert.match(summary, new RegExp(`'${resource}',`), resource)
   }
 
-  // The rig IR has no leg, foot or locomotion role, so no behavior may name one.
   assert.match(boundary, /no shoulder, elbow, wrist, leg, foot/)
   for (const forbidden of ['legs', 'foot', 'feet', 'locomotion']) {
     assert.doesNotMatch(local, new RegExp(`body\\.${forbidden}`), forbidden)

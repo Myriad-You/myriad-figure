@@ -47,7 +47,6 @@ const NEUTRAL_ACTIVITY_EXPRESSION: Readonly<ActivityExpressionDriver> = {
   browAngSym: 0,
 }
 
-/** Persistent, speech-safe face pose while the Agent is actually thinking. */
 export const THINKING_ACTIVITY_EXPRESSION: Readonly<ActivityExpressionDriver> =
   {
     angleX: -0.12,
@@ -72,36 +71,30 @@ export const THINKING_ACTIVITY_EXPRESSION: Readonly<ActivityExpressionDriver> =
     browAngSym: 0,
   }
 
-/** Dedicated artwork replacement; no unrelated facial or body channel is changed. */
 export const DIZZY_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
   eyeDizzy: 1,
 }
 
-/** Dedicated inward-facing chevron eye artwork, independent of blink state. */
 export const SQUEEZE_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
   eyeSqueeze: 1,
 }
 
-/** Complete per-eye crying artwork; runtime adds restrained sobbing mouth motion. */
 export const CRY_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
   eyeCry: 1,
   brow: 0.28,
   browAngSym: -0.34,
 }
 
-/** Facial deformation carries the expression; the vein mark is secondary. */
 export const ANGRY_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
   anger: 1,
   speechless: 0,
 }
 
-/** Half-lidded side glance with a restrained temple sweat accent. */
 export const SPEECHLESS_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
   anger: 0,
   speechless: 1,
 }
 
-/** Wide open laugh with rolled-up gaze; runtime adds restrained instability. */
 export const MANIAC_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
   anger: 0,
   speechless: 0,
@@ -110,10 +103,6 @@ export const MANIAC_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
   eyeOpenR: 0.94,
 }
 
-/**
- * Vacant stare with its own eye artwork. The two irides drift apart on the
- * expression's private schedule, so no shared gaze channel is touched here.
- */
 export const SILLY_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
   anger: 0,
   speechless: 0,
@@ -121,7 +110,6 @@ export const SILLY_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
   silly: 1,
 }
 
-/** Half-lidded heart pupils with a face-local blush and restrained soft mouth. */
 export const LOVESTRUCK_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
   anger: 0,
   speechless: 0,

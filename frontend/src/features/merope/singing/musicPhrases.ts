@@ -4,7 +4,6 @@ import type { SingingTimelineInput } from './singingTimeline'
 export const MUSIC_PHRASE_PREPARATION_SECONDS = 0.28
 export const MUSIC_PHRASE_RELEASE_SECONDS = 0.75
 
-/** Retain line boundaries before phoneme compilation flattens them away. */
 export function compileMusicPhrases(
   input: SingingTimelineInput,
 ): MusicPhrase[] {
@@ -51,7 +50,6 @@ export function compileMusicPhrases(
     .sort((a, b) => a.start - b.start)
 }
 
-/** Seek-safe binary lookup; a close incoming phrase takes over the old release. */
 export function sampleMusicPhrase(
   phrases: readonly MusicPhrase[],
   time: number,

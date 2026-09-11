@@ -24,11 +24,6 @@ export interface FrontCollarContactModel {
 const ALPHA_THRESHOLD = 18
 const MAX_CONTACT_SAMPLES = 6
 
-/**
- * Extracts the open neck/collar seam from the front-collar alpha contour.
- * A usable high collar has two opaque panels separated by a transparent gap
- * around the horizontal centre. Once the panels meet, the contact seam ends.
- */
 export function buildFrontCollarContactModel(
   rgba: Uint8ClampedArray,
   pixelWidth: number,

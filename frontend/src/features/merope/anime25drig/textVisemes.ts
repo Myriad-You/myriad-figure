@@ -16,10 +16,7 @@ const HAN_CHAR = /\p{Script=Han}/u
 const JAPANESE_CHAR = /[\p{Script=Hiragana}\p{Script=Katakana}ー]/u
 const LATIN_RUN = /[a-z]+(?:['’][a-z]+)*/gi
 
-/**
- * Converts streamed display text to a compact visual-only speech timeline.
- * It deliberately does no audio work and is only called when text chunks arrive.
- */
+/** Converts streamed display text to a compact visual-only speech timeline. */
 export async function compileTextVisemes(
   text: string,
   locale?: string,
@@ -57,8 +54,6 @@ export async function compileTextVisemes(
     cursor = index + match[0].length
   }
   compileNonHan(normalized.slice(cursor), language, output)
-  // Input is bounded; a separate cue cap would silently drop the final words
-  // while the body and speech lifecycle continue along the complete text.
   return coalesce(output)
 }
 
@@ -248,7 +243,6 @@ function push(
   duration: number,
   emphasis: boolean,
 ): void {
-  // `rest` carries an authored pause; everything else is articulation.
   output.push({
     viseme,
     duration:

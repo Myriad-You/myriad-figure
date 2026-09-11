@@ -53,11 +53,6 @@ export interface Anime25DLayerBindingInput {
   extraGridY?: readonly number[]
 }
 
-/**
- * Pure CPU binding seam used by the enhanced player. Its unextended topology
- * follows upstream `applyRig`; every intentional Myriad addition is listed in
- * `extensions` so parity tests can distinguish replacement from drift.
- */
 export function buildAnime25DLayerBinding(
   input: Readonly<Anime25DLayerBindingInput>,
 ): Anime25DLayerBinding {

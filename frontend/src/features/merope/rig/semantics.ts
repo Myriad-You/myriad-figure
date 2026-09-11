@@ -26,7 +26,6 @@ const CHAIN_ROLES: Readonly<
 
 const resolvedCache = new WeakMap<MeropeRigManifest, RigSemantics>()
 
-/** Produces the semantic IR at import/migration time, while names are known. */
 export function buildRigSemantics(
   bones: readonly RigBone[],
   explicitSecondaryBoneIds: readonly string[] = [],

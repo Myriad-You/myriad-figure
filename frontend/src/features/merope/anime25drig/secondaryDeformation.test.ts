@@ -929,13 +929,11 @@ function turnedX(
 }
 
 test('a turning garment carries the sleeve instead of sliding out from under it', () => {
-  // The left sleeve is anchored at x 60, so the garment is read at the same x.
   const garment = turnedX(bodyBinding('topwear', null), 0.45, 0)
   const sleeve = turnedX(bodyBinding('handwear', 'L'), 0.45, 0)
   assert.ok(Math.abs(garment) > 1)
   assert.ok(Math.sign(sleeve) === Math.sign(garment))
-  // The sleeve hangs beside the cylinder rather than on it, so it takes most
-  // of the turn; what it leaves is the follower's lag, not a permanent tear.
+  // The sleeve hangs beside the cylinder rather than on it, so it takes most of the turn
   assert.ok(
     Math.abs(sleeve / garment - SLEEVE_TORSO_TRANSMISSION) < 1e-9,
     `${sleeve / garment}`,
@@ -949,7 +947,6 @@ test('turning does not change how wide either sleeve is', () => {
     for (const yaw of [0.15, 0.3, 0.45, 0.6]) {
       const near = turnedX(binding, yaw, 0, bounds.x)
       const far = turnedX(binding, yaw, 0, bounds.x + bounds.w)
-      // One rigid drawing: every point of it answers the turn identically.
       assert.ok(Math.abs(far - near) < 1e-9, `${side} ${yaw}: ${far - near}`)
     }
   }
@@ -965,15 +962,12 @@ test('a turn still moves both sleeves, by amounts their positions decide', () =>
 test('the sleeve the turn carries forward falls further behind', () => {
   const left = bodyBinding('handwear', 'L')
   const right = bodyBinding('handwear', 'R')
-  // A turn toward +x lags both sleeves toward -x; the right one is the near
-  // one, sweeps the wider arc, and so trails more.
   const lagged = -0.5
   const leftTrail = turnedX(left, 0.45, lagged) - turnedX(left, 0.45, 0)
   const rightTrail = turnedX(right, 0.45, lagged) - turnedX(right, 0.45, 0)
   assert.ok(leftTrail < 0 && rightTrail < 0)
   assert.ok(rightTrail < leftTrail, `${rightTrail} !< ${leftTrail}`)
 
-  // Turning the other way moves the preference to the other sleeve.
   const backLeft = turnedX(left, -0.45, 0.5) - turnedX(left, -0.45, 0)
   const backRight = turnedX(right, -0.45, 0.5) - turnedX(right, -0.45, 0)
   assert.ok(backLeft > 0 && backRight > 0)
@@ -1011,8 +1005,6 @@ test('each split sleeve draws inward on an arm lift, toward the centre', () => {
 })
 
 test('a sleeve drawing that crosses the centre line moves as one piece', () => {
-  // Import decides the side once; the render loop must not re-decide it per
-  // vertex, which used to pull the halves of such a drawing apart.
   const crossing = bodyBinding('handwear', 'L', { x: 80, w: 90 })
   const inner = turnedX(crossing, 0, 0, 90, 0.6)
   const outer = turnedX(crossing, 0, 0, 160, 0.6)
@@ -1024,7 +1016,6 @@ test('an undivided sleeve layer is lifted, never pulled apart', () => {
   for (const sampleX of [70, 100, 140, 170]) {
     assert.equal(turnedX(single, 0, 0, sampleX, 0.6), 0)
   }
-  // The lift itself is unaffected: it was never a left-or-right decision.
   const restY = 180
   const point = { x: 100, y: restY }
   deformAnime25DSecondaryPoint(
@@ -1041,8 +1032,6 @@ test('an undivided sleeve layer is lifted, never pulled apart', () => {
 })
 
 test('an outboard sleeve drawing is still carried by the turn', () => {
-  // Anchored past the torso silhouette, where the bare cylinder projection
-  // would send it the other way from the garment.
   const garment = turnedX(bodyBinding('topwear', null), 0.45, 0)
   const outboard = turnedX(bodyBinding('handwear', 'R', { x: 200, w: 60 }), 0.45, 0, 230)
   assert.ok(garment > 0)

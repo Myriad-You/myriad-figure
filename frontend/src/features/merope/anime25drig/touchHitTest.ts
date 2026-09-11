@@ -14,12 +14,7 @@ export interface TouchMeshHit {
   v: number
 }
 
-/**
- * Mesh geometry only, matching the vertex shader's layer-then-body transform.
- * The caller must apply paint order, texture alpha AND renderer stencil/fade
- * visibility before treating this as a character hit. In particular, a neck
- * replaced by the collar clip cannot be tested using its original rest mesh.
- */
+/** Mesh geometry only, matching the vertex shader's layer-then-body transform. */
 export function hitTestTouchMesh(
   x: number,
   y: number,
@@ -52,7 +47,6 @@ export function hitTestTouchMesh(
   const qy = (-m[1] * lx + m[0] * ly) / determinant
   const p = mesh.positions
   const uv = mesh.atlasUvs
-  // Last submitted triangle wins if an extreme deformation folds the mesh.
   for (let i = mesh.indices.length - 3; i >= 0; i -= 3) {
     const a = mesh.indices[i] * 2
     const b = mesh.indices[i + 1] * 2
@@ -84,7 +78,6 @@ export function hitTestTouchMesh(
   return null
 }
 
-/** CSS client coordinates to the same view units used by the vertex shader. */
 export function touchPointInView(
   x: number,
   y: number,
@@ -115,7 +108,6 @@ export function touchPointInView(
   return { x: nx * view.width, y: ny * view.height }
 }
 
-/** Bilinear alpha lookup with the same texel-center convention as WebGL LINEAR. */
 export function sampleTouchAlpha(
   alpha: Uint8Array,
   width: number,

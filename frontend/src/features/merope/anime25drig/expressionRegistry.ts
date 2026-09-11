@@ -50,7 +50,6 @@ export const STYLIZED_EXPRESSION_PRECEDENCE = (
 
 export type StylizedExpressionTargets = Record<StylizedExpressionKey, number>
 
-/** Applies the shared overlap policy without allocating a per-frame object. */
 export function resolveStylizedExpressionTargets(
   input: Readonly<StylizedExpressionTargets>,
   output: StylizedExpressionTargets,

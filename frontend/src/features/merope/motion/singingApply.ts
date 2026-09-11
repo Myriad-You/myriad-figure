@@ -10,20 +10,14 @@ export interface SingingApplyInput {
 }
 
 export interface SingingApply {
-  /** Drop the music lease and clear groove on this rig. */
   release: boolean
   /** Keep singing=true / signal so the player groove continues. */
   writeGroove: boolean
-  /** Write visemes onto the shared mouth path. */
   writeMouth: boolean
   /** Rest the mouth without releasing groove. */
   restMouth: boolean
 }
 
-/**
- * Channel-aware singing writes. Speech may own the mouth while music
- * still drives head/body. Pause rests the mouth; a real stop releases.
- */
 export function resolveSingingApply(input: SingingApplyInput): SingingApply {
   const mouthOurs = input.mouthOwner === 'music'
   const bodyOurs = input.headBodyOwner === 'music'

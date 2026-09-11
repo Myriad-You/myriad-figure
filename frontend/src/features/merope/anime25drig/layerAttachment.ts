@@ -28,7 +28,6 @@ interface AttachmentSample {
   weight: number
 }
 
-/** Measured once during binding; transparent PSD padding is not an anchor. */
 function attachmentFootprint(
   source: Anime25DPlaybackLayer,
   image: Anime25DAttachmentPixels | null,
@@ -53,8 +52,6 @@ function attachmentFootprint(
     }
   }
   if (bottom < top) return []
-  // Hanging ear art follows its visible root. Other coarse upstream regions
-  // get an alpha-weighted centre, not an invented anatomical/material label.
   const rootBottom =
     source.role === 'earwear'
       ? Math.min(bottom, top + (bottom - top + 1) * 0.12)
@@ -103,12 +100,7 @@ export interface Anime25DLayerAttachment {
   tangent: { x: number; y: number }
 }
 
-/**
- * Independent drawings ride a surface frame, not its per-vertex strain.
- * Neckwear is an upstream region, not a material: it includes necklaces,
- * scarves and ties. With no finer authoring, preserve the complete drawing.
- * No spring, cloth label, high-collar flag or semantic bone is invented here.
- */
+/** Neckwear is an upstream region, not a material */
 export function bindAnime25DLayerAttachment(
   source: Anime25DPlaybackLayer,
   hosts: readonly AttachmentHost[],
@@ -143,8 +135,6 @@ export function bindAnime25DLayerAttachment(
   let host: AttachmentHost | undefined
   let fallbackHost: AttachmentHost | undefined
   for (const role of roles) {
-    // Match an explicit side where available, then use the nearest drawing of
-    // that host class. Numbered fragments remain independently attached.
     let distance = Number.POSITIVE_INFINITY
     let coverage = -1
     let fallbackDistance = Number.POSITIVE_INFINITY
@@ -171,8 +161,7 @@ export function bindAnime25DLayerAttachment(
       const nextCoverage = pixels
         ? attachmentCoverage(samples, candidate.source, pixels)
         : -1
-      // A bounding rectangle can enclose nothing but transparency here. Do not
-      // bind to that fragment when a sibling actually contains the attachment.
+      // Do not bind to that fragment when a sibling actually contains the attachment.
       if (nextCoverage === 0) continue
       if (
         nextCoverage > coverage ||
@@ -186,16 +175,11 @@ export function bindAnime25DLayerAttachment(
     fallbackHost ??= roleFallback
     if (host) break
   }
-  // Detached/hanging art may have no alpha intersection at all. Keep its
-  // semantic surface fallback instead of losing shell follow in that case.
+  // Keep its semantic surface fallback instead of losing shell follow in that case.
   host ??= fallbackHost
   if (!host) return null
   const binding = { ...host.secondaryDeformation }
-  // The host may normally put its global motion in a shader (e.g. face with
-  // shell projection disabled). These CPU samples must include that motion.
   binding.shaderGlobalTransform = false
-  // Host mesh weights are indexed by mesh vertices. Sample this attachment's
-  // two points explicitly rather than accidentally reading host vertex zero.
   binding.chestWeights =
     binding.topwear && chestWeights
       ? Float32Array.from([
@@ -219,11 +203,7 @@ export function bindAnime25DLayerAttachment(
   }
 }
 
-/**
- * Two host evaluations per layer/frame; a rigid matrix does all GPU work.
- * The tangent carries rotation, but never scale/shear. Gems, glasses and
- * ornaments therefore cannot be squeezed by the torso or skull surface.
- */
+/** The tangent carries rotation, but never scale/shear. */
 export function writeAnime25DAttachmentTransform(
   attachment: Anime25DLayerAttachment,
   frame: Readonly<Anime25DSecondaryDeformationFrame>,

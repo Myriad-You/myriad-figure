@@ -20,41 +20,12 @@ export interface SingingGroovePose {
 
 export const MIN_SINGING_NOD_INTERVAL_SECONDS = 1.05
 
-/**
- * Without a lock, an onset this soon after the last one is a subdivision.
- *
- * Accents were taken from whichever onset happened to pass a coin flip, which
- * is fine when the hits are already beat-spaced and wrong when they are not.
- * Measured across 34 excerpts of a real library: tracks with three or more
- * onsets a second nodded 23 times a minute against 4.6 for everything else,
- * three quarters of those while the beat was not locked — a head jab a couple
- * of seconds on hits that carried no accent. Nothing faster than the tempo
- * range the clock will even consider is a beat.
- */
+/** Without a lock, an onset this soon after the last one is a subdivision. */
 const UNLOCKED_NOD_MIN_ONSET_GAP = MIN_BEAT_PERIOD
 
-/**
- * How long the head takes to arrive at an accent.
- *
- * Minimum-jerk motion carries jerk proportional to depth over duration cubed,
- * so a 0.15 dip in 0.16s peaks near 2200 — a jab, not a nod. Measured through
- * the whole player on a dense percussion track, the accent was 86% of all the
- * pitch jerk there was (21 against 3 with it silenced, and 2 on sparse music).
- * The recovery has always been 0.45-0.71s; the arrival is what was sharp.
- */
 const NOD_ARRIVAL_SECONDS = 0.23
 const NOD_ARRIVAL_FLOOR = 0.13
-/**
- * An accent placed without a lock is a guess; it moves less and arrives later.
- *
- * Measured through the whole player over 33 excerpts of a real library, with
- * every random source seeded so the runs are comparable. Pitch jerk, which is
- * where the head accent lands: 11.4 on dense percussion and 10.9 on sparse
- * music to start with. Refusing to guess at all got those to 5.6 and 2.5, but
- * stopped the head nodding entirely on the sparse music that never locks — 0
- * accents a minute. Guessing softly reaches 7.0 and 2.9 and keeps the rate
- * exactly where it was.
- */
+/** An accent placed without a lock is a guess */
 const GUESSED_NOD_DEPTH_SCALE = 0.5
 const GUESSED_NOD_ARRIVAL_SCALE = 1.3
 
@@ -85,7 +56,6 @@ const ZERO: SingingGroovePose = {
 const FIRST: Motif = { roll: 0.8, yaw: 0.3, torso: 0.58, offset: 0, nods: 0.7 }
 const TAU = Math.PI * 2
 
-/** Manner with no plan installed, and the rate it and the mode move at. */
 const MANNER_REST = {
   extent: 1.08,
   density: 0.7,
@@ -96,76 +66,17 @@ const MANNER_REST = {
 const MANNER_KEYS = Object.keys(MANNER_REST) as (keyof typeof MANNER_REST)[]
 const MODE_RATE = 7
 
-/**
- * Confidence at which the tempo estimate may set the sway speed.
- *
- * The estimate is a median over the last eight onset gaps, and on music with
- * dense low-band onsets it churns: measured across 46 excerpts of a real
- * library, this threshold was crossed 20-40 times a minute on a quarter of
- * them. Losing the lock is not the same as losing the music, so the speed we
- * last agreed on is kept rather than handed back to the generic fallback and
- * taken again — the swing was up to 1.98x, twice a second.
- */
 const LOCK_CONFIDENCE = 0.45
 
-/**
- * The body finishes winding down at the speed it was moving at.
- *
- * Confidence goes to zero the moment the music is taken away, and releasing
- * the tempo there made the sway slow to the generic idle drift while it was
- * still shrinking — running out of power rather than coming to a stop. Hold
- * it until there is no sway left to time. Measured over 42 excerpts of a real
- * library that had a sway to wind down, this took 84% off how far the tempo
- * travels while the body can still be seen moving to it.
- */
 const TEMPO_RELEASE_AMPLITUDE = 0.05
 
-/**
- * How much of the sway is held back while its speed is still moving.
- *
- * Entering music, the amplitude reaches nine tenths in a quarter second while
- * the speed takes more than twice that to settle, so the body swings at full
- * size and then changes tempo underneath itself. Joining in at reduced size
- * until the timing is agreed reads as picking the beat up rather than guessing
- * at it. Keyed on the speed having converged, not on the beat being locked:
- * music the estimator never locks onto settles on the idle fallback instead,
- * so the sway opens up there too.
- *
- * Adopting the tempo faster was tried first and measured worse on real music
- * (+5.2% over 45 excerpts): the estimate churns, so arriving at it sooner just
- * arrives at a wrong value sooner. Holding the size back instead took 28% off
- * how far the tempo travels while the body is visibly swaying to it, improved
- * 20 excerpts and worsened none, and left the settled sway alone — the median
- * amplitude after six seconds is unchanged, the worst single loss 9%.
- */
 export const ENTRY_HELD_BACK_SHARE = 0.25
 const ENTRY_ON_TEMPO_WITHIN = 0.05
 export const ENTRY_OFF_TEMPO_BEYOND = 0.25
 
-/**
- * How far the beat may drag the sway off its own speed while catching up.
- *
- * `phase` is the one driver the whole body reads — torso, head, arms and the
- * gaze arc are all sines of it — so a correction applied to it moves every
- * limb at once. Adding the error straight in bounded nothing: measured across
- * 46 excerpts of a real library, the phase velocity swung between 0.18 and
- * 0.51 cycles per second against a nominal 0.21, so the body sped up and slowed
- * down by two to three times while nothing about the music had changed.
- *
- * Catching up is a transition, not a jump. The body may run this much faster
- * or slower than its own tempo to get back on the beat, and no more.
- */
+/** Catching up is a transition, not a jump. */
 export const MAX_PHASE_CATCHUP = 0.35
 
-/**
- * Multilevel entrainment: slow weight transfer, softer head following, optional
- * committed accents and persistent motifs. No pose springs here: the player's
- * one C2 response carries actual position/velocity/acceleration across sources.
- * Research principles (coefficients are rig-space art direction):
- * Toiviainen & Carlson 2022 — https://doi.org/10.1525/mp.2022.39.3.249
- * Burger et al. 2014 — https://doi.org/10.3389/fnhum.2014.00903
- * Livingstone & Palmer 2016 — https://doi.org/10.1037/emo0000106
- */
 export class SingingGrooveController {
   private readonly output = { ...ZERO }
   private readonly nod = new MinimumJerkMotion()
@@ -192,19 +103,8 @@ export class SingingGrooveController {
   private seed = 0x5E71C3
   private trackId: string | null = null
   private armMotion = false
-  /** Sway rate of the last agreed tempo, kept while evidence is still present. */
   private lockedFrequency = 0
-  /** 0 while the sway speed is still moving to its target, 1 once settled. */
   private onTempo = 1
-  /**
-   * The manner fields the pose reads on every frame.
-   *
-   * `modeAmount` next to them has always been eased, but the quality vector
-   * behind it was applied raw, so a participation change stepped the yaw,
-   * roll and torso amplitudes within one frame instead of moving to them.
-   * `power` and `rebound` are absent on purpose: a nod reads those once when
-   * it commits, and a step in a decision is not a step in a pose.
-   */
   private readonly manner = { ...MANNER_REST }
 
   setArmMotion(enabled: boolean): void {
@@ -265,8 +165,7 @@ export class SingingGrooveController {
       ? (signal.audio?.energy ?? (mode === 'sing' ? 0.38 : 0.1)) * freshness
       : 0
     const active = enabled && mode !== 'settle'
-    // Commit to the sway only as far as the timing is agreed. `onTempo` is
-    // read from the previous frame: this frame's speed resolves further down.
+    // Commit to the sway only as far as the timing is agreed.
     const targetAmplitude =
       (active ? smooth(energy / 0.55) : 0) *
       mix(ENTRY_HELD_BACK_SHARE, 1, this.onTempo)
@@ -304,14 +203,11 @@ export class SingingGrooveController {
     const torso = mix(this.previous.torso, this.motif.torso, blend)
     const offset = mix(this.previous.offset, this.motif.offset, blend)
 
-    // A full sway spans 4 or 8 pulses, not every neck accent. Soft coupling
-    // permits a stable phase preference instead of snapping on each onset.
+    // Soft coupling permits a stable phase preference instead of snapping on each onset.
     if (bpm > 118) this.swayBeats = 8
     else if (bpm > 0 && bpm < 106) this.swayBeats = 4
     if (locked) { this.lockedFrequency = bpm / (60 * this.swayBeats)
 }
-    // Evidence gone, not merely uncertain — but keep the tempo until the sway
-    // it was timing has actually stopped.
     else if (confidence <= 0 && this.amplitude < TEMPO_RELEASE_AMPLITUDE) {
       this.lockedFrequency = 0
     }
@@ -383,7 +279,6 @@ export class SingingGrooveController {
       extent *
       ((arc * yaw * clamp(this.manner.directness, 0.3, 1.2)) / 0.58 +
         offset * 0.14)
-    // Modest downward accents. Phrase lift is not pitch-frequency tracking.
     this.output.angleY =
       extent *
       (this.nod.value +
@@ -410,9 +305,6 @@ export class SingingGrooveController {
     pulse: number,
     quality?: Readonly<BehaviorQuality>,
   ): void {
-    // Before the cooldown check: an onset that lands during it still tells us
-    // how densely the hits are coming, and the first one after it must not
-    // inherit the whole cooldown as its gap.
     const sinceLastOnset = onset ? now - this.lastOnsetAt : Infinity
     if (onset) this.lastOnsetAt = now
     if (now - this.lastNodAt < MIN_SINGING_NOD_INTERVAL_SECONDS) return
@@ -453,11 +345,6 @@ export class SingingGrooveController {
     ) {
       return
     } else {
-      // No lock: this accent is a guess about where the beat is, so make it
-      // one. Same gesture, softer and slower — measured through the whole
-      // player over 33 excerpts, taking the guessed accents out entirely got
-      // the pitch jerk down furthest but stopped the head nodding at all on
-      // the sparse music that never locks.
       guessed = true
     }
     this.lastNodAt = now

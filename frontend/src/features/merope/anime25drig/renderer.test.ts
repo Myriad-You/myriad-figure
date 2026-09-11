@@ -82,8 +82,7 @@ test('collar clip is the sole geometry source for a replaced neck', () => {
 })
 
 test('stencil execution isolates both eyes and collars across paint orders and frames', () => {
-  // Execute the actual renderer against a tiny stencil buffer, not just a list
-  // of expected API names. Overlapping eye pixels must retain both bits.
+  // Overlapping eye pixels must retain both bits.
   for (const collarIndex of [0, 2, 6]) {
     let bound = ''
     const gl = fakeGl(
@@ -197,7 +196,6 @@ test('stencil execution isolates both eyes and collars across paint orders and f
     assert.deepEqual(painted.get('clip'), [3, 4])
     assert.deepEqual(painted.get('accessory'), [0, 1, 2, 3, 4])
     assert.equal(stencil[1] & 3, 3, 'overlapping eyes retain independent bits')
-    // No previous-frame eye or collar contents may leak into this frame.
     draw(layers.filter((layer) => layer.renderKind !== 'eyewhite'))
     assert.deepEqual(painted.get('irides_L'), [])
     assert.deepEqual(painted.get('irides_R'), [])
