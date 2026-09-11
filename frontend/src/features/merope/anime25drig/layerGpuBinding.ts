@@ -34,7 +34,10 @@ import { resolveAnime25DNeckSurface } from './neckSurface'
 import { canLiftNeckwearOverSkin } from './neckwearOcclusion'
 import { createAnime25DSecondaryDeformationBinding } from './secondaryDeformation'
 import { shoulderContactWeights } from './shoulderContact'
+import { fuseShoulderSurface } from './shoulderSurface'
+import type { AtlasPixelPatch } from './webglRuntime'
 import { duplicateAccessoryLayers } from './accessoryDuplicate'
+import { removeDuplicatedNeckComponents } from './accessoryComponents'
 import {
   anime25DShellModeForLayer,
   sampleAnime25DHairlinePinWeights,
@@ -76,9 +79,11 @@ export interface Anime25DGpuLayer extends Anime25DRenderableLayer {
   geometryDirty: boolean
   attachment: Anime25DLayerAttachment | null
   neckwearBridge?: Anime25DNeckwearBridge | null
+  attachmentDependents?: Anime25DGpuLayer[]
 }
 
 export interface Anime25DCompiledGpuLayers {
+  atlasPatches?: AtlasPixelPatch[]
   layers: Anime25DGpuLayer[]
   collarClip: CollarClipMesh | null
 }
@@ -95,15 +100,62 @@ export function compileAnime25DGpuLayers(
   const layers: Anime25DGpuLayer[] = []
   let collarClip: CollarClipMesh | null = null
   try {
-    const bindingPixels = new Map<Anime25DPlayback['layers'][number], CroppedLayerPixels | null>()
+    const bindingPixels = new Map<
+      Anime25DPlayback['layers'][number],
+      CroppedLayerPixels | null
+    >()
     const readBindingPixels = (source: Anime25DPlayback['layers'][number]) => {
-      if (!bindingPixels.has(source)) bindingPixels.set(source, readLayerPixels(atlasImage, source))
+      if (!bindingPixels.has(source))
+        bindingPixels.set(source, readLayerPixels(atlasImage, source))
       return bindingPixels.get(source) ?? null
     }
-    const duplicateAccessories = duplicateAccessoryLayers(playback.layers, readBindingPixels)
-    const torsos = playback.layers.filter(layer => layer.role === 'topwear')
+    const atlasPatches: AtlasPixelPatch[] = []
+    const neckOrnaments = playback.layers.filter((l) => l.role === 'neckwear')
+    if (neckOrnaments.length)
+      for (const source of playback.layers.filter(
+        (l) => l.role === 'headwear',
+      )) {
+        if (
+          !neckOrnaments.some(
+            (l) =>
+              source.x < l.x + l.w &&
+              source.x + source.w > l.x &&
+              source.y < l.y + l.h &&
+              source.y + source.h > l.y,
+          )
+        )
+          continue
+        const art = readBindingPixels(source)
+        if (!art) continue
+        const targets = neckOrnaments.flatMap((layer) => {
+          const image = readBindingPixels(layer)
+          return image ? [{ layer, image }] : []
+        })
+        const patch = removeDuplicatedNeckComponents(
+          source,
+          art,
+          targets,
+          playback.anchors.neckTop,
+        )
+        if (patch) {
+          bindingPixels.set(source, patch)
+          atlasPatches.push({
+            ...patch,
+            x: Math.round(source.atlas.x * atlasImage.width),
+            y: Math.round(source.atlas.y * atlasImage.height),
+          })
+        }
+      }
+    const duplicateAccessories = duplicateAccessoryLayers(
+      playback.layers,
+      readBindingPixels,
+    )
+    const torsos = playback.layers.filter((layer) => layer.role === 'topwear')
     const torso = torsos.length === 1 ? torsos[0] : null
-    const torsoPixels = torso && playback.layers.some(layer => layer.role === 'handwear') ? readBindingPixels(torso) : null
+    const torsoPixels =
+      torso && playback.layers.some((layer) => layer.role === 'handwear')
+        ? readBindingPixels(torso)
+        : null
     const neck = playback.layers.find((layer) => layer.role === 'neck')
     const collarContacts = new Map<
       Anime25DPlayback['layers'][number],
@@ -253,14 +305,30 @@ export function compileAnime25DGpuLayers(
         torsoShellMode,
       })
       if (source.role === 'handwear' && torso) {
-        const weights = shoulderContactWeights(source, readBindingPixels(source), torso, torsoPixels, rest)
+        const weights = shoulderContactWeights(
+          source,
+          readBindingPixels(source),
+          torso,
+          torsoPixels,
+          rest,
+        )
         if (weights) {
           secondaryDeformation.shoulderContact = {
             weights,
             torso: {
-              ...secondaryDeformation, source: torso, baseRole: 'topwear',
-              topwear: true, handwear: false, torsoShellMode: 'full',
-              chestWeights: chestWeightField ? samplePlaybackChestWeights(chestWeightField, rest, playback.pixelCanvas.width) : null,
+              ...secondaryDeformation,
+              source: torso,
+              baseRole: 'topwear',
+              topwear: true,
+              handwear: false,
+              torsoShellMode: 'full',
+              chestWeights: chestWeightField
+                ? samplePlaybackChestWeights(
+                    chestWeightField,
+                    rest,
+                    playback.pixelCanvas.width,
+                  )
+                : null,
             },
           }
         }
@@ -351,8 +419,15 @@ export function compileAnime25DGpuLayers(
       layers.splice(layers.indexOf(neckLayer) + 1, 0, ...accessories)
     }
     for (const layer of layers) {
-      layer.neckwearBridge = bindNeckwearBridge(layer.source, layers, playback.anchors,
-        chestWeightField, playback.pixelCanvas.width, layer.rest, readBindingPixels)
+      layer.neckwearBridge = bindNeckwearBridge(
+        layer.source,
+        layers,
+        playback.anchors,
+        chestWeightField,
+        playback.pixelCanvas.width,
+        layer.rest,
+        readBindingPixels,
+      )
       if (layer.neckwearBridge) layer.deformed = layer.rest.slice()
       layer.attachment = bindAnime25DLayerAttachment(
         layer.source,
@@ -363,7 +438,33 @@ export function compileAnime25DGpuLayers(
         readBindingPixels,
       )
     }
-    return { layers, collarClip }
+    for (const child of layers) {
+      const sources = new Set([
+        child.attachment?.hostSource,
+        child.neckwearBridge?.upper.hostSource,
+        child.neckwearBridge?.lower.hostSource,
+      ])
+      for (const parent of layers) {
+        if (sources.has(parent.source))
+          (parent.attachmentDependents ??= []).push(child)
+      }
+    }
+    if (torso && torsoPixels) {
+      const arms = layers
+        .filter((layer) => layer.secondaryDeformation.shoulderContact)
+        .flatMap((layer) => {
+          const image = readBindingPixels(layer.source)
+          return image ? [{ layer: layer.source, image }] : []
+        })
+      const patch = fuseShoulderSurface(torso, torsoPixels, arms)
+      if (patch)
+        atlasPatches.push({
+          ...patch,
+          x: Math.round(torso.atlas.x * atlasImage.width),
+          y: Math.round(torso.atlas.y * atlasImage.height),
+        })
+    }
+    return { layers, collarClip, atlasPatches }
   } catch (error) {
     disposeAnime25DGpuLayers(gl, { layers, collarClip })
     throw error

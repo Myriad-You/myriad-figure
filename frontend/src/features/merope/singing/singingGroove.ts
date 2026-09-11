@@ -23,8 +23,8 @@ export const MIN_SINGING_NOD_INTERVAL_SECONDS = 1.05
 /** Without a lock, an onset this soon after the last one is a subdivision. */
 const UNLOCKED_NOD_MIN_ONSET_GAP = MIN_BEAT_PERIOD
 
-const NOD_ARRIVAL_SECONDS = 0.23
-const NOD_ARRIVAL_FLOOR = 0.13
+const NOD_ARRIVAL_SECONDS = 0.42
+const NOD_ARRIVAL_FLOOR = 0.32
 /** An accent placed without a lock is a guess */
 const GUESSED_NOD_DEPTH_SCALE = 0.5
 const GUESSED_NOD_ARRIVAL_SCALE = 1.3
@@ -86,6 +86,10 @@ export class SingingGrooveController {
   private phase = 0
   private frequency = 0.22
   private amplitude = 0
+  private amplitudeDrive = 0
+  private energyEnvelope = 0
+  private phaseCorrection = 0
+  private participation = 0
   private phraseAmount = 0
   private modeAmount = 0
   private lastNodAt = Number.NEGATIVE_INFINITY
@@ -100,7 +104,7 @@ export class SingingGrooveController {
   private motifAt = 0
   private nextMotifAt = 0
   private lastPhraseStart = Number.NaN
-  private seed = 0x5E71C3
+  private seed = 0x5e71c3
   private trackId: string | null = null
   private armMotion = false
   private lockedFrequency = 0
@@ -165,16 +169,24 @@ export class SingingGrooveController {
       ? (signal.audio?.energy ?? (mode === 'sing' ? 0.38 : 0.1)) * freshness
       : 0
     const active = enabled && mode !== 'settle'
-    // Commit to the sway only as far as the timing is agreed.
-    const targetAmplitude =
-      (active ? smooth(energy / 0.55) : 0) *
-      mix(ENTRY_HELD_BACK_SHARE, 1, this.onTempo)
-    this.amplitude = approach(
-      this.amplitude,
-      targetAmplitude,
+    // A drum transient belongs to the accent planner, not to the radius of
+    // an already moving head. Retain musical energy across short beat gaps.
+    this.energyEnvelope = approach(
+      this.energyEnvelope,
+      energy,
       dt,
-      targetAmplitude > this.amplitude ? 9 : 2.8,
+      energy > this.energyEnvelope ? 8 : 1.2,
     )
+    // Enter cautiously, but never contract the whole body when a running
+    // beat estimate is corrected. Only a real release resets participation.
+    this.participation = active
+      ? Math.max(this.participation, this.onTempo)
+      : approach(this.participation, 0, dt, 3)
+    const targetAmplitude =
+      (active ? smooth(this.energyEnvelope / 0.55) : 0) *
+      mix(ENTRY_HELD_BACK_SHARE, 1, this.participation)
+    this.amplitudeDrive = approach(this.amplitudeDrive, targetAmplitude, dt, 6)
+    this.amplitude = approach(this.amplitude, this.amplitudeDrive, dt, 6)
     this.modeAmount = approach(
       this.modeAmount,
       mode === 'sing' ? 1 : mode === 'hum' ? 0.4 : 0,
@@ -206,9 +218,9 @@ export class SingingGrooveController {
     // Soft coupling permits a stable phase preference instead of snapping on each onset.
     if (bpm > 118) this.swayBeats = 8
     else if (bpm > 0 && bpm < 106) this.swayBeats = 4
-    if (locked) { this.lockedFrequency = bpm / (60 * this.swayBeats)
-}
-    else if (confidence <= 0 && this.amplitude < TEMPO_RELEASE_AMPLITUDE) {
+    if (locked) {
+      this.lockedFrequency = bpm / (60 * this.swayBeats)
+    } else if (confidence <= 0 && this.amplitude < TEMPO_RELEASE_AMPLITUDE) {
       this.lockedFrequency = 0
     }
     const targetFrequency = this.lockedFrequency
@@ -216,7 +228,11 @@ export class SingingGrooveController {
       : 0.18 * clamp((quality?.tempo ?? 0.82) / 0.82, 0.7, 1.25)
     const retiming =
       targetFrequency > 1e-6
-        ? clamp(Math.abs(targetFrequency - this.frequency) / targetFrequency, 0, 1)
+        ? clamp(
+            Math.abs(targetFrequency - this.frequency) / targetFrequency,
+            0,
+            1,
+          )
         : 0
     this.onTempo =
       1 -
@@ -226,12 +242,18 @@ export class SingingGrooveController {
       )
     this.frequency = approach(this.frequency, targetFrequency, dt, 2)
     this.phase += dt * this.frequency * (active ? 1 : this.amplitude)
+    let correction = 0
     if (locked && active) {
       const error = wrap(beatPosition / this.swayBeats + 0.12 - this.phase)
-      const pull = error * (1 - Math.exp(-dt * 0.75 * confidence))
-      const limit = this.frequency * dt * MAX_PHASE_CATCHUP
-      this.phase += clamp(pull, -limit, limit)
+      correction = clamp(
+        (error * 0.75 * confidence) / Math.max(this.frequency, 1e-6),
+        -MAX_PHASE_CATCHUP,
+        MAX_PHASE_CATCHUP,
+      )
     }
+    this.phaseCorrection = approach(this.phaseCorrection, correction, dt, 2)
+    this.phase +=
+      this.phaseCorrection * this.frequency * dt * (active ? 1 : this.amplitude)
     this.phase %= 1
 
     if (now >= this.nodReleaseAt) {
@@ -322,17 +344,19 @@ export class SingingGrooveController {
         (60 * proposed) / bpm > MIN_SINGING_NOD_INTERVAL_SECONDS * 1.12
       ) {
         this.stride = proposed
-}
-      const beat = Math.ceil(position)
+      }
+      // Look ahead to the chosen metrical beat, not merely the next beat:
+      // at fast tempi a single beat is shorter than a natural preparation.
+      const beat = Math.ceil(position / this.stride) * this.stride
       const until = ((beat - position) * 60) / bpm
       if (
-        until > 0.24 ||
-        until < 0.055 ||
+        until > 0.5 ||
+        until < NOD_ARRIVAL_FLOOR + 0.045 ||
         beat % this.stride !== 0 ||
         beat === this.lastNodBeat
       ) {
         return
-}
+      }
       this.lastNodBeat = beat
       if (this.random() > density) return
       // Commit once: subsequent beat corrections cannot retime this accent.

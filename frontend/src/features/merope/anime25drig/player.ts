@@ -42,7 +42,11 @@ import type {
   Anime25DTorsoShellRotation,
   Anime25DTorsoYawState,
 } from './torsoDeformation'
-import type { TouchAtlas, TouchPaintLayer, VisibleTouchHit } from './touchVisibility'
+import type {
+  TouchAtlas,
+  TouchPaintLayer,
+  VisibleTouchHit,
+} from './touchVisibility'
 import type { Anime25DPlayback, Anime25DShellProfile } from './types'
 import { currentCopy } from '../../../i18n/localeCopy'
 import { allowsPointerGaze, IDLE_MOTION_POLICY } from '../motion/policy'
@@ -458,7 +462,7 @@ export class Anime25DPlayer {
       chestWeightField,
       image,
     )
-    const nextTexture = createAtlasTexture(this.gl, image)
+    const nextTexture = createAtlasTexture(this.gl, image, compiled.atlasPatches)
     const touchAtlas = readTouchAtlas(image)
     if (this.disposed || atlasAbort.signal.aborted) {
       releaseCompiledGpu(
@@ -476,8 +480,8 @@ export class Anime25DPlayer {
     this.collarClip = compiled.collarClip
     this.touchAtlas = touchAtlas
     this.touchLayers = this.layers.map((layer) => {
-      const mesh = layer.renderKind === 'neck' && this.collarClip
-        ? this.collarClip : layer
+      const mesh =
+        layer.renderKind === 'neck' && this.collarClip ? this.collarClip : layer
       return {
         paint: layer,
         mesh: {
@@ -496,12 +500,30 @@ export class Anime25DPlayer {
 
   hitTestTouch(clientX: number, clientY: number): VisibleTouchHit | null {
     const canvas = this.gl.canvas
-    if (this.disposed || !this.touchAtlas || !(canvas instanceof HTMLCanvasElement)) return null
-    const point = touchPointInView(clientX, clientY, canvas.getBoundingClientRect(), {
-      width: this.renderFrame.viewWidth,
-      height: this.renderFrame.viewHeight,
-    })
-    return point ? hitTestVisibleTouch(point.x, point.y, this.touchLayers, this.touchAtlas, this.renderFrame) : null
+    if (
+      this.disposed ||
+      !this.touchAtlas ||
+      !(canvas instanceof HTMLCanvasElement)
+    )
+      return null
+    const point = touchPointInView(
+      clientX,
+      clientY,
+      canvas.getBoundingClientRect(),
+      {
+        width: this.renderFrame.viewWidth,
+        height: this.renderFrame.viewHeight,
+      },
+    )
+    return point
+      ? hitTestVisibleTouch(
+          point.x,
+          point.y,
+          this.touchLayers,
+          this.touchAtlas,
+          this.renderFrame,
+        )
+      : null
   }
 
   private applyPackage(
@@ -912,7 +934,10 @@ export class Anime25DPlayer {
     )
     this.controlTime = controlTime
     const behaviorMotion = this.behaviorMotion.sample(controlTime)
-    const semanticExpression = this.performanceExpression.sample(controlTime, tgt)
+    const semanticExpression = this.performanceExpression.sample(
+      controlTime,
+      tgt,
+    )
     const stylizedTargets = resolveAnime25DStylizedTargets(
       this.stylizedTargets,
       tgt,
@@ -1281,11 +1306,13 @@ export class Anime25DPlayer {
       }
     }
     for (const layer of this.layers) {
-      const visible = shouldDeformLayer(layer.source, layer.frameOpacity) || this.layers.some(
-        child => (child.attachment?.hostSource === layer.source ||
-          child.neckwearBridge?.upper.hostSource === layer.source ||
-          child.neckwearBridge?.lower.hostSource === layer.source) && shouldDeformLayer(child.source, child.frameOpacity),
-      )
+      const visible =
+        shouldDeformLayer(layer.source, layer.frameOpacity) ||
+        Boolean(
+          layer.attachmentDependents?.some((child) =>
+            shouldDeformLayer(child.source, child.frameOpacity),
+          ),
+        )
       const updateLocalGeometry = layer.deformationPlan.cacheable
         ? shouldUpdateAnime25DLayerGeometry(
             layer.deformationPlan,
@@ -1452,13 +1479,28 @@ export class Anime25DPlayer {
     // Hosts may be later in draw order. Resolve attachments only after all host
     // vertices include this frame's shell, breathing and hair physics.
     for (const layer of this.layers) {
-      if (layer.neckwearBridge && shouldDeformLayer(layer.source, layer.frameOpacity)) {
-        deformNeckwearBridge(layer.neckwearBridge, secondaryDeformationFrame, layer.rest, layer.deformed)
-        layer.layerTransform.set([1,0,0,0,1,0,0,0,1])
+      if (
+        layer.neckwearBridge &&
+        shouldDeformLayer(layer.source, layer.frameOpacity)
+      ) {
+        deformNeckwearBridge(
+          layer.neckwearBridge,
+          secondaryDeformationFrame,
+          layer.rest,
+          layer.deformed,
+        )
+        layer.layerTransform.fill(0)
+        layer.layerTransform[0] =
+          layer.layerTransform[4] =
+          layer.layerTransform[8] =
+            1
         layer.geometryDirty = true
-      } else if (layer.attachment) writeAnime25DAttachmentTransform(
-        layer.attachment, secondaryDeformationFrame, layer.layerTransform,
-      )
+      } else if (layer.attachment)
+        writeAnime25DAttachmentTransform(
+          layer.attachment,
+          secondaryDeformationFrame,
+          layer.layerTransform,
+        )
     }
   }
 
@@ -1499,6 +1541,8 @@ export class Anime25DPlayer {
       work,
     )
     const sampled = this.performanceExpression.getSampledTouch()
-    this.presentedTouch = sampled ? { ...sampled, atMs: performance.now() } : null
+    this.presentedTouch = sampled
+      ? { ...sampled, atMs: performance.now() }
+      : null
   }
 }

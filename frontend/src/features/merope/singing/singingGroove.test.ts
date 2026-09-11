@@ -37,13 +37,96 @@ function play(
     const mode = options.mode?.(t) ?? 'listen'
     const signal = options.signal ? options.signal(t) : musicSignalAt(t)
     const raw = {
-      ...controller.sample(t, true, signal, options.quality ?? MUSIC_QUALITY[mode], mode),
+      ...controller.sample(
+        t,
+        true,
+        signal,
+        options.quality ?? MUSIC_QUALITY[mode],
+        mode,
+      ),
     }
     response.step(current, { ...IDENTITY_DRIVER, ...raw }, frame ? 1 / fps : 0)
     samples.push({ t, ...current, raw })
   }
   return samples
 }
+
+test('drum envelopes and repeated tempo corrections do not jerk the filtered head', () => {
+  for (const scenario of ['pulses', 'tempo'] as const) {
+    const samples = play({
+      fps: 120,
+      duration: 30,
+      mode: () => 'sing',
+      signal: (t) =>
+        musicSignalAt(t, {
+          bpm: scenario === 'tempo' ? (Math.floor(t / 3) % 2 ? 120 : 100) : 120,
+          audio: {
+            energy: scenario === 'pulses' ? (t % 0.5 < 0.1 ? 0.65 : 0.12) : 0.6,
+            bass: 0.5,
+            pulse: 0.6,
+            presence: 0.5,
+          },
+        }),
+    })
+    for (const key of ['angleX', 'angleY', 'angleZ'] as const) {
+      let maxJerk = 0
+      for (let i = 361; i < samples.length; i++) {
+        const jerk =
+          (samples[i][key] -
+            3 * samples[i - 1][key] +
+            3 * samples[i - 2][key] -
+            samples[i - 3][key]) *
+          120 ** 3
+        maxJerk = Math.max(maxJerk, Math.abs(jerk))
+      }
+      assert.ok(maxJerk < 180, `${scenario} ${key}: jerk ${maxJerk}`)
+    }
+    const settled = samples.slice(600)
+    const range =
+      Math.max(...settled.map((s) => s.angleZ)) -
+      Math.min(...settled.map((s) => s.angleZ))
+    assert.ok(
+      range > 0.9,
+      `${scenario}: cannot pass smoothness by shrinking the performance (${range})`,
+    )
+  }
+})
+
+test('fast music plans a full preparation ahead of the selected metrical beat', () => {
+  for (const bpm of [120, 180, 200]) {
+    const controller = new SingingGrooveController()
+    controller.setTrack('music-test')
+    const internals = controller as unknown as {
+      lastNodAt: number
+      nodReleaseAt: number
+      amplitude: number
+    }
+    let previous = -Infinity,
+      count = 0
+    for (let f = 0; f < 30 * 60; f++) {
+      const t = f / 60
+      controller.sample(
+        t,
+        true,
+        musicSignalAt(t, { bpm }),
+        MUSIC_QUALITY.sing,
+        'sing',
+      )
+      if (internals.lastNodAt === previous) continue
+      previous = internals.lastNodAt
+      const preparation = internals.nodReleaseAt - t
+      assert.ok(
+        preparation >= 0.32 && preparation <= 0.46,
+        `${bpm}: ${preparation}`,
+      )
+      const arrival = internals.nodReleaseAt + 0.045
+      const position = (arrival * bpm) / 60
+      assert.ok(Math.abs(position - Math.round(position)) < 1e-6)
+      count++
+    }
+    assert.ok(count >= 3, `${bpm}: no longer follows music (${count})`)
+  }
+})
 
 test('head accents use a slower metrical level at all supported tempi', () => {
   for (const bpm of [60, 72, 86, 100, 120, 150, 180, 200]) {
@@ -84,7 +167,9 @@ test('sway responds to music tempo, not only amplitude or an independent timer',
 test('director extent reaches the actual body, not only the planned quality', () => {
   const compact = play({ quality: { ...MUSIC_QUALITY.listen, extent: 0.8 } })
   const expansive = play({ quality: { ...MUSIC_QUALITY.listen, extent: 1.3 } })
-  const range = (samples: ReturnType<typeof play>) => Math.max(...samples.map(s => s.body)) - Math.min(...samples.map(s => s.body))
+  const range = (samples: ReturnType<typeof play>) =>
+    Math.max(...samples.map((s) => s.body)) -
+    Math.min(...samples.map((s) => s.body))
   assert.ok(range(expansive) > range(compact) * 1.5)
 })
 
@@ -150,7 +235,7 @@ test('actual head accents are sparse, modest, and anticipate the audible pulse',
       s.angleY <= samples[i + 1].angleY
     ) {
       peaks.push(s.t)
-}
+    }
   }
   assert.ok(peaks.length >= 5 && peaks.length < 26, `nod count ${peaks.length}`)
   for (let i = 1; i < peaks.length; i++) assert.ok(peaks[i] - peaks[i - 1] > 1)

@@ -116,43 +116,87 @@ export interface Anime25DNeckwearBridge {
 }
 
 export function bindNeckwearBridge(
-  source: Anime25DPlaybackLayer, hosts: readonly AttachmentHost[],
-  anchors: Anime25DPlaybackAnchors, chestWeights: ChestWeightField | null,
-  canvasWidth: number, rest: Float32Array, readPixels: ReadAttachmentPixels,
+  source: Anime25DPlaybackLayer,
+  hosts: readonly AttachmentHost[],
+  anchors: Anime25DPlaybackAnchors,
+  chestWeights: ChestWeightField | null,
+  canvasWidth: number,
+  rest: Float32Array,
+  readPixels: ReadAttachmentPixels,
 ): Anime25DNeckwearBridge | null {
-  if (source.role !== 'neckwear' || source.y >= anchors.neckBottom || source.y + source.h <= anchors.neckBottom) return null
+  if (
+    source.role !== 'neckwear' ||
+    source.y >= anchors.neckBottom ||
+    source.y + source.h <= anchors.neckBottom
+  )
+    return null
   const samples = attachmentFootprint(source, readPixels(source))
-  const upperPoints = samples.filter(p => p.y < anchors.neckBottom)
-  const lowerPoints = samples.filter(p => p.y >= anchors.neckBottom)
+  const upperPoints = samples.filter((p) => p.y < anchors.neckBottom)
+  const lowerPoints = samples.filter((p) => p.y >= anchors.neckBottom)
   if (upperPoints.length < 8 || lowerPoints.length < 8) return null
   const bind = (points: AttachmentSample[], role: string) => {
-    const candidates = hosts.filter(h => h.source.role === role)
+    const candidates = hosts.filter((h) => h.source.role === role)
     if (candidates.length !== 1) return null
     const pixels = readPixels(candidates[0].source)
-    if (!pixels || attachmentCoverage(points, candidates[0].source, pixels) < 0.75) return null
-    const mass = points.reduce((s,p)=>s+p.weight,0)
-    const x=points.reduce((s,p)=>s+p.x*p.weight,0)/mass
-    const y=points.reduce((s,p)=>s+p.y*p.weight,0)/mass
-    return bindAnime25DLayerAttachment({...source,x:x-0.5,y:y-0.5,w:1,h:1}, candidates, anchors, chestWeights, canvasWidth)
+    if (!pixels) return null
+    // A knot/ribbon may project beyond the neck. Bind its supported root,
+    // rather than requiring the entire ornament to lie on skin.
+    const contact = points.filter(
+      (p) => attachmentCoverage([p], candidates[0].source, pixels) >= 0.8,
+    )
+    if (contact.length < 8 || contact.length < points.length * 0.25) return null
+    const mass = contact.reduce((s, p) => s + p.weight, 0)
+    const x = contact.reduce((s, p) => s + p.x * p.weight, 0) / mass
+    const y = contact.reduce((s, p) => s + p.y * p.weight, 0) / mass
+    return bindAnime25DLayerAttachment(
+      { ...source, x: x - 0.5, y: y - 0.5, w: 1, h: 1 },
+      candidates,
+      anchors,
+      chestWeights,
+      canvasWidth,
+    )
   }
-  const upper=bind(upperPoints,'neck'), lower=bind(lowerPoints,'topwear')
-  if(!upper || !lower) return null
-  const span=Math.max(1, Math.min(source.h*0.35, (anchors.neckBottom-anchors.neckTop)*0.5))
-  const weights=Float32Array.from({length:rest.length/2},(_,i)=>{
-    const t=Math.max(0,Math.min(1,(rest[i*2+1]-(anchors.neckBottom-span/2))/span))
-    return t*t*(3-2*t)
+  const upper = bind(upperPoints, 'neck'),
+    lower = bind(lowerPoints, 'topwear')
+  if (!upper || !lower) return null
+  const span = Math.max(
+    1,
+    Math.min(source.h * 0.35, (anchors.neckBottom - anchors.neckTop) * 0.5),
+  )
+  const weights = Float32Array.from({ length: rest.length / 2 }, (_, i) => {
+    const t = Math.max(
+      0,
+      Math.min(1, (rest[i * 2 + 1] - (anchors.neckBottom - span / 2)) / span),
+    )
+    return t * t * (3 - 2 * t)
   })
-  return {upper,lower,weights,upperMatrix:new Float32Array(9),lowerMatrix:new Float32Array(9)}
+  return {
+    upper,
+    lower,
+    weights,
+    upperMatrix: new Float32Array(9),
+    lowerMatrix: new Float32Array(9),
+  }
 }
 
-export function deformNeckwearBridge(bridge: Anime25DNeckwearBridge, frame: Readonly<Anime25DSecondaryDeformationFrame>, rest: Float32Array, output: Float32Array): void {
-  writeAnime25DAttachmentTransform(bridge.upper,frame,bridge.upperMatrix)
-  writeAnime25DAttachmentTransform(bridge.lower,frame,bridge.lowerMatrix)
-  const a=bridge.upperMatrix,b=bridge.lowerMatrix
-  for(let i=0;i<bridge.weights.length;i++) {
-    const x=rest[i*2],y=rest[i*2+1],w=bridge.weights[i]
-    output[i*2]=(a[0]*x+a[3]*y+a[6])*(1-w)+(b[0]*x+b[3]*y+b[6])*w
-    output[i*2+1]=(a[1]*x+a[4]*y+a[7])*(1-w)+(b[1]*x+b[4]*y+b[7])*w
+export function deformNeckwearBridge(
+  bridge: Anime25DNeckwearBridge,
+  frame: Readonly<Anime25DSecondaryDeformationFrame>,
+  rest: Float32Array,
+  output: Float32Array,
+): void {
+  writeAnime25DAttachmentTransform(bridge.upper, frame, bridge.upperMatrix)
+  writeAnime25DAttachmentTransform(bridge.lower, frame, bridge.lowerMatrix)
+  const a = bridge.upperMatrix,
+    b = bridge.lowerMatrix
+  for (let i = 0; i < bridge.weights.length; i++) {
+    const x = rest[i * 2],
+      y = rest[i * 2 + 1],
+      w = bridge.weights[i]
+    output[i * 2] =
+      (a[0] * x + a[3] * y + a[6]) * (1 - w) + (b[0] * x + b[3] * y + b[6]) * w
+    output[i * 2 + 1] =
+      (a[1] * x + a[4] * y + a[7]) * (1 - w) + (b[1] * x + b[4] * y + b[7]) * w
   }
 }
 
@@ -243,11 +287,13 @@ export function bindAnime25DLayerAttachment(
   // its surface. This also keeps mesh sampling inside the actual contact.
   const hostPixels = readPixels?.(host.source)
   if (hostPixels && samples.length) {
-    const supported = samples.filter(p => attachmentCoverage([p], host!.source, hostPixels) > 0.5)
-    const mass = supported.reduce((sum,p) => sum+p.weight,0)
+    const supported = samples.filter(
+      (p) => attachmentCoverage([p], host!.source, hostPixels) > 0.5,
+    )
+    const mass = supported.reduce((sum, p) => sum + p.weight, 0)
     if (mass > 0) {
-      x = supported.reduce((sum,p) => sum+p.x*p.weight,0)/mass
-      y = supported.reduce((sum,p) => sum+p.y*p.weight,0)/mass
+      x = supported.reduce((sum, p) => sum + p.x * p.weight, 0) / mass
+      y = supported.reduce((sum, p) => sum + p.y * p.weight, 0) / mass
     }
   }
   const binding = { ...host.secondaryDeformation }
@@ -265,14 +311,20 @@ export function bindAnime25DLayerAttachment(
       : null
   binding.hairlinePinWeights = null
   binding.frontHairParallaxScale = null
-  const mesh = host.rest && host.deformed && host.indices && !host.secondaryDeformation.shaderGlobalTransform
-    ? { rest: host.rest, deformed: host.deformed, indices: host.indices } : null
+  const mesh =
+    host.rest &&
+    host.deformed &&
+    host.indices &&
+    !host.secondaryDeformation.shaderGlobalTransform
+      ? { rest: host.rest, deformed: host.deformed, indices: host.indices }
+      : null
   const originSample = mesh ? bindAttachmentMesh(mesh, x, y) : null
   const tangentSample = mesh ? bindAttachmentMesh(mesh, x + 1, y) : null
   return {
     hostName: host.source.name,
     hostSource: host.source,
-    meshSamples: originSample && tangentSample ? [originSample, tangentSample] : undefined,
+    meshSamples:
+      originSample && tangentSample ? [originSample, tangentSample] : undefined,
     x,
     y,
     binding,

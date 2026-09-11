@@ -7,6 +7,7 @@ import type {
 } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFile } from 'node:fs/promises'
 import {
   deriveGeometryChestProfile,
   resolveChestSpatialField,
@@ -59,30 +60,122 @@ const source = {
 const shell = deriveAnime25DShellProfile(source)
 const chest = deriveGeometryChestProfile(source)
 
+test(
+  'real split accessory asset binds without missing surfaces',
+  { skip: !process.env.MEROPE_ACCESSORY_ASSET },
+  async () => {
+    const sharp = (await import('sharp')).default
+    const root = process.env.MEROPE_ACCESSORY_ASSET!
+    const manifest = JSON.parse(await readFile(`${root}/manifest.json`, 'utf8'))
+    const playback = manifest.anime25dPlayback as Anime25DPlayback
+    const atlas = `${root}/atlas.png`,
+      meta = await sharp(atlas).metadata()
+    const images = new Map<Anime25DPlaybackLayer, Anime25DAttachmentPixels>()
+    for (const l of playback.layers) {
+      if (
+        ![
+          'neckwear',
+          'headwear',
+          'earwear',
+          'front-hair',
+          'back-hair',
+          'neck',
+          'topwear',
+          'face',
+          'ears',
+        ].includes(l.role)
+      )
+        continue
+      const { data, info } = await sharp(atlas)
+        .extract({
+          left: Math.round(l.atlas.x * meta.width!),
+          top: Math.round(l.atlas.y * meta.height!),
+          width: Math.round(l.atlas.w * meta.width!),
+          height: Math.round(l.atlas.h * meta.height!),
+        })
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true })
+      images.set(l, {
+        pixels: new Uint8ClampedArray(data),
+        width: info.width,
+        height: info.height,
+      })
+    }
+    const read = (l: Anime25DPlaybackLayer) => images.get(l) ?? null
+    const actualHosts = playback.layers.map(host)
+    for (const art of playback.layers.filter((l) =>
+      ['neckwear', 'headwear'].includes(l.role),
+    )) {
+      const binding = bindAnime25DLayerAttachment(
+        art,
+        actualHosts,
+        playback.anchors,
+        null,
+        playback.pixelCanvas.width,
+        read,
+      )
+      assert.ok(binding, art.name)
+      console.log(`${art.name} -> ${binding.hostName}`)
+      if (art.role === 'neckwear') {
+        const bridge = bindNeckwearBridge(
+          art,
+          actualHosts,
+          playback.anchors,
+          null,
+          playback.pixelCanvas.width,
+          new Float32Array([art.x, art.y, art.x, art.y + art.h]),
+          read,
+        )
+        assert.ok(
+          bridge,
+          'real neckwear should connect both supported surfaces',
+        )
+      }
+    }
+  },
+)
+
 test('headwear chooses supported back hair over unsupported front hair', () => {
-  const art=layer('headwear','head',10,10,10,10)
-  const front=layer('front-hair','head',0,0,30,30)
-  const back=layer('back-hair','head',0,0,30,30)
-  const attachment=bindAnime25DLayerAttachment(art,[host(front),host(back)],anchors,null,1024,
-    l=>pixels(30,30,()=>l!==front))
-  assert.equal(attachment?.hostName,back.name)
+  const art = layer('headwear', 'head', 10, 10, 10, 10)
+  const front = layer('front-hair', 'head', 0, 0, 30, 30)
+  const back = layer('back-hair', 'head', 0, 0, 30, 30)
+  const attachment = bindAnime25DLayerAttachment(
+    art,
+    [host(front), host(back)],
+    anchors,
+    null,
+    1024,
+    (l) => pixels(30, 30, () => l !== front),
+  )
+  assert.equal(attachment?.hostName, back.name)
 })
 
 test('cross-surface neckwear follows both ends without mutating rest geometry', () => {
-  const rest=new Float32Array([520,690,520,800])
-  const bridge=bindNeckwearBridge(necklace,hosts,anchors,null,1024,rest,
-    l=>pixels(Math.round(l.w),Math.round(l.h),()=>true))
+  const rest = new Float32Array([520, 690, 520, 800])
+  const bridge = bindNeckwearBridge(
+    necklace,
+    hosts,
+    anchors,
+    null,
+    1024,
+    rest,
+    (l) => pixels(Math.round(l.w), Math.round(l.h), () => true),
+  )
   assert.ok(bridge)
-  assert.equal(bridge.weights[0],0)
-  assert.equal(bridge.weights[1],1)
-  const output=rest.slice()
-  deformNeckwearBridge(bridge,frame(0.7),rest,output)
-  const a=transform(bridge.upperMatrix,rest[0],rest[1])
-  const b=transform(bridge.lowerMatrix,rest[2],rest[3])
-  assert.ok(Math.hypot(output[0]-a.x,output[1]-a.y)<1e-3)
-  assert.ok(Math.hypot(output[2]-b.x,output[3]-b.y)<1e-3)
-  assert.deepEqual([...rest],[520,690,520,800])
-  assert.equal(bindNeckwearBridge(necklace,hosts,anchors,null,1024,rest,()=>null),null)
+  assert.equal(bridge.weights[0], 0)
+  assert.equal(bridge.weights[1], 1)
+  const output = rest.slice()
+  deformNeckwearBridge(bridge, frame(0.7), rest, output)
+  const a = transform(bridge.upperMatrix, rest[0], rest[1])
+  const b = transform(bridge.lowerMatrix, rest[2], rest[3])
+  assert.ok(Math.hypot(output[0] - a.x, output[1] - a.y) < 1e-3)
+  assert.ok(Math.hypot(output[2] - b.x, output[3] - b.y) < 1e-3)
+  assert.deepEqual([...rest], [520, 690, 520, 800])
+  assert.equal(
+    bindNeckwearBridge(necklace, hosts, anchors, null, 1024, rest, () => null),
+    null,
+  )
 })
 
 test('neckwear and unknown body ornaments ride the garment, not a separate projection', () => {
