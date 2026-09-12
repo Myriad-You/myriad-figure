@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { IDENTITY_DRIVER } from './driver'
 import {
   activityExpressionDriverPatch,
   CRY_EXPRESSION_PRESET,
   DIZZY_EXPRESSION_PRESET,
   LOVESTRUCK_EXPRESSION_PRESET,
   MANIAC_EXPRESSION_PRESET,
+  releaseThinkingExpression,
   SQUEEZE_EXPRESSION_PRESET,
   THINKING_ACTIVITY_EXPRESSION,
   THINKING_EXPRESSION_PRESET,
@@ -86,4 +88,24 @@ test('lovestruck preview selects the additive face expression', () => {
 
 test('thinking preview enables the dedicated motion loop', () => {
   assert.equal(THINKING_EXPRESSION_PRESET.thinking, true)
+})
+
+test('speech releases authored thinking face without erasing newer emotion or articulation', () => {
+  for (const preset of [THINKING_ACTIVITY_EXPRESSION, THINKING_EXPRESSION_PRESET]) {
+    const target = { ...IDENTITY_DRIVER, ...preset, thinking: true,
+      anger: 0.8, mouthOpen: 0.7, talk: true, brow: -0.4 }
+    releaseThinkingExpression(target)
+    assert.equal(target.thinking, false)
+    assert.equal(target.eyeX, 0)
+    assert.equal(target.eyeY, 0)
+    assert.equal(target.eyeOpenL, 1)
+    assert.equal(target.browAngL, 0)
+    assert.equal(target.anger, 0.8)
+    assert.equal(target.brow, -0.4)
+    assert.equal(target.mouthOpen, 0.7)
+    assert.equal(target.talk, true)
+    const released = { ...target }
+    releaseThinkingExpression(target)
+    assert.deepEqual(target, released)
+  }
 })

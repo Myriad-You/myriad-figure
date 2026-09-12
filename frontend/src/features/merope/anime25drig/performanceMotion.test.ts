@@ -61,8 +61,9 @@ test('directed thinking has a readable face without borrowing angry or speechles
   assert.ok(shown.browAngSym < -0.1)
   assert.equal(shown.anger ?? 0, 0)
   assert.equal(shown.speechless ?? 0, 0)
-  expression.playBehaviorUnits([], 1, 1000)
-  const released = expression.sample(3)
+  const beforeSpeech = { ...shown }
+  assert.deepEqual(expression.sample(1, {}, true), beforeSpeech)
+  const released = expression.sample(3, {}, true)
   assert.equal(expression.getThinkingLevel(), 0)
   assert.ok(Math.abs(released.eyeOpen) < 1e-6)
   assert.ok(Math.abs(released.browAngSym) < 1e-6)

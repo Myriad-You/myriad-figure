@@ -101,6 +101,7 @@ import {
   stepAnime25DDriverResponse,
 } from './driverComposition'
 import { deformAnime25DExpressionPoint } from './expressionDeformation'
+import { releaseThinkingExpression } from './expressionPresets'
 import { expressiveEyeOpenOffset } from './expressiveMotionEnvelope'
 import {
   animationCatchupSeconds,
@@ -678,6 +679,7 @@ export class Anime25DPlayer {
 
   setTarget(partial: Partial<Anime25DDriver>): void {
     Object.assign(this.target, sanitizeDriverPatch(partial))
+    if (this.speechActive || this.target.talk) releaseThinkingExpression(this.target)
   }
 
   replaceTarget(driver: Anime25DDriver): void {
@@ -714,6 +716,7 @@ export class Anime25DPlayer {
 
   setSpeechActive(active: boolean): void {
     this.speechActive = active
+    if (active) releaseThinkingExpression(this.target)
   }
 
   setSinging(active: boolean): void {
@@ -929,7 +932,7 @@ export class Anime25DPlayer {
 
   private smoothDriver(dt: number): void {
     this.thinkingSticker.update(this.time,
-      this.target.thinking ? 1 : this.performanceExpression.getThinkingLevel())
+      this.speechActive || this.target.talk ? 0 : this.target.thinking ? 1 : this.performanceExpression.getThinkingLevel())
     this.shellActivation = Math.min(1, this.shellActivation + dt * 8)
     const t = this.time
     const pointer =
@@ -961,6 +964,7 @@ export class Anime25DPlayer {
     const semanticExpression = this.performanceExpression.sample(
       controlTime,
       tgt,
+      this.speechActive || this.target.talk,
     )
     const stylizedTargets = resolveAnime25DStylizedTargets(
       this.stylizedTargets,
@@ -1029,7 +1033,7 @@ export class Anime25DPlayer {
       this.performanceExpression.getActiveLevel() >= DIRECTED_BODY_BLOCK_LEVEL,
     )
     const ambient = this.ambientMotion.sample(t, this.target.rand)
-    const thinking = this.thinkingMotion.sample(t, this.target.thinking)
+    const thinking = this.thinkingMotion.sample(t, this.target.thinking && !speaking, tgt)
     const breath = idleBreathOffset(t, this.breathPose)
     const gate = this.poseGate.sample(
       dt,
@@ -1585,10 +1589,10 @@ export class Anime25DPlayer {
       const px = m[0] * x + m[3] * y + m[6] - frame.bodyPivotX
       const py = m[1] * x + m[4] * y + m[7] - frame.bodyPivotY
       this.thinkingSticker.draw(this.gl, this.time,
-        this.target.thinking ? 1 : this.performanceExpression.getThinkingLevel(),
+        this.speechActive || this.target.talk ? 0 : this.target.thinking ? 1 : this.performanceExpression.getThinkingLevel(),
         frame.bodyPivotX + px * frame.bodyRotationCosine - py * frame.bodyRotationSine,
         frame.bodyPivotY + px * frame.bodyRotationSine + py * frame.bodyRotationCosine,
-        faceWidth * 0.12, frame.viewWidth, frame.viewHeight)
+        faceWidth * 0.155, frame.viewWidth, frame.viewHeight)
     }
     this.presentedTouch = sampled
       ? { ...sampled, atMs: performance.now() }

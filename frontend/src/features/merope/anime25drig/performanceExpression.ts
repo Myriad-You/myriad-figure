@@ -221,8 +221,16 @@ export class PerformanceExpressionController {
       : candidate
   }
 
-  sample(timeSeconds: number, base: Partial<Anime25DDriver> = {}): Readonly<PerformanceExpressionOffset> {
+  sample(timeSeconds: number, base: Partial<Anime25DDriver> = {}, speaking = false): Readonly<PerformanceExpressionOffset> {
     const now = finiteTime(timeSeconds)
+    if (speaking) {
+      const releaseAt = this.releaseClock(now)
+      for (const cue of this.cues) {
+        if (cue.thinking) {
+          releaseScheduledCue(cue, releaseAt)
+        }
+      }
+    }
     const dt = Number.isFinite(this.lastTime)
       ? clamp(now - this.lastTime, 0, 0.05)
       : 0

@@ -137,3 +137,16 @@ export function activityExpressionDriverPatch(
 ): Readonly<ActivityExpressionDriver> {
   return thinking ? THINKING_ACTIVITY_EXPRESSION : NEUTRAL_ACTIVITY_EXPRESSION
 }
+
+/** Release only the authored thinking values; a newer/custom face is not ours. */
+export function releaseThinkingExpression(target: Anime25DDriver): void {
+  if (!target.thinking) return
+  for (const key of Object.keys(THINKING_ACTIVITY_EXPRESSION) as (keyof ActivityExpressionDriver)[]) {
+    if (target[key] === THINKING_ACTIVITY_EXPRESSION[key]
+      || target[key] === THINKING_EXPRESSION_PRESET[key]) {
+      target[key] = NEUTRAL_ACTIVITY_EXPRESSION[key]
+    }
+  }
+  if (target.mouthForm === THINKING_EXPRESSION_PRESET.mouthForm) target.mouthForm = 0
+  target.thinking = false
+}

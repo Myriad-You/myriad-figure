@@ -4,7 +4,7 @@ import type {
 } from '../../../services/agent/types'
 import type { BehaviorPlan, BehaviorSnapshot } from '../motion/behavior'
 import type { SpeechProsodyPlan } from './prosody'
-import contract from '../../../../../shared/merope_performance_contract.json'
+import contract from '../../../../../shared/merope_performance_contract.json' with { type: 'json' }
 import { speechAccentBehaviorId } from '../motion/speechBehaviorPlan'
 import { unquotedSpeechText } from './phraseGestures'
 

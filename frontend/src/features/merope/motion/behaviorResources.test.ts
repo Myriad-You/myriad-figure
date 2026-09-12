@@ -107,13 +107,21 @@ test('the resource vocabulary matches the director contract and the rig boundary
   const declared = [...block.matchAll(/"([a-z.]+)"/g)].map((match) => match[1])
   assert.ok(declared.length > 0, 'director contract listed no resources')
   for (const resource of declared) {
-    assert.match(local, new RegExp(`\\| '${resource}'`), resource)
-    assert.match(summary, new RegExp(`'${resource}',`), resource)
+    assert.match(local, new RegExp(`\\| '${RegExp.escape(resource)}'`), resource)
+    assert.match(summary, new RegExp(`'${RegExp.escape(resource)}',`), resource)
   }
 
   assert.match(boundary, /no shoulder, elbow, wrist, leg, foot/)
   for (const forbidden of ['legs', 'foot', 'feet', 'locomotion']) {
-    assert.doesNotMatch(local, new RegExp(`body\\.${forbidden}`), forbidden)
-    assert.doesNotMatch(contract, new RegExp(`body\\.${forbidden}`), forbidden)
+    assert.doesNotMatch(
+      local,
+      new RegExp(`body\\.${RegExp.escape(forbidden)}`),
+      forbidden,
+    )
+    assert.doesNotMatch(
+      contract,
+      new RegExp(`body\\.${RegExp.escape(forbidden)}`),
+      forbidden,
+    )
   }
 })

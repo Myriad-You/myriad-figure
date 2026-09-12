@@ -50,11 +50,15 @@ export class ThinkingSticker {
         precision highp float; in vec2 uv; uniform vec4 box; uniform float phase; uniform vec3 ink; out vec4 color;
         void main() {
           float r = length(uv); float aa = max(fwidth(r), 0.01);
-          float ring = (1.0-smoothstep(0.83-aa,0.83+aa,r))*smoothstep(0.48-aa,0.48+aa,r);
-          float inner = (1.0-smoothstep(0.75-aa,0.75+aa,r))*smoothstep(0.56-aa,0.56+aa,r);
+          float ring = (1.0-smoothstep(0.90-aa,0.90+aa,r))*smoothstep(0.39-aa,0.39+aa,r);
+          float paper = (1.0-smoothstep(0.86-aa,0.86+aa,r))*smoothstep(0.43-aa,0.43+aa,r);
+          float inner = (1.0-smoothstep(0.76-aa,0.76+aa,r))*smoothstep(0.53-aa,0.53+aa,r);
           float sweep = fract((atan(uv.y,uv.x)-phase)/6.2831853);
-          float a = ring * box.w * (0.25+0.75*sweep);
-          vec3 tint = mix(vec3(1.0),ink,inner);
+          // Opaque paper backing and an ink outline read as a cut-out sticker,
+          // while only the coloured track rotates, not the whole silhouette.
+          float a = ring * box.w;
+          vec3 tint = mix(ink,vec3(1.0),paper);
+          tint = mix(tint,ink,inner * (0.2+0.8*sweep));
           color = vec4(tint*a,a);
         }`,
       ]

@@ -11,7 +11,11 @@ function harness() {
   const calls: { summary: TouchSummary; signal: AbortSignal; resolve: (value: unknown) => void }[] = []
   const applied: unknown[] = []
   const client = new TouchAppraisal({ now: () => now,
-    request: (summary, signal) => new Promise(resolve => calls.push({ summary, signal, resolve })),
+    request: (summary, signal) => {
+      const deferred = Promise.withResolvers<unknown>()
+      calls.push({ summary, signal, resolve: deferred.resolve })
+      return deferred.promise
+    },
     apply: (revision, reaction) => applied.push({ revision, reaction }),
   })
   return { client, calls, applied, time: (value: number) => { now = value } }
