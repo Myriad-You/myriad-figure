@@ -233,7 +233,7 @@ test('rigid attachment preserves distances, orientation and area at all bounded 
     for (let i = 0; i <= 40; i++) {
       const pose = frame(i / 20 - 1, Math.sin(i) * 0.2, 0.6)
       writeAnime25DAttachmentTransform(attachment, pose, matrix)
-      assert.ok([...matrix].every(Number.isFinite))
+      assert.ok(Iterator.from(matrix).every(Number.isFinite))
       assert.ok(Math.abs(Math.hypot(matrix[0], matrix[1]) - 1) < 1e-6)
       assert.ok(Math.abs(Math.hypot(matrix[3], matrix[4]) - 1) < 1e-6)
       assert.ok(
@@ -422,13 +422,8 @@ function pixels(
   return { width, height, pixels: data }
 }
 
-test('GPU compilation actually binds independent accessories to their surfaces', () => {
-  const eyewear = layer('eyewear', 'head', 360, 430, 300, 80)
-  const playback = {
-    ...source,
-    layers: [...source.layers, necklace, eyewear],
-  } as Anime25DPlayback
-  const gl = {
+function meshGl(): WebGL2RenderingContext {
+  return {
     ARRAY_BUFFER: 1,
     ELEMENT_ARRAY_BUFFER: 2,
     DYNAMIC_DRAW: 3,
@@ -445,6 +440,15 @@ test('GPU compilation actually binds independent accessories to their surfaces',
     deleteBuffer() {},
     deleteVertexArray() {},
   } as unknown as WebGL2RenderingContext
+}
+
+test('GPU compilation actually binds independent accessories to their surfaces', () => {
+  const eyewear = layer('eyewear', 'head', 360, 430, 300, 80)
+  const playback = {
+    ...source,
+    layers: [...source.layers, necklace, eyewear],
+  } as Anime25DPlayback
+  const gl = meshGl()
   const previousDocument = globalThis.document
   let reads = 0
   Object.assign(globalThis, {
@@ -490,7 +494,7 @@ test('GPU compilation actually binds independent accessories to their surfaces',
         frame(0.8),
         drawing.layerTransform,
       )
-      assert.ok([...drawing.layerTransform].every(Number.isFinite))
+      assert.ok(Iterator.from(drawing.layerTransform).every(Number.isFinite))
     }
     assert.equal(
       reads,
@@ -532,6 +536,97 @@ test('attachment includes shader-owned host motion when shell projection is disa
   )
   assert.ok(Math.hypot(actual.x - expected.x, actual.y - expected.y) < 0.0001)
   assert.ok(Math.hypot(actual.x - attachment.x, actual.y - attachment.y) > 1)
+})
+
+test('high-collar ornaments sample the rendered aperture instead of the unused neck grid', () => {
+  const neck = layer('neck', 'body', 95, 180, 50, 60)
+  const collar = layer('collar-front', 'body', 100, 200, 40, 40)
+  collar.atlas = { x: 0.5, y: 0, w: 1 / 3, h: 1 / 3 }
+  const ornament = layer('neckwear', 'body', 118, 184, 4, 4)
+  const playback = {
+    ...source,
+    anchors: { ...anchors, neckPivot: { x: 120, y: 220 }, neckTop: 180, neckBottom: 240 },
+    layers: [neck, collar, ornament],
+  } as Anime25DPlayback
+  const previousDocument = globalThis.document
+  Object.assign(globalThis, {
+    document: {
+      createElement: () => {
+        let collarCrop = false
+        return { getContext: () => ({
+          drawImage(_atlas: unknown, sx: number) { collarCrop = sx === 60 },
+          getImageData(_x: number, _y: number, w: number, h: number) {
+            return { data: pixels(w, h, (x, y) => {
+              if (!collarCrop) return true
+              const halfGap = y < 16 ? Math.max(2, 10 - Math.floor(y / 2)) : 0
+              return x >= 2 && x < w - 2 && !(halfGap > 0 && x > 20 - halfGap && x < 20 + halfGap)
+            }).pixels }
+          },
+        }) }
+      },
+    },
+  })
+  const gl = meshGl()
+  let compiled: ReturnType<typeof compileAnime25DGpuLayers> | undefined
+  try {
+    compiled = compileAnime25DGpuLayers(gl, {} as WebGLProgram, playback, shell,
+      { ...IDENTITY_DRIVER }, null, { width: 120, height: 120 } as HTMLImageElement)
+    const clip = compiled.collarClip
+    assert.ok(clip)
+    const neckLayer = compiled.layers.find(l => l.source === neck)!
+    assert.equal(neckLayer.vertexBuffer, null)
+    const art = compiled.layers.find(l => l.source === ornament)!
+    const attachment = art.attachment!
+    assert.equal(attachment.hostSource, neck)
+    assert.equal(attachment.meshSamples?.[0].mesh.deformed, clip.deformed)
+    assert.notEqual(attachment.meshSamples?.[0].mesh.deformed, neckLayer.deformed)
+    const original = clip.rest.slice()
+    for (let step = 0; step <= 60; step++) {
+      for (let i = 0; i < clip.rest.length; i += 2) {
+        clip.deformed[i] = clip.rest[i] + step * 0.1
+        clip.deformed[i + 1] = clip.rest[i + 1] - step * 0.2
+      }
+      writeAnime25DAttachmentTransform(attachment, frame(0.9), art.layerTransform)
+      const point = transform(art.layerTransform, attachment.x, attachment.y)
+      assert.ok(Math.abs(point.x - attachment.x - step * 0.1) < 0.0001)
+      assert.ok(Math.abs(point.y - attachment.y + step * 0.2) < 0.0001)
+    }
+    assert.deepEqual(clip.rest, original, 'sampling cannot alter the high-collar aperture')
+  } finally {
+    if (compiled) disposeAnime25DGpuLayers(gl, compiled)
+    Object.assign(globalThis, { document: previousDocument })
+  }
+})
+
+test('a bound shader host supplies its actual local deformation and transform, not a replay of driver math', () => {
+  const base = host(face)
+  base.secondaryDeformation.shaderGlobalTransform = true
+  const rest = new Float32Array([
+    face.x, face.y, face.x + face.w, face.y,
+    face.x, face.y + face.h, face.x + face.w, face.y + face.h,
+  ])
+  const surface = {
+    ...base, rest, deformed: rest.slice(),
+    indices: new Uint16Array([0, 1, 2, 1, 3, 2]),
+    layerTransform: new Float32Array([0, 1, 0, -1, 0, 0, 800, -90, 1]),
+  }
+  const attachment = bindAnime25DLayerAttachment(
+    layer('eyewear', 'head', 360, 430, 300, 80), [surface], anchors, null, 1024,
+  )!
+  assert.ok(attachment.meshSamples)
+  const matrix = new Float32Array(9)
+  for (let step = 0; step < 30; step++) {
+    for (let i = 0; i < rest.length; i += 2) {
+      surface.deformed[i] = rest[i] + step * 0.5
+      surface.deformed[i + 1] = rest[i + 1] - step
+    }
+    // A deliberately unrelated driver proves that the final surface is authoritative.
+    writeAnime25DAttachmentTransform(attachment, frame(-0.9), matrix)
+    const actual = transform(matrix, attachment.x, attachment.y)
+    assert.ok(Math.abs(actual.x - (800 - attachment.y + step)) < 1e-4)
+    assert.ok(Math.abs(actual.y - (attachment.x + step * 0.5 - 90)) < 1e-4)
+    assert.ok(Math.abs(Math.hypot(matrix[0], matrix[1]) - 1) < 1e-6)
+  }
 })
 
 test('ordinary neck root takes torso yaw while the head end remains free', () => {

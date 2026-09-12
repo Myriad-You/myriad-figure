@@ -361,8 +361,7 @@ function preserveStaticMouthAsClosed(layers: RasterLayer[]): RasterLayer[] {
     synthetic: false,
   }
   const insertAt = Math.max(0, layers.indexOf(staticMouth))
-  output.splice(Math.min(insertAt, output.length), 0, closed)
-  return output
+  return output.toSpliced(Math.min(insertAt, output.length), 0, closed)
 }
 
 function splitHandwearIfNeeded(

@@ -7,6 +7,10 @@ import type {
 
 export type Anime25DShellMode = 'head' | 'front-hair' | 'back-hair'
 
+const SHELL_YAW_RADIANS = 0.45
+const SHELL_PITCH_RADIANS = 0.32
+const FULL_CROWN_TURN = 1 - Math.cos(SHELL_YAW_RADIANS) * Math.cos(SHELL_PITCH_RADIANS)
+
 export function anime25DShellModeForLayer(
   source: Pick<Anime25DPlaybackLayer, 'group' | 'role'>,
 ): Anime25DShellMode | null {
@@ -36,8 +40,8 @@ export function writeAnime25DShellRotation(
   angleY: number,
   target: Anime25DShellRotation,
 ): void {
-  const yaw = angleX * 0.45
-  const pitch = angleY * 0.32
+  const yaw = angleX * SHELL_YAW_RADIANS
+  const pitch = angleY * SHELL_PITCH_RADIANS
   target.active = angleX !== 0 || angleY !== 0
   target.yawCosine = Math.cos(yaw)
   target.yawSine = Math.sin(yaw)
@@ -125,8 +129,8 @@ function medianPositiveStrandGap(
   if (gaps.length === 0) {
     return Math.max(1, layerWidth / Math.max(1, strands.length))
   }
-  gaps.sort((left, right) => left - right)
-  return gaps[gaps.length >> 1]
+  const sorted = gaps.toSorted((left, right) => left - right)
+  return sorted[sorted.length >> 1]
 }
 
 function interpolatedStrandRootY(
@@ -179,8 +183,10 @@ export function deformAnime25DShellPoint(
   } else if (mode === 'back-hair') {
     normalizedDepth = -profile.hair.backDepth * radialDepth - 0.05
   } else if (profile.faceProfile.enabled) {
+    // Eye/jaw geometry has already moved locally. Depth is a field on that
+    // resulting face, not a different field for each vertex's original row.
     const vertical =
-      (restY - profile.faceProfile.startY) /
+      (point.y - profile.faceProfile.startY) /
       Math.max(1, profile.faceProfile.endY - profile.faceProfile.startY)
     const profileDepth = evaluateCurve(profile.faceProfile.points, vertical)
     const profileWidth = Math.max(1, profile.head.radiusX * 0.34)
@@ -210,7 +216,7 @@ export function deformAnime25DShellPoint(
     let headDepth = headRadialDepth
     if (profile.faceProfile.enabled) {
       const vertical =
-        (restY - profile.faceProfile.startY) /
+        (point.y - profile.faceProfile.startY) /
         Math.max(1, profile.faceProfile.endY - profile.faceProfile.startY)
       const profileWidth = Math.max(1, profile.head.radiusX * 0.34)
       const profileX = (point.x - profile.head.centerX) / profileWidth
@@ -229,8 +235,11 @@ export function deformAnime25DShellPoint(
     const crown =
       smoothstep((crownStart - restY) / crownSpan) *
       Math.sqrt(Math.max(0, 1 - normalizedX * normalizedX))
+    // A pose-space correction must vanish continuously at the reference pose.
+    // Use orientation departure, not time smoothing or a nonzero-angle switch.
     const crownMix = clamp(
-      profile.hair.crownRound * crown * 0.3 * (1 - pinWeight),
+      profile.hair.crownRound * crown * 0.3 * (1 - pinWeight) *
+        smoothstep((1 - rotation.yawCosine * rotation.pitchCosine) / FULL_CROWN_TURN),
       0,
       0.6,
     )

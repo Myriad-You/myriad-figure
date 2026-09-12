@@ -131,6 +131,24 @@ test('shell projection is an exact neutral identity and finite at bounded turns'
   assert.notDeepEqual(turned, neutral)
 })
 
+test('a locally deformed eyelid samples depth at its current face position, not its original row', () => {
+  const profile = deriveAnime25DShellProfile(playbackSource)
+  const rotation = { active: false, yawCosine: 1, yawSine: 0, pitchCosine: 1, pitchSine: 0 }
+  for (const yaw of [-1, -0.5, 0.5, 1]) {
+    for (const pitch of [-1, -0.5, 0.5, 1]) {
+      writeAnime25DShellRotation(yaw, pitch, rotation)
+      const target = { x: 325, y: playbackSource.anchors.eyeL.closeY }
+      const reference = { ...target }
+      deformAnime25DShellPoint(reference, target.y, 'head', profile, rotation, 1.1, 0)
+      for (const originalY of [170, 194, 215]) {
+        const moved = { ...target }
+        deformAnime25DShellPoint(moved, originalY, 'head', profile, rotation, 1.1, 0)
+        assert.deepEqual(moved, reference, 'a shared eyelid location must not inherit a different surface because it came from another row')
+      }
+    }
+  }
+})
+
 test('hairline pin stays full inside its scalp rectangle and fades outside', () => {
   const profile = deriveAnime25DShellProfile(playbackSource)
   const pin = profile.hair.hairlinePin
@@ -145,6 +163,29 @@ test('hairline pin stays full inside its scalp rectangle and fades outside', () 
     ),
     0,
   )
+})
+
+test('crown correction is continuous through neutral instead of switching on at the first nonzero turn', () => {
+  const profile = deriveAnime25DShellProfile(playbackSource)
+  profile.hair.crownRound = 1
+  const rest = {
+    x: profile.head.centerX + profile.head.radiusX * 0.5,
+    y: profile.head.centerY - profile.head.radiusY * 0.7,
+  }
+  const rotation = { active: false, yawCosine: 1, yawSine: 0, pitchCosine: 1, pitchSine: 0 }
+  for (const sign of [-1, 1]) {
+    const tiny = { ...rest }
+    writeAnime25DShellRotation(sign * 1e-7, sign * 1e-7, rotation)
+    deformAnime25DShellPoint(tiny, rest.y, 'front-hair', profile, rotation, 1.28, 0)
+    assert.ok(Math.hypot(tiny.x - rest.x, tiny.y - rest.y) < 0.0001, 'a tiny head input cannot inject a static crown reshape')
+  }
+  writeAnime25DShellRotation(1, 1, rotation)
+  const corrected = { ...rest }
+  deformAnime25DShellPoint(corrected, rest.y, 'front-hair', profile, rotation, 1.28, 0)
+  profile.hair.crownRound = 0
+  const uncorrected = { ...rest }
+  deformAnime25DShellPoint(uncorrected, rest.y, 'front-hair', profile, rotation, 1.28, 0)
+  assert.ok(Math.hypot(corrected.x - uncorrected.x, corrected.y - uncorrected.y) > 1, 'the correction remains active at a full turn')
 })
 
 test('automatic hairline attachment releases monotonically across two mesh rows', () => {

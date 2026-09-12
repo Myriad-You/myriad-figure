@@ -183,9 +183,9 @@ function layerGridAxis(
       coordinates.push(coordinate)
     }
   }
-  coordinates.sort((left, right) => left - right)
+  const sorted = coordinates.toSorted((left, right) => left - right)
   const unique: number[] = []
-  for (const coordinate of coordinates) {
+  for (const coordinate of sorted) {
     if (
       unique.length === 0 ||
       Math.abs(coordinate - unique.at(-1)!) > 0.05
@@ -232,8 +232,8 @@ function bindHair(
     for (let index = 1; index < strandCount; index += 1) {
       gaps.push(strands[index].x - strands[index - 1].x)
     }
-    gaps.sort((left, right) => left - right)
-    spacing = gaps[gaps.length >> 1]
+    const sortedGaps = gaps.toSorted((left, right) => left - right)
+    spacing = sortedGaps[sortedGaps.length >> 1]
   }
   const sigma = spacing * 0.6
   const referenceHeight = Math.max(1, face.y1 - face.y0)

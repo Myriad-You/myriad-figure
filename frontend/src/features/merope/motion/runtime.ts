@@ -256,7 +256,7 @@ export class MotionRuntime {
     this.capabilities = uniqueCapabilities(
       ready.flatMap(([, consumer]) => consumer.capabilities),
     )
-    const authority = ready.sort(
+    const authority = ready.toSorted(
       ([leftId, left], [rightId, right]) =>
         (right.priority ?? 0) - (left.priority ?? 0) || leftId - rightId,
     )[0]?.[1]

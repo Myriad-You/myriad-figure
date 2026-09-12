@@ -240,6 +240,6 @@ function smoothContactRow(
 }
 
 function median(values: number[]): number {
-  values.sort((left, right) => left - right)
-  return values[Math.floor(values.length / 2)]
+  const sorted = values.toSorted((left, right) => left - right)
+  return sorted[Math.floor(sorted.length / 2)]
 }

@@ -177,6 +177,7 @@ import { writeAnime25DShellRotation } from './shellDeformation'
 import { CoSpeechExpressionController } from './speechExpression'
 import { AutoSpeechController } from './speechMotion'
 import { StylizedExpressionMotionController } from './stylizedExpressionMotion'
+import { applySurfaceContact } from './surfaceContact'
 import { ThinkingMotionController } from './thinkingMotion'
 import { ThinkingSticker } from './thinkingSticker'
 import {
@@ -1350,7 +1351,7 @@ export class Anime25DPlayer {
         : true
       if (!visible) continue
       const rest = layer.rest
-      const deformed = layer.deformed
+      const deformed = layer.surfaceContact?.unconstrained ?? layer.deformed
       const vertexCount = rest.length / 2
       const source = layer.source
       const bn = layer.baseRole
@@ -1497,12 +1498,30 @@ export class Anime25DPlayer {
       if (layer.deformationPlan.cacheable) {
         markAnime25DLayerGeometryUpdated(layer.deformationPlan)
       }
+      // Contact layers compare only their final output, never the intermediate
+      // free arm, against the surface retained by attachments and the GPU.
+      if (layer.surfaceContact) continue
       if (!geometryChanged) {
         layer.geometryDirty = false
         if (work) work.savedUploadBytes += deformed.byteLength
         continue
       }
       layer.geometryDirty = true
+    }
+    for (const layer of this.layers) {
+      if (
+        !layer.surfaceContact ||
+        !shouldDeformLayer(layer.source, layer.frameOpacity)
+      ) {
+        continue
+      }
+      layer.geometryDirty = applySurfaceContact(
+        layer.surfaceContact,
+        layer.surfaceContact.unconstrained,
+        layer.deformed,
+      )
+      if (work && !layer.geometryDirty)
+        work.savedUploadBytes += layer.deformed.byteLength
     }
     // Hosts may be later in draw order. Resolve attachments only after all host
     // vertices include this frame's shell, breathing and hair physics.

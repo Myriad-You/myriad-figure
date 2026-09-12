@@ -207,10 +207,9 @@ export class BehaviorScheduler {
     if (!Number.isFinite(requestedAtMs)) return 'invalid'
     const now = finiteTime(nowMs)
     let nextAt = Math.max(0, requestedAtMs)
-    const affected = [...this.behaviors.values()].filter((runtime) =>
-      timingPegIds(runtime.spec).includes(pegId),
-    )
-    for (const runtime of affected) {
+    for (const runtime of Iterator.from(this.behaviors.values()).filter(
+      (runtime) => timingPegIds(runtime.spec).includes(pegId),
+    )) {
       const anticipation = runtime.spec.anticipation === pegId
       const role = timingPegRole(runtime.spec, pegId)
       const phase = this.phaseAt(runtime.spec, now)

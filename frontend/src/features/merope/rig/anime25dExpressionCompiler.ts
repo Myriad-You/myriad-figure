@@ -104,8 +104,7 @@ function synthesizeMissingDizzyEyes(
       insertAt = index
     }
   }
-  output.splice(insertAt + 1, 0, ...generated)
-  return output
+  return output.toSpliced(insertAt + 1, 0, ...generated)
 }
 
 function synthesizeMissingSqueezeEyes(
@@ -159,8 +158,7 @@ function synthesizeMissingSqueezeEyes(
       insertAt = index
     }
   }
-  output.splice(insertAt + 1, 0, ...generated)
-  return output
+  return output.toSpliced(insertAt + 1, 0, ...generated)
 }
 
 function synthesizeMissingCryEyes(
@@ -213,8 +211,7 @@ function synthesizeMissingCryEyes(
       insertAt = index
     }
   }
-  output.splice(insertAt + 1, 0, ...generated)
-  return output
+  return output.toSpliced(insertAt + 1, 0, ...generated)
 }
 
 function synthesizeMissingSillyEyes(
@@ -306,8 +303,7 @@ function synthesizeMissingSillyEyes(
       insertAt = index
     }
   }
-  output.splice(insertAt + 1, 0, ...generated)
-  return output
+  return output.toSpliced(insertAt + 1, 0, ...generated)
 }
 
 function synthesizeMissingLovestruckEffects(
@@ -494,9 +490,9 @@ function synthesizeMissingManiacEyeShadows(
       layer.role === 'eyelash' ||
       layer.role === 'eye-close',
   )
-  if (firstEyeLayer >= 0) output.splice(firstEyeLayer, 0, ...generated)
-  else output.push(...generated)
-  return output
+  return firstEyeLayer >= 0
+    ? output.toSpliced(firstEyeLayer, 0, ...generated)
+    : output.concat(generated)
 }
 
 function synthesizeMissingMouthExpressions(
@@ -613,8 +609,7 @@ function synthesizeMissingMouthExpressions(
       insertAt = index
     }
   }
-  output.splice(insertAt + 1, 0, ...generated)
-  return output
+  return output.toSpliced(insertAt + 1, 0, ...generated)
 }
 
 function synthesizeMissingExpressionSymbols(

@@ -82,7 +82,7 @@ export function predictTextProsody(input: TextProsodyInput): SpeechProsodyPlan {
   }
 
   const accents: SpeechProsodyPlan['accents'][number][] = []
-  for (const candidate of candidates.sort(
+  for (const candidate of candidates.toSorted(
     (left, right) =>
       left.textOffset - right.textOffset ||
       Number(Boolean(right.semantic)) - Number(Boolean(left.semantic)),
@@ -153,7 +153,7 @@ export function alignTextProsody(
   return {
     durationMs: audio.durationMs,
     accents: accents
-      .sort((a, b) => a.offsetMs - b.offsetMs)
+      .toSorted((a, b) => a.offsetMs - b.offsetMs)
       .slice(0, MAX_AUDIO_PROSODY_ACCENTS),
   }
 }

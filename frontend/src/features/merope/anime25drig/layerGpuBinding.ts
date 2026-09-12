@@ -11,6 +11,7 @@ import type { Anime25DLayerDeformationExtension } from './layerDeformationPolicy
 import type { Anime25DMouthDeformationKind } from './mouthDeformation'
 import type { Anime25DRenderableLayer } from './renderer'
 import type { Anime25DSecondaryDeformationBinding } from './secondaryDeformation'
+import type { SurfaceContact } from './surfaceContact'
 import type { Anime25DPlayback, Anime25DShellProfile } from './types'
 import type { AtlasPixelPatch, CroppedLayerPixels } from './webglRuntime'
 import { isAnime25DRigidAttachment } from '../rig/anime25dLayerSemantics'
@@ -39,6 +40,7 @@ import {
 } from './shellDeformation'
 import { shoulderContactWeights } from './shoulderContact'
 import { fuseShoulderSurface } from './shoulderSurface'
+import { bindSurfaceContact } from './surfaceContact'
 import { anime25DTorsoShellModeForLayer } from './torsoDeformation'
 import {
   createIndexedDeformableMesh,
@@ -77,6 +79,7 @@ export interface Anime25DGpuLayer extends Anime25DRenderableLayer {
   attachment: Anime25DLayerAttachment | null
   neckwearBridge?: Anime25DNeckwearBridge | null
   attachmentDependents?: Anime25DGpuLayer[]
+  surfaceContact?: SurfaceContact
 }
 
 export interface Anime25DCompiledGpuLayers {
@@ -303,35 +306,6 @@ export function compileAnime25DGpuLayers(
         hairlinePinWeights,
         torsoShellMode,
       })
-      if (source.role === 'handwear' && torso) {
-        const weights = shoulderContactWeights(
-          source,
-          readBindingPixels(source),
-          torso,
-          torsoPixels,
-          rest,
-        )
-        if (weights) {
-          secondaryDeformation.shoulderContact = {
-            weights,
-            torso: {
-              ...secondaryDeformation,
-              source: torso,
-              baseRole: 'topwear',
-              topwear: true,
-              handwear: false,
-              torsoShellMode: 'full',
-              chestWeights: chestWeightField
-                ? samplePlaybackChestWeights(
-                    chestWeightField,
-                    rest,
-                    playback.pixelCanvas.width,
-                  )
-                : null,
-            },
-          }
-        }
-      }
       const layerTransform = new Float32Array(9)
       writeIdentityLayerTransform(layerTransform)
       const mesh =
@@ -417,10 +391,43 @@ export function compileAnime25DGpuLayers(
         layers.splice(layers.indexOf(accessory), 1)
       layers.splice(layers.indexOf(neckLayer) + 1, 0, ...accessories)
     }
+    const torsoLayer = layers.find((layer) => layer.source === torso)
+    if (torsoLayer && torso && torsoPixels) {
+      for (const layer of layers) {
+        if (layer.source.role !== 'handwear') continue
+        const weights = shoulderContactWeights(
+          layer.source, readBindingPixels(layer.source), torso, torsoPixels, layer.rest,
+        )
+        if (!weights) continue
+        layer.surfaceContact = bindSurfaceContact(
+          {
+            rest: torsoLayer.rest,
+            deformed: torsoLayer.deformed,
+            indices: torsoLayer.indices,
+            transform: torsoLayer.layerTransform,
+          },
+          layer.rest,
+          weights,
+        )
+        ;(torsoLayer.attachmentDependents ??= []).push(layer)
+      }
+    }
+    // High-collar necks are rendered by the aperture mesh, not the retired
+    // rectangular neck grid. Attachments must sample that same visible surface.
+    const attachmentHosts = layers.map((layer) =>
+      layer.renderKind === 'neck' && collarClip
+        ? {
+            ...layer,
+            rest: collarClip.rest,
+            deformed: collarClip.deformed,
+            indices: collarClip.indices,
+          }
+        : layer,
+    )
     for (const layer of layers) {
       layer.neckwearBridge = bindNeckwearBridge(
         layer.source,
-        layers,
+        attachmentHosts,
         playback.anchors,
         chestWeightField,
         playback.pixelCanvas.width,
@@ -430,7 +437,7 @@ export function compileAnime25DGpuLayers(
       if (layer.neckwearBridge) layer.deformed = layer.rest.slice()
       layer.attachment = bindAnime25DLayerAttachment(
         layer.source,
-        layers,
+        attachmentHosts,
         playback.anchors,
         chestWeightField,
         playback.pixelCanvas.width,
@@ -450,7 +457,7 @@ export function compileAnime25DGpuLayers(
     }
     if (torso && torsoPixels) {
       const arms = layers
-        .filter((layer) => layer.secondaryDeformation.shoulderContact)
+        .filter((layer) => layer.surfaceContact)
         .flatMap((layer) => {
           const image = readBindingPixels(layer.source)
           return image ? [{ layer: layer.source, image }] : []
