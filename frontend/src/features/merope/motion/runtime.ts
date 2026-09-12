@@ -250,9 +250,9 @@ export class MotionRuntime {
   }
 
   private reconcileLiveFaces(): void {
-    const ready = [...this.faceConsumers.entries()].filter(
-      ([, consumer]) => consumer.ready,
-    )
+    const ready = Iterator.from(this.faceConsumers.entries())
+      .filter(([, consumer]) => consumer.ready)
+      .toArray()
     this.capabilities = uniqueCapabilities(
       ready.flatMap(([, consumer]) => consumer.capabilities),
     )
