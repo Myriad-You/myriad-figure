@@ -652,7 +652,7 @@ export function stepChestSpring(
 function uniqueCoordinates(values: number[]): number[] {
   const sorted = values
     .filter(Number.isFinite)
-    .sort((left, right) => left - right)
+    .toSorted((left, right) => left - right)
   const unique: number[] = []
   for (const value of sorted) {
     if (

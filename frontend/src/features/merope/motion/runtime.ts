@@ -170,7 +170,9 @@ export class MotionRuntime {
       motionStyle: this.motionStyle,
       faceVisible:
         this.faceConsumers.size > 0
-          ? [...this.faceConsumers.values()].some((consumer) => consumer.ready)
+          ? Iterator.from(this.faceConsumers.values()).some(
+              (consumer) => consumer.ready,
+            )
           : this.retains > 0,
     }
   }

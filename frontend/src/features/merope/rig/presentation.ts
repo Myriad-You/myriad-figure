@@ -33,9 +33,7 @@ export function presentationAssetCoverage(
           ? definition.fallback
           : null,
       unknown: definition
-        ? [...variants].filter(
-            (variant) => !definition.variants.includes(variant as never),
-          )
+        ? [...variants.difference(new Set(definition.variants))]
         : [],
     }
   })
