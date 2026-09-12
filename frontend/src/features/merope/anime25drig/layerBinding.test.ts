@@ -210,7 +210,7 @@ function upstreamBinding(source: Anime25DPlaybackLayer) {
             ? 'front hair'
             : source.role === 'back-hair'
               ? 'back hair'
-              : source.role.replace(/-/g, '_'),
+              : source.role.replaceAll('-', '_'),
         x: source.x,
         y: source.y,
         w: source.w,

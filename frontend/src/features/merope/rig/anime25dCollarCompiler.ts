@@ -736,7 +736,7 @@ function collarColorComponents(
       components.push({ pixels, span, score: pixels.length * span })
     }
   }
-  return components.sort((left, right) => right.score - left.score)
+  return components.toSorted((left, right) => right.score - left.score)
 }
 
 function collarColorMaskAt(

@@ -258,7 +258,7 @@ function activeBehaviorSummaries(
       (behavior) =>
         behavior.phase !== 'complete' && behavior.phase !== 'rejected',
     )
-    .sort(
+    .toSorted(
       (left, right) =>
         LIFECYCLE_RANK[left.phase] - LIFECYCLE_RANK[right.phase] ||
         left.startedAtMs - right.startedAtMs,

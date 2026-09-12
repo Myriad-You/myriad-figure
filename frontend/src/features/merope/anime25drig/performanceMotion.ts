@@ -187,7 +187,7 @@ export function scheduleBodyCues(
       endMs: startMs + authoredCueDurationMs(cue),
     })
   }
-  return scheduled.sort((left, right) => left.startMs - right.startMs)
+  return scheduled.toSorted((left, right) => left.startMs - right.startMs)
 }
 
 function selectedBodyCueAt(

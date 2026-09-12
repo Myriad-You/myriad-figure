@@ -130,7 +130,7 @@ export function stretchCues(
 export function coalesceCues(cues: readonly SingingCue[]): SingingCue[] {
   const sorted = cues
     .filter((cue) => cue.end > cue.start && Number.isFinite(cue.start))
-    .sort((left, right) => left.start - right.start)
+    .toSorted((left, right) => left.start - right.start)
   const output: SingingCue[] = []
   for (const cue of sorted) {
     const previous = output.at(-1)

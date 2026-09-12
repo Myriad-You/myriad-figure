@@ -138,7 +138,7 @@ export function mergeBehaviorPlans(
     metadata: {
       sources: active
         .map((plan) => plan.id)
-        .sort()
+        .toSorted()
         .join(','),
     },
     pegs: [...pegById.values()],

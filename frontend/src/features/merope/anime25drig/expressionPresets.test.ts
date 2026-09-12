@@ -32,8 +32,8 @@ test('thinking activity owns face and gaze without taking speech channels', () =
 test('leaving thinking resets every activity-owned expression channel', () => {
   const neutral = activityExpressionDriverPatch(false)
   assert.deepEqual(
-    Object.keys(neutral).sort(),
-    Object.keys(THINKING_ACTIVITY_EXPRESSION).sort(),
+    Object.keys(neutral).toSorted(),
+    Object.keys(THINKING_ACTIVITY_EXPRESSION).toSorted(),
   )
   assert.equal(neutral.eyeOpenL, 1)
   assert.equal(neutral.eyeOpenR, 1)

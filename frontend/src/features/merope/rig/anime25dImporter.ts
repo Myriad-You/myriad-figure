@@ -251,7 +251,7 @@ function toRiggerLayerName(value: string | undefined): string {
   // Extra drawings retain their full source identity instead of losing depth/side fragment suffixes.
   const role = anime25DBaseRole(kebab)
   if (isAnime25DRigidAttachment({ role: role ?? 'unknown' })) {
-    return kebab.replace(/-/g, '_')
+    return kebab.replaceAll('-', '_')
   }
   const numbered = kebab.match(/-(\d+)$/)
   const number = numbered?.[1]
@@ -262,7 +262,7 @@ function toRiggerLayerName(value: string | undefined): string {
       ? 'front hair'
       : kebab === 'back-hair'
         ? 'back hair'
-        : kebab.replace(/-/g, '_')
+        : kebab.replaceAll('-', '_')
   return number ? `${riggerName}_${number}` : riggerName
 }
 
@@ -313,7 +313,7 @@ function rasterFromRiggerPart(
   },
   usedIds: Set<string>,
 ): RasterLayer {
-  const kebab = part.name.replace(/_/g, '-').replace(/ /g, '-').toLowerCase()
+  const kebab = part.name.replaceAll('_', '-').replaceAll(' ', '-').toLowerCase()
   const side: EyeSide | null =
     part.side === 'L'
       ? 'left'

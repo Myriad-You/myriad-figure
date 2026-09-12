@@ -6,7 +6,7 @@ import type {
 } from './secondaryDeformation'
 import type { Anime25DPlaybackAnchors, Anime25DPlaybackLayer } from './types'
 import { isAnime25DRigidAttachment } from '../rig/anime25dLayerSemantics'
-import { bindAttachmentMesh, sampleAttachmentMesh } from './attachmentMesh'
+import { bindAttachmentMesh, offsetAttachmentMeshSample, sampleAttachmentMesh } from './attachmentMesh'
 import { sampleChestWeight } from './chestPhysics'
 import { deformAnime25DSecondaryPoint } from './secondaryDeformation'
 
@@ -16,6 +16,7 @@ interface AttachmentHost {
   rest?: Float32Array
   deformed?: Float32Array
   indices?: Uint16Array
+  layerTransform?: Float32Array
 }
 
 export interface Anime25DAttachmentPixels {
@@ -316,11 +317,16 @@ export function bindAnime25DLayerAttachment(
     host.rest &&
     host.deformed &&
     host.indices &&
-    !host.secondaryDeformation.shaderGlobalTransform
-      ? { rest: host.rest, deformed: host.deformed, indices: host.indices }
+    (!host.secondaryDeformation.shaderGlobalTransform || host.layerTransform)
+      ? {
+          rest: host.rest,
+          deformed: host.deformed,
+          indices: host.indices,
+          transform: host.layerTransform,
+        }
       : null
   const originSample = mesh ? bindAttachmentMesh(mesh, x, y) : null
-  const tangentSample = mesh ? bindAttachmentMesh(mesh, x + 1, y) : null
+  const tangentSample = originSample ? offsetAttachmentMeshSample(originSample, 1, 0) : null
   return {
     hostName: host.source.name,
     hostSource: host.source,

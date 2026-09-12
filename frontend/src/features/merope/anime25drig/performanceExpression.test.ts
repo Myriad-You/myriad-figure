@@ -87,7 +87,7 @@ test('maps semantic baselines and cues to legible expression offsets', () => {
   assert.equal(silly.eyeX, 0)
   assert.equal(silly.eyeY, 0)
   assert.equal(lovestruck.lovestruck, 1)
-  assert.deepEqual(Object.keys(warm).sort(), [
+  assert.deepEqual(Object.keys(warm).toSorted(), [
     'anger',
     'angleY',
     'angleZ',

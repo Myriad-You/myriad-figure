@@ -63,7 +63,7 @@ test('merges speech, performance and music into one scheduler plan', () => {
   })
   const first = runtime.frame([speech, music], 120)
   assert.equal(first.plan?.id, 'human-performance')
-  assert.deepEqual(first.behaviors.map((behavior) => behavior.source).sort(), [
+  assert.deepEqual(first.behaviors.map((behavior) => behavior.source).toSorted(), [
     'coSpeech',
     'music',
   ])

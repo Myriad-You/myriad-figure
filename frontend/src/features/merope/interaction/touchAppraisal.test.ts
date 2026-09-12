@@ -44,7 +44,7 @@ test('only semantic sustained contact requests; no coordinates; no per-frame cal
   h.client.observe(touch, 2)
   for (let i = 0; i < 100; i++) h.client.observe(touch, 2)
   assert.equal(h.calls.length, 1)
-  assert.deepEqual(Object.keys(h.calls[0].summary).sort(), ['durationMs', 'gesture', 'region', 'repeatCount'])
+  assert.deepEqual(Object.keys(h.calls[0].summary).toSorted(), ['durationMs', 'gesture', 'region', 'repeatCount'])
   h.calls[0].resolve({ reaction: 'accept' })
   await flush()
   assert.deepEqual(h.applied, [{ revision: 2, reaction: 'accept' }])

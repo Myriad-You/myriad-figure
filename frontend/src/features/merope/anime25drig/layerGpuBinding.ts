@@ -506,7 +506,7 @@ function samplePlaybackChestWeights(
 export function anime25DLayerBaseName(role: string): string {
   if (role === 'front-hair') return 'front hair'
   if (role === 'back-hair') return 'back hair'
-  return role.replace(/-/g, '_')
+  return role.replaceAll('-', '_')
 }
 
 function anime25DRenderKind(

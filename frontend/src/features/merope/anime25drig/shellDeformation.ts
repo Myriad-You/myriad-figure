@@ -97,7 +97,7 @@ export function sampleAnime25DHairlinePinWeights(
     .filter(
       (strand) => Number.isFinite(strand.x) && Number.isFinite(strand.rootY),
     )
-    .sort((left, right) => left.x - right.x)
+    .toSorted((left, right) => left.x - right.x)
   const spacing = medianPositiveStrandGap(strands, source.w)
   const sigma = Math.max(1, spacing * 0.6)
   const releaseDistance = Math.max(1, (source.h / Math.max(1, rows)) * 2)

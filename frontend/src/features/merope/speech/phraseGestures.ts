@@ -45,5 +45,5 @@ export function speechPhraseGestures(
       gesture: 'laugh',
     })
   }
-  return cues.sort((a, b) => a.textOffset - b.textOffset)
+  return cues.toSorted((a, b) => a.textOffset - b.textOffset)
 }

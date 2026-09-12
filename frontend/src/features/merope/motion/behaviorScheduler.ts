@@ -183,7 +183,7 @@ export class BehaviorScheduler {
     for (const runtime of this.behaviors.values()) {
       snapshots.push(this.snapshot(runtime, now))
     }
-    return snapshots.sort((left, right) => left.startedAtMs - right.startedAtMs)
+    return snapshots.toSorted((left, right) => left.startedAtMs - right.startedAtMs)
   }
 
   resolvePlan(plan: BehaviorPlan): BehaviorPlan {

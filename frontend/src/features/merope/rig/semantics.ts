@@ -87,10 +87,9 @@ export function resolveRigSemantics(manifest: MeropeRigManifest): RigSemantics {
           ...supportedChainMappings(manifest.semantics.chains),
         },
         secondaryBoneIds: [
-          ...new Set([
-            ...inferred.secondaryBoneIds,
-            ...manifest.semantics.secondaryBoneIds,
-          ]),
+          ...new Set(inferred.secondaryBoneIds).union(
+            new Set(manifest.semantics.secondaryBoneIds),
+          ),
         ],
       }
     : inferred
