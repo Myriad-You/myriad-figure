@@ -1,3 +1,4 @@
+import { formatCurrent } from '../../../i18n/localeCopy'
 import type { Anime25DLayerRole } from '../rig/anime25d'
 import type {
   Anime25DEyeAnchor,
@@ -191,7 +192,7 @@ function requiredLayer(
 ): Anime25DPlaybackLayer {
   const layer = layers.find((candidate) => candidate.role === role)
   if (!layer) {
-    throw new Error(copy.anime25dMissingLayer.replace('{role}', role))
+    throw new Error(formatCurrent(copy.anime25dMissingLayer, { role }))
   }
   return layer
 }

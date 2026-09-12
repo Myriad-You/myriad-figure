@@ -1,3 +1,4 @@
+import { formatCurrent } from '../../../i18n/localeCopy'
 import type { Anime25DImportCopy } from './anime25dImportCopy'
 import type {
   PreparedLayer,
@@ -31,9 +32,10 @@ export async function packAnime25DAtlas(
     const drawHeight = Math.max(1, layer.height)
     if (drawWidth + ATLAS_PADDING * 2 > MAX_ATLAS_EDGE) {
       throw new Error(
-        copy.anime25dLayerTooWide
-          .replace('{id}', layer.id)
-          .replace('{max}', String(MAX_ATLAS_EDGE)),
+        formatCurrent(copy.anime25dLayerTooWide, {
+          id: layer.id,
+          max: MAX_ATLAS_EDGE,
+        }),
       )
     }
     if (cursorX + drawWidth + ATLAS_PADDING > MAX_ATLAS_EDGE) {
@@ -43,7 +45,7 @@ export async function packAnime25DAtlas(
     }
     if (cursorY + drawHeight + ATLAS_PADDING > MAX_ATLAS_EDGE) {
       throw new Error(
-        copy.anime25dAtlasOverflow.replace('{max}', String(MAX_ATLAS_EDGE)),
+        formatCurrent(copy.anime25dAtlasOverflow, { max: MAX_ATLAS_EDGE }),
       )
     }
     places.push({ x: cursorX, y: cursorY })
