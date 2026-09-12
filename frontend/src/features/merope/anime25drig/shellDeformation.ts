@@ -267,7 +267,7 @@ function evaluateCurve(
 ): number {
   const progress = clamp(rawProgress, 0, 1)
   if (progress <= points[0].v) return points[0].z
-  if (progress >= points[points.length - 1].v) return points.at(-1)!.z
+  if (progress >= points.at(-1)!.v) return points.at(-1)!.z
   let index = 0
   while (index < points.length - 2 && progress > points[index + 1].v) {
     index += 1

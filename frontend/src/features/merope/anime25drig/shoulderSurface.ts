@@ -101,7 +101,7 @@ export function fuseShoulderSurface(
     for (const directionY of [1, -1]) {
       let distance = Infinity
         let previous = -Infinity
-      for (const row of directionY === 1 ? rows : [...rows].reverse()) {
+      for (const row of directionY === 1 ? rows : rows.toReversed()) {
         if (Math.abs(row.y - previous) !== 1) distance = Infinity
         distance = row.strong ? 0 : distance + 1
         if (distance <= band * 3) accepted.add(row.y)

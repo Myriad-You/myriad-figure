@@ -154,7 +154,7 @@ export function scheduleBodyCues(
   originMs: number,
 ): ScheduledBodyCue[] {
   const scheduled: ScheduledBodyCue[] = []
-  const ordered = [...cues].sort((left, right) => left.atMs - right.atMs)
+  const ordered = cues.toSorted((left, right) => left.atMs - right.atMs)
   for (const cue of ordered) {
     let startMs = originMs + cue.atMs
     if (cue.interrupt === 'queue') {

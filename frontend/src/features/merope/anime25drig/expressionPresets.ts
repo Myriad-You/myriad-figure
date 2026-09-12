@@ -52,8 +52,8 @@ export const THINKING_ACTIVITY_EXPRESSION: Readonly<ActivityExpressionDriver> =
     angleX: -0.12,
     angleY: 0.1,
     angleZ: -0.18,
-    eyeOpenL: 1,
-    eyeOpenR: 1,
+    eyeOpenL: 0.78,
+    eyeOpenR: 0.9,
     eyeDizzy: 0,
     eyeSqueeze: 0,
     eyeCry: 0,
@@ -64,10 +64,10 @@ export const THINKING_ACTIVITY_EXPRESSION: Readonly<ActivityExpressionDriver> =
     lovestruck: 0,
     eyeX: 0.58,
     eyeY: -0.42,
-    irisScale: 1,
-    brow: 0.18,
-    browAngL: 0.16,
-    browAngR: 0,
+    irisScale: 0.94,
+    brow: 0.24,
+    browAngL: 0.48,
+    browAngR: -0.12,
     browAngSym: 0,
   }
 
@@ -128,10 +128,8 @@ export const THINKING_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
   angleZ: -0.22,
   eyeX: 0.68,
   eyeY: -0.48,
-  brow: 0.22,
-  browAngL: 0.2,
   mouthOpen: 0,
-  mouthForm: 0,
+  mouthForm: -0.16,
 }
 
 export function activityExpressionDriverPatch(

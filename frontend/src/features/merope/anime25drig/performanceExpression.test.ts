@@ -72,7 +72,7 @@ test('maps semantic baselines and cues to legible expression offsets', () => {
   assert.equal(dizzy.irisScale, 0)
   assert.equal(dizzy.angleZ, 0)
   assert.equal(dizzy.mouthForm, 0)
-  assert.equal(think.eyeOpen, 0)
+  assert.ok(think.eyeOpen < -0.1 && think.eyeOpen > -0.3)
   assert.ok(think.eyeX > 0.4)
   assert.ok(think.eyeY < -0.3)
   assert.ok(think.angleZ < 0)

@@ -249,7 +249,11 @@ function releaseCompiledGpu(
   if (texture) gl.deleteTexture(texture)
 }
 
+import { ThinkingSticker } from './thinkingSticker'
+
 export class Anime25DPlayer {
+  private readonly thinkingSticker = new ThinkingSticker()
+  private readonly thinkingStickerTransform = new Float32Array(9)
   private readonly gl: WebGL2RenderingContext
   private playback!: Anime25DPlayback
   private rigManifest: MeropeRigManifest | undefined
@@ -428,8 +432,14 @@ export class Anime25DPlayer {
     if (!gl) throw new Error(currentCopy().merope.anime25dWebglFailed)
     this.gl = gl
     this.program = compileProgram(gl)
-    this.rendererBindings = createAnime25DRendererBindings(gl, this.program)
-    this.applyPackage(playback, rigManifest)
+    try {
+      this.rendererBindings = createAnime25DRendererBindings(gl, this.program)
+      this.applyPackage(playback, rigManifest)
+    } catch (error) {
+      // A failed constructor has no owner that can call dispose().
+      gl.deleteProgram(this.program)
+      throw error
+    }
   }
 
   /** The last outfit keeps drawing until the next atlas is bound. */
@@ -461,18 +471,26 @@ export class Anime25DPlayer {
       chestWeightField,
       image,
     )
-    const nextTexture = createAtlasTexture(this.gl, image, compiled.atlasPatches)
-    const touchAtlas = readTouchAtlas(image)
-    if (this.disposed || atlasAbort.signal.aborted) {
+    let nextTexture: WebGLTexture | null = null
+    let touchAtlas: ReturnType<typeof readTouchAtlas>
+    try {
+      nextTexture = createAtlasTexture(this.gl, image, compiled.atlasPatches)
+      touchAtlas = readTouchAtlas(image)
+      if (this.disposed || atlasAbort.signal.aborted) {
+        releaseCompiledGpu(this.gl, compiled.layers, compiled.collarClip, nextTexture)
+        return
+      }
+      this.applyPackage(playback, rigManifest)
+    } catch (error) {
+      // Keep the live outfit; the not-yet-owned replacement must be released.
       releaseCompiledGpu(
         this.gl,
         compiled.layers,
         compiled.collarClip,
         nextTexture,
       )
-      return
+      throw error
     }
-    this.applyPackage(playback, rigManifest)
     releaseCompiledGpu(this.gl, this.layers, this.collarClip, this.atlasTexture)
     this.atlasTexture = nextTexture
     this.layers = compiled.layers
@@ -895,6 +913,7 @@ export class Anime25DPlayer {
     this.touchAtlas = null
     this.touchLayers = []
     this.gl.deleteProgram(this.program)
+    this.thinkingSticker.dispose(this.gl)
     // A canvas still in the document must keep the context
     try {
       const surface = this.gl.canvas
@@ -1542,6 +1561,30 @@ export class Anime25DPlayer {
       work,
     )
     const sampled = this.performanceExpression.getSampledTouch()
+    if (this.atlasTexture) {
+      const a = this.playback.anchors
+      const f = this.secondaryDeformationFrame
+      const m = this.thinkingStickerTransform
+      writeAnime25DLayerGlobalTransform({
+        headFollow: 1, headRotationCosine: f.headRotationCosine,
+        headRotationSine: f.headRotationSine, neckPivotX: f.neckPivotX,
+        neckPivotY: f.neckPivotY, faceScale: f.faceScale,
+        angleX: this.current.angleX, angleY: f.headAngleY, depthOffset: 0.3,
+        faceCenterY: f.faceCenterY, specialOffsetY: f.specialHeadOffset,
+        breathOffset: f.headBreathOffset,
+      }, m)
+      const faceWidth = a.face.x1 - a.face.x0
+      const x = a.face.x1 - faceWidth * 0.04
+      const y = a.face.y0 + (a.face.y1 - a.face.y0) * 0.08
+      const frame = this.renderFrame
+      const px = m[0] * x + m[3] * y + m[6] - frame.bodyPivotX
+      const py = m[1] * x + m[4] * y + m[7] - frame.bodyPivotY
+      this.thinkingSticker.draw(this.gl, this.time,
+        this.target.thinking ? 1 : this.performanceExpression.getThinkingLevel(),
+        frame.bodyPivotX + px * frame.bodyRotationCosine - py * frame.bodyRotationSine,
+        frame.bodyPivotY + px * frame.bodyRotationSine + py * frame.bodyRotationCosine,
+        faceWidth * 0.12, frame.viewWidth, frame.viewHeight)
+    }
     this.presentedTouch = sampled
       ? { ...sampled, atMs: performance.now() }
       : null

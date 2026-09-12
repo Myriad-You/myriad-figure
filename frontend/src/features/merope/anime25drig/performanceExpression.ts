@@ -63,6 +63,7 @@ export interface PerformanceExpressionTarget {
 }
 
 interface ScheduledExpressionCue {
+  thinking?: boolean
   behaviorId: string
   unitKey: string | null
   start: number
@@ -133,6 +134,8 @@ const EYE_CLOSED_GUARD = 0.12
 const EXTREME_SOFT_LIMIT_START = 0.8
 /** Owns only additive facial/head expression offsets selected by Lite. */
 export class PerformanceExpressionController {
+  private thinkingLevel = 0
+  getThinkingLevel(): number { return this.thinkingLevel }
   private readonly output: PerformanceExpressionOffset = { ...ZERO_OFFSET }
   private readonly cues: ScheduledExpressionCue[] = []
   private lastTime = Number.NaN
@@ -232,6 +235,7 @@ export class PerformanceExpressionController {
 
     this.pruneExpiredCues(now)
     this.activeLevel = 0
+    this.thinkingLevel = 0
     this.touchLevel = 0
     this.sampledTouch = null
     this.directedLevel = 0
@@ -247,6 +251,7 @@ export class PerformanceExpressionController {
         }
       }
       const envelope = cueEnvelope(cue, now)
+      if (cue.thinking) this.thinkingLevel = Math.max(this.thinkingLevel, envelope)
       if (cue.touch && cue.behaviorId && envelope >= 0.5
         && now - (cue.touchResponseStart ?? cue.start) >= 0.12) {
         this.sampledTouch = { behaviorId: cue.behaviorId, reaction: cue.touch.form }
@@ -409,6 +414,7 @@ function scheduledCueFromUnit(
   const tail = relax ?? end
   return {
     behaviorId: unit.behaviorId,
+    thinking: !touch && intent === 'think',
     unitKey: motionUnitKey(unit),
     touchResponseStart: touch ? start : undefined,
     isTouch: touch,

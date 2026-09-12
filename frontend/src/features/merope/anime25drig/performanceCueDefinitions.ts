@@ -114,7 +114,11 @@ export const PERFORMANCE_CUE_DEFINITIONS = {
     driver: () => ({}),
     expression: (amount, poseAmount) => ({
       angleZ: -0.2 * poseAmount,
-      brow: 0.14 * amount,
+      brow: 0.24 * amount,
+      browAngSym: -0.18 * amount,
+      eyeOpen: -0.16 * amount,
+      irisScale: -0.06 * amount,
+      mouthForm: -0.16 * amount,
       eyeX: 0.5 * amount,
       eyeY: -0.36 * amount,
     }),

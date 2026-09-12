@@ -133,7 +133,7 @@ export function coalesceCues(cues: readonly SingingCue[]): SingingCue[] {
     .sort((left, right) => left.start - right.start)
   const output: SingingCue[] = []
   for (const cue of sorted) {
-    const previous = output[output.length - 1]
+    const previous = output.at(-1)
     if (
       previous &&
       previous.viseme === cue.viseme &&

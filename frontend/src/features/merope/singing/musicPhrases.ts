@@ -16,7 +16,7 @@ export function compileMusicPhrases(
         )
         if (!words.length) return []
         const first = words[0]
-        const last = words[words.length - 1]
+        const last = words.at(-1)!
         const next = input.verbatim?.[index + 1]?.words?.[0]?.time
         const end =
           last.time +

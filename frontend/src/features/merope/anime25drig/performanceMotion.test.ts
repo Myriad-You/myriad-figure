@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { intentExpressionPatch } from './performanceCueDefinitions'
+import { PerformanceExpressionController } from './performanceExpression'
+import { completeBehaviorQuality } from './behaviorMotion'
 import {
   authoredCueEnvelope,
   baselineDriverPatch,
@@ -25,6 +27,45 @@ test('keeps semantic face ownership out of the non-manual energy patch', () => {
   assert.equal(patch.mouthForm, undefined)
   assert.equal(patch.brow, undefined)
   assert.equal(patch.eyeOpenL, undefined)
+})
+
+test('directed thinking has a readable face without borrowing angry or speechless artwork', () => {
+  const expression = new PerformanceExpressionController()
+  expression.playBehaviorUnits(
+    [
+      {
+        behaviorId: 'think-probe',
+        family: 'performance',
+        form: 'think',
+        kind: 'state',
+        intensity: 1,
+        quality: completeBehaviorQuality(undefined),
+        timing: {
+          startMs: 0,
+          readyMs: 100,
+          strokeStartMs: 200,
+          strokePeakMs: 400,
+          strokeEndMs: 500,
+          relaxMs: null,
+          endMs: null,
+        },
+      },
+    ],
+    0,
+    0,
+  )
+  const shown = expression.sample(1)
+  assert.ok(expression.getThinkingLevel() > 0.5)
+  assert.ok(shown.eyeOpen < -0.1)
+  assert.ok(shown.brow > 0.2)
+  assert.ok(shown.browAngSym < -0.1)
+  assert.equal(shown.anger ?? 0, 0)
+  assert.equal(shown.speechless ?? 0, 0)
+  expression.playBehaviorUnits([], 1, 1000)
+  const released = expression.sample(3)
+  assert.equal(expression.getThinkingLevel(), 0)
+  assert.ok(Math.abs(released.eyeOpen) < 1e-6)
+  assert.ok(Math.abs(released.browAngSym) < 1e-6)
 })
 
 test('leaves posture to the per-frame pose offset', () => {

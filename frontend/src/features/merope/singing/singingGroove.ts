@@ -100,17 +100,19 @@ export class SingingGrooveController {
   private lastOnsetAt = Number.NEGATIVE_INFINITY
   private stride: 1 | 2 | 4 = 2
   private swayBeats: 4 | 8 = 4
-  private readonly motifMotion = Object.fromEntries(MOTIF_KEYS.map((key) => {
-    const motion = new MinimumJerkMotion()
-    motion.retarget(-2, FIRST[key], 1)
-    motion.sample(0)
-    return [key, motion]
-  })) as Record<keyof Motif, MinimumJerkMotion>
+  private readonly motifMotion = Object.fromEntries(
+    MOTIF_KEYS.map((key) => {
+      const motion = new MinimumJerkMotion()
+      motion.retarget(-2, FIRST[key], 1)
+      motion.sample(0)
+      return [key, motion]
+    }),
+  ) as Record<keyof Motif, MinimumJerkMotion>
   private motif: Motif = { ...FIRST }
   private motifAt = 0
   private nextMotifAt = 0
   private lastPhraseStart = Number.NaN
-  private seed = 0x5E71C3
+  private seed = 0x5e71c3
   private trackId: string | null = null
   private armMotion = false
   private lockedFrequency = 0
@@ -211,7 +213,10 @@ export class SingingGrooveController {
     const phraseStart = signal?.phrase?.start
     const phraseChanged =
       phraseStart !== undefined && phraseStart !== this.lastPhraseStart
-    if (active && (now >= this.nextMotifAt || (phraseChanged && now - this.motifAt >= 0.8))) {
+    if (
+      active &&
+      (now >= this.nextMotifAt || (phraseChanged && now - this.motifAt >= 0.8))
+    ) {
       this.chooseMotif(now, bpm)
       if (phraseStart !== undefined) this.lastPhraseStart = phraseStart
     }

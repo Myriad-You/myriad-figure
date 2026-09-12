@@ -188,7 +188,7 @@ function layerGridAxis(
   for (const coordinate of coordinates) {
     if (
       unique.length === 0 ||
-      Math.abs(coordinate - unique[unique.length - 1]) > 0.05
+      Math.abs(coordinate - unique.at(-1)!) > 0.05
     ) {
       unique.push(coordinate)
     }

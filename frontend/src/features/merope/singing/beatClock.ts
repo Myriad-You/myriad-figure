@@ -187,7 +187,7 @@ export class BeatClock {
 
 function median(values: readonly number[]): number {
   if (!values.length) return 0
-  const sorted = [...values].sort((left, right) => left - right)
+  const sorted = values.toSorted((left, right) => left - right)
   const middle = sorted.length >> 1
   return sorted.length % 2
     ? sorted[middle]!

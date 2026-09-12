@@ -317,7 +317,7 @@ function synthesizeMissingLovestruckEffects(
   const usedIds = new Set(layers.map((layer) => layer.id))
   const generated: RasterLayer[] = []
   const mouthReference =
-    layers.find((layer) => layer.role === 'mouth-close') ||
+    layers.find((layer) => layer.role === 'mouth-close') ??
     layers.find((layer) => layer.role === 'mouth-open')
   const pink = sampleMouthExpressionPalette(mouthReference?.data).fill
 
@@ -504,7 +504,7 @@ function synthesizeMissingMouthExpressions(
   anchors: Anime25DRiggerAnchors,
 ): RasterLayer[] {
   const reference =
-    layers.find((layer) => layer.role === 'mouth-close') ||
+    layers.find((layer) => layer.role === 'mouth-close') ??
     layers.find((layer) => layer.role === 'mouth-open')
   if (!reference) return layers
   const expressions: ReadonlyArray<{
@@ -570,7 +570,7 @@ function synthesizeMissingMouthExpressions(
   for (const expression of missing) add(expression.role, expression.kind)
   if (needsManiacShadow) {
     const maniacMouth =
-      layers.find((layer) => layer.role === 'mouth-maniac') ||
+      layers.find((layer) => layer.role === 'mouth-maniac') ??
       generated.find((layer) => layer.role === 'mouth-maniac')
     const bitmap = createManiacMouthShadowBitmap(
       maniacMouth

@@ -657,7 +657,7 @@ function uniqueCoordinates(values: number[]): number[] {
   for (const value of sorted) {
     if (
       unique.length === 0 ||
-      Math.abs(value - unique[unique.length - 1]) > COORDINATE_EPSILON
+      Math.abs(value - unique.at(-1)!) > COORDINATE_EPSILON
     ) {
       unique.push(value)
     }

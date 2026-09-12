@@ -14,9 +14,10 @@ import {
 test('thinking activity owns face and gaze without taking speech channels', () => {
   const thinking = activityExpressionDriverPatch(true)
   assert.equal(thinking, THINKING_ACTIVITY_EXPRESSION)
-  assert.equal(thinking.eyeOpenL, 1)
-  assert.equal(thinking.eyeOpenR, 1)
-  assert.equal(thinking.irisScale, 1)
+  assert.ok(thinking.eyeOpenL >= 0.7 && thinking.eyeOpenL < 0.85)
+  assert.ok(thinking.eyeOpenR > thinking.eyeOpenL && thinking.eyeOpenR < 1)
+  assert.ok(thinking.irisScale >= 0.9 && thinking.irisScale < 1)
+  assert.ok(thinking.browAngL - thinking.browAngR > 0.5)
   assert.ok(Math.abs(thinking.eyeX) > 0.5)
   assert.ok(thinking.eyeY < -0.35)
   assert.ok(Math.abs(thinking.angleZ) > 0.15)
