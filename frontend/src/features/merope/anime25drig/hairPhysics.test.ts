@@ -7,6 +7,34 @@ import {
   stepHairSpring,
 } from './hairPhysics'
 
+test('hair trails a moving support and settles instead of accelerating ahead of it', () => {
+  for (const direction of [-1, 1]) {
+    const spring = { x: 0, v: 0, dx: 0 }
+    stepHairSpring(spring, direction * 20, 70, 9, 2.2, 1 / 60)
+    assert.ok(spring.dx * direction < 0)
+    for (let i = 0; i < 600; i++) stepHairSpring(spring, direction * 20, 70, 9, 2.2, 1 / 60)
+    assert.ok(Math.abs(spring.dx) < 1e-6)
+  }
+})
+
+test('body support movement excites hair with local head angles held still', () => {
+  const layers = springLayers()
+  const frame = { enabled: true, idle: false, angleX: 0, angleZ: 0,
+    faceScale: 1, neckPivotY: 220, faceCenterY: 126, parentOffsetX: 24, time: 0 }
+  stepAnime25DHairLayerSprings(layers, frame, 1 / 60)
+  for (const layer of layers) { for (const spring of layer.springs ?? []) {
+    assert.ok(spring.stiff.dx < -20)
+    assert.ok(spring.soft.dx < -20)
+  }
+}
+  for (let i = 0; i < 1800; i++) stepAnime25DHairLayerSprings(layers, frame, 1 / 60)
+  for (const layer of layers) { for (const spring of layer.springs ?? []) {
+    assert.ok(Math.abs(spring.stiff.dx) < 1e-5)
+    assert.ok(Math.abs(spring.soft.dx) < 1e-5)
+  }
+}
+})
+
 test('reduces only composite front-hair upper parallax and preserves its lower locks', () => {
   const face = { y0: 170, y1: 658 }
   const composite = { y: 113, h: 774 }
@@ -106,6 +134,7 @@ test('layer spring orchestration matches the frozen player loop', () => {
       faceScale: 0.83,
       neckPivotY: 220,
       faceCenterY: 126,
+      parentOffsetX: 0,
       time,
     }
     const elapsedSeconds = frameIndex % 9 === 0 ? 1 / 30 : 1 / 60

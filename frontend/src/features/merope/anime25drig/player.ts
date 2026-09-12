@@ -34,6 +34,7 @@ import type {
   Anime25DFrameWork,
   Anime25DPerformanceSnapshot,
 } from './performanceTelemetry'
+import type { PoseCorrection } from './poseCorrections'
 import type { Anime25DRendererBindings, Anime25DRenderFrame } from './renderer'
 import type { Anime25DSecondaryDeformationFrame } from './secondaryDeformation'
 import type { Anime25DShellRotation } from './shellDeformation'
@@ -156,6 +157,7 @@ import {
   resolvePoseGate,
 } from './poseArbitration'
 import { zeroOccupancyOffset } from './poseCompositor'
+import { bindPoseCorrections, isPoseCorrections, writePoseCorrectionWeights } from './poseCorrections'
 import { PoseOccupancyController } from './poseOccupancy'
 import {
   PoseResponseController,
@@ -182,6 +184,7 @@ import { applySurfaceContact } from './surfaceContact'
 import { ThinkingMotionController } from './thinkingMotion'
 import { ThinkingSticker } from './thinkingSticker'
 import {
+  anime25DTorsoShellOffsetX,
   anime25DTorsoYawFollow,
   resolveAnime25DTorsoChestShape,
   stepAnime25DTorsoShellRotation,
@@ -521,6 +524,18 @@ export class Anime25DPlayer {
     await this.replaceLivePackage(this.playback, this.rigManifest, url)
   }
 
+  /** Workbench-only override. Never changes the immutable playback package. */
+  previewPoseCorrections(corrections: readonly PoseCorrection[] | null): void {
+    if (corrections !== null && !isPoseCorrections(corrections)) throw new Error('Invalid pose corrections')
+    const profile = this.playback.shellProfile
+    for (const layer of this.layers) {
+      if (layer.attachment || layer.neckwearBridge || layer.shaderGlobalTransform) continue
+      layer.secondaryDeformation.poseCorrections = bindPoseCorrections(
+        corrections ?? profile.poseCorrections, layer.secondaryDeformation.shellMode, layer.rest, profile.head,
+      )
+    }
+  }
+
   hitTestTouch(clientX: number, clientY: number): VisibleTouchHit | null {
     const canvas = this.gl.canvas
     if (
@@ -631,6 +646,7 @@ export class Anime25DPlayer {
       ),
       torsoShellRotation: this.torsoShellRotation,
       torsoShellBlend: 0,
+      torsoNeckOffsetX: 0,
       specialHeadOffset: 0,
       highCollar: this.motionEnvelopeProfile.highCollar,
       breath: 0,
@@ -665,6 +681,7 @@ export class Anime25DPlayer {
       headBreathOffset: 0,
       torsoProfile: this.shellProfile.torso,
       torsoShellBlend: 0,
+      torsoNeckOffsetX: 0,
       torsoShellRotation: this.torsoShellRotation,
     }
     this.hairSpringFrame = {
@@ -676,6 +693,7 @@ export class Anime25DPlayer {
       neckPivotY: anchors.neckPivot.y,
       faceCenterY: anchors.face.cy,
       time: 0,
+      parentOffsetX: 0,
     }
   }
 
@@ -1200,6 +1218,18 @@ export class Anime25DPlayer {
     hairSpringFrame.idle = e.idle
     hairSpringFrame.angleX = secondary.angleX
     hairSpringFrame.angleZ = secondary.angleZ
+    // The parent moves even after local head angles stop changing. Feed its
+    // current translation into the same springs, not an extra force/clock.
+    const torsoBlend = this.shellProfile.enabled && this.shellProfile.torso.enabled
+      ? this.shellProfile.blend * this.shellProfile.torso.blend * this.shellActivation : 0
+    const neckOffset = anime25DTorsoShellOffsetX(
+      anchors.neckPivot.x, this.shellProfile.torso, this.torsoShellRotation, torsoBlend,
+    )
+    const bodyRoll = e.body * 0.028
+    const rootX = anchors.neckPivot.x + neckOffset - anchors.bodyPivot.x
+    const rootY = anchors.face.cy - anchors.bodyPivot.y
+    hairSpringFrame.parentOffsetX = neckOffset +
+      rootX * (Math.cos(bodyRoll) - 1) - rootY * Math.sin(bodyRoll)
     hairSpringFrame.time = this.time
     stepAnime25DHairLayerSprings(this.layers, hairSpringFrame, dt)
   }
@@ -1300,6 +1330,10 @@ export class Anime25DPlayer {
           this.shellProfile.torso.blend *
           this.shellActivation
         : 0
+    secondaryDeformationFrame.torsoNeckOffsetX = anime25DTorsoShellOffsetX(
+      npx, this.shellProfile.torso, this.torsoShellRotation,
+      secondaryDeformationFrame.torsoShellBlend,
+    )
     writeAnime25DOpacityFrame(
       this.opacityFrame,
       e,
@@ -1328,6 +1362,7 @@ export class Anime25DPlayer {
     collarMotion.bodyBreathOffset = secondaryDeformationFrame.bodyBreathOffset
     collarMotion.headBreathOffset = secondaryDeformationFrame.headBreathOffset
     collarMotion.torsoShellBlend = secondaryDeformationFrame.torsoShellBlend
+    collarMotion.torsoNeckOffsetX = secondaryDeformationFrame.torsoNeckOffsetX
     if (this.collarClip) {
       deformCollarClipMesh(this.collarClip, collarMotion, this.neckDepth)
       if (work) {
@@ -1381,6 +1416,7 @@ export class Anime25DPlayer {
           },
           layer.layerTransform,
         )
+        if (isHead) layer.layerTransform[6] += secondaryDeformationFrame.torsoNeckOffsetX
       }
       // Do not deform/mark it dirty and later upload into a null binding.
       if (!layer.vertexBuffer) {
@@ -1415,6 +1451,9 @@ export class Anime25DPlayer {
         ? cryTearHorizontalOffset(t, source.side, e.eyeCry, fs)
         : 0
       const mouthDeformation = layer.mouthDeformation
+      if (layer.secondaryDeformation.poseCorrections) {
+        writePoseCorrectionWeights(layer.secondaryDeformation.poseCorrections, e)
+      }
       let geometryChanged = false
       for (let vertex = 0; vertex < vertexCount; vertex += 1) {
         const index = vertex * 2
@@ -1492,8 +1531,10 @@ export class Anime25DPlayer {
           layer.secondaryDeformation,
           secondaryDeformationFrame,
         )
-        x = deformationPoint.x
-        y = deformationPoint.y
+        // Compare in the GPU buffer's precision. Comparing a double to last
+        // frame's float marks an identical pose dirty forever.
+        x = Math.fround(deformationPoint.x)
+        y = Math.fround(deformationPoint.y)
         if (x !== previousX || y !== previousY) {
           geometryChanged = true
           deformed[index] = x
@@ -1545,7 +1586,7 @@ export class Anime25DPlayer {
         layer.neckwearBridge &&
         shouldDeformLayer(layer.source, layer.frameOpacity)
       ) {
-        deformNeckwearBridge(
+        layer.geometryDirty = deformNeckwearBridge(
           layer.neckwearBridge,
           secondaryDeformationFrame,
           layer.rest,
@@ -1556,7 +1597,6 @@ export class Anime25DPlayer {
           layer.layerTransform[4] =
           layer.layerTransform[8] =
             1
-        layer.geometryDirty = true
       } else if (layer.attachment) {
         writeAnime25DAttachmentTransform(
           layer.attachment,
@@ -1616,6 +1656,7 @@ export class Anime25DPlayer {
         faceCenterY: f.faceCenterY, specialOffsetY: f.specialHeadOffset,
         breathOffset: f.headBreathOffset,
       }, m)
+      m[6] += f.torsoNeckOffsetX
       const faceWidth = a.face.x1 - a.face.x0
       const x = a.face.x1 - faceWidth * 0.04
       const y = a.face.y0 + (a.face.y1 - a.face.y0) * 0.08

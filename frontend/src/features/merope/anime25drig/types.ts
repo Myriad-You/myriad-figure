@@ -1,3 +1,4 @@
+import type { PoseCorrection } from './poseCorrections'
 import {
   ANIME25D_COPYRIGHT,
   ANIME25D_LICENSE,
@@ -6,6 +7,7 @@ import {
   ANIME25D_PROJECT_NAME,
   ANIME25D_PROJECT_URL,
 } from './credit'
+import { isPoseCorrections } from './poseCorrections'
 
 export type Anime25DFade =
   | 'eyeOpen'
@@ -163,6 +165,8 @@ export interface Anime25DShellProfile {
     hairlinePin: Anime25DHairlinePinProfile
   }
   torso: Anime25DTorsoShellProfile
+  /** Authored residuals; absent means this asset has no combination corrections. */
+  poseCorrections?: PoseCorrection[]
 }
 
 export type Anime25DMouthMaterial =
@@ -299,7 +303,8 @@ export function isAnime25DShellProfile(
     !numberInRange(torso?.radiusX, 1, canvasWidth) ||
     !numberInRange(torso?.radiusZ, 1, canvasWidth) ||
     (torso?.yawFollowScale !== undefined &&
-      !numberInRange(torso.yawFollowScale, 0, 1))
+      !numberInRange(torso.yawFollowScale, 0, 1)) ||
+    (profile.poseCorrections !== undefined && !isPoseCorrections(profile.poseCorrections))
   ) {
     return false
   }

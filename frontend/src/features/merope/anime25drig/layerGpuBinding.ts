@@ -35,6 +35,7 @@ import { writeIdentityLayerTransform } from './layerTransform'
 import { resolveAnime25DMouthDeformation } from './mouthDeformation'
 import { resolveAnime25DNeckSurface } from './neckSurface'
 import { canLiftNeckwearOverSkin } from './neckwearOcclusion'
+import { bindPoseCorrections } from './poseCorrections'
 import { createAnime25DSecondaryDeformationBinding } from './secondaryDeformation'
 import {
   anime25DShellModeForLayer,
@@ -304,6 +305,8 @@ export function compileAnime25DGpuLayers(
         }),
       )
       const secondaryDeformation = createAnime25DSecondaryDeformationBinding({
+        poseCorrections: isAnime25DRigidAttachment(source) ? undefined :
+          bindPoseCorrections(shellProfile.poseCorrections, shellMode, rest, shellProfile.head),
         source,
         baseRole,
         shaderGlobalTransform: deformationPolicy.shaderGlobalTransform,

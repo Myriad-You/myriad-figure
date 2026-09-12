@@ -198,6 +198,29 @@ test('face interpolation cannot invent a depth bulge beyond adjacent authored la
   }
 })
 
+test('front and rear drawings share the visible crown surface, but retain separate hanging depth', () => {
+  const profile = deriveAnime25DShellProfile(playbackSource)
+  profile.hair.crownRound = 0.2
+  const rotation = { active: false, yawCosine: 1, yawSine: 0, pitchCosine: 1, pitchSine: 0 }
+  for (const yaw of [-1, 1]) {
+    for (const pitch of [-1, 1]) {
+      writeAnime25DShellRotation(yaw, pitch, rotation)
+      for (const x of [-0.4, 0, 0.4]) {
+        const front = { x: profile.hair.centerX + x * profile.hair.radiusX, y: profile.hair.centerY - profile.hair.radiusY * 0.9 }
+        const rear = { ...front }
+        deformAnime25DShellPoint(front, front.y, 'front-hair', profile, rotation, 1.2)
+        deformAnime25DShellPoint(rear, rear.y, 'back-hair', profile, rotation, 1.2)
+        assert.deepEqual(front, rear, 'draw order must not split the common crown')
+      }
+      const front = { x: profile.hair.centerX, y: profile.hair.centerY }
+      const rear = { ...front }
+      deformAnime25DShellPoint(front, front.y, 'front-hair', profile, rotation, 1.2)
+      deformAnime25DShellPoint(rear, rear.y, 'back-hair', profile, rotation, 1.2)
+      assert.ok(Math.hypot(front.x - rear.x, front.y - rear.y) > 1)
+    }
+  }
+})
+
 test('hairline pin stays full inside its scalp rectangle and fades outside', () => {
   const profile = deriveAnime25DShellProfile(playbackSource)
   const pin = profile.hair.hairlinePin

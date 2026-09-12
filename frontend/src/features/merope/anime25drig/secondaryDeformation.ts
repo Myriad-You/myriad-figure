@@ -1,6 +1,7 @@
 import type { ChestSpatialField } from './chestPhysics'
 import type { Anime25DDriver } from './driver'
 import type { Anime25DLayerSpringBinding } from './layerBinding'
+import type { BoundPoseCorrection } from './poseCorrections'
 import type {
   Anime25DShellMode,
   Anime25DShellRotation,
@@ -15,6 +16,7 @@ import type {
   Anime25DShellProfile,
   Anime25DTorsoShellProfile,
 } from './types'
+import { anime25DLayerUsesFaceSurface } from '../rig/anime25dLayerSemantics'
 import { ARM_SWING_SPREAD, ARM_SWING_TRAVEL } from './armFollow'
 import { chestDeformationWeight } from './chestPhysics'
 import {
@@ -24,6 +26,7 @@ import {
   FRONT_COLLAR_HEAD_FOLLOW,
   FRONT_COLLAR_INNER_REGION,
 } from './collarRuntime'
+import { applyPoseCorrections } from './poseCorrections'
 import { deformAnime25DShellPoint } from './shellDeformation'
 import {
   anime25DSleeveAnchorX,
@@ -82,10 +85,13 @@ export interface Anime25DSecondaryDeformationFrame {
   torsoProfile: Readonly<Anime25DTorsoShellProfile>
   torsoChestShape: Anime25DTorsoChestShape | null
   torsoShellBlend: number
+  torsoNeckOffsetX: number
   torsoShellRotation: Readonly<Anime25DTorsoShellRotation>
 }
 
 export interface Anime25DSecondaryDeformationBinding {
+  facialSurface: boolean
+  poseCorrections?: BoundPoseCorrection[]
   source: Pick<
     Anime25DPlaybackLayer,
     'depth' | 'group' | 'h' | 'role' | 'side' | 'w' | 'x' | 'y'
@@ -118,6 +124,7 @@ export interface Anime25DMutableSecondaryPoint {
 }
 
 export function createAnime25DSecondaryDeformationBinding(input: {
+  poseCorrections?: BoundPoseCorrection[]
   source: Anime25DSecondaryDeformationBinding['source']
   baseRole: string
   shaderGlobalTransform: boolean
@@ -136,6 +143,7 @@ export function createAnime25DSecondaryDeformationBinding(input: {
   return {
     ...input,
     head: input.source.group === 'head',
+    facialSurface: anime25DLayerUsesFaceSurface(input.source),
     topwear: input.baseRole === 'topwear',
     frontCollar: input.baseRole === 'collar_front',
     rearCollar: input.baseRole === 'collar_back',
@@ -159,6 +167,7 @@ export function deformAnime25DSecondaryPoint(
 ): void {
   const { source } = binding
   let collarBodyWeight = 1
+  let torsoNeckFollow = 0
   if (!binding.shaderGlobalTransform) {
     const contourCollar =
       binding.rearCollar || (binding.frontCollar && binding.collarContact)
@@ -196,6 +205,9 @@ export function deformAnime25DSecondaryPoint(
       smoothstep(frontCollarProgress) * frontCollarInnerWeight
     const frontCollarHeadBlend =
       frontCollarNeckWeight * FRONT_COLLAR_HEAD_FOLLOW
+    torsoNeckFollow = binding.head ? 1
+      : verticalNeckFollow ? neckHeadBlend
+        : binding.frontCollar && !binding.collarContact ? frontCollarHeadBlend : 0
     if (verticalNeckFollow) {
       collarBodyWeight = 1 - neckHeadBlend
     } else if (binding.frontCollar) {
@@ -213,6 +225,13 @@ export function deformAnime25DSecondaryPoint(
         BODY_HEAD_FOLLOW + (1 - BODY_HEAD_FOLLOW) * frontCollarHeadBlend
     }
     if (headFollow > 0) {
+      // The shell already carries the nose/eye/mouth relief. Per-layer drawing
+      // depths would separate lashes, whites and pupils a second time in yaw.
+      // Fade into the shared surface with the existing package activation.
+      const surfaceDepth = binding.facialSurface && binding.shellMode === 'head' &&
+        frame.shellProfile.enabled && frame.shellProfile.blend > 0 && frame.shellProfile.faceProfile.enabled
+        ? source.depth + (1 - source.depth) * frame.shellActivation
+        : source.depth
       const localX = point.x
       const localY = point.y
       const rotationX = point.x - frame.neckPivotX
@@ -226,7 +245,7 @@ export function deformAnime25DSecondaryPoint(
       point.x += (rotatedX - rotationX) * headFollow
       point.y += (rotatedY - rotationY) * headFollow
       let depthOffset =
-        (source.depth - 1) *
+        (surfaceDepth - 1) *
         (binding.frontHairParallaxScale?.[vertex] ?? 1)
       if (verticalNeckFollow) depthOffset *= 1 - neckHeadBlend
       else if (binding.frontCollar) depthOffset *= 1 - frontCollarHeadBlend
@@ -256,8 +275,9 @@ export function deformAnime25DSecondaryPoint(
           binding.shellMode,
           frame.shellProfile,
           frame.shellRotation,
-          source.depth,
+          surfaceDepth,
         )
+        if (binding.poseCorrections) applyPoseCorrections(point, vertex, binding.poseCorrections)
         const shellX = point.x - frame.neckPivotX
         const shellY = point.y - frame.neckPivotY
         point.x += (shellX * frame.headRotationCosine - shellY * frame.headRotationSine - shellX) * headFollow
@@ -361,6 +381,10 @@ export function deformAnime25DSecondaryPoint(
       frame.faceScale *
       sleeveWeight
   }
+  // Torso translation is the parent of the head's local yaw/pitch/roll.
+  // The neck's lower part already receives its cylinder projection above;
+  // only its head-follow share inherits the root, avoiding double travel.
+  point.x += frame.torsoNeckOffsetX * torsoNeckFollow
 }
 
 export function deformAnime25DHairPoint(
@@ -400,8 +424,8 @@ export function deformAnime25DHairPoint(
     easedAlong ** (binding.frontHair ? 1.8 : 2.1) *
     (binding.frontHair ? frame.expression.fhAmp : frame.expression.physAmp)
   const softMix =
-    easedAlong ** 1.2 *
-    (binding.frontHair ? frame.expression.fhSoft : frame.expression.soft)
+    clamp(easedAlong ** 1.2 *
+      (binding.frontHair ? frame.expression.fhSoft : frame.expression.soft), 0, 1)
   let offsetX = 0
   for (let strand = 0; strand < springs.length; strand += 1) {
     const weight = strandWeights[vertex * springs.length + strand]

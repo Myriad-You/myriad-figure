@@ -1,3 +1,6 @@
+const MIN_SECONDARY_AREA_RATIO = 0.2
+const MAX_PROJECTION_PASSES = 8
+
 /** Local area barrier after existing hair motion; not a second physics clock. */
 export interface HairSurface {
   base: Float32Array
@@ -27,7 +30,7 @@ export function bindHairSurface(
  */
 export function constrainHairSurface(surface: HairSurface): void {
   const { base, candidate: p, mobility: w, indices } = surface
-  for (let pass = 0; pass < 8; pass++) {
+  for (let pass = 0; pass < MAX_PROJECTION_PASSES; pass++) {
     let corrected = false
     // Fixed alternating order avoids a persistent left/right propagation bias.
     for (let n = 0; n < indices.length; n += 3) {
@@ -37,7 +40,7 @@ export function constrainHairSurface(surface: HairSurface): void {
       const c = indices[t + 2] * 2
       const reference = area(base, a, b, c)
       if (reference <= 1e-6) continue
-      const deficit = reference * 0.2 - area(p, a, b, c)
+      const deficit = reference * MIN_SECONDARY_AREA_RATIO - area(p, a, b, c)
       if (deficit <= reference * 1e-5) continue
       const ax = p[b + 1] - p[c + 1]
       const ay = p[c] - p[b]

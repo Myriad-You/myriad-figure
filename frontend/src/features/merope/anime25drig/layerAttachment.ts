@@ -186,20 +186,29 @@ export function deformNeckwearBridge(
   frame: Readonly<Anime25DSecondaryDeformationFrame>,
   rest: Float32Array,
   output: Float32Array,
-): void {
+): boolean {
   writeAnime25DAttachmentTransform(bridge.upper, frame, bridge.upperMatrix)
   writeAnime25DAttachmentTransform(bridge.lower, frame, bridge.lowerMatrix)
   const a = bridge.upperMatrix
     const b = bridge.lowerMatrix
+  let changed = false
   for (let i = 0; i < bridge.weights.length; i++) {
     const x = rest[i * 2]
       const y = rest[i * 2 + 1]
       const w = bridge.weights[i]
-    output[i * 2] =
-      (a[0] * x + a[3] * y + a[6]) * (1 - w) + (b[0] * x + b[3] * y + b[6]) * w
-    output[i * 2 + 1] =
-      (a[1] * x + a[4] * y + a[7]) * (1 - w) + (b[1] * x + b[4] * y + b[7]) * w
+    const nextX = Math.fround(
+      (a[0] * x + a[3] * y + a[6]) * (1 - w) + (b[0] * x + b[3] * y + b[6]) * w,
+    )
+    const nextY = Math.fround(
+      (a[1] * x + a[4] * y + a[7]) * (1 - w) + (b[1] * x + b[4] * y + b[7]) * w,
+    )
+    if (output[i * 2] !== nextX || output[i * 2 + 1] !== nextY) {
+      output[i * 2] = nextX
+      output[i * 2 + 1] = nextY
+      changed = true
+    }
   }
+  return changed
 }
 
 /** Neckwear is an upstream region, not a material */

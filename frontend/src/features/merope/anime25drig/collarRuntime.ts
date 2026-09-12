@@ -42,6 +42,7 @@ export interface CollarMotionPose {
   torsoProfile: Readonly<Anime25DTorsoShellProfile>
   torsoShellRotation: Readonly<Anime25DTorsoShellRotation>
   torsoShellBlend: number
+  torsoNeckOffsetX: number
 }
 
 export function collarNeckHeadBlend(
@@ -205,6 +206,7 @@ export function deformCollarClipMesh(
       pose.torsoShellRotation,
       pose.torsoShellBlend * (1 - headBlend),
     )
+    clip.deformed[index] += pose.torsoNeckOffsetX * headBlend
   }
 }
 

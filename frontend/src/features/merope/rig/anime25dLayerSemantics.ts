@@ -48,6 +48,19 @@ const RIGID_ROLES = new Set([
   'objects',
 ])
 const EXTRA_FRAMING_ROLES = new Set(['unknown', 'objects', 'wings', 'tail'])
+const FACE_SURFACE_ROLES = new Set([
+  'face', 'facedetail', 'nose', 'eyewhite', 'eyelash', 'eyebrow', 'irides',
+  'iris-silly', 'lovestruck-heart', 'lovestruck-face-effect', 'lovestruck-drool',
+  'maniac-eye-shadow', 'maniac-mouth-shadow',
+])
+
+/** Painted features share the face's surface; earrings and floating stickers do not. */
+export function anime25DLayerUsesFaceSurface(source: { group: string; role: string }): boolean {
+  return source.group === 'head' && (
+    FACE_SURFACE_ROLES.has(source.role) ||
+    source.role.startsWith('mouth-') || source.role.startsWith('eye-')
+  )
+}
 
 export function anime25DLayerAffectsFraming(
   layer: { role: string; width: number; height: number },
@@ -65,7 +78,7 @@ export function canonicalAnime25DLayerName(value: string | undefined): string {
     .normalize('NFKC')
     .trim()
     .toLowerCase()
-    .replaceAll(/\s*(?:のコピー|copy)(?:\s*\d+)?$/ug, '')
+    .replaceAll(/\s*(?:のコピー|copy)(?:\s*\d+)?$/gu, '')
     .replaceAll(/[\s_]+/g, '-')
     .replaceAll(/-+/g, '-')
 }

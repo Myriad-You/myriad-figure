@@ -9,6 +9,8 @@ export type Anime25DShellMode = 'head' | 'front-hair' | 'back-hair'
 
 const SHELL_YAW_RADIANS = 0.45
 const SHELL_PITCH_RADIANS = 0.32
+const SHARED_CROWN_Y = -0.8
+const REAR_HAIR_Y = -0.2
 const FULL_CROWN_TURN = 1 - Math.cos(SHELL_YAW_RADIANS) * Math.cos(SHELL_PITCH_RADIANS)
 
 export function anime25DShellModeForLayer(
@@ -175,12 +177,19 @@ export function deformAnime25DShellPoint(
     Math.max(0, 1 - Math.min(1, normalizedX ** 2 + normalizedY ** 2)),
   )
   const depthOffset = depth - 1
+  // "Back hair" is a drawing-order label. Its visible upper cap belongs to
+  // the same coiffure as the front drawing, not the rear hemisphere.
+  const crownSurface = mode === 'back-hair'
+    ? 1 - smoothstep((normalizedY - SHARED_CROWN_Y) / (REAR_HAIR_Y - SHARED_CROWN_Y))
+    : 1
   let normalizedDepth: number
   if (mode === 'front-hair') {
     normalizedDepth =
       profile.hair.frontBulge * radialDepth + profile.hair.frontGap
   } else if (mode === 'back-hair') {
-    normalizedDepth = -profile.hair.backDepth * radialDepth - 0.05
+    const rearDepth = -profile.hair.backDepth * radialDepth - 0.05
+    const frontDepth = profile.hair.frontBulge * radialDepth + profile.hair.frontGap
+    normalizedDepth = rearDepth * (1 - crownSurface) + frontDepth * crownSurface
   } else if (profile.faceProfile.enabled) {
     // Eye/jaw geometry has already moved locally. Depth is a field on that
     // resulting face, not a different field for each vertex's original row.
@@ -203,7 +212,7 @@ export function deformAnime25DShellPoint(
 
   // A pinned root keeps the coiffure's depth and follows the same head rotation.
   // Pin weights suppress relative bang/spring motion, not this rest surface.
-  if (mode === 'front-hair' && profile.hair.crownRound > 0) {
+  if (mode !== 'head' && profile.hair.crownRound > 0) {
     const crownStart = profile.head.centerY - profile.head.radiusY * 0.18
     const crownSpan = Math.max(1, profile.head.radiusY * 0.62)
     const crown =
@@ -212,7 +221,7 @@ export function deformAnime25DShellPoint(
     // A pose-space correction must vanish continuously at the reference pose.
     // Use orientation departure, not time smoothing or a nonzero-angle switch.
     const crownMix = clamp(
-      profile.hair.crownRound * crown * 0.3 *
+      profile.hair.crownRound * crown * crownSurface * 0.3 *
         smoothstep((1 - rotation.yawCosine * rotation.pitchCosine) / FULL_CROWN_TURN),
       0,
       0.6,

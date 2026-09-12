@@ -98,6 +98,7 @@ test('applies the collar torso shell to the neck aperture mesh', () => {
     torsoProfile,
     torsoShellRotation,
     torsoShellBlend: 0.5,
+    torsoNeckOffsetX: 17,
   }
   deformCollarClipMesh(projected, projectedPose, 0.95)
 
@@ -111,7 +112,7 @@ test('applies the collar torso shell to the neck aperture mesh', () => {
     )
     assert.ok(
       Math.abs(
-        projected.deformed[index] - baseline.deformed[index] - expectedOffset,
+        projected.deformed[index] - baseline.deformed[index] - expectedOffset - 17 * headBlend,
       ) < 1e-5,
     )
   }
@@ -190,7 +191,7 @@ function clipMesh(rest: Float32Array): CollarClipMesh {
 
 function neutralTorsoPose(): Pick<
   CollarMotionPose,
-  'torsoProfile' | 'torsoShellRotation' | 'torsoShellBlend'
+  'torsoProfile' | 'torsoShellRotation' | 'torsoShellBlend' | 'torsoNeckOffsetX'
 > {
   return {
     torsoProfile: {
@@ -202,6 +203,7 @@ function neutralTorsoPose(): Pick<
     },
     torsoShellRotation: { active: false, yawCosine: 1, yawSine: 0 },
     torsoShellBlend: 0,
+    torsoNeckOffsetX: 0,
   }
 }
 

@@ -135,7 +135,7 @@ test('restores performance pose without taking speech, face, or gaze ownership',
     'angleZ',
     'brow',
   ]) {
-    assert.equal(key in patch, false)
+    assert.equal(Object.hasOwn(patch, key), false)
   }
   assert.equal(patch.body, 0)
   assert.equal(performanceRestDriverPatch(null, true).body, 0)

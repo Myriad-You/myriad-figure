@@ -19,6 +19,7 @@ import {
   HIGH_COLLAR_NECK_FOLLOW_POWER,
 } from './collarRuntime'
 import { IDENTITY_DRIVER } from './driver'
+import { bindPoseCorrections, writePoseCorrectionWeights } from './poseCorrections'
 import {
   createAnime25DSecondaryDeformationBinding,
   deformAnime25DHairPoint,
@@ -33,6 +34,111 @@ import {
 } from './torsoDeformation'
 
 const VERTEX_COUNT = 48
+
+test('torso root transports the whole head once and blends through the neck without dragging the garment', () => {
+  const frame = secondaryFrame(0.46, 17)
+  for (const offset of [-24, 24]) {
+    for (const role of ['face', 'eyelash', 'mouth-open', 'front-hair', 'back-hair']) {
+      const binding = secondaryBinding(role, 'head', false)
+      for (const [x, y] of [[80, 110], [140, 180]]) {
+        const before = { x, y }; const after = { x, y }
+        frame.torsoNeckOffsetX = 0
+        deformAnime25DSecondaryPoint(before, x, y, 0, binding, frame)
+        frame.torsoNeckOffsetX = offset
+        deformAnime25DSecondaryPoint(after, x, y, 0, binding, frame)
+        assert.ok(Math.abs(after.x - before.x - offset) < 1e-8)
+        assert.equal(after.y, before.y)
+      }
+    }
+    for (const highCollar of [false, true]) {
+      frame.highCollar = highCollar
+      for (const [role, y, weight] of [
+        ['neck', frame.neckFollowTop, 1], ['neck', frame.neckBottom, 0],
+        ['topwear', frame.neckBottom, 0], ['handwear', frame.neckBottom, 0],
+      ] as const) {
+        const binding = secondaryBinding(role, 'body', false)
+        const x = frame.neckPivotX
+        const before = { x, y }; const after = { x, y }
+        frame.torsoNeckOffsetX = 0
+        deformAnime25DSecondaryPoint(before, x, y, 0, binding, frame)
+        frame.torsoNeckOffsetX = offset
+        deformAnime25DSecondaryPoint(after, x, y, 0, binding, frame)
+        assert.ok(Math.abs(after.x - before.x - offset * weight) < 1e-8, `${role} at ${y}`)
+        assert.equal(after.y, before.y)
+      }
+    }
+  }
+})
+
+test('facial art shares one projected surface without changing independent feature coordinates', () => {
+  const frame = secondaryFrame(0.46, 17)
+  frame.shellProfile = shellProfile()
+  frame.shellActivation = 1
+  frame.shellBlend = 0.5
+  const face = secondaryBinding('face', 'head', false)
+  face.shellMode = 'head'
+  face.source.depth = 1
+  const roles = ['eyewhite', 'eyelash', 'irides', 'eyebrow', 'nose', 'mouth-open', 'eye-close', 'eye-cry', 'iris-silly', 'facedetail']
+  for (const yaw of [-1, 0, 1]) { for (const pitch of [-0.85, 0, 0.85]) {
+    frame.expression.angleX = yaw
+    frame.headAngleY = pitch
+    writeAnime25DShellRotation(yaw, pitch, frame.shellRotation)
+    for (const [x, y] of [[85, 120], [117, 153], [155, 120]]) {
+      const expected = { x, y }
+      deformAnime25DSecondaryPoint(expected, x, y, 0, face, frame)
+      for (const role of roles) {
+        const feature = secondaryBinding(role, 'head', false)
+        feature.shellMode = 'head'
+        feature.source.depth = 1.15
+        const actual = { x, y }
+        deformAnime25DSecondaryPoint(actual, x, y, 0, feature, frame)
+        assert.deepEqual(actual, expected, `${role}: yaw ${yaw}, pitch ${pitch}`)
+      }
+    }
+  }
+}
+  for (const role of ['front-hair', 'back-hair', 'ears', 'eyewear', 'earwear', 'headwear', 'anger-mark', 'speechless-sweat', 'neckwear']) {
+    assert.equal(secondaryBinding(role, 'head', false).facialSurface, false, role)
+  }
+})
+
+test('pose residual is blended once, before parent roll, and never applied to the collar', () => {
+  const profile = shellProfile()
+  const rest = new Float32Array([profile.head.centerX, profile.head.centerY])
+  const bound = bindPoseCorrections([{
+    surface: 'head', at: { angleX: 0.8, angleY: -0.6 },
+    patches: [{ x: 0, y: 0, radiusX: 0.6, radiusY: 0.4, dx: 0.04, dy: -0.03 }],
+  }], 'head', rest, profile.head)!
+  const driver = { ...IDENTITY_DRIVER, angleX: 0.8, angleY: -0.6 }
+  writePoseCorrectionWeights(bound, driver)
+  const frame = secondaryFrame(0.46, 17)
+  frame.expression = driver
+  frame.headAngleY = driver.angleY
+  frame.shellProfile = profile
+  writeAnime25DShellRotation(driver.angleX, driver.angleY, frame.shellRotation)
+  const binding = { ...secondaryBinding('face', 'head', false), shellMode: 'head' as const }
+  for (const roll of [-0.4, 0, 0.4]) {
+    frame.headRotationCosine = Math.cos(roll)
+    frame.headRotationSine = Math.sin(roll)
+    for (const blend of [0, 0.5, 1]) {
+      frame.shellBlend = blend
+      const before = { x: rest[0], y: rest[1] }
+      const after = { ...before }
+      deformAnime25DSecondaryPoint(before, rest[0], rest[1], 0, binding, frame)
+      deformAnime25DSecondaryPoint(after, rest[0], rest[1], 0, { ...binding, poseCorrections: bound }, frame)
+      const dx = bound[0].offsets[0]
+      const dy = bound[0].offsets[1]
+      assert.ok(Math.abs(after.x - before.x - (dx * Math.cos(roll) - dy * Math.sin(roll)) * blend) < 1e-6)
+      assert.ok(Math.abs(after.y - before.y - (dx * Math.sin(roll) + dy * Math.cos(roll)) * blend) < 1e-6)
+    }
+  }
+  const collar = secondaryBinding('collar_front', 'body', false, true)
+  const before = { x: rest[0], y: rest[1] }
+  const after = { ...before }
+  deformAnime25DSecondaryPoint(before, rest[0], rest[1], 0, collar, frame)
+  deformAnime25DSecondaryPoint(after, rest[0], rest[1], 0, { ...collar, poseCorrections: bound }, frame)
+  assert.deepEqual(after, before)
+})
 
 test('binds stable secondary roles and optional geometry fields once', () => {
   const topwear = secondaryBinding('topwear', 'body', false)
@@ -59,6 +165,10 @@ test('secondary and hair stages match the frozen player branches', () => {
   for (let frameIndex = 0; frameIndex < 120; frameIndex += 1) {
     const progress = frameIndex / 119
     const frame = secondaryFrame(progress, frameIndex)
+    // Compare the reference on its interpolation domain. Values above one
+    // used negative stiff weights; the separate convexity test covers that fix.
+    frame.expression.soft = Math.min(1, frame.expression.soft)
+    frame.expression.fhSoft = Math.min(1, frame.expression.fhSoft)
     for (const binding of bindings) {
       for (let row = 0; row <= 5; row += 1) {
         for (let column = 0; column <= 7; column += 1) {
@@ -94,6 +204,27 @@ test('secondary and hair stages match the frozen player branches', () => {
             `${binding.baseRole} frame ${frameIndex} vertex ${row}:${column}`,
           )
         }
+      }
+    }
+  }
+})
+
+test('hair softness cannot extrapolate beyond either spring while amplitude remains independent', () => {
+  for (const front of [false, true]) {
+    const binding = secondaryBinding(front ? 'front-hair' : 'back-hair', 'head', false, false, true, front)
+    binding.springs = [{ stiff: { x: 0, v: 0, dx: -10 }, soft: { x: 0, v: 0, dx: -30 }, phase: 0, stiffnessScale: 1, dampingScale: 1 }]
+    binding.strandWeights = new Float32Array(VERTEX_COUNT).fill(1)
+    binding.alongStrand = new Float32Array(VERTEX_COUNT).fill(1)
+    binding.bangWeights = null
+    const frame = secondaryFrame(0.4, 1)
+    frame.expression.phys = true
+    for (const softness of [0, 0.5, 1, 2, 3]) {
+      for (const amplitude of [0.5, 3]) {
+        frame.expression.soft = frame.expression.fhSoft = softness
+        frame.expression.physAmp = frame.expression.fhAmp = amplitude
+        const point = { x: 0, y: 0 }
+        deformAnime25DHairPoint(point, 0, binding, frame)
+        assert.ok(Math.abs(point.x - (-10 - 20 * Math.min(1, softness)) * amplitude) < 1e-8)
       }
     }
   }
@@ -518,7 +649,7 @@ function secondaryBinding(
   frontHair = true,
 ): Anime25DSecondaryDeformationBinding {
   const source: Anime25DSecondaryDeformationBinding['source'] = {
-    role: baseRole.replaceAll('_', '-').replace('front hair', 'front-hair'),
+    role: baseRole.replaceAll('_', '-').replaceAll('front hair', 'front-hair'),
     group,
     depth: group === 'head' ? 0.78 : 0.91,
     x: 54,
@@ -700,6 +831,7 @@ function secondaryFrame(
     torsoProfile: shellProfile().torso,
     torsoChestShape: null,
     torsoShellBlend: 0,
+    torsoNeckOffsetX: 0,
     torsoShellRotation: { active: false, yawCosine: 1, yawSine: 0 },
   }
 }

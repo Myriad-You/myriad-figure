@@ -51,6 +51,7 @@ export interface Anime25DHairSpringFrame {
   faceScale: number
   neckPivotY: number
   faceCenterY: number
+  parentOffsetX: number
   time: number
 }
 
@@ -109,7 +110,9 @@ export function stepHairSpring(
     spring.v += acceleration * dt
     spring.x += spring.v * dt
   }
-  spring.dx = -(spring.x - target) * pull
+  // The spring position lags its moving support. Keep that relative offset:
+  // negating it makes the hair lead the head instead of trailing behind it.
+  spring.dx = (spring.x - target) * pull
 }
 
 export function stepAnime25DHairLayerSprings(
@@ -121,7 +124,7 @@ export function stepAnime25DHairLayerSprings(
   const headOffsetX =
     (frame.angleX * 14 +
       frame.angleZ * 0.07 * (frame.neckPivotY - frame.faceCenterY)) *
-    frame.faceScale
+    frame.faceScale + frame.parentOffsetX
   const windAmplitude = frame.idle ? 1 : 0
   for (const layer of layers) {
     if (!layer.springs) continue

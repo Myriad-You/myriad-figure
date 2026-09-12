@@ -167,7 +167,8 @@ test('cross-surface neckwear follows both ends without mutating rest geometry', 
   assert.equal(bridge.weights[0], 0)
   assert.equal(bridge.weights[1], 1)
   const output = rest.slice()
-  deformNeckwearBridge(bridge, frame(0.7), rest, output)
+  assert.equal(deformNeckwearBridge(bridge, frame(0.7), rest, output), true)
+  assert.equal(deformNeckwearBridge(bridge, frame(0.7), rest, output), false)
   const a = transform(bridge.upperMatrix, rest[0], rest[1])
   const b = transform(bridge.lowerMatrix, rest[2], rest[3])
   assert.ok(Math.hypot(output[0] - a.x, output[1] - a.y) < 1e-3)
@@ -737,6 +738,7 @@ function frame(
     torsoProfile: shell.torso,
     torsoChestShape: null,
     torsoShellBlend: shell.blend * shell.torso.blend,
+    torsoNeckOffsetX: 0,
     torsoShellRotation: rotation,
   }
 }
