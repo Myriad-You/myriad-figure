@@ -2,9 +2,9 @@ import type { CueIntent } from './performanceCueDefinitions'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { completeBehaviorQuality } from './behaviorMotion'
 import { intentExpressionPatch } from './performanceCueDefinitions'
 import { PerformanceExpressionController } from './performanceExpression'
-import { completeBehaviorQuality } from './behaviorMotion'
 import {
   authoredCueEnvelope,
   baselineDriverPatch,
@@ -201,10 +201,11 @@ test('strong performances recruit body and arms without amplifying the head', ()
     const poseRatio = 1.4 / 0.89
     assert.ok((strong.body ?? 0) / (gentle.body ?? 1) > poseRatio * 1.45)
     for (const key of ['angleY', 'angleZ'] as const) {
-      if (gentle[key])
+      if (gentle[key]) {
         assert.ok(
           Math.abs((strong[key] ?? 0) / gentle[key]! - poseRatio) < 1e-8,
         )
+      }
     }
     for (const key of ['body', 'armY', 'armPos'] as const) {
       assert.ok(Math.abs(strong[key] ?? 0) <= 1)

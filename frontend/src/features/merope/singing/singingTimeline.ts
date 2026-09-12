@@ -135,8 +135,7 @@ export function coalesceCues(cues: readonly SingingCue[]): SingingCue[] {
   for (const cue of sorted) {
     const previous = output.at(-1)
     if (
-      previous &&
-      previous.viseme === cue.viseme &&
+      previous?.viseme === cue.viseme &&
       cue.start <= previous.end + 0.01
     ) {
       previous.end = Math.max(previous.end, cue.end)

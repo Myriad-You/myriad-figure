@@ -307,7 +307,7 @@ export function buildAnime25DLayerSources(
       variant: layer.variant,
       contours: [],
       mesh,
-      boneHandles: handles.get(layer.id) || [fullLayerHandle(layer, 'body')],
+      boneHandles: handles.get(layer.id) ?? [fullLayerHandle(layer, 'body')],
     }
   })
 }

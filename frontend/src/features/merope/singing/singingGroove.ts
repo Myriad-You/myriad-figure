@@ -108,11 +108,12 @@ export class SingingGrooveController {
       return [key, motion]
     }),
   ) as Record<keyof Motif, MinimumJerkMotion>
+
   private motif: Motif = { ...FIRST }
   private motifAt = 0
   private nextMotifAt = 0
   private lastPhraseStart = Number.NaN
-  private seed = 0x5e71c3
+  private seed = 0x5E71C3
   private trackId: string | null = null
   private armMotion = false
   private lockedFrequency = 0

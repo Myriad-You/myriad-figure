@@ -90,11 +90,11 @@ test('full-body listening spans several beats with smooth shoulder and arm cross
 test('changing motif mid-transition carries its velocity and acceleration', () => {
   const controller = new SingingGrooveController()
   const state = controller as unknown as {
-    chooseMotif(now: number, bpm: number): void
+    chooseMotif: (now: number, bpm: number) => void
     motifMotion: Record<
       string,
       {
-        sample(now: number): number
+        sample: (now: number) => number
         value: number
         velocity: number
         acceleration: number
@@ -116,11 +116,12 @@ test('changing motif mid-transition carries its velocity and acceleration', () =
         motion.value,
         motion.velocity,
         motion.acceleration,
-      ].entries())
+      ].entries()) {
         assert.ok(
           Math.abs(value - before[key][i]) < 1e-9,
           `${key} derivative ${i}`,
         )
+}
     }
   }
 })

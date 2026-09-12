@@ -177,6 +177,7 @@ import { CoSpeechExpressionController } from './speechExpression'
 import { AutoSpeechController } from './speechMotion'
 import { StylizedExpressionMotionController } from './stylizedExpressionMotion'
 import { ThinkingMotionController } from './thinkingMotion'
+import { ThinkingSticker } from './thinkingSticker'
 import {
   anime25DTorsoYawFollow,
   resolveAnime25DTorsoChestShape,
@@ -184,7 +185,7 @@ import {
 } from './torsoDeformation'
 import { touchPointInView } from './touchHitTest'
 import { hitTestVisibleTouch, readTouchAtlas } from './touchVisibility'
-import { compileProgram, createAtlasTexture, loadImage } from './webglRuntime'
+import { compileProgram, createAtlasTexture, loadImage, readLayerPixels } from './webglRuntime'
 
 const POINTER_ATTACK_RATE = 16
 const POINTER_RELEASE_RATE = 5.5
@@ -248,8 +249,6 @@ function releaseCompiledGpu(
   if (collarClip) disposeCollarClipMesh(gl, collarClip)
   if (texture) gl.deleteTexture(texture)
 }
-
-import { ThinkingSticker } from './thinkingSticker'
 
 export class Anime25DPlayer {
   private readonly thinkingSticker = new ThinkingSticker()
@@ -473,9 +472,12 @@ export class Anime25DPlayer {
     )
     let nextTexture: WebGLTexture | null = null
     let touchAtlas: ReturnType<typeof readTouchAtlas>
+    let linePixels: Uint8ClampedArray | undefined
     try {
       nextTexture = createAtlasTexture(this.gl, image, compiled.atlasPatches)
       touchAtlas = readTouchAtlas(image)
+      const eyelash = resolved.layers.find((layer) => layer.role === 'eyelash')
+      linePixels = eyelash ? readLayerPixels(image, eyelash)?.pixels : undefined
       if (this.disposed || atlasAbort.signal.aborted) {
         releaseCompiledGpu(this.gl, compiled.layers, compiled.collarClip, nextTexture)
         return
@@ -496,6 +498,7 @@ export class Anime25DPlayer {
     this.layers = compiled.layers
     this.collarClip = compiled.collarClip
     this.touchAtlas = touchAtlas
+    this.thinkingSticker.setLinePixels(linePixels)
     this.touchLayers = this.layers.map((layer) => {
       const mesh =
         layer.renderKind === 'neck' && this.collarClip ? this.collarClip : layer
@@ -925,6 +928,8 @@ export class Anime25DPlayer {
   }
 
   private smoothDriver(dt: number): void {
+    this.thinkingSticker.update(this.time,
+      this.target.thinking ? 1 : this.performanceExpression.getThinkingLevel())
     this.shellActivation = Math.min(1, this.shellActivation + dt * 8)
     const t = this.time
     const pointer =

@@ -5,16 +5,16 @@ import type {
 } from './musicSource'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { AmbientMotionController } from '../anime25drig/ambientMotion'
 import { Anime25DBehaviorMotionController } from '../anime25drig/behaviorMotion'
 import { realizeAnime25DBehaviorPlan } from '../anime25drig/behaviorRealizer'
-import { RigMotionCoordinator } from './coordinator'
-import { HumanPerformanceRuntime } from './humanPerformanceRuntime'
-import { AmbientMotionController } from '../anime25drig/ambientMotion'
 import {
   PoseGateController,
   resolvePoseGate,
 } from '../anime25drig/poseArbitration'
 import { PoseOccupancyController } from '../anime25drig/poseOccupancy'
+import { RigMotionCoordinator } from './coordinator'
+import { HumanPerformanceRuntime } from './humanPerformanceRuntime'
 import {
   MUSIC_LEASE_TTL_MS,
   MusicMotionSource,

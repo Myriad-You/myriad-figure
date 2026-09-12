@@ -82,7 +82,7 @@ function anime25DLayerSide(normalizedName: string): EyeSide | null {
 }
 
 export function isAnime25DDocument(psd: Psd): boolean {
-  const names = flattenVisibleLayers(psd.children || []).map((layer) =>
+  const names = flattenVisibleLayers(psd.children ?? []).map((layer) =>
     normalizeAnime25DLayerName(layer.name),
   )
   return names.some((name) => anime25DBaseRole(name) === 'face')
@@ -231,7 +231,7 @@ function flattenVisibleLayers(layers: Layer[], parentOpacity = 1): Layer[] {
 
 /** See-through's plain `mouth` is the static portrait mouth, not an open phoneme. */
 function hasStaticSeeThroughMouth(psd: Psd): boolean {
-  const names = flattenVisibleLayers(psd.children || []).map((layer) =>
+  const names = flattenVisibleLayers(psd.children ?? []).map((layer) =>
     canonicalAnime25DLayerName(layer.name),
   )
   const hasPlainMouth = names.some(
@@ -267,7 +267,7 @@ function toRiggerLayerName(value: string | undefined): string {
 }
 
 function flattenPsdForRigger(psd: Psd): Psd {
-  const children = flattenVisibleLayers(psd.children || [])
+  const children = flattenVisibleLayers(psd.children ?? [])
     .filter((layer) => validPixelData(layer.imageData))
     .filter(
       (layer) =>
@@ -340,7 +340,7 @@ function rasterFromRiggerPart(
     height: part.h,
     data: part.img.data,
     synthetic: part.synthetic,
-    documentStrands: part.strands || undefined,
+    documentStrands: part.strands ?? undefined,
   }
 }
 
@@ -583,7 +583,7 @@ function deriveAnchors(
     const fallback = layers.find(
       (layer) => layer.role === 'eyelash' && layer.side === side,
     )
-    const eyeCenter = center(eye || fallback)
+    const eyeCenter = center(eye ?? fallback)
     if (eyeCenter) eyes[side] = eyeCenter
     const irisCenter = center(iris)
     if (irisCenter) irises[side] = irisCenter
@@ -591,7 +591,7 @@ function deriveAnchors(
   const neckLayer = layers.find((layer) => layer.role === 'neck')
   const topwear = layers.find((layer) => layer.role === 'topwear')
   const bottomwear = layers.find((layer) => layer.role === 'bottomwear')
-  const bodyReference = topwear || bottomwear || neckLayer
+  const bodyReference = topwear ?? bottomwear ?? neckLayer
   const neck = neckLayer
     ? {
         x: neckLayer.bounds.x + neckLayer.bounds.width / 2,
@@ -608,7 +608,7 @@ function deriveAnchors(
       }
     : { x: 0.5, y: frame.height / frame.width }
   const mouth = center(
-    layers.find((layer) => layer.role === 'mouth-open') ||
+    layers.find((layer) => layer.role === 'mouth-open') ??
       layers.find((layer) => layer.role === 'mouth-close'),
   )
   return {
@@ -621,7 +621,7 @@ function deriveAnchors(
     bodyBottom,
     eyes,
     irises,
-    mouth: mouth || null,
+    mouth: mouth ?? null,
   }
 }
 

@@ -2,26 +2,26 @@ import type { Anime25DMotionUnit } from './behaviorMotion'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { TouchGestureTracker } from '../interaction/touchGesture'
+import { applySingingWrite } from '../motion/applySnapshot'
 import { RigMotionCoordinator } from '../motion/coordinator'
 import { HumanPerformanceRuntime } from '../motion/humanPerformanceRuntime'
+import { resolveSingingApply } from '../motion/singingApply'
 import { TouchMotionSource } from '../motion/touchSource'
+import { musicSignalAt } from '../singing/musicSignal.test-support'
+import { restSingingArticulation } from '../singing/singingClock'
+import { SingingGrooveController } from '../singing/singingGroove'
 import { completeBehaviorQuality } from './behaviorMotion'
 import { realizeAnime25DBehaviorPlan } from './behaviorRealizer'
-import { PerformanceExpressionController } from './performanceExpression'
-import { PoseGateController, resolvePoseGate } from './poseArbitration'
-import { occupancyTargets } from './poseOccupancy'
-import { applySingingWrite } from '../motion/applySnapshot'
-import { resolveSingingApply } from '../motion/singingApply'
-import { restSingingArticulation } from '../singing/singingClock'
-import { musicSignalAt } from '../singing/musicSignal.test-support'
-import { SingingGrooveController } from '../singing/singingGroove'
 import { IDENTITY_DRIVER } from './driver'
-import { composeOccupancyOffsets } from './poseCompositor'
-import { PoseResponseController } from './poseResponse'
 import {
   deriveAnime25DMotionEnvelopeProfile,
   projectAnime25DMotionEnvelope,
 } from './motionEnvelope'
+import { PerformanceExpressionController } from './performanceExpression'
+import { PoseGateController, resolvePoseGate } from './poseArbitration'
+import { composeOccupancyOffsets } from './poseCompositor'
+import { occupancyTargets } from './poseOccupancy'
+import { PoseResponseController } from './poseResponse'
 
 function unit(
   family: 'performance' | 'touch',
@@ -65,11 +65,12 @@ test('touch preserves authored emotional brows and special eyes while still ackn
       const a = alone.sample(i / 60, base)
       const b = together.sample(i / 60, base)
       const original = base.browAngSym + a.browAngSym
-      if (Math.abs(original) >= 0.6)
+      if (Math.abs(original) >= 0.6) {
         assert.ok(
           Math.sign(original) * (base.browAngSym + b.browAngSym) >=
             Math.abs(original) * 0.75,
         )
+}
       for (const key of [
         'mouthForm',
         'eyeSqueeze',
@@ -108,7 +109,7 @@ test('a touch release retains its family through the tail and does not momentari
   assert.equal(expression.getTouchShare(), 0)
 })
 
-for (const strongExpression of [false, true])
+for (const strongExpression of [false, true]) {
   test(`speech and music survive ${strongExpression ? 'a strong expression with touch' : 'repeated hair contact'} at 30/60/120 fps`, () => {
     for (const fps of [30, 60, 120]) {
       const coordinator = new RigMotionCoordinator()
@@ -226,12 +227,14 @@ for (const strongExpression of [false, true])
         )
         if (i >= fps * 2 && i < fps * 3) {
           assert.ok(gate.groove.headBody >= (strongExpression ? 0.24 : 0.7))
-          if (!strongExpression) assert.ok(gate.coSpeech.expression >= 0.55)
-          else
+          if (!strongExpression) {
+            assert.ok(gate.coSpeech.expression >= 0.55)
+          } else {
             assert.ok(
               expression.sample(now / 1000).maniac > 0.5,
               'strong face remains visible',
             )
+          }
         }
         if (i > fps * 4) assert.ok(gate.groove.headBody > 0.98)
         const offset = composeOccupancyOffsets([
@@ -251,9 +254,10 @@ for (const strongExpression of [false, true])
         assert.ok(
           Math.abs(displayed.angleY) <= 1 && Math.abs(displayed.angleZ) <= 1,
         )
-        if (i >= fps * 2 && i < fps * 3)
+        if (i >= fps * 2 && i < fps * 3) {
           retainedMotion +=
             Math.abs(musicPose.body * gate.groove.headBody) / fps
+        }
         previousBody = displayed.body
         previousGroove = gate.groove.headBody
       }
@@ -264,6 +268,7 @@ for (const strongExpression of [false, true])
       )
     }
   })
+}
 
 test('touch sharing never overrides isolated preview channels', () => {
   const gate = resolvePoseGate(

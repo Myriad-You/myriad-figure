@@ -117,7 +117,7 @@ export async function packAnime25DAtlas(
       },
       strands:
         layer.role === 'front-hair' || layer.role === 'back-hair'
-          ? (layer.documentStrands || []).map((strand) => ({
+          ? (layer.documentStrands ?? []).map((strand) => ({
               x: (strand.x - frame.x) / frame.width,
               rootY: (strand.rootY - frame.y) / frame.width,
               tipY: (strand.tipY - frame.y) / frame.width,
