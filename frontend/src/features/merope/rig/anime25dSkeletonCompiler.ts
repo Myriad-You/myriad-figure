@@ -1,4 +1,4 @@
-import { formatCurrent } from '../../../i18n/localeCopy'
+import { formatTemplate } from './formatTemplate'
 import type { Anime25DLayerRole } from './anime25d'
 import type { Anime25DImportCopy } from './anime25dImportCopy'
 import type { AnimeAnchors, PreparedLayer } from './anime25dImportTypes'
@@ -142,7 +142,7 @@ export function buildAnime25DBonesAndHandles(
   }
   if (bones.length > MAX_RIG_BONES) {
     throw new Error(
-      formatCurrent(copy.anime25dBoneLimit, { max: MAX_RIG_BONES }),
+      formatTemplate(copy.anime25dBoneLimit, { max: MAX_RIG_BONES }),
     )
   }
 

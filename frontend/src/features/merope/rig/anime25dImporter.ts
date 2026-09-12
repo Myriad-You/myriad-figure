@@ -1,5 +1,5 @@
 import type { Layer, PixelData, Psd } from 'ag-psd'
-import { formatCurrent } from '../../../i18n/localeCopy'
+import { formatTemplate } from './formatTemplate'
 import type { Anime25DLayerRole } from './anime25d'
 import type { Anime25DImportCopy } from './anime25dImportCopy'
 import type {
@@ -137,7 +137,7 @@ export async function prepareAnime25DRigPsd(
   }
   if (layers.length === 0 || layers.length > MAX_RIG_PARTS) {
     throw new Error(
-      formatCurrent(copy.anime25dPartCount, { max: MAX_RIG_PARTS }),
+      formatTemplate(copy.anime25dPartCount, { max: MAX_RIG_PARTS }),
     )
   }
   const frame = contentFrame(psd, layers)
@@ -706,7 +706,7 @@ function requiredLayer(
 ): PreparedLayer {
   const layer = layers.find((candidate) => candidate.role === role)
   if (!layer) {
-    throw new Error(formatCurrent(copy.anime25dMissingLayer, { role }))
+    throw new Error(formatTemplate(copy.anime25dMissingLayer, { role }))
   }
   return layer
 }
