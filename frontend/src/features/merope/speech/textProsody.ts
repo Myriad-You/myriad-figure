@@ -24,7 +24,7 @@ export function predictTextProsody(input: TextProsodyInput): SpeechProsodyPlan {
   const text = input.text
     .normalize('NFKC')
     .slice(0, MAX_VISUAL_SPEECH_TEXT_UNITS)
-  const symbols = [...text]
+  const symbols = Iterator.from(text).toArray()
   const clock = visualSpeechPrefixMs(text, input.locale)
   const durationMs = clock.at(-1)!
   const candidates: Array<{

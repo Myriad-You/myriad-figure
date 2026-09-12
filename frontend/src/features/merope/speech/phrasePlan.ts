@@ -46,9 +46,10 @@ export function sanitizeSpeechPhrases(value: unknown): SpeechPhrase[] {
       continue
     }
     const text = item.text.normalize('NFKC')
+    const units = Iterator.from(text).reduce((n: number) => n + 1, 0)
     if (
-      [...text].length < 2 ||
-      [...text].length > 120 ||
+      units < 2 ||
+      units > 120 ||
       text.trim() !== text ||
       result.some((other) => other.text === text)
     ) {
@@ -69,7 +70,7 @@ export function mergeSpeechPhrases(
     phrases.delete(phrase.text)
     phrases.set(phrase.text, phrase)
   }
-  return [...phrases.values()].slice(-24)
+  return Iterator.from(phrases.values()).toArray().slice(-24)
 }
 
 export function directorPhraseCoverage(

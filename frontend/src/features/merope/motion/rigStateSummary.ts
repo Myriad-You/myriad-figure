@@ -268,13 +268,16 @@ function activeBehaviorSummaries(
     const key = `${behavior.source}:${behavior.function}`
     if (!kept.has(key)) kept.set(key, behavior)
   }
-  return [...kept.values()].slice(0, MAX_ACTIVE_BEHAVIORS).map((behavior) => ({
-    function: behavior.function,
-    lifecycle: behavior.phase,
-    source: behavior.source,
-    resources: [...behavior.resources],
-    remainingMs: clampMs(behavior.remainingMs),
-  }))
+  return Iterator.from(kept.values())
+    .take(MAX_ACTIVE_BEHAVIORS)
+    .map((behavior) => ({
+      function: behavior.function,
+      lifecycle: behavior.phase,
+      source: behavior.source,
+      resources: [...behavior.resources],
+      remainingMs: clampMs(behavior.remainingMs),
+    }))
+    .toArray()
 }
 
 function sanitizeActiveBehavior(

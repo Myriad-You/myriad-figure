@@ -66,8 +66,8 @@ export function canonicalAnime25DLayerName(value: string | undefined): string {
     .trim()
     .toLowerCase()
     .replace(/\s*(?:のコピー|copy)(?:\s*\d+)?$/u, '')
-    .replace(/[\s_]+/g, '-')
-    .replace(/-+/g, '-')
+    .replaceAll(/[\s_]+/g, '-')
+    .replaceAll(/-+/g, '-')
 }
 
 /** Preserve every numbered/depth/side fragment */

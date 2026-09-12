@@ -24,17 +24,21 @@ export function presentationAssetCoverage(
     variants.add(part.variant)
     variantsBySlot.set(part.slot, variants)
   }
-  return [...variantsBySlot].map(([slot, variants]) => {
-    const definition = presentationSlotDefinition(slot)
-    return {
-      slot,
-      missingFallback:
-        definition && !variants.has(definition.fallback)
-          ? definition.fallback
-          : null,
-      unknown: definition
-        ? [...variants.difference(new Set(definition.variants))]
-        : [],
-    }
-  })
+  return Iterator.from(variantsBySlot)
+    .map(([slot, variants]) => {
+      const definition = presentationSlotDefinition(slot)
+      return {
+        slot,
+        missingFallback:
+          definition && !variants.has(definition.fallback)
+            ? definition.fallback
+            : null,
+        unknown: definition
+          ? Iterator.from(
+              variants.difference(new Set(definition.variants)),
+            ).toArray()
+          : [],
+      }
+    })
+    .toArray()
 }

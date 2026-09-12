@@ -323,7 +323,7 @@ function currentNow(): number {
 }
 
 function uniqueCapabilities(capabilities: readonly string[]): string[] {
-  return [...new Set(capabilities)].slice(0, 12)
+  return Iterator.from(new Set(capabilities)).take(12).toArray()
 }
 
 function normalizeFaceConsumer(

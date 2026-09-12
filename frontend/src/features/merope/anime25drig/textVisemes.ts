@@ -75,7 +75,7 @@ function compileHan(
     type: 'array',
   }) as string[]
   for (const raw of syllables) {
-    const syllable = raw.toLowerCase().replace(/[^a-zü]/g, '')
+    const syllable = raw.toLowerCase().replaceAll(/[^a-zü]/g, '')
     if (!syllable) continue
     const initial = syllable.match(/^(?:[csz]h|[b-df-hj-np-tw-z])/)?.[0]
     if (initial && /^[bpm]$/.test(initial)) {
@@ -123,7 +123,7 @@ function compileSymbols(
   language: string,
   output: TextVisemeCue[],
 ): void {
-  const symbols = Array.from(text)
+  const symbols = Iterator.from(text).toArray()
   for (let index = 0; index < symbols.length; index += 1) {
     const symbol = symbols[index]
     if (

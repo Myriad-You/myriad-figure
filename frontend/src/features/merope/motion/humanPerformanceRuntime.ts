@@ -141,8 +141,8 @@ export function mergeBehaviorPlans(
         .toSorted()
         .join(','),
     },
-    pegs: [...pegById.values()],
-    behaviors: [...behaviorById.values()],
+    pegs: Iterator.from(pegById.values()).toArray(),
+    behaviors: Iterator.from(behaviorById.values()).toArray(),
   }
 }
 

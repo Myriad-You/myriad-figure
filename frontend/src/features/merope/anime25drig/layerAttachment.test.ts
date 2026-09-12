@@ -172,7 +172,7 @@ test('cross-surface neckwear follows both ends without mutating rest geometry', 
   const b = transform(bridge.lowerMatrix, rest[2], rest[3])
   assert.ok(Math.hypot(output[0] - a.x, output[1] - a.y) < 1e-3)
   assert.ok(Math.hypot(output[2] - b.x, output[3] - b.y) < 1e-3)
-  assert.deepEqual([...rest], [520, 690, 520, 800])
+  assert.deepEqual(Iterator.from(rest).toArray(), [520, 690, 520, 800])
   assert.equal(
     bindNeckwearBridge(necklace, hosts, anchors, null, 1024, rest, () => null),
     null,

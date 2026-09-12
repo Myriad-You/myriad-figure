@@ -4,7 +4,7 @@ export function formatTemplate(
   params: Record<string, string | number> = {},
 ): string {
   if (!template) return ''
-  return template.replace(/\{(\w+)\}/g, (_, key: string) => {
+  return template.replaceAll(/\{(\w+)\}/g, (_, key: string) => {
     const value = params[key]
     return value == null ? `{${key}}` : String(value)
   })

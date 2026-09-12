@@ -298,9 +298,9 @@ test('resampling and mild colour noise do not switch open skin into garment topo
       return pixels(image.width * scale, image.height * scale, (x, y) => {
         const offset =
           (Math.floor(y / scale) * image.width + Math.floor(x / scale)) * 4
-        return [...image.pixels.subarray(offset, offset + 4)].map((v, i) =>
-          i < 3 ? v + (((x + y) % 3) - 1) : v,
-        )
+        return Iterator.from(image.pixels.subarray(offset, offset + 4))
+          .map((v, i) => (i < 3 ? v + (((x + y) % 3) - 1) : v))
+          .toArray()
       })
     }
     const actual = resolveAnime25DNeckSurface(f.layers, anchors, read)!

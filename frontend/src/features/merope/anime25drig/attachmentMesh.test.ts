@@ -24,7 +24,7 @@ test('samples the current final host geometry including later hair motion', () =
     assert.ok(Math.abs(point.y - (3 - frame * 2)) < 1e-6)
   }
   assert.equal(bindAttachmentMesh(mesh, 20, 20), null)
-  assert.deepEqual([...rest], [0, 0, 10, 0, 0, 10])
+  assert.deepEqual(Iterator.from(rest).toArray(), [0, 0, 10, 0, 0, 10])
 })
 
 test('CPU and shader surfaces agree throughout a continuous combined motion', () => {

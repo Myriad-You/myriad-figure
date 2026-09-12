@@ -104,7 +104,9 @@ test('the resource vocabulary matches the director contract and the rig boundary
     contract,
   )?.[1]
   assert.ok(block, 'director contract has no RIG_STATE_BEHAVIOR_RESOURCES block')
-  const declared = [...block.matchAll(/"([a-z.]+)"/g)].map((match) => match[1])
+  const declared = Iterator.from(block.matchAll(/"([a-z.]+)"/g))
+    .map((match) => match[1])
+    .toArray()
   assert.ok(declared.length > 0, 'director contract listed no resources')
   for (const resource of declared) {
     assert.match(local, new RegExp(`\\| '${RegExp.escape(resource)}'`), resource)

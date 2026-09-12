@@ -97,7 +97,7 @@ export function sampleAnime25DHairlinePinWeights(
     return hasWeight ? weights : null
   }
 
-  const strands = Array.from(source.strands)
+  const strands = Iterator.from(source.strands).toArray()
     .filter(
       (strand) => Number.isFinite(strand.x) && Number.isFinite(strand.rootY),
     )
@@ -283,28 +283,37 @@ function evaluateCurve(
   }
   const first = points[index]
   const second = points[index + 1]
-  const before = points[index - 1] ?? first
-  const after = points[index + 2] ?? second
-  const t = (progress - first.v) / Math.max(1e-6, second.v - first.v)
-  return catmullRom(before.z, first.z, second.z, after.z, t)
-}
-
-function catmullRom(
-  first: number,
-  second: number,
-  third: number,
-  fourth: number,
-  t: number,
-): number {
+  const span = Math.max(1e-6, second.v - first.v)
+  const t = (progress - first.v) / span
   const squared = t * t
   const cubed = squared * t
-  return (
-    0.5 *
-    (2 * second +
-      (-first + third) * t +
-      (2 * first - 5 * second + 4 * third - fourth) * squared +
-      (-first + 3 * second - 3 * third + fourth) * cubed)
-  )
+  const firstSlope = faceCurveSlope(points, index) * span
+  const secondSlope = faceCurveSlope(points, index + 1) * span
+  return (2 * cubed - 3 * squared + 1) * first.z +
+    (cubed - 2 * squared + t) * firstSlope +
+    (-2 * cubed + 3 * squared) * second.z +
+    (cubed - squared) * secondSlope
+}
+
+/** Shape-preserving nonuniform Hermite slopes (Fritsch–Butland, doi:10.1137/0905021). */
+function faceCurveSlope(
+  points: readonly Anime25DShellCurvePoint[],
+  index: number,
+): number {
+  // Unlike extrapolating PCHIP, this depth field is constant outside its
+  // landmarks. Zero end tangents make that extension slope-continuous too.
+  if (index === 0 || index === points.length - 1) return 0
+  const before = points[index - 1]
+  const point = points[index]
+  const after = points[index + 1]
+  const leftSpan = Math.max(1e-6, point.v - before.v)
+  const rightSpan = Math.max(1e-6, after.v - point.v)
+  const leftSlope = (point.z - before.z) / leftSpan
+  const rightSlope = (after.z - point.z) / rightSpan
+  if (leftSlope * rightSlope <= 0) return 0
+  const leftWeight = 2 * rightSpan + leftSpan
+  const rightWeight = rightSpan + 2 * leftSpan
+  return (leftWeight + rightWeight) / (leftWeight / leftSlope + rightWeight / rightSlope)
 }
 
 function smoothstep(value: number): number {

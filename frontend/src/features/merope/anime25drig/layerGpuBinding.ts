@@ -5,7 +5,7 @@ import type { Anime25DLayerDeformationPlan } from './deformationDependencies'
 import type { Anime25DDriver } from './driver'
 import type { Anime25DExpressionDeformationBinding } from './expressionDeformation'
 import type { Anime25DLayerAttachment, Anime25DNeckwearBridge } from './layerAttachment'
-import type { Anime25DLayerSpringBinding } from './layerBinding'
+import type { Anime25DLayerBinding, Anime25DLayerSpringBinding } from './layerBinding'
 import type { Anime25DUpstreamFeatureInput } from './layerDeformation'
 import type { Anime25DLayerDeformationExtension } from './layerDeformationPolicy'
 import type { Anime25DMouthDeformationKind } from './mouthDeformation'
@@ -41,6 +41,7 @@ import {
 import { shoulderContactWeights } from './shoulderContact'
 import { fuseShoulderSurface } from './shoulderSurface'
 import { bindSurfaceContact } from './surfaceContact'
+import { buildContactSurfaceMesh } from './surfaceMesh'
 import { anime25DTorsoShellModeForLayer } from './torsoDeformation'
 import {
   createIndexedDeformableMesh,
@@ -54,8 +55,6 @@ export interface Anime25DGpuLayer extends Anime25DRenderableLayer {
   atlasUvs: Float32Array
   indices: Uint16Array
   deformed: Float32Array
-  cols: number
-  rows: number
   vertexBuffer: WebGLBuffer | null
   uvBuffer: WebGLBuffer | null
   indexBuffer: WebGLBuffer | null
@@ -188,13 +187,10 @@ export function compileAnime25DGpuLayers(
       )
     }
 
-    for (
-      let layerIndex = 0;
-      layerIndex < playback.layers.length;
-      layerIndex += 1
-    ) {
-      const source = playback.layers[layerIndex]
-      if (duplicateAccessories.has(source)) continue
+    const bindings = new Map<Anime25DPlayback['layers'][number], Anime25DLayerBinding>()
+    const bindingFor = (source: Anime25DPlayback['layers'][number]) => {
+      const cached = bindings.get(source)
+      if (cached) return cached
       const collarContact = collarContacts.get(source) ?? null
       const binding = buildAnime25DLayerBinding({
         source,
@@ -203,19 +199,33 @@ export function compileAnime25DGpuLayers(
         layerZ:
           typeof source.z === 'number' && Number.isFinite(source.z)
             ? source.z
-            : layerIndex,
+            : playback.layers.indexOf(source),
         extraGridX: collarContact?.gridX,
         extraGridY: collarContact?.gridY,
+        faceShell: shellProfile.enabled && shellProfile.blend > 0 ? shellProfile : undefined,
       })
+      bindings.set(source, binding)
+      return binding
+    }
+    for (const source of playback.layers) {
+      if (duplicateAccessories.has(source)) continue
+      const collarContact = collarContacts.get(source) ?? null
+      const binding = bindingFor(source)
       const {
-        rest,
-        atlasUvs,
-        indices,
-        cols,
+        rest: gridRest,
+        atlasUvs: gridUvs,
+        indices: gridIndices,
+        cols: _cols,
         rows,
         extensions: _extensions,
         ...hair
       } = binding
+      const hasShoulderContact = source.role === 'handwear' && source.phys !== 'hair' && torso && torsoPixels &&
+        shoulderContactWeights(source, readBindingPixels(source), torso, torsoPixels, gridRest)
+      const surfaceMesh = hasShoulderContact
+        ? buildContactSurfaceMesh(bindingFor(torso!), source)
+        : null
+      const { rest, atlasUvs, indices } = surfaceMesh ?? { rest: gridRest, atlasUvs: gridUvs, indices: gridIndices }
       const chestWeights =
         source.role === 'topwear' && chestWeightField
           ? samplePlaybackChestWeights(
@@ -319,8 +329,6 @@ export function compileAnime25DGpuLayers(
         deformed: deformationPolicy.localDynamic ? rest.slice() : rest,
         atlasUvs,
         indices,
-        cols,
-        rows,
         vao: mesh?.vao ?? null,
         vertexBuffer: mesh?.positionBuffer ?? null,
         uvBuffer: mesh?.uvBuffer ?? null,

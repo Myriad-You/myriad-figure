@@ -20,7 +20,7 @@ export function createOutfitProfile(
   const rules = topologies.map((topology) => OUTFIT_SAFETY_RULES[topology])
   return {
     topologies,
-    secondaryPartIds: [...new Set(secondaryPartIds)],
+    secondaryPartIds: Iterator.from(new Set(secondaryPartIds)).toArray(),
     torsoTwistScale: Math.min(...rules.map((rule) => rule.torsoTwistScale)),
     secondaryMotionScale: Math.min(
       ...rules.map((rule) => rule.secondaryMotionScale),
