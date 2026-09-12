@@ -74,7 +74,7 @@ export function buildAnime25DLayerBinding(
     const { head, faceProfile } = faceShell
     const width = Math.max(1, head.radiusX * 0.34)
     gridX = [...(gridX ?? []), ...Array.from({ length: 17 }, (_, i) => head.centerX + (i - 8) * width / 4)]
-    gridY = [...(gridY ?? [])]
+    gridY = Iterator.from(gridY ?? []).toArray()
     for (let i = 0; i < faceProfile.points.length; i++) {
       const start = faceProfile.points[i].v
       const end = faceProfile.points[i + 1]?.v ?? start

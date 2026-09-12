@@ -110,7 +110,7 @@ export function semanticRigCapabilities(
   for (const [internal, semantic] of CAPABILITY_MAP) {
     if (hasAnime25DCapability(layers, internal)) capabilities.add(semantic)
   }
-  return [...capabilities]
+  return Iterator.from(capabilities).toArray()
 }
 
 export function captureRigStateSummary(
@@ -274,7 +274,7 @@ function activeBehaviorSummaries(
       function: behavior.function,
       lifecycle: behavior.phase,
       source: behavior.source,
-      resources: [...behavior.resources],
+      resources: Iterator.from(behavior.resources).toArray(),
       remainingMs: clampMs(behavior.remainingMs),
     }))
     .toArray()

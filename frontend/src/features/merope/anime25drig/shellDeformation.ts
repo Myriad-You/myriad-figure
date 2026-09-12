@@ -164,7 +164,6 @@ export function deformAnime25DShellPoint(
   profile: Readonly<Anime25DShellProfile>,
   rotation: Readonly<Anime25DShellRotation>,
   depth: number,
-  pinWeight: number,
 ): void {
   if (!profile.enabled || profile.blend <= 0 || !rotation.active) {
     return
@@ -200,35 +199,10 @@ export function deformAnime25DShellPoint(
   }
 
   const shellX = point.x
-  const shellY = point.y
   applyProjectionDelta(point, ellipsoid, normalizedDepth, rotation)
 
-  if (mode === 'front-hair' && pinWeight > 0) {
-    const hairX = point.x
-    const hairY = point.y
-    point.x = shellX
-    point.y = shellY
-    const headX = (point.x - profile.head.centerX) / profile.head.radiusX
-    const headY = (point.y - profile.head.centerY) / profile.head.radiusY
-    const headRadialDepth = Math.sqrt(
-      Math.max(0, 1 - Math.min(1, headX ** 2 + headY ** 2)),
-    )
-    let headDepth = headRadialDepth
-    if (profile.faceProfile.enabled) {
-      const vertical =
-        (point.y - profile.faceProfile.startY) /
-        Math.max(1, profile.faceProfile.endY - profile.faceProfile.startY)
-      const profileWidth = Math.max(1, profile.head.radiusX * 0.34)
-      const profileX = (point.x - profile.head.centerX) / profileWidth
-      headDepth +=
-        evaluateCurve(profile.faceProfile.points, vertical) *
-        Math.exp(-(profileX * profileX))
-    }
-    applyProjectionDelta(point, profile.head, headDepth, rotation)
-    point.x = hairX + (point.x - hairX) * pinWeight
-    point.y = hairY + (point.y - hairY) * pinWeight
-  }
-
+  // A pinned root keeps the coiffure's depth and follows the same head rotation.
+  // Pin weights suppress relative bang/spring motion, not this rest surface.
   if (mode === 'front-hair' && profile.hair.crownRound > 0) {
     const crownStart = profile.head.centerY - profile.head.radiusY * 0.18
     const crownSpan = Math.max(1, profile.head.radiusY * 0.62)
@@ -238,7 +212,7 @@ export function deformAnime25DShellPoint(
     // A pose-space correction must vanish continuously at the reference pose.
     // Use orientation departure, not time smoothing or a nonzero-angle switch.
     const crownMix = clamp(
-      profile.hair.crownRound * crown * 0.3 * (1 - pinWeight) *
+      profile.hair.crownRound * crown * 0.3 *
         smoothstep((1 - rotation.yawCosine * rotation.pitchCosine) / FULL_CROWN_TURN),
       0,
       0.6,

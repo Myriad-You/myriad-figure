@@ -256,7 +256,7 @@ function toRiggerLayerName(value: string | undefined): string {
   const numbered = kebab.match(/-(\d+)$/)
   const number = numbered?.[1]
   if (number) kebab = kebab.slice(0, -(number.length + 1))
-  kebab = kebab.replace(/-(?:l|r|left|right)$/, '')
+  kebab = kebab.replaceAll(/-(?:l|r|left|right)$/g, '')
   const riggerName =
     kebab === 'front-hair'
       ? 'front hair'
@@ -320,13 +320,13 @@ function rasterFromRiggerPart(
       : part.side === 'R'
         ? 'right'
         : anime25DLayerSide(kebab)
-  const role = anime25DBaseRole(kebab.replace(/-(?:l|r)$/, '')) || 'unknown'
+  const role = anime25DBaseRole(kebab.replaceAll(/-(?:l|r)$/g, '')) || 'unknown'
   const numbered = /-\d+(?:-|$)/.test(anime25DLayerNameParts(kebab).suffix)
   const preferred = numbered
     ? kebab
     : side
       ? `${role}-${side}`
-      : kebab.replace(/-(?:l|r)$/, '')
+      : kebab.replaceAll(/-(?:l|r)$/g, '')
   return {
     id: uniquePartId(preferred, usedIds),
     role,

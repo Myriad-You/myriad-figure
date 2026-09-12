@@ -4,6 +4,7 @@ import type { CollarClipMesh } from './collarRuntime'
 import type { Anime25DLayerDeformationPlan } from './deformationDependencies'
 import type { Anime25DDriver } from './driver'
 import type { Anime25DExpressionDeformationBinding } from './expressionDeformation'
+import type { HairSurface } from './hairSurface'
 import type { Anime25DLayerAttachment, Anime25DNeckwearBridge } from './layerAttachment'
 import type { Anime25DLayerBinding, Anime25DLayerSpringBinding } from './layerBinding'
 import type { Anime25DUpstreamFeatureInput } from './layerDeformation'
@@ -25,6 +26,7 @@ import {
   resolveAnime25DDeformationDependencies,
 } from './deformationDependencies'
 import { resolveAnime25DExpressionDeformation } from './expressionDeformation'
+import { bindHairSurface } from './hairSurface'
 import { bindAnime25DLayerAttachment, bindNeckwearBridge } from './layerAttachment'
 import { buildAnime25DLayerBinding } from './layerBinding'
 import { bindAnime25DUpstreamFeature } from './layerDeformation'
@@ -79,6 +81,7 @@ export interface Anime25DGpuLayer extends Anime25DRenderableLayer {
   neckwearBridge?: Anime25DNeckwearBridge | null
   attachmentDependents?: Anime25DGpuLayer[]
   surfaceContact?: SurfaceContact
+  hairSurface?: HairSurface
 }
 
 export interface Anime25DCompiledGpuLayers {
@@ -96,7 +99,7 @@ export function compileAnime25DGpuLayers(
   chestWeightField: ChestWeightField | null,
   atlasImage: HTMLImageElement,
 ): Anime25DCompiledGpuLayers {
-  const layers: Anime25DGpuLayer[] = []
+  let layers: Anime25DGpuLayer[] = []
   let collarClip: CollarClipMesh | null = null
   try {
     const bindingPixels = new Map<
@@ -327,6 +330,9 @@ export function compileAnime25DGpuLayers(
         baseRole,
         rest,
         deformed: deformationPolicy.localDynamic ? rest.slice() : rest,
+        hairSurface: source.phys === 'hair' && ['front-hair', 'back-hair'].includes(source.role) && hair.springs && hair.alongStrand
+          ? bindHairSurface(rest, indices, hair.alongStrand, hairlinePinWeights)
+          : undefined,
         atlasUvs,
         indices,
         vao: mesh?.vao ?? null,
@@ -372,8 +378,8 @@ export function compileAnime25DGpuLayers(
         contour: neckSurface.contour,
       }
       if (neckIndex < bodyIndex) {
-        layers.splice(neckIndex, 1)
-        layers.splice(bodyIndex, 0, neckLayer)
+        layers = layers.toSpliced(neckIndex, 1)
+        layers = layers.toSpliced(bodyIndex, 0, neckLayer)
       }
       // Moving only the neck would still bury that independent drawing under both skin surfaces.
       const recoveredNeckIndex = layers.indexOf(neckLayer)
@@ -395,9 +401,15 @@ export function compileAnime25DGpuLayers(
             readBindingPixels,
           ),
       )
-      for (const accessory of accessories)
-        layers.splice(layers.indexOf(accessory), 1)
-      layers.splice(layers.indexOf(neckLayer) + 1, 0, ...accessories)
+      for (const accessory of accessories) {
+        const index = layers.indexOf(accessory)
+        if (index >= 0) layers = layers.toSpliced(index, 1)
+      }
+      layers = layers.toSpliced(
+        layers.indexOf(neckLayer) + 1,
+        0,
+        ...accessories,
+      )
     }
     const torsoLayer = layers.find((layer) => layer.source === torso)
     if (torsoLayer && torso && torsoPixels) {

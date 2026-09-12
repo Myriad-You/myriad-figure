@@ -63,5 +63,7 @@ function uniqueInCanonicalOrder(
   requested: readonly RigOutfitTopology[],
 ): RigOutfitTopology[] {
   const unique = new Set(requested)
-  return RIG_OUTFIT_TOPOLOGIES.filter((topology) => unique.has(topology))
+  return Iterator.from(RIG_OUTFIT_TOPOLOGIES)
+    .filter((topology) => unique.has(topology))
+    .toArray()
 }

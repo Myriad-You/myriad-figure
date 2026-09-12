@@ -109,6 +109,7 @@ import {
   animationSubstepCount,
 } from './frameClock'
 import { stepAnime25DHairLayerSprings } from './hairPhysics'
+import { constrainHairSurface } from './hairSurface'
 import { idleBreathOffset } from './idleBreath'
 import { Anime25DIrisRebound } from './irisRebound'
 import {
@@ -1351,7 +1352,7 @@ export class Anime25DPlayer {
         : true
       if (!visible) continue
       const rest = layer.rest
-      const deformed = layer.surfaceContact?.unconstrained ?? layer.deformed
+      const deformed = layer.surfaceContact?.unconstrained ?? layer.hairSurface?.candidate ?? layer.deformed
       const vertexCount = rest.length / 2
       const source = layer.source
       const bn = layer.baseRole
@@ -1481,6 +1482,10 @@ export class Anime25DPlayer {
           layer.secondaryDeformation,
           secondaryDeformationFrame,
         )
+        if (layer.hairSurface) {
+          layer.hairSurface.base[index] = deformationPoint.x
+          layer.hairSurface.base[index + 1] = deformationPoint.y
+        }
         deformAnime25DHairPoint(
           deformationPoint,
           vertex,
@@ -1493,6 +1498,16 @@ export class Anime25DPlayer {
           geometryChanged = true
           deformed[index] = x
           deformed[index + 1] = y
+        }
+      }
+      if (layer.hairSurface) {
+        constrainHairSurface(layer.hairSurface)
+        geometryChanged = false
+        for (let i = 0; i < deformed.length; i++) {
+          if (layer.deformed[i] !== deformed[i]) {
+            layer.deformed[i] = deformed[i]
+            geometryChanged = true
+          }
         }
       }
       if (layer.deformationPlan.cacheable) {

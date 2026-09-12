@@ -27,35 +27,37 @@ export function bindSurfaceContact(
       'Surface contact requires one finite unit weight per vertex',
     )
   }
-  const samples = Array.from(weights, (weight, vertex) => {
-    if (weight <= 0) return null
-    const x = rest[vertex * 2]
-    const y = rest[vertex * 2 + 1]
-    const inside = bindAttachmentMesh(host, x, y)
-    if (inside) return inside
-    // Extend the boundary differential into the contact feather, preserving rest
-    // positions rather than snapping the arm onto the host's mesh edge.
-    let nearest = 0
-    let distance = Infinity
-    for (const index of host.indices) {
-      const d = Math.hypot(
-        host.rest[index * 2] - x,
-        host.rest[index * 2 + 1] - y,
-      )
-      if (d < distance) {
-        distance = d
-        nearest = index * 2
+  const samples = Iterator.from(weights.entries())
+    .map(([vertex, weight]) => {
+      if (weight <= 0) return null
+      const x = rest[vertex * 2]
+      const y = rest[vertex * 2 + 1]
+      const inside = bindAttachmentMesh(host, x, y)
+      if (inside) return inside
+      // Extend the boundary differential into the contact feather, preserving rest
+      // positions rather than snapping the arm onto the host's mesh edge.
+      let nearest = 0
+      let distance = Infinity
+      for (const index of host.indices) {
+        const d = Math.hypot(
+          host.rest[index * 2] - x,
+          host.rest[index * 2 + 1] - y,
+        )
+        if (d < distance) {
+          distance = d
+          nearest = index * 2
+        }
       }
-    }
-    const root = bindAttachmentMesh(
-      host,
-      host.rest[nearest],
-      host.rest[nearest + 1],
-    )
-    if (!root)
-      throw new Error('Cannot bind contact to a degenerate host surface')
-    return offsetAttachmentMeshSample(root, x - root.x, y - root.y)
-  })
+      const root = bindAttachmentMesh(
+        host,
+        host.rest[nearest],
+        host.rest[nearest + 1],
+      )
+      if (!root)
+        throw new Error('Cannot bind contact to a degenerate host surface')
+      return offsetAttachmentMeshSample(root, x - root.x, y - root.y)
+    })
+    .toArray()
   return {
     samples,
     weights: weights.slice(),

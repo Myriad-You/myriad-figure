@@ -77,9 +77,9 @@ test('leaves posture to the per-frame pose offset', () => {
       motionEnergy: 1,
       attention: 1,
     })
-    assert.equal('body' in patch, false)
-    assert.equal('armY' in patch, false)
-    assert.equal('armPos' in patch, false)
+    assert.equal(Object.hasOwn(patch, 'body'), false)
+    assert.equal(Object.hasOwn(patch, 'armY'), false)
+    assert.equal(Object.hasOwn(patch, 'armPos'), false)
   }
 })
 

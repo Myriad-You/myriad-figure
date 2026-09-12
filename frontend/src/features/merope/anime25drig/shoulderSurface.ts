@@ -108,7 +108,9 @@ export function fuseShoulderSurface(
         previous = row.y
       }
     }
-    for (const { x, y, donors } of rows.filter((row) => accepted.has(row.y))) {
+    for (const { x, y, donors } of Iterator.from(rows).filter((row) =>
+      accepted.has(row.y),
+    )) {
       for (let d = 0; d < band; d++) {
         const i = (y * body.width + x + direction * d) * 4
         const t = Math.max(0, (d - 2) / (band - 2))

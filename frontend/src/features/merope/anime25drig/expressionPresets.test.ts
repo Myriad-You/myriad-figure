@@ -24,9 +24,9 @@ test('thinking activity owns face and gaze without taking speech channels', () =
   assert.ok(thinking.eyeY < -0.35)
   assert.ok(Math.abs(thinking.angleZ) > 0.15)
   assert.ok(thinking.brow > 0.15)
-  assert.equal('mouthOpen' in thinking, false)
-  assert.equal('mouthForm' in thinking, false)
-  assert.equal('talk' in thinking, false)
+  assert.equal(Object.hasOwn(thinking, 'mouthOpen'), false)
+  assert.equal(Object.hasOwn(thinking, 'mouthForm'), false)
+  assert.equal(Object.hasOwn(thinking, 'talk'), false)
 })
 
 test('leaving thinking resets every activity-owned expression channel', () => {

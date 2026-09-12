@@ -19,7 +19,7 @@ test('contact triangulation preserves full drawing coverage, UVs and conforming 
   let area = 0
   const edges = new Map<string, { count: number; a: number; b: number }>()
   for (let i = 0; i < mesh.indices.length; i += 3) {
-    const ids = [...mesh.indices.slice(i, i + 3)]
+    const ids = Iterator.from(mesh.indices.slice(i, i + 3)).toArray()
     const [a, b, c] = ids.map(id => id * 2)
     const cross = (mesh.rest[b] - mesh.rest[a]) * (mesh.rest[c + 1] - mesh.rest[a + 1]) -
       (mesh.rest[c] - mesh.rest[a]) * (mesh.rest[b + 1] - mesh.rest[a + 1])
@@ -28,7 +28,7 @@ test('contact triangulation preserves full drawing coverage, UVs and conforming 
     for (let j = 0; j < 3; j++) {
       const a = ids[j]
       const b = ids[(j + 1) % 3]
-      const key = [a, b].sort((x, y) => x - y).join(':')
+      const key = [a, b].toSorted((x, y) => x - y).join(':')
       const edge = edges.get(key) ?? { count: 0, a, b }
       edge.count++
       edges.set(key, edge)
@@ -57,7 +57,7 @@ test('fully bound triangle interiors follow a non-affine host, not just pinned v
   host.deformed.set([0, 0, 115, -9, 97, 121, -14, 98])
   applySurfaceContact(contact, arm.rest, arm.deformed)
   for (let i = 0; i < arm.indices.length; i += 3) {
-    const ids = [...arm.indices.slice(i, i + 3)]
+    const ids = Iterator.from(arm.indices.slice(i, i + 3)).toArray()
     const x = ids.reduce((sum, id) => sum + arm.rest[id * 2], 0) / 3
     const y = ids.reduce((sum, id) => sum + arm.rest[id * 2 + 1], 0) / 3
     const expected = { x: 0, y: 0 }

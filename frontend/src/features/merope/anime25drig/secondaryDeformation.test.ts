@@ -183,6 +183,33 @@ test('combined yaw and pitch retain their local head shape when the head rolls',
   }
 })
 
+test('root pinning cannot change the projected volume of the same coiffure', () => {
+  const frame = secondaryFrame(0.63, 21)
+  frame.shellProfile = shellProfile()
+  frame.shellProfile.hair.crownRound = 0.2
+  frame.shellBlend = 1
+  frame.shellActivation = 1
+  const binding = secondaryBinding('front-hair', 'head', false)
+  binding.shellMode = 'front-hair'
+  for (const yaw of [-1, 1]) {
+    for (const pitch of [-1, 1]) {
+      frame.expression.angleX = yaw
+      frame.headAngleY = pitch
+      writeAnime25DShellRotation(yaw, pitch, frame.shellRotation)
+      for (const rest of [{ x: 80, y: 70 }, { x: 105, y: 80 }, { x: 150, y: 120 }]) {
+        for (const blend of [0, 0.5, 1]) {
+          frame.shellBlend = blend
+          const free = deformSecondary(rest, binding, frame)
+          for (const pin of [0.1, 0.5, 1]) {
+            const pinned = deformSecondary(rest, { ...binding, hairlinePinWeights: new Float32Array(VERTEX_COUNT).fill(pin) }, frame)
+            assert.ok(Math.hypot(free.x - pinned.x, free.y - pinned.y) < 1e-8, 'pin suppresses relative motion, not the rest surface depth')
+          }
+        }
+      }
+    }
+  }
+})
+
 test('fully pinned hairline vertices reject bang and spring displacement', () => {
   const unpinned = secondaryBinding('front hair', 'head', false, false, true)
   const hairlinePinWeights = new Float32Array(VERTEX_COUNT)

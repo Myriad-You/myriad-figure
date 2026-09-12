@@ -324,7 +324,7 @@ for (const jewelryOrder of ['before-neck', 'before-body', 'after-body']) {
           ? [f.neck, jewelry, f.body]
           : [f.neck, f.body, jewelry]
     const playback = {
-      layers: [...importedLayers],
+      layers: Iterator.from(importedLayers).toArray(),
       anchors,
       pixelCanvas: { width: 1024, height: 1365 },
     } as Anime25DPlayback

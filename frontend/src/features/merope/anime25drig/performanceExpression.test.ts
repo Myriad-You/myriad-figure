@@ -222,8 +222,8 @@ test('maps additive bearing offsets onto absolute driver neutrals', () => {
   assert.equal(tense.eyeOpenL, 0.92)
   assert.equal(cleared.eyeOpenL, 1)
   assert.equal(cleared.irisScale, 1)
-  assert.equal('bust' in steady, false)
-  assert.equal('eyeDizzy' in steady, false)
+  assert.equal(Object.hasOwn(steady, 'bust'), false)
+  assert.equal(Object.hasOwn(steady, 'eyeDizzy'), false)
 })
 
 test('adds to manual channels without flattening left-right eye differences', () => {

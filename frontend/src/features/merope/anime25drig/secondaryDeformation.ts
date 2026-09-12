@@ -225,13 +225,9 @@ export function deformAnime25DSecondaryPoint(
         rotationY * frame.headRotationCosine
       point.x += (rotatedX - rotationX) * headFollow
       point.y += (rotatedY - rotationY) * headFollow
-      const authoredPinWeight = binding.hairlinePinWeights?.[vertex] ?? 0
-      const shellActivation = frame.shellActivation
-      const pinWeight = authoredPinWeight * shellActivation
       let depthOffset =
         (source.depth - 1) *
-        (binding.frontHairParallaxScale?.[vertex] ?? 1) *
-        (1 - pinWeight)
+        (binding.frontHairParallaxScale?.[vertex] ?? 1)
       if (verticalNeckFollow) depthOffset *= 1 - neckHeadBlend
       else if (binding.frontCollar) depthOffset *= 1 - frontCollarHeadBlend
       const legacyX =
@@ -261,7 +257,6 @@ export function deformAnime25DSecondaryPoint(
           frame.shellProfile,
           frame.shellRotation,
           source.depth,
-          pinWeight,
         )
         const shellX = point.x - frame.neckPivotX
         const shellY = point.y - frame.neckPivotY

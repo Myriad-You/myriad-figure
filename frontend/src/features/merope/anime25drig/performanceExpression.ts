@@ -137,7 +137,7 @@ export class PerformanceExpressionController {
   private thinkingLevel = 0
   getThinkingLevel(): number { return this.thinkingLevel }
   private readonly output: PerformanceExpressionOffset = { ...ZERO_OFFSET }
-  private readonly cues: ScheduledExpressionCue[] = []
+  private cues: ScheduledExpressionCue[] = []
   private lastTime = Number.NaN
   private ambientScale = 1
   private ambientScaleTarget = 1
@@ -194,7 +194,7 @@ export class PerformanceExpressionController {
       scheduled.add(unit.behaviorId)
       changed = true
     }
-    this.cues.sort((left, right) => left.start - right.start)
+    this.cues = this.cues.toSorted((left, right) => left.start - right.start)
     this.pruneExpiredCues(now)
     return changed
   }

@@ -94,7 +94,7 @@ function synthesizeMissingDizzyEyes(
     })
   }
   if (generated.length === 0) return layers
-  const output = [...layers]
+  const output = Iterator.from(layers).toArray()
   let insertAt = -1
   for (let index = 0; index < output.length; index += 1) {
     if (
@@ -147,7 +147,7 @@ function synthesizeMissingSqueezeEyes(
     })
   }
   if (generated.length === 0) return layers
-  const output = [...layers]
+  const output = Iterator.from(layers).toArray()
   let insertAt = -1
   for (let index = 0; index < output.length; index += 1) {
     if (
@@ -199,7 +199,7 @@ function synthesizeMissingCryEyes(
     })
   }
   if (generated.length === 0) return layers
-  const output = [...layers]
+  const output = Iterator.from(layers).toArray()
   let insertAt = -1
   for (let index = 0; index < output.length; index += 1) {
     if (
@@ -290,7 +290,7 @@ function synthesizeMissingSillyEyes(
     }
   }
   if (generated.length === 0) return layers
-  const output = [...layers]
+  const output = Iterator.from(layers).toArray()
   let insertAt = -1
   for (let index = 0; index < output.length; index += 1) {
     if (
@@ -482,7 +482,7 @@ function synthesizeMissingManiacEyeShadows(
   }
   if (generated.length === 0) return layers
 
-  const output = [...layers]
+  const output = Iterator.from(layers).toArray()
   const firstEyeLayer = output.findIndex(
     (layer) =>
       layer.role === 'eyewhite' ||
@@ -593,7 +593,7 @@ function synthesizeMissingMouthExpressions(
     })
   }
 
-  const output = [...layers]
+  const output = Iterator.from(layers).toArray()
   let insertAt = -1
   for (let index = 0; index < output.length; index += 1) {
     if (
