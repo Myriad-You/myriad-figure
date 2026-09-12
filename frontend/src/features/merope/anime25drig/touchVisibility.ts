@@ -5,7 +5,7 @@ import { hitTestTouchMesh, sampleTouchAlpha } from './touchHitTest'
 
 export interface TouchPaintLayer {
   paint: Pick<Anime25DRenderableLayer,
-    'source' | 'renderKind' | 'frameOpacity' | 'retainWhenHidden' | 'neckSurfaceFade' | 'cryDirection'>
+    'source' | 'renderKind' | 'frameOpacity' | 'retainWhenHidden' | 'neckSurfaceFade' | 'cryDirection' | 'crownOccluders'>
   /** Must be the replacement mesh for a clipped neck, never mesh. */
   mesh: TouchMesh | null
 }
@@ -69,6 +69,23 @@ export function hitTestVisibleTouch(
     const hit = hitTestTouchMesh(x, y, mesh, frame)
     if (!hit) continue
     if (paint.renderKind === 'iris' && !eyeVisible(paint.source.side)) continue
+    // The cap is replayed immediately after the face, but still uses the
+    // original hair mesh. Match that paint order and the face's stencil cut.
+    if (paint.crownOccluders && alphaAt(hit) >= 0.25) {
+      for (let i = paint.crownOccluders.length - 1; i >= 0; i--) {
+        const crown = paint.crownOccluders[i]
+        const hairIndex = layers.findIndex(entry => entry.paint === crown.layer)
+        const hair = layers[hairIndex]
+        if (!hair?.mesh || !Number.isFinite(hair.paint.frameOpacity) || hair.paint.frameOpacity < 0.004) continue
+        const hairHit = hitTestTouchMesh(x, y, hair.mesh, frame)
+        const rect = hair.paint.source.atlas
+        if (!hairHit || rect.h <= 0) continue
+        const localY = (hairHit.v - rect.y) / rect.h
+        const t = crown.end > crown.start ? Math.max(0, Math.min(1, (localY - crown.start) / (crown.end - crown.start))) : 0
+        const opacity = alphaAt(hairHit) * hair.paint.frameOpacity * (1 - t * t * (3 - 2 * t))
+        if (opacity >= 0.1) return { ...hairHit, layerIndex: hairIndex, region: touchRegionForRole(hair.paint.source.role) }
+      }
+    }
     const opacity = alphaAt(hit) * paint.frameOpacity * touchNeckOpacity(paint, hit)
     if (opacity < 0.1) continue
     return { ...hit, layerIndex: index, region: touchRegionForRole(paint.source.role) }

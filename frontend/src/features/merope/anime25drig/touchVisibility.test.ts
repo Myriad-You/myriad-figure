@@ -1,3 +1,4 @@
+import type { Anime25DRenderableLayer } from './renderer'
 import type { TouchPaintLayer } from './touchVisibility'
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -80,4 +81,23 @@ test('animated tears are not a touchable floating extension of the face', () => 
   const tear = layer('iris')
   tear.paint.cryDirection = 1
   assert.equal(hitTestVisibleTouch(50, 50, [tear], atlas, frame), null)
+})
+
+test('replayed scalp hair is touchable only inside the face stencil and the upper band', () => {
+  const hair = layer('back-hair'); const face = layer('face'); const accessory = layer('headwear')
+  face.paint.crownOccluders = [{ layer: hair.paint as Anime25DRenderableLayer, start: 0.3, end: 0.5 }]
+  const layers = [hair, face]
+  assert.equal(hitTestVisibleTouch(50, 20, layers, atlas, frame)?.region, 'hair')
+  assert.equal(hitTestVisibleTouch(50, 40, layers, atlas, frame)?.region, 'hair')
+  assert.equal(hitTestVisibleTouch(50, 60, layers, atlas, frame)?.region, 'face')
+  assert.equal(hitTestVisibleTouch(50, 20, [...layers, accessory], atlas, frame)?.region, 'accessory')
+  hair.paint.frameOpacity = 0
+  assert.equal(hitTestVisibleTouch(50, 20, layers, atlas, frame)?.region, 'face')
+  hair.paint.frameOpacity = 1
+  // One atlas pixel per drawing: low-alpha face does not write the cap mask.
+  face.paint.source.atlas = { x: 0.5, y: 0, w: 0.5, h: 1 }
+  face.mesh!.atlasUvs = new Float32Array([0.5, 0, 1, 0, 0.5, 1, 1, 1])
+  hair.paint.source.atlas = { x: 0, y: 0, w: 0.5, h: 1 }
+  hair.mesh!.atlasUvs = new Float32Array([0, 0, 0.5, 0, 0, 1, 0.5, 1])
+  assert.equal(hitTestVisibleTouch(50, 20, layers, { alpha: new Uint8Array([255, 50]), width: 2, height: 1 }, frame)?.region, 'face')
 })

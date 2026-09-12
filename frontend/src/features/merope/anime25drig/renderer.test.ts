@@ -103,6 +103,8 @@ test('stencil execution isolates both eyes and collars across paint orders and f
       irides_L: [0, 1, 2, 3, 4],
       irides_R: [0, 1, 2, 3, 4],
       accessory: [0, 1, 2, 3, 4],
+      face: [0, 4],
+      backHair: [0, 1, 2, 3, 4],
     }
     let writeMask = 255
     let readMask = 255
@@ -170,6 +172,10 @@ test('stencil execution isolates both eyes and collars across paint orders and f
     hiddenVariant.renderKind = 'eyewhite'
     layers.push(hiddenVariant)
     layers = layers.toSpliced(collarIndex, 0, renderLayer('neck', 'neck', 1, 6))
+    const hair = renderLayer('backHair', 'ordinary', 1, 6)
+    const face = renderLayer('face', 'face', 1, 6)
+    face.crownOccluders = [{ layer: hair, start: 0.3, end: 0.5 }]
+    layers.unshift(hair, face)
     const frame = {
       viewWidth: 5,
       viewHeight: 1,
@@ -195,12 +201,45 @@ test('stencil execution isolates both eyes and collars across paint orders and f
     assert.deepEqual(painted.get('irides_R'), [1, 2])
     assert.deepEqual(painted.get('clip'), [3, 4])
     assert.deepEqual(painted.get('accessory'), [0, 1, 2, 3, 4])
+    assert.deepEqual(painted.get('backHair'), [0, 4], 'replay uses only the face stencil')
     assert.equal(stencil[1] & 3, 3, 'overlapping eyes retain independent bits')
     draw(layers.filter((layer) => layer.renderKind !== 'eyewhite'))
     assert.deepEqual(painted.get('irides_L'), [])
     assert.deepEqual(painted.get('irides_R'), [])
     assert.deepEqual(painted.get('clip'), [3, 4])
+    assert.deepEqual(painted.get('backHair'), [0, 4])
   }
+})
+
+test('crown replay resets its shader band before later art and frames and skips hidden hair', () => {
+  const calls: string[] = []; let bound = 'none'
+  const gl = fakeGl(calls, vao => { bound = vao }, () => bound)
+  const hair = renderLayer('backHair', 'ordinary', 1, 6)
+  const face = renderLayer('face', 'face', 1, 6)
+  const accessory = renderLayer('headwear', 'ordinary', 1, 6)
+  face.crownOccluders = [{ layer: hair, start: 0.3, end: 0.5 }]
+  const frame = { viewWidth: 100, viewHeight: 100, bodyPivotX: 50, bodyPivotY: 100,
+    bodyRotationCosine: 1, bodyRotationSine: 0, time: 0, eyeCry: 0 }
+  const draw = () => {
+    calls.length = 0
+    const work = createAnime25DFrameWork()
+    drawAnime25DFrame(gl, {} as WebGLProgram, fakeBindings(), [hair, face, accessory], {} as WebGLTexture, null, frame, work)
+    return work
+  }
+  assert.equal(draw().drawCalls, 5)
+  assert.deepEqual(calls.filter(call => call.startsWith('draw:')), [
+    'draw:backHair:6', 'draw:face:6', 'draw:face:6', 'draw:backHair:6', 'draw:headwear:6',
+  ])
+  assert.deepEqual(calls.filter(call => call.startsWith('uniform2f:crownBand')), [
+    'uniform2f:crownBand:0:0', 'uniform2f:crownBand:0:0', 'uniform2f:crownBand:0:0',
+    'uniform2f:crownBand:0.3:0.5', 'uniform2f:crownBand:0:0',
+  ])
+  hair.frameOpacity = 0
+  draw()
+  assert.equal(calls.includes('draw:backHair:6'), false)
+  face.frameOpacity = 0
+  assert.equal(draw().drawCalls, 1)
+  assert.deepEqual(calls.filter(call => call.startsWith('uniform2f:crownBand')), ['uniform2f:crownBand:0:0'])
 })
 
 test('open-neck fading is draw-local and is reset before accessories and collar stencils', () => {
@@ -364,6 +403,7 @@ function fakeBindings(): Anime25DRendererBindings {
     cryTime: location('cryTime'),
     cry: location('cry'),
     atlasRect: location('atlasRect'),
+    crownBand: location('crownBand'),
     neckSurfaceFade: location('neckSurfaceFade'),
     neckSurfaceContour: location('neckSurfaceContour'),
     neckSurfaceBounds: location('neckSurfaceBounds'),

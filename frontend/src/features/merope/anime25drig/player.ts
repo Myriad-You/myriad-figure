@@ -101,7 +101,7 @@ import {
   stepAnime25DDriverResponse,
 } from './driverComposition'
 import { deformAnime25DExpressionPoint } from './expressionDeformation'
-import { releaseThinkingExpression } from './expressionPresets'
+import { ThinkingExpressionOwnership } from './expressionPresets'
 import { expressiveEyeOpenOffset } from './expressiveMotionEnvelope'
 import {
   animationCatchupSeconds,
@@ -342,6 +342,7 @@ export class Anime25DPlayer {
   }
 
   private readonly ambientMotion = new AmbientMotionController()
+  private readonly thinkingExpression = new ThinkingExpressionOwnership()
   private readonly behaviorMotion = new Anime25DBehaviorMotionController()
   private responseScale = 1
   private controlTime = 0
@@ -682,12 +683,15 @@ export class Anime25DPlayer {
   }
 
   setTarget(partial: Partial<Anime25DDriver>): void {
-    Object.assign(this.target, sanitizeDriverPatch(partial))
-    if (this.speechActive || this.target.talk) releaseThinkingExpression(this.target)
+    const patch = sanitizeDriverPatch(partial)
+    this.thinkingExpression.apply(this.target, patch, this.speechActive || (patch.talk ?? this.target.talk))
   }
 
   replaceTarget(driver: Anime25DDriver): void {
-    Object.assign(this.target, IDENTITY_DRIVER, sanitizeDriverPatch(driver))
+    this.thinkingExpression.clear()
+    Object.assign(this.target, IDENTITY_DRIVER)
+    // A full workbench replacement owns its authored state, including flags.
+    this.thinkingExpression.apply(this.target, sanitizeDriverPatch(driver), false)
   }
 
   getTarget(): Anime25DDriver {
@@ -720,7 +724,7 @@ export class Anime25DPlayer {
 
   setSpeechActive(active: boolean): void {
     this.speechActive = active
-    if (active) releaseThinkingExpression(this.target)
+    if (active) this.thinkingExpression.release(this.target)
   }
 
   setSinging(active: boolean): void {

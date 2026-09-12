@@ -205,18 +205,46 @@ test('front and rear drawings share the visible crown surface, but retain separa
   for (const yaw of [-1, 1]) {
     for (const pitch of [-1, 1]) {
       writeAnime25DShellRotation(yaw, pitch, rotation)
-      for (const x of [-0.4, 0, 0.4]) {
-        const front = { x: profile.hair.centerX + x * profile.hair.radiusX, y: profile.hair.centerY - profile.hair.radiusY * 0.9 }
-        const rear = { ...front }
-        deformAnime25DShellPoint(front, front.y, 'front-hair', profile, rotation, 1.2)
-        deformAnime25DShellPoint(rear, rear.y, 'back-hair', profile, rotation, 1.2)
-        assert.deepEqual(front, rear, 'draw order must not split the common crown')
+      for (const y of [-0.95, -0.7, -0.4, -0.1]) {
+        for (const x of [-0.7, 0, 0.7]) {
+          const front = { x: profile.hair.centerX + x * profile.hair.radiusX, y: profile.hair.centerY + profile.hair.radiusY * y }
+          const rear = { ...front }
+          deformAnime25DShellPoint(front, front.y, 'front-hair', profile, rotation, 1.2)
+          deformAnime25DShellPoint(rear, rear.y, 'back-hair', profile, rotation, 1.2)
+          assert.deepEqual(front, rear, 'draw order must not split the common crown')
+        }
       }
-      const front = { x: profile.hair.centerX, y: profile.hair.centerY }
+      const front = { x: profile.hair.centerX, y: profile.hair.centerY + profile.hair.radiusY * 0.8 }
       const rear = { ...front }
       deformAnime25DShellPoint(front, front.y, 'front-hair', profile, rotation, 1.2)
       deformAnime25DShellPoint(rear, rear.y, 'back-hair', profile, rotation, 1.2)
       assert.ok(Math.hypot(front.x - rear.x, front.y - rear.y) > 1)
+    }
+  }
+})
+
+test('scalp-to-hanging-hair depth joins are slope-continuous and leave lower rear depth unchanged', () => {
+  const profile = deriveAnime25DShellProfile(playbackSource)
+  profile.hair.crownRound = 0
+  const rotation = { active: false, yawCosine: 1, yawSine: 0, pitchCosine: 1, pitchSine: 0 }
+  for (const yaw of [-1, 1]) {
+    for (const pitch of [-1, 1]) {
+      writeAnime25DShellRotation(yaw, pitch, rotation)
+      const sample = (y: number) => {
+        const point = { x: profile.hair.centerX, y: profile.hair.centerY + profile.hair.radiusY * y }
+        deformAnime25DShellPoint(point, point.y, 'back-hair', profile, rotation, 0.55)
+        return point
+      }
+      for (const join of [-0.05, 0.6]) {
+        const epsilon = 1e-5
+        const a = sample(join - epsilon); const b = sample(join); const c = sample(join + epsilon)
+        assert.ok(Math.hypot(c.x - 2 * b.x + a.x, c.y - 2 * b.y + a.y) / epsilon < 0.1)
+      }
+      const rear = sample(0.8)
+      const frontBulge = profile.hair.frontBulge
+      profile.hair.frontBulge *= 2
+      assert.deepEqual(sample(0.8), rear, 'hanging rear hair must not depend on the front cap surface')
+      profile.hair.frontBulge = frontBulge
     }
   }
 })

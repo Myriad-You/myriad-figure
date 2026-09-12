@@ -7,10 +7,10 @@ import {
   DIZZY_EXPRESSION_PRESET,
   LOVESTRUCK_EXPRESSION_PRESET,
   MANIAC_EXPRESSION_PRESET,
-  releaseThinkingExpression,
   SQUEEZE_EXPRESSION_PRESET,
   THINKING_ACTIVITY_EXPRESSION,
   THINKING_EXPRESSION_PRESET,
+  ThinkingExpressionOwnership,
 } from './expressionPresets'
 
 test('thinking activity owns face and gaze without taking speech channels', () => {
@@ -92,9 +92,10 @@ test('thinking preview enables the dedicated motion loop', () => {
 
 test('speech releases authored thinking face without erasing newer emotion or articulation', () => {
   for (const preset of [THINKING_ACTIVITY_EXPRESSION, THINKING_EXPRESSION_PRESET]) {
-    const target = { ...IDENTITY_DRIVER, ...preset, thinking: true,
-      anger: 0.8, mouthOpen: 0.7, talk: true, brow: -0.4 }
-    releaseThinkingExpression(target)
+    const owner = new ThinkingExpressionOwnership()
+    const target = { ...IDENTITY_DRIVER, talk: false }
+    owner.apply(target, { ...preset, thinking: true }, false)
+    owner.apply(target, { anger: 0.8, mouthOpen: 0.7, talk: true, brow: -0.4 }, true)
     assert.equal(target.thinking, false)
     assert.equal(target.eyeX, 0)
     assert.equal(target.eyeY, 0)
@@ -105,7 +106,66 @@ test('speech releases authored thinking face without erasing newer emotion or ar
     assert.equal(target.mouthOpen, 0.7)
     assert.equal(target.talk, true)
     const released = { ...target }
-    releaseThinkingExpression(target)
+    owner.release(target)
     assert.deepEqual(target, released)
   }
+})
+
+test('a same-valued newer face survives thought release in the same write or a later speech event', () => {
+  for (const together of [false, true]) {
+    const owner = new ThinkingExpressionOwnership()
+    const target = { ...IDENTITY_DRIVER, talk: false }
+    owner.apply(target, THINKING_EXPRESSION_PRESET, false)
+    owner.apply(target, { brow: 0.24, eyeX: 0.68, ...(together ? { talk: true } : {}) }, together)
+    if (!together) owner.release(target)
+    assert.equal(target.brow, 0.24)
+    assert.equal(target.eyeX, 0.68)
+    assert.equal(target.eyeY, 0)
+    assert.equal(target.thinking, false)
+  }
+})
+
+test('repeated thinking updates restore the prior face and explicit exit does not overwrite the next pose', () => {
+  const owner = new ThinkingExpressionOwnership()
+  const target = { ...IDENTITY_DRIVER, talk: false, anger: 0.6, brow: -0.2 }
+  owner.apply(target, THINKING_EXPRESSION_PRESET, false)
+  owner.apply(target, THINKING_EXPRESSION_PRESET, false)
+  owner.apply(target, { thinking: false, eyeX: 0.3 }, false)
+  assert.equal(target.anger, 0.6)
+  assert.equal(target.brow, -0.2)
+  assert.equal(target.eyeX, 0.3)
+  assert.equal(target.eyeY, 0)
+})
+
+test('a boolean-only thought never owns an unrelated face, and replacement discards old ownership', () => {
+  const owner = new ThinkingExpressionOwnership()
+  const target = { ...IDENTITY_DRIVER, talk: false, brow: 0.24 }
+  owner.apply(target, { thinking: true }, false)
+  owner.release(target)
+  assert.equal(target.brow, 0.24)
+  owner.apply(target, THINKING_EXPRESSION_PRESET, false)
+  owner.clear()
+  Object.assign(target, { ...IDENTITY_DRIVER, talk: false, brow: 0.7 })
+  owner.release(target)
+  assert.equal(target.brow, 0.7)
+})
+
+test('activity thinking does not acquire independent mood mouth writes', () => {
+  const owner = new ThinkingExpressionOwnership()
+  const target = { ...IDENTITY_DRIVER }
+  owner.apply(target, { talk: false, mouthForm: 0.2 }, false)
+  owner.apply(target, { ...THINKING_ACTIVITY_EXPRESSION, thinking: true }, false)
+  assert.equal(target.thinking, true, 'initial idle speech release precedes the thought')
+  owner.apply(target, { mouthForm: 0.4 }, false)
+  owner.release(target)
+  assert.equal(target.mouthForm, 0.4)
+})
+
+test('explicit workbench replacement can retain authored flags without live speech arbitration', () => {
+  const owner = new ThinkingExpressionOwnership()
+  const target = { ...IDENTITY_DRIVER }
+  owner.apply(target, { ...THINKING_EXPRESSION_PRESET, talk: true }, false)
+  assert.equal(target.thinking, true)
+  assert.equal(target.talk, true)
+  assert.equal(target.eyeX, THINKING_EXPRESSION_PRESET.eyeX)
 })

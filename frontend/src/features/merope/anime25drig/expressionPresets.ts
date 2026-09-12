@@ -138,15 +138,36 @@ export function activityExpressionDriverPatch(
   return thinking ? THINKING_ACTIVITY_EXPRESSION : NEUTRAL_ACTIVITY_EXPRESSION
 }
 
-/** Release only the authored thinking values; a newer/custom face is not ours. */
-export function releaseThinkingExpression(target: Anime25DDriver): void {
-  if (!target.thinking) return
-  for (const key of Object.keys(THINKING_ACTIVITY_EXPRESSION) as (keyof ActivityExpressionDriver)[]) {
-    if (target[key] === THINKING_ACTIVITY_EXPRESSION[key]
-      || target[key] === THINKING_EXPRESSION_PRESET[key]) {
-      target[key] = NEUTRAL_ACTIVITY_EXPRESSION[key]
+type ThinkingExpressionKey = keyof ActivityExpressionDriver | 'mouthForm'
+const THINKING_EXPRESSION_KEYS: readonly ThinkingExpressionKey[] = [
+  ...Object.keys(THINKING_ACTIVITY_EXPRESSION) as (keyof ActivityExpressionDriver)[],
+  'mouthForm',
+]
+
+/** Ownership follows writes, never numeric coincidence with a preset. */
+export class ThinkingExpressionOwnership {
+  private readonly previous = new Map<ThinkingExpressionKey, number>()
+
+  apply(target: Anime25DDriver, patch: Partial<Anime25DDriver>, speaking: boolean): void {
+    if (patch.thinking === false) this.release(target)
+    for (const key of THINKING_EXPRESSION_KEYS) {
+      if (!Object.hasOwn(patch, key)) continue
+      if (patch.thinking === true) {
+        if (!this.previous.has(key)) this.previous.set(key, target[key])
+      } else {
+        // Even writing the same number is an explicit takeover.
+        this.previous.delete(key)
+      }
     }
+    Object.assign(target, patch)
+    if (speaking) this.release(target)
   }
-  if (target.mouthForm === THINKING_EXPRESSION_PRESET.mouthForm) target.mouthForm = 0
-  target.thinking = false
+
+  release(target: Anime25DDriver): void {
+    for (const [key, value] of this.previous) target[key] = value
+    this.previous.clear()
+    target.thinking = false
+  }
+
+  clear(): void { this.previous.clear() }
 }

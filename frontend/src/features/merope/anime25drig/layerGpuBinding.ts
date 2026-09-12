@@ -22,6 +22,7 @@ import { duplicateAccessoryLayers } from './accessoryDuplicate'
 import { sampleChestWeight } from './chestPhysics'
 import { buildFrontCollarContactModel } from './collarContact'
 import { createCollarClipMesh, disposeCollarClipMesh } from './collarRuntime'
+import { deriveCrownOcclusionBand } from './crownOcclusion'
 import {
   createAnime25DLayerDeformationPlan,
   resolveAnime25DDeformationDependencies,
@@ -374,12 +375,12 @@ export function compileAnime25DGpuLayers(
     }
     const scalpFace = layers.find(layer => layer.source.role === 'face')
     const scalpHair = layers.find(layer => layer.source.role === 'back-hair')
+    const fringe = layers.find(layer => layer.source.role === 'front-hair')
     const eyeTop = Math.min(playback.anchors.eyeL?.y0 ?? Infinity, playback.anchors.eyeR?.y0 ?? Infinity)
-    if (scalpFace && scalpHair && Number.isFinite(eyeTop)) {
-      const span = eyeTop - scalpFace.source.y
-      scalpFace.crownOccluders = [{ layer: scalpHair,
-        start: (scalpFace.source.y + span * 0.65 - scalpHair.source.y) / scalpHair.source.h,
-        end: (scalpFace.source.y + span * 0.85 - scalpHair.source.y) / scalpHair.source.h }]
+    if (scalpFace && scalpHair && fringe && layers.indexOf(scalpHair) < layers.indexOf(scalpFace)) {
+      const band = deriveCrownOcclusionBand(scalpFace.source, fringe.source, scalpHair.source, eyeTop,
+        readBindingPixels(scalpFace.source), readBindingPixels(fringe.source), readBindingPixels(scalpHair.source))
+      if (band) scalpFace.crownOccluders = [{ layer: scalpHair, ...band }]
     }
     const neckSurface = resolveAnime25DNeckSurface(
       playback.layers,

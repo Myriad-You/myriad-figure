@@ -9,8 +9,11 @@ export type Anime25DShellMode = 'head' | 'front-hair' | 'back-hair'
 
 const SHELL_YAW_RADIANS = 0.45
 const SHELL_PITCH_RADIANS = 0.32
-const SHARED_CROWN_Y = -0.8
-const REAR_HAIR_Y = -0.2
+// A composite back-hair drawing includes the scalp down to the temples, not
+// just the very top row. Release toward the rear hemisphere below that cap;
+// otherwise yaw opens the coiffure into two separately moving surfaces.
+const SHARED_CROWN_Y = -0.05
+const REAR_HAIR_Y = 0.6
 const FULL_CROWN_TURN = 1 - Math.cos(SHELL_YAW_RADIANS) * Math.cos(SHELL_PITCH_RADIANS)
 
 export function anime25DShellModeForLayer(
