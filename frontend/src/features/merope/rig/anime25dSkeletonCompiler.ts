@@ -1,4 +1,3 @@
-import { formatTemplate } from './formatTemplate'
 import type { Anime25DLayerRole } from './anime25d'
 import type { Anime25DImportCopy } from './anime25dImportCopy'
 import type { AnimeAnchors, PreparedLayer } from './anime25dImportTypes'
@@ -12,6 +11,7 @@ import type {
 } from './types'
 import { ANIME25D_LAYER_DEPTH } from './anime25d'
 import { MAX_RIG_BONES } from './contract'
+import { formatTemplate } from './formatTemplate'
 
 export function buildAnime25DBonesAndHandles(
   layers: PreparedLayer[],

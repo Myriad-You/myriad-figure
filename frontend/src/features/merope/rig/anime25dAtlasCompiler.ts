@@ -1,10 +1,10 @@
-import { formatTemplate } from './formatTemplate'
 import type { Anime25DImportCopy } from './anime25dImportCopy'
 import type {
   PreparedLayer,
   RasterLayer,
   RigCanvasFrame,
 } from './anime25dImportTypes'
+import { formatTemplate } from './formatTemplate'
 
 const ATLAS_PADDING = 8
 const MAX_ATLAS_EDGE = 8192

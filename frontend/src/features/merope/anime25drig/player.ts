@@ -116,8 +116,7 @@ import {
   jawTravelPixels,
   stepJawMotion,
 } from './jawMotion'
-import { writeAnime25DAttachmentTransform } from './layerAttachment'
-import { deformNeckwearBridge } from './layerAttachment'
+import { deformNeckwearBridge, writeAnime25DAttachmentTransform } from './layerAttachment'
 import { deformAnime25DUpstreamFeaturePoint } from './layerDeformation'
 import { compileAnime25DGpuLayers } from './layerGpuBinding'
 import { writeAnime25DLayerGlobalTransform } from './layerTransform'
@@ -504,8 +503,9 @@ export class Anime25DPlayer {
       this.disposed ||
       !this.touchAtlas ||
       !(canvas instanceof HTMLCanvasElement)
-    )
+    ) {
       return null
+}
     const point = touchPointInView(
       clientX,
       clientY,
@@ -1495,12 +1495,13 @@ export class Anime25DPlayer {
           layer.layerTransform[8] =
             1
         layer.geometryDirty = true
-      } else if (layer.attachment)
+      } else if (layer.attachment) {
         writeAnime25DAttachmentTransform(
           layer.attachment,
           secondaryDeformationFrame,
           layer.layerTransform,
         )
+}
     }
   }
 

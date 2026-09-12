@@ -105,24 +105,40 @@ export function authoredCueEnvelope(cue: PerformanceCue): {
   fadeOut: number
 } {
   const sticker = cueIsSticker(cue.intent)
+  const coordinated =
+    cue.intent === 'greet' ||
+    cue.intent === 'delight' ||
+    cue.intent === 'emphasize'
+  const strength = clamp((cue.intensity - 0.5) / 0.9, 0, 1)
+  // Start immediately, but do not squeeze a larger body excursion into a snap.
+  const bodyTravel = coordinated ? Math.sqrt(1 + 0.5 * strength) : 0
   return {
-    fadeIn: Math.max(cue.fadeInMs / 1_000, sticker ? MIN_STICKER_FADE_IN : 0),
+    fadeIn: Math.max(
+      cue.fadeInMs / 1_000,
+      sticker ? MIN_STICKER_FADE_IN : 0,
+      bodyTravel * 0.3,
+    ),
     hold: Math.max(0.24, 0.72 / clamp(cue.tempo, 0.5, 1.6)),
     fadeOut: Math.max(
       cue.fadeOutMs / 1_000,
       sticker ? MIN_STICKER_FADE_OUT : 0,
+      bodyTravel * 0.4,
     ),
   }
 }
 
 export function cueDurationMs(cue: PerformanceCue): number {
   const envelope = cueVisualEnvelope(cue)
-  return Math.round((envelope.fadeIn + envelope.hold + envelope.fadeOut) * 1_000)
+  return Math.round(
+    (envelope.fadeIn + envelope.hold + envelope.fadeOut) * 1_000,
+  )
 }
 
 function authoredCueDurationMs(cue: PerformanceCue): number {
   const envelope = authoredCueEnvelope(cue)
-  return Math.round((envelope.fadeIn + envelope.hold + envelope.fadeOut) * 1_000)
+  return Math.round(
+    (envelope.fadeIn + envelope.hold + envelope.fadeOut) * 1_000,
+  )
 }
 
 export function scheduledBodyCueRemainingDurationMs(

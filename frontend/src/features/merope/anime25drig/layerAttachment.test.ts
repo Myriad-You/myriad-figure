@@ -6,8 +6,8 @@ import type {
   Anime25DPlaybackLayer,
 } from './types'
 import assert from 'node:assert/strict'
-import test from 'node:test'
 import { readFile } from 'node:fs/promises'
+import test from 'node:test'
 import {
   deriveGeometryChestProfile,
   resolveChestSpatialField,
@@ -68,8 +68,8 @@ test(
     const root = process.env.MEROPE_ACCESSORY_ASSET!
     const manifest = JSON.parse(await readFile(`${root}/manifest.json`, 'utf8'))
     const playback = manifest.anime25dPlayback as Anime25DPlayback
-    const atlas = `${root}/atlas.png`,
-      meta = await sharp(atlas).metadata()
+    const atlas = `${root}/atlas.png`
+      const meta = await sharp(atlas).metadata()
     const images = new Map<Anime25DPlaybackLayer, Anime25DAttachmentPixels>()
     for (const l of playback.layers) {
       if (
@@ -84,8 +84,9 @@ test(
           'face',
           'ears',
         ].includes(l.role)
-      )
+      ) {
         continue
+}
       const { data, info } = await sharp(atlas)
         .extract({
           left: Math.round(l.atlas.x * meta.width!),
@@ -482,7 +483,8 @@ test('GPU compilation actually binds independent accessories to their surfaces',
       if (drawing.neckwearBridge) {
         assert.notEqual(drawing.deformed, drawing.rest)
         assert.deepEqual(drawing.deformed, drawing.rest)
-      } else assert.equal(drawing.deformed, drawing.rest)
+      } else { assert.equal(drawing.deformed, drawing.rest)
+}
       writeAnime25DAttachmentTransform(
         drawing.attachment,
         frame(0.8),

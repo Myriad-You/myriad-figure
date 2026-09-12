@@ -1,6 +1,6 @@
+import type { Anime25DPlaybackLayer } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Anime25DPlaybackLayer } from './types'
 import { duplicateAccessoryLayers } from './accessoryDuplicate'
 
 test('a fully baked copy keeps the surface and suppresses only the redundant overlay', () => {

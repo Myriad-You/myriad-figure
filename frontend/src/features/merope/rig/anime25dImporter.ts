@@ -1,5 +1,4 @@
 import type { Layer, PixelData, Psd } from 'ag-psd'
-import { formatTemplate } from './formatTemplate'
 import type { Anime25DLayerRole } from './anime25d'
 import type { Anime25DImportCopy } from './anime25dImportCopy'
 import type {
@@ -43,6 +42,7 @@ import {
   PORTRAIT_CANVAS,
   RIG_IR_VERSION,
 } from './contract'
+import { formatTemplate } from './formatTemplate'
 import { inferOutfitProfileFromPartIds } from './outfit'
 
 function genericCloseParts() {

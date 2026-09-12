@@ -4,7 +4,7 @@ import type { CollarClipMesh } from './collarRuntime'
 import type { Anime25DLayerDeformationPlan } from './deformationDependencies'
 import type { Anime25DDriver } from './driver'
 import type { Anime25DExpressionDeformationBinding } from './expressionDeformation'
-import type { Anime25DLayerAttachment } from './layerAttachment'
+import type { Anime25DLayerAttachment, Anime25DNeckwearBridge } from './layerAttachment'
 import type { Anime25DLayerSpringBinding } from './layerBinding'
 import type { Anime25DUpstreamFeatureInput } from './layerDeformation'
 import type { Anime25DLayerDeformationExtension } from './layerDeformationPolicy'
@@ -12,8 +12,10 @@ import type { Anime25DMouthDeformationKind } from './mouthDeformation'
 import type { Anime25DRenderableLayer } from './renderer'
 import type { Anime25DSecondaryDeformationBinding } from './secondaryDeformation'
 import type { Anime25DPlayback, Anime25DShellProfile } from './types'
-import type { CroppedLayerPixels } from './webglRuntime'
+import type { AtlasPixelPatch, CroppedLayerPixels } from './webglRuntime'
 import { isAnime25DRigidAttachment } from '../rig/anime25dLayerSemantics'
+import { removeDuplicatedNeckComponents } from './accessoryComponents'
+import { duplicateAccessoryLayers } from './accessoryDuplicate'
 import { sampleChestWeight } from './chestPhysics'
 import { buildFrontCollarContactModel } from './collarContact'
 import { createCollarClipMesh, disposeCollarClipMesh } from './collarRuntime'
@@ -22,9 +24,7 @@ import {
   resolveAnime25DDeformationDependencies,
 } from './deformationDependencies'
 import { resolveAnime25DExpressionDeformation } from './expressionDeformation'
-import { bindAnime25DLayerAttachment } from './layerAttachment'
-import { bindNeckwearBridge } from './layerAttachment'
-import type { Anime25DNeckwearBridge } from './layerAttachment'
+import { bindAnime25DLayerAttachment, bindNeckwearBridge } from './layerAttachment'
 import { buildAnime25DLayerBinding } from './layerBinding'
 import { bindAnime25DUpstreamFeature } from './layerDeformation'
 import { resolveAnime25DLayerDeformationPolicy } from './layerDeformationPolicy'
@@ -33,15 +33,12 @@ import { resolveAnime25DMouthDeformation } from './mouthDeformation'
 import { resolveAnime25DNeckSurface } from './neckSurface'
 import { canLiftNeckwearOverSkin } from './neckwearOcclusion'
 import { createAnime25DSecondaryDeformationBinding } from './secondaryDeformation'
-import { shoulderContactWeights } from './shoulderContact'
-import { fuseShoulderSurface } from './shoulderSurface'
-import type { AtlasPixelPatch } from './webglRuntime'
-import { duplicateAccessoryLayers } from './accessoryDuplicate'
-import { removeDuplicatedNeckComponents } from './accessoryComponents'
 import {
   anime25DShellModeForLayer,
   sampleAnime25DHairlinePinWeights,
 } from './shellDeformation'
+import { shoulderContactWeights } from './shoulderContact'
+import { fuseShoulderSurface } from './shoulderSurface'
 import { anime25DTorsoShellModeForLayer } from './torsoDeformation'
 import {
   createIndexedDeformableMesh,
@@ -111,7 +108,7 @@ export function compileAnime25DGpuLayers(
     }
     const atlasPatches: AtlasPixelPatch[] = []
     const neckOrnaments = playback.layers.filter((l) => l.role === 'neckwear')
-    if (neckOrnaments.length)
+    if (neckOrnaments.length) {
       for (const source of playback.layers.filter(
         (l) => l.role === 'headwear',
       )) {
@@ -123,8 +120,9 @@ export function compileAnime25DGpuLayers(
               source.y < l.y + l.h &&
               source.y + source.h > l.y,
           )
-        )
+        ) {
           continue
+}
         const art = readBindingPixels(source)
         if (!art) continue
         const targets = neckOrnaments.flatMap((layer) => {
@@ -146,6 +144,7 @@ export function compileAnime25DGpuLayers(
           })
         }
       }
+}
     const duplicateAccessories = duplicateAccessoryLayers(
       playback.layers,
       readBindingPixels,
@@ -457,12 +456,13 @@ export function compileAnime25DGpuLayers(
           return image ? [{ layer: layer.source, image }] : []
         })
       const patch = fuseShoulderSurface(torso, torsoPixels, arms)
-      if (patch)
+      if (patch) {
         atlasPatches.push({
           ...patch,
           x: Math.round(torso.atlas.x * atlasImage.width),
           y: Math.round(torso.atlas.y * atlasImage.height),
         })
+}
     }
     return { layers, collarClip, atlasPatches }
   } catch (error) {

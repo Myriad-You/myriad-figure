@@ -1,4 +1,3 @@
-
 /** Outside this an "interval" is a fill or a dropout, not a tempo. */
 export const MIN_BEAT_PERIOD = 0.3
 export const MAX_BEAT_PERIOD = 1

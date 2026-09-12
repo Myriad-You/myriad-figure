@@ -949,7 +949,7 @@ test('exposed shoulder seam shares body motion while the distal arm stays free',
       const frame = torsoTurnFrame(yaw, 0.8, lift)
       frame.expression.armPos = lift
       frame.breath = 0.8
-      const rest = {x: 90, y: 100}
+      const rest = { x: 90, y: 100 }
       assert.deepEqual(deformSecondary(rest, arm, frame), deformSecondary(rest, torso, frame))
       arm.shoulderContact.weights[0] = 0
       assert.deepEqual(deformSecondary(rest, arm, frame), deformSecondary(rest, bodyBinding('handwear', 'L'), frame))

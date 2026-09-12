@@ -89,19 +89,21 @@ function fixture() {
 
 test('a short exact overlap seeds a wider shadow gradient without disabling the neck repair', () => {
   const f = fixture()
-  for (let y = 70; y < 92; y++)
+  for (let y = 70; y < 92; y++) {
     for (let x = 0; x < 40; x++) {
       f.neckPixels.pixels.set([227, 192, 182, 255], (y * 40 + x) * 4)
     }
+}
   const plan = resolveAnime25DNeckSurface(f.layers, anchors, f.read)
   assert.ok(plan)
   assert.equal(plan.fadeStart, 0.705)
   assert.equal(plan.fadeEnd, 0.965)
   // Similar shading without the strongly matching seed is still insufficient.
-  for (let y = 92; y <= 96; y++)
+  for (let y = 92; y <= 96; y++) {
     for (let x = 0; x < 40; x++) {
       f.neckPixels.pixels.set([227, 192, 182, 255], (y * 40 + x) * 4)
     }
+}
   assert.equal(resolveAnime25DNeckSurface(f.layers, anchors, f.read), null)
 })
 

@@ -1,4 +1,3 @@
-import { formatTemplate } from '../rig/formatTemplate'
 import type { Anime25DLayerRole } from '../rig/anime25d'
 import type {
   Anime25DEyeAnchor,
@@ -9,6 +8,7 @@ import type {
   Anime25DPlaybackLayer,
 } from './types'
 import { ANIME25D_LAYER_DEPTH, anime25DLayerFade } from '../rig/anime25d'
+import { formatTemplate } from '../rig/formatTemplate'
 import { deriveGeometryChestProfile } from './chestPhysics'
 import { deriveAnime25DShellProfile } from './shellProfile'
 import { anime25DPlaybackSource } from './types'
