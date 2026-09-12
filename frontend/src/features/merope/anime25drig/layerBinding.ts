@@ -25,8 +25,11 @@ export type Anime25DLayerBindingExtension =
   | 'front-hair-upper-parallax'
 
 export interface Anime25DLayerSpringBinding {
+  supportX: number
+  supportY: number
   stiff: HairSpringState
   soft: HairSpringState
+  vertical: HairSpringState
   phase: number
   stiffnessScale: number
   dampingScale: number
@@ -338,8 +341,11 @@ function bindHair(
     alongStrand,
     bangWeights,
     springs: strands.map((_, index) => ({
+      supportX: 0,
+      supportY: 0,
       stiff: { x: 0, v: 0, dx: 0 },
       soft: { x: 0, v: 0, dx: 0 },
+      vertical: { x: 0, v: 0, dx: 0 },
       phase: index * 1.37 + layerZ,
       stiffnessScale: dynamics[index].stiffnessScale,
       dampingScale: dynamics[index].dampingScale,

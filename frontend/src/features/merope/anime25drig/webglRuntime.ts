@@ -31,6 +31,7 @@ uniform float u_cry_time;
 uniform float u_cry;
 uniform vec4 u_atlas_rect;
 uniform vec2 u_neck_surface_fade;
+uniform vec2 u_crown_band;
 uniform vec2 u_neck_surface_bounds;
 uniform vec2 u_neck_surface_contour[${NECK_SURFACE_COLUMNS}];
 out vec4 out_color;
@@ -139,7 +140,9 @@ void main() {
     }
     neck_opacity -= smoothstep(band.x, band.y, local_uv.y);
   }
-  out_color = color * (u_opacity * neck_opacity);
+  float crown_opacity = u_crown_band.y > u_crown_band.x
+    ? 1.0 - smoothstep(u_crown_band.x, u_crown_band.y, local_uv.y) : 1.0;
+  out_color = color * (u_opacity * neck_opacity * crown_opacity);
 }`
 
 export interface CroppedLayerPixels {

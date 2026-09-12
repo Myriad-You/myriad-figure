@@ -6,7 +6,6 @@ import {
   applyAnime25DComposedPose,
   applyAnime25DSillyMouthOwnership,
   applyAnime25DStylizedExpression,
-  captureAnime25DSecondaryMotion,
   prepareAnime25DWorkingTarget,
   resolveAnime25DStylizedTargets,
   stepAnime25DBlink,
@@ -432,9 +431,8 @@ test('new pose response leaves mouth, expression, blink and physics flags unchan
   const expected = { ...IDENTITY_DRIVER }
   const authored = { ...IDENTITY_DRIVER }
   const target = { ...IDENTITY_DRIVER }
-  const actualSecondary = { angleX: 0, angleY: 0, angleZ: 0, body: 0 }
-  const expectedSecondary = { ...actualSecondary }
-  const secondaryTarget = { ...actualSecondary }
+  const expectedSecondary = { angleX: 0, angleY: 0, angleZ: 0, body: 0 }
+  const secondaryTarget = { ...expectedSecondary }
   const response = new PoseResponseController()
   const keys = Object.keys(IDENTITY_DRIVER) as Array<keyof Anime25DDriver>
 
@@ -477,14 +475,6 @@ test('new pose response leaves mouth, expression, blink and physics flags unchan
     for (const key of keys) {
       if (!isContinuousPoseKey(key))
         assert.equal(actual[key], expected[key], `${key} at frame ${frame}`)
-    }
-    captureAnime25DSecondaryMotion(actualSecondary, actual)
-    for (const key of ['angleX', 'angleY', 'angleZ', 'body'] as const) {
-      assert.equal(
-        actualSecondary[key],
-        actual[key],
-        `physics follows displayed ${key}`,
-      )
     }
   }
 })

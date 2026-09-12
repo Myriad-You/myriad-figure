@@ -2,13 +2,39 @@ import type { Anime25DPlaybackLayer } from './types'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import { removeDuplicatedNeckComponents } from './accessoryComponents'
+import { removeDuplicatedNeckComponents, splitPairedEarwear } from './accessoryComponents'
 import { IDENTITY_DRIVER } from './driver'
 import {
   compileAnime25DGpuLayers,
   disposeAnime25DGpuLayers,
 } from './layerGpuBinding'
 import { deriveAnime25DShellProfile } from './shellProfile'
+
+test('paired earwear splits only across transparent face space and preserves every atlas pixel', () => {
+  const source = { name: 'earwear', role: 'earwear', group: 'head', side: null,
+    x: 100, y: 200, w: 100, h: 80, atlas: { x: 0.1, y: 0.2, w: 0.4, h: 0.3 },
+  } as Anime25DPlaybackLayer
+  const art = { width: 20, height: 16, pixels: new Uint8ClampedArray(20 * 16 * 4) }
+  for (let y = 0; y < 16; y++) { for (const x of [1, 2, 3, 16, 17, 18]) art.pixels[(y * 20 + x) * 4 + 3] = 255
+}
+  const original = structuredClone(source)
+  const pixels = art.pixels.slice()
+  const parts = splitPairedEarwear(source, art, 150)!
+  assert.equal(parts.length, 2)
+  assert.deepEqual(parts.map(p => p.side), ['L', 'R'])
+  assert.equal(parts[0].x, source.x)
+  assert.equal(parts[0].x + parts[0].w, parts[1].x)
+  assert.equal(parts[1].x + parts[1].w, source.x + source.w)
+  assert.equal(parts[0].atlas.x + parts[0].atlas.w, parts[1].atlas.x)
+  assert.ok(Math.abs(parts[1].atlas.x + parts[1].atlas.w - source.atlas.x - source.atlas.w) < 1e-12)
+  assert.deepEqual(source, original)
+  assert.deepEqual(art.pixels, pixels)
+  assert.equal(splitPairedEarwear(parts[0], art, 150), null)
+  assert.equal(splitPairedEarwear({ ...source, role: 'headwear' }, art, 150), null)
+  assert.equal(splitPairedEarwear(source, null, 150), null)
+  art.pixels[(8 * 20 + 10) * 4 + 3] = 1
+  assert.equal(splitPairedEarwear(source, art, 150), null, 'even a translucent connector is not cut')
+})
 
 function fixture() {
   const source = {

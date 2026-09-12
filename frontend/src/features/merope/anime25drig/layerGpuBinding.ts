@@ -4,6 +4,7 @@ import type { CollarClipMesh } from './collarRuntime'
 import type { Anime25DLayerDeformationPlan } from './deformationDependencies'
 import type { Anime25DDriver } from './driver'
 import type { Anime25DExpressionDeformationBinding } from './expressionDeformation'
+import type { HairRootMotion } from './hairRootMotion'
 import type { HairSurface } from './hairSurface'
 import type { Anime25DLayerAttachment, Anime25DNeckwearBridge } from './layerAttachment'
 import type { Anime25DLayerBinding, Anime25DLayerSpringBinding } from './layerBinding'
@@ -16,7 +17,7 @@ import type { SurfaceContact } from './surfaceContact'
 import type { Anime25DPlayback, Anime25DShellProfile } from './types'
 import type { AtlasPixelPatch, CroppedLayerPixels } from './webglRuntime'
 import { isAnime25DRigidAttachment } from '../rig/anime25dLayerSemantics'
-import { removeDuplicatedNeckComponents } from './accessoryComponents'
+import { removeDuplicatedNeckComponents, splitPairedEarwear } from './accessoryComponents'
 import { duplicateAccessoryLayers } from './accessoryDuplicate'
 import { sampleChestWeight } from './chestPhysics'
 import { buildFrontCollarContactModel } from './collarContact'
@@ -26,6 +27,7 @@ import {
   resolveAnime25DDeformationDependencies,
 } from './deformationDependencies'
 import { resolveAnime25DExpressionDeformation } from './expressionDeformation'
+import { bindHairRootMotion } from './hairRootMotion'
 import { bindHairSurface } from './hairSurface'
 import { bindAnime25DLayerAttachment, bindNeckwearBridge } from './layerAttachment'
 import { buildAnime25DLayerBinding } from './layerBinding'
@@ -75,6 +77,7 @@ export interface Anime25DGpuLayer extends Anime25DRenderableLayer {
   alongStrand: Float32Array | null
   bangWeights: Float32Array | null
   springs: Anime25DLayerSpringBinding[] | null
+  hairRoots: HairRootMotion | null
   collarContact: FrontCollarContactModel | null
   deformationPlan: Anime25DLayerDeformationPlan
   geometryDirty: boolean
@@ -155,6 +158,12 @@ export function compileAnime25DGpuLayers(
       playback.layers,
       readBindingPixels,
     )
+    const renderSources = playback.layers.flatMap((source, index) => {
+      if (duplicateAccessories.has(source)) return []
+      const parts = source.role === 'earwear'
+        ? splitPairedEarwear(source, readBindingPixels(source), playback.anchors.face.cx) : null
+      return parts?.map(part => ({ ...part, z: source.z ?? index })) ?? [source]
+    })
     const torsos = playback.layers.filter((layer) => layer.role === 'topwear')
     const torso = torsos.length === 1 ? torsos[0] : null
     const torsoPixels =
@@ -211,8 +220,7 @@ export function compileAnime25DGpuLayers(
       bindings.set(source, binding)
       return binding
     }
-    for (const source of playback.layers) {
-      if (duplicateAccessories.has(source)) continue
+    for (const source of renderSources) {
       const collarContact = collarContacts.get(source) ?? null
       const binding = bindingFor(source)
       const {
@@ -324,6 +332,7 @@ export function compileAnime25DGpuLayers(
       })
       const layerTransform = new Float32Array(9)
       writeIdentityLayerTransform(layerTransform)
+      const hairRoots = bindHairRootMotion(source, secondaryDeformation, rest, indices)
       const mesh =
         renderKind === 'neck' && collarClip
           ? null
@@ -349,6 +358,7 @@ export function compileAnime25DGpuLayers(
         mouthDeformation,
         expressionDeformation,
         secondaryDeformation,
+        hairRoots,
         frameOpacity: source.fade ? 0 : 1,
         renderKind,
         retainWhenHidden: source.name.startsWith('eyewhite'),
@@ -361,6 +371,15 @@ export function compileAnime25DGpuLayers(
         geometryDirty: false,
         attachment: null,
       })
+    }
+    const scalpFace = layers.find(layer => layer.source.role === 'face')
+    const scalpHair = layers.find(layer => layer.source.role === 'back-hair')
+    const eyeTop = Math.min(playback.anchors.eyeL?.y0 ?? Infinity, playback.anchors.eyeR?.y0 ?? Infinity)
+    if (scalpFace && scalpHair && Number.isFinite(eyeTop)) {
+      const span = eyeTop - scalpFace.source.y
+      scalpFace.crownOccluders = [{ layer: scalpHair,
+        start: (scalpFace.source.y + span * 0.65 - scalpHair.source.y) / scalpHair.source.h,
+        end: (scalpFace.source.y + span * 0.85 - scalpHair.source.y) / scalpHair.source.h }]
     }
     const neckSurface = resolveAnime25DNeckSurface(
       playback.layers,

@@ -52,13 +52,6 @@ export interface Anime25DStylizedTargets {
   lovestruck: number
 }
 
-export interface Anime25DSecondaryMotionPose {
-  angleX: number
-  angleY: number
-  angleZ: number
-  body: number
-}
-
 export interface Anime25DBlinkState {
   activeSeconds: number
   nextAtSeconds: number
@@ -447,16 +440,6 @@ export function applyAnime25DSillyMouthOwnership(
   target.mouthRound *= retained
   target.mouthNarrow *= retained
   target.mouthSeal *= retained
-}
-
-export function captureAnime25DSecondaryMotion(
-  output: Anime25DSecondaryMotionPose,
-  target: Readonly<Anime25DDriver>,
-): void {
-  output.angleX = target.angleX
-  output.angleY = target.angleY
-  output.angleZ = target.angleZ
-  output.body = target.body
 }
 
 /** Advances the exact legacy blink curve while reusing its mutable state. */

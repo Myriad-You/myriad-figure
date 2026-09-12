@@ -56,6 +56,8 @@ export interface Anime25DSecondaryDeformationFrame {
   headAngleY: number
   headRotationCosine: number
   headRotationSine: number
+  bodyRotationCosine: number
+  bodyRotationSine: number
   neckPivotX: number
   neckPivotY: number
   neckBottom: number
@@ -423,20 +425,26 @@ export function deformAnime25DHairPoint(
   const amplitude =
     easedAlong ** (binding.frontHair ? 1.8 : 2.1) *
     (binding.frontHair ? frame.expression.fhAmp : frame.expression.physAmp)
+  // Softness selects between spring responses. Motion amplitude has its own
+  // driver above; extrapolation here would create a negative stiff weight.
   const softMix =
     clamp(easedAlong ** 1.2 *
       (binding.frontHair ? frame.expression.fhSoft : frame.expression.soft), 0, 1)
   let offsetX = 0
+  let offsetY = 0
   for (let strand = 0; strand < springs.length; strand += 1) {
     const weight = strandWeights[vertex * springs.length + strand]
     if (weight < 0.001) continue
     const spring = springs[strand]
     offsetX +=
       weight * (spring.stiff.dx * (1 - softMix) + spring.soft.dx * softMix)
+    offsetY += weight * spring.vertical.dx
   }
-  const offset = offsetX * amplitude * motionScale
-  point.x += offset
-  point.y += Math.abs(offset) * 0.12
+  const scale = amplitude * motionScale
+  // Inputs are sampled after the body transform. Bring the lag vector back
+  // into this CPU mesh's coordinates; the shader rotates it exactly once.
+  point.x += (offsetX * frame.bodyRotationCosine + offsetY * frame.bodyRotationSine) * scale
+  point.y += (-offsetX * frame.bodyRotationSine + offsetY * frame.bodyRotationCosine) * scale
 }
 
 function smoothstep(value: number): number {

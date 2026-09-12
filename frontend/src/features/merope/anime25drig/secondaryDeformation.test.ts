@@ -160,7 +160,7 @@ test('binds stable secondary roles and optional geometry fields once', () => {
   assert.equal(hair.springs?.length, 3)
 })
 
-test('secondary and hair stages match the frozen player branches', () => {
+test('primary shape and lateral hair motion retain the reference without fake downward stretch', () => {
   const bindings = secondaryBindings()
   for (let frameIndex = 0; frameIndex < 120; frameIndex += 1) {
     const progress = frameIndex / 119
@@ -188,7 +188,11 @@ test('secondary and hair stages match the frozen player branches', () => {
             binding,
             frame,
           )
+          const primaryY = expected.y
           legacyDeformHairPoint(expected, vertex, binding, frame)
+          // The old absolute-X term always pulled hair down. Independent
+          // vertical dynamics below replace it; zero Y input has zero Y lag.
+          expected.y = primaryY
           deformAnime25DSecondaryPoint(
             actual,
             restX,
@@ -212,7 +216,7 @@ test('secondary and hair stages match the frozen player branches', () => {
 test('hair softness cannot extrapolate beyond either spring while amplitude remains independent', () => {
   for (const front of [false, true]) {
     const binding = secondaryBinding(front ? 'front-hair' : 'back-hair', 'head', false, false, true, front)
-    binding.springs = [{ stiff: { x: 0, v: 0, dx: -10 }, soft: { x: 0, v: 0, dx: -30 }, phase: 0, stiffnessScale: 1, dampingScale: 1 }]
+    binding.springs = [{ supportX: 0, supportY: 0, stiff: { x: 0, v: 0, dx: -10 }, soft: { x: 0, v: 0, dx: -30 }, vertical: { x: 0, v: 0, dx: 0 }, phase: 0, stiffnessScale: 1, dampingScale: 1 }]
     binding.strandWeights = new Float32Array(VERTEX_COUNT).fill(1)
     binding.alongStrand = new Float32Array(VERTEX_COUNT).fill(1)
     binding.bangWeights = null
@@ -227,6 +231,34 @@ test('hair softness cannot extrapolate beyond either spring while amplitude rema
         assert.ok(Math.abs(point.x - (-10 - 20 * Math.min(1, softness)) * amplitude) < 1e-8)
       }
     }
+  }
+})
+
+test('two-axis hair lag rotates into mesh space once and root pins hold both axes', () => {
+  const binding = secondaryBinding('back-hair', 'head', false, false, true, false)
+  const s = spring(12, 12)
+  s.vertical.dx = -8
+  binding.springs = [s]
+  binding.strandWeights = new Float32Array(VERTEX_COUNT).fill(1)
+  binding.alongStrand = new Float32Array(VERTEX_COUNT).fill(1)
+  binding.bangWeights = null
+  const frame = secondaryFrame(0.5, 1)
+  frame.expression.phys = true
+  frame.expression.physAmp = 1
+  frame.shellActivation = 1
+  for (const roll of [-0.3, 0, 0.3]) {
+    const c = Math.cos(roll); const sine = Math.sin(roll)
+    frame.bodyRotationCosine = c; frame.bodyRotationSine = sine
+    const point = { x: 100, y: 100 }
+    deformAnime25DHairPoint(point, 0, binding, frame)
+    const dx = point.x - 100; const dy = point.y - 100
+    assert.ok(Math.abs(dx * c - dy * sine - 12) < 1e-10)
+    assert.ok(Math.abs(dx * sine + dy * c + 8) < 1e-10)
+    binding.hairlinePinWeights = new Float32Array(VERTEX_COUNT).fill(1)
+    const pinned = { x: 100, y: 100 }
+    deformAnime25DHairPoint(pinned, 0, binding, frame)
+    assert.deepEqual(pinned, { x: 100, y: 100 })
+    binding.hairlinePinWeights = null
   }
 })
 
@@ -760,8 +792,11 @@ function shellProfile(): Anime25DShellProfile {
 
 function spring(stiffDx: number, softDx: number): Anime25DLayerSpringBinding {
   return {
+    supportX: 0,
+    supportY: 0,
     stiff: { x: 0, v: 0, dx: stiffDx },
     soft: { x: 0, v: 0, dx: softDx },
+    vertical: { x: 0, v: 0, dx: 0 },
     phase: 0,
     stiffnessScale: 1,
     dampingScale: 1,
@@ -832,6 +867,8 @@ function secondaryFrame(
     torsoChestShape: null,
     torsoShellBlend: 0,
     torsoNeckOffsetX: 0,
+    bodyRotationCosine: 1,
+    bodyRotationSine: 0,
     torsoShellRotation: { active: false, yawCosine: 1, yawSine: 0 },
   }
 }

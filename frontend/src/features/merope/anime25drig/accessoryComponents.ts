@@ -1,6 +1,39 @@
 import type { Anime25DPlaybackLayer } from './types'
 import type { CroppedLayerPixels } from './webglRuntime'
 
+/** Two ear ornaments may share one upstream drawing, but not one attachment. */
+export function splitPairedEarwear(
+  source: Anime25DPlaybackLayer,
+  art: CroppedLayerPixels | null,
+  faceCenterX: number,
+): Anime25DPlaybackLayer[] | null {
+  if (source.role !== 'earwear' || source.group !== 'head' || source.side || source.phys || source.fade || !art) return null
+  if (art.width < 4 || art.height < 1 || art.pixels.length !== art.width * art.height * 4) return null
+  const center = Math.floor((faceCenterX - source.x) / source.w * art.width)
+  if (center <= 0 || center >= art.width - 1) return null
+  const columns = new Uint32Array(art.width)
+  for (let y = 0; y < art.height; y++) { for (let x = 0; x < art.width; x++) {
+    if (art.pixels[(y * art.width + x) * 4 + 3] > 0) columns[x]++
+  }
+}
+  if (columns[center]) return null
+  let left = center; let right = center
+  while (left > 0 && columns[left - 1] === 0) left--
+  while (right + 1 < art.width && columns[right + 1] === 0) right++
+  // Require a real transparent separation around the face, not a thin chain
+  // or a gap between beads in a single earring. Preserve even alpha fringes.
+  if (right - left + 1 < Math.max(2, art.width * 0.12)) return null
+  if (columns.slice(0, left).reduce((n, v) => n + v, 0) < 16 ||
+    columns.slice(right + 1).reduce((n, v) => n + v, 0) < 16) { return null
+}
+  const cut = Math.floor((left + right + 1) / 2) / art.width
+  return ([['L', 0, cut], ['R', cut, 1]] as const).map(([side, start, end]) => ({
+    ...source, name: `${source.name}-${side}`, side,
+    x: source.x + source.w * start, w: source.w * (end - start),
+    atlas: { ...source.atlas, x: source.atlas.x + source.atlas.w * start, w: source.atlas.w * (end - start) },
+  }))
+}
+
 /**
  * A disconnected neck ornament accidentally included in a headwear layer.
  * Require co-located shape and colour evidence; never match a flower elsewhere.

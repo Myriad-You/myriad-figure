@@ -11,7 +11,8 @@ import {
 
 const HEAD_YAW_SHARE = 0.45
 const BODY_YAW_SHARE = 0.1
-const YAW_RESPONSE = 2.5
+// ~0.4 s to 95% for a held target, with continuous position AND velocity.
+const YAW_ANGULAR_FREQUENCY = 12
 const MIN_GARMENT_SHAPE_TRANSMISSION = 0.4
 
 export const SLEEVE_TORSO_TRANSMISSION = 0.85
@@ -25,6 +26,7 @@ export type Anime25DTorsoShellMode = 'full' | 'collar' | 'sleeve' | 'neck'
 
 export interface Anime25DTorsoYawState {
   value: number
+  velocity: number
 }
 
 export interface Anime25DTorsoShellRotation {
@@ -91,9 +93,15 @@ export function stepAnime25DTorsoShellRotation(
     ? clamp(yawFollowScale, 0, 1)
     : 1
   const yawTarget = angleX * HEAD_YAW_SHARE * follow + body * BODY_YAW_SHARE
-  state.value +=
-    (yawTarget - state.value) *
-    Math.min(1, Math.max(0, deltaSeconds) * YAW_RESPONSE)
+  if (Number.isFinite(deltaSeconds) && deltaSeconds > 0 && Number.isFinite(yawTarget)) {
+    // Exact critically damped response; see The Orange Duck's Spring-Roll-Call.
+    // Carry velocity through a new goal instead of starting another easing.
+    const displacement = state.value - yawTarget
+    const coefficient = state.velocity + YAW_ANGULAR_FREQUENCY * displacement
+    const decay = Math.exp(-YAW_ANGULAR_FREQUENCY * deltaSeconds)
+    state.value = yawTarget + (displacement + coefficient * deltaSeconds) * decay
+    state.velocity = (state.velocity - YAW_ANGULAR_FREQUENCY * coefficient * deltaSeconds) * decay
+  }
   target.active = Math.abs(state.value) > 1e-7
   target.yawCosine = Math.cos(state.value)
   target.yawSine = Math.sin(state.value)

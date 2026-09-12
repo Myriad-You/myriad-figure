@@ -7,6 +7,7 @@ import { requiredUniform } from './webglRuntime'
 const LEFT_EYE_STENCIL = 1
 const RIGHT_EYE_STENCIL = 2
 const COLLAR_STENCIL = 4
+const CROWN_STENCIL = 8
 
 function eyeStencilBit(layer: Anime25DRenderableLayer): number {
   return layer.source.side === 'L'
@@ -26,6 +27,7 @@ export interface Anime25DRenderableLayer {
   retainWhenHidden: boolean
   cryDirection: number
   neckSurfaceFade?: { start: number; end: number; contour?: NeckSurfaceContour }
+  crownOccluders?: { layer: Anime25DRenderableLayer; start: number; end: number }[]
 }
 
 export type Anime25DRenderKind = 'ordinary' | 'neck' | 'eyewhite' | 'iris'
@@ -49,6 +51,7 @@ export interface Anime25DRendererBindings {
   neckSurfaceFade: WebGLUniformLocation
   neckSurfaceContour: WebGLUniformLocation
   neckSurfaceBounds: WebGLUniformLocation
+  crownBand: WebGLUniformLocation
 }
 
 export interface Anime25DRenderFrame {
@@ -82,6 +85,7 @@ export function createAnime25DRendererBindings(
       'u_neck_surface_contour[0]',
     ),
     neckSurfaceBounds: requiredUniform(gl, program, 'u_neck_surface_bounds'),
+    crownBand: requiredUniform(gl, program, 'u_crown_band'),
   }
   gl.useProgram(program)
   gl.uniform1i(requiredUniform(gl, program, 'u_texture'), 0)
@@ -171,6 +175,34 @@ export function drawAnime25DFrame(
       gl.uniform1f(bindings.cut, 0)
       gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
     }
+    if (layer.crownOccluders?.length) {
+      // Restrict the upper hair replay to opaque face pixels. The original
+      // back-hair draw still owns everything outside the face, including its
+      // antialiased silhouette; drawing it twice there would darken the fringe.
+      gl.enable(gl.STENCIL_TEST)
+      gl.stencilMask(CROWN_STENCIL)
+      gl.clear(gl.STENCIL_BUFFER_BIT)
+      gl.stencilFunc(gl.ALWAYS, CROWN_STENCIL, CROWN_STENCIL)
+      gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
+      gl.colorMask(false, false, false, false)
+      gl.uniform1f(bindings.cut, 0.25)
+      gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
+      if (work) work.drawCalls += 1
+      gl.colorMask(true, true, true, true)
+      gl.stencilMask(0)
+      gl.stencilFunc(gl.EQUAL, CROWN_STENCIL, CROWN_STENCIL)
+      gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP)
+      for (const crown of layer.crownOccluders) {
+        if (!crown.layer.vao || crown.layer.frameOpacity < 0.004) continue
+        bindLayerUniforms(gl, bindings, crown.layer, frame)
+        gl.uniform2f(bindings.crownBand, crown.start, crown.end)
+        gl.uniform1f(bindings.cut, 0)
+        gl.bindVertexArray(crown.layer.vao)
+        gl.drawElements(gl.TRIANGLES, crown.layer.indexCount, gl.UNSIGNED_SHORT, 0)
+        if (work) work.drawCalls += 1
+      }
+      gl.disable(gl.STENCIL_TEST)
+    }
   }
   gl.stencilMask(255)
   gl.bindVertexArray(null)
@@ -184,6 +216,7 @@ function bindLayerUniforms(
 ): void {
   gl.uniformMatrix3fv(bindings.layerTransform, false, layer.layerTransform)
   gl.uniform1f(bindings.opacity, layer.frameOpacity)
+  gl.uniform2f(bindings.crownBand, 0, 0)
   gl.uniform2f(
     bindings.neckSurfaceFade,
     layer.neckSurfaceFade?.start ?? 0,

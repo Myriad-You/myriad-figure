@@ -94,7 +94,6 @@ import {
   applyAnime25DSillyMouthOwnership,
   applyAnime25DSpeechExtras,
   applyAnime25DStylizedExpression,
-  captureAnime25DSecondaryMotion,
   prepareAnime25DWorkingTarget,
   resolveAnime25DStylizedTargets,
   smoothAnime25DUnit,
@@ -110,6 +109,7 @@ import {
   animationSubstepCount,
 } from './frameClock'
 import { stepAnime25DHairLayerSprings } from './hairPhysics'
+import { writeHairRootMotion } from './hairRootMotion'
 import { constrainHairSurface } from './hairSurface'
 import { idleBreathOffset } from './idleBreath'
 import { Anime25DIrisRebound } from './irisRebound'
@@ -196,13 +196,6 @@ import { compileProgram, createAtlasTexture, loadImage, readLayerPixels } from '
 const POINTER_ATTACK_RATE = 16
 const POINTER_RELEASE_RATE = 5.5
 
-interface SecondaryMotionPose {
-  angleX: number
-  angleY: number
-  angleZ: number
-  body: number
-}
-
 export interface Anime25DDebugSnapshot {
   layerCount: number
   hairLayerCount: number
@@ -284,12 +277,6 @@ export class Anime25DPlayer {
   private readonly current: Anime25DDriver = { ...IDENTITY_DRIVER }
   private readonly target: Anime25DDriver = { ...IDENTITY_DRIVER }
   private readonly workingTarget: Anime25DDriver = { ...IDENTITY_DRIVER }
-  private readonly secondaryCurrent: SecondaryMotionPose = {
-    angleX: 0,
-    angleY: 0,
-    angleZ: 0,
-    body: 0,
-  }
 
   private readonly poseResponse = new PoseResponseController()
 
@@ -325,7 +312,7 @@ export class Anime25DPlayer {
     pitchSine: 0,
   }
 
-  private readonly torsoYaw: Anime25DTorsoYawState = { value: 0 }
+  private readonly torsoYaw: Anime25DTorsoYawState = { value: 0, velocity: 0 }
 
   /** Passive sleeve response to the torso, derived rather than authored. */
   private readonly armFollow = new ArmFollowController()
@@ -626,6 +613,8 @@ export class Anime25DPlayer {
       Math.max(anchors.neckTop, anchors.face.y1 + anchors.faceScale * 5),
     )
     this.secondaryDeformationFrame = {
+      bodyRotationCosine: 1,
+      bodyRotationSine: 0,
       expression: this.current,
       faceScale: anchors.faceScale,
       headAngleY: 0,
@@ -687,13 +676,8 @@ export class Anime25DPlayer {
     this.hairSpringFrame = {
       enabled: true,
       idle: true,
-      angleX: 0,
-      angleZ: 0,
       faceScale: anchors.faceScale,
-      neckPivotY: anchors.neckPivot.y,
-      faceCenterY: anchors.face.cy,
       time: 0,
-      parentOffsetX: 0,
     }
   }
 
@@ -1170,7 +1154,6 @@ export class Anime25DPlayer {
         ) > 0.03,
       Math.max(this.current.eyeOpenL, this.current.eyeOpenR),
     )
-    captureAnime25DSecondaryMotion(this.secondaryCurrent, this.current)
     stepAnime25DTorsoShellRotation(
       this.torsoYaw,
       this.current.angleX,
@@ -1186,7 +1169,6 @@ export class Anime25DPlayer {
     const faceScale = anchors.faceScale
     const e = this.current
     stepJawMotion(this.jaw, jawMotionTarget(e, this.jawEmphasis), dt)
-    const secondary = this.secondaryCurrent
     const chestProfile = this.playback.chestProfile
     if (chestProfile.enabled) {
       const chestTarget = chestMotionTarget(e, faceScale, this.chestTarget)
@@ -1216,48 +1198,68 @@ export class Anime25DPlayer {
     const hairSpringFrame = this.hairSpringFrame
     hairSpringFrame.enabled = e.phys
     hairSpringFrame.idle = e.idle
-    hairSpringFrame.angleX = secondary.angleX
-    hairSpringFrame.angleZ = secondary.angleZ
-    // The parent moves even after local head angles stop changing. Feed its
-    // current translation into the same springs, not an extra force/clock.
-    const torsoBlend = this.shellProfile.enabled && this.shellProfile.torso.enabled
-      ? this.shellProfile.blend * this.shellProfile.torso.blend * this.shellActivation : 0
-    const neckOffset = anime25DTorsoShellOffsetX(
-      anchors.neckPivot.x, this.shellProfile.torso, this.torsoShellRotation, torsoBlend,
-    )
-    const bodyRoll = e.body * 0.028
-    const rootX = anchors.neckPivot.x + neckOffset - anchors.bodyPivot.x
-    const rootY = anchors.face.cy - anchors.bodyPivot.y
-    hairSpringFrame.parentOffsetX = neckOffset +
-      rootX * (Math.cos(bodyRoll) - 1) - rootY * Math.sin(bodyRoll)
+    if (e.phys) {
+      this.prepareHeadDeformationFrame()
+      for (const layer of this.layers) {
+        const roots = layer.hairRoots
+        if (!roots) continue
+        if (roots.deformation.poseCorrections) writePoseCorrectionWeights(roots.deformation.poseCorrections, e)
+        writeHairRootMotion(roots, this.secondaryDeformationFrame,
+          anchors.bodyPivot.x, anchors.bodyPivot.y,
+          this.renderFrame.bodyRotationCosine, this.renderFrame.bodyRotationSine)
+      }
+    }
     hairSpringFrame.time = this.time
     stepAnime25DHairLayerSprings(this.layers, hairSpringFrame, dt)
   }
 
+  /** Shared primary pose for physics substeps and the final visible mesh. */
+  private prepareHeadDeformationFrame(): void {
+    const e = this.current
+    const frame = this.secondaryDeformationFrame
+    const anchors = this.playback.anchors
+    const breath = 0.5 + chestBreathResidual(this.time)
+    const breathHead = 0.5 + 0.5 * Math.sin((this.time * Math.PI * 2) / 3.4 - 0.6)
+    frame.headAngleY = e.angleY
+    frame.headRotationCosine = Math.cos(e.angleZ * 0.07)
+    frame.headRotationSine = Math.sin(e.angleZ * 0.07)
+    frame.bodyBreathOffset = breath * 2
+    frame.headBreathOffset = breathHead * 1.6
+    frame.specialHeadOffset = this.stylizedMotion
+      ? (this.stylizedMotion.maniacHeadPulse * 80 +
+          this.stylizedMotion.sillyHeadPulse * 8 +
+          this.stylizedMotion.lovestruckHeadPulse * 5) * this.stylizedHeadShare * anchors.faceScale
+      : 0
+    frame.breath = breath
+    frame.shellBlend = this.shellProfile.blend * this.shellActivation
+    frame.shellActivation = this.shellActivation
+    frame.torsoShellBlend = this.shellProfile.enabled && this.shellProfile.torso.enabled
+      ? frame.shellBlend * this.shellProfile.torso.blend : 0
+    frame.torsoNeckOffsetX = anime25DTorsoShellOffsetX(
+      anchors.neckPivot.x, this.shellProfile.torso, this.torsoShellRotation, frame.torsoShellBlend,
+    )
+    writeAnime25DShellRotation(e.angleX, e.angleY, this.shellRotation)
+    this.renderFrame.bodyPivotX = anchors.bodyPivot.x
+    this.renderFrame.bodyPivotY = anchors.bodyPivot.y
+    this.renderFrame.bodyRotationCosine = Math.cos(e.body * 0.028)
+    this.renderFrame.bodyRotationSine = Math.sin(e.body * 0.028)
+    frame.bodyRotationCosine = this.renderFrame.bodyRotationCosine
+    frame.bodyRotationSine = this.renderFrame.bodyRotationSine
+  }
+
   private deform(work?: Anime25DFrameWork): void {
+    this.prepareHeadDeformationFrame()
     const A = this.playback.anchors
     const e = this.current
     const fs = A.faceScale
     const t = this.time
     const breathResidual = chestBreathResidual(t)
-    const breath = 0.5 + breathResidual
-    const breathHead = 0.5 + 0.5 * Math.sin((t * Math.PI * 2) / 3.4 - 0.6)
     const npx = A.neckPivot.x
     const npy = A.neckPivot.y
-    const bpx = A.bodyPivot.x
-    const bpy = A.bodyPivot.y
     // Music extent is authored before composition/envelope/response, never after them.
-    const az = e.angleZ * 0.07
     const ay = e.angleY
-    const cz = Math.cos(az)
-    const sz = Math.sin(az)
-    const ab = e.body * 0.028
-    const cb = Math.cos(ab)
-    const sb = Math.sin(ab)
-    this.renderFrame.bodyPivotX = bpx
-    this.renderFrame.bodyPivotY = bpy
-    this.renderFrame.bodyRotationCosine = cb
-    this.renderFrame.bodyRotationSine = sb
+    const cz = this.secondaryDeformationFrame.headRotationCosine
+    const sz = this.secondaryDeformationFrame.headRotationSine
     const chestCy = this.chestRegion.centerY
     const chestRx = this.chestRegion.radiusX
     const chestRy = this.chestRegion.radiusY
@@ -1277,13 +1279,7 @@ export class Anime25DPlayer {
     const inverseChestRy = 1 / chestRy
     const jawDrop = this.jaw.value * this.jawTravel
     const jawOpen = Math.max(0, this.jaw.value)
-    const specialHeadOffset = this.stylizedMotion
-      ? (this.stylizedMotion.maniacHeadPulse * 80 +
-          this.stylizedMotion.sillyHeadPulse * 8 +
-          this.stylizedMotion.lovestruckHeadPulse * 5) *
-        this.stylizedHeadShare *
-        fs
-      : 0
+    const specialHeadOffset = this.secondaryDeformationFrame.specialHeadOffset
     const mouthTransition = this.mouthTransition.sample(e)
     this.activeMouthMaterial = mouthTransition.material
     resolveMouthMorph(
@@ -1302,14 +1298,6 @@ export class Anime25DPlayer {
     deformationFrame.stylizedMotion = this.stylizedMotion
     const deformationPoint = this.deformationPoint
     const secondaryDeformationFrame = this.secondaryDeformationFrame
-    writeAnime25DShellRotation(e.angleX, ay, this.shellRotation)
-    secondaryDeformationFrame.headAngleY = ay
-    secondaryDeformationFrame.headRotationCosine = cz
-    secondaryDeformationFrame.headRotationSine = sz
-    secondaryDeformationFrame.bodyBreathOffset = breath * 2
-    secondaryDeformationFrame.headBreathOffset = breathHead * 1.6
-    secondaryDeformationFrame.specialHeadOffset = specialHeadOffset
-    secondaryDeformationFrame.breath = breath
     secondaryDeformationFrame.armSwing = this.armSwing
     secondaryDeformationFrame.chestMotionCenterY = chestCenterY
     if (secondaryDeformationFrame.torsoChestShape) {
@@ -1321,19 +1309,6 @@ export class Anime25DPlayer {
     secondaryDeformationFrame.chestOffsetY = chestOffsetY
     secondaryDeformationFrame.chestVolumeScale =
       1 + breathResidual * this.chestDynamics.breathVolumeScale
-    secondaryDeformationFrame.shellBlend =
-      this.shellProfile.blend * this.shellActivation
-    secondaryDeformationFrame.shellActivation = this.shellActivation
-    secondaryDeformationFrame.torsoShellBlend =
-      this.shellProfile.enabled && this.shellProfile.torso.enabled
-        ? this.shellProfile.blend *
-          this.shellProfile.torso.blend *
-          this.shellActivation
-        : 0
-    secondaryDeformationFrame.torsoNeckOffsetX = anime25DTorsoShellOffsetX(
-      npx, this.shellProfile.torso, this.torsoShellRotation,
-      secondaryDeformationFrame.torsoShellBlend,
-    )
     writeAnime25DOpacityFrame(
       this.opacityFrame,
       e,

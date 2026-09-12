@@ -699,7 +699,7 @@ function frame(
   pitch = 0,
 ): Anime25DSecondaryDeformationFrame {
   const rotation = { active: false, yawCosine: 1, yawSine: 0 }
-  stepAnime25DTorsoShellRotation({ value: yaw * 0.45 }, yaw, 0, 0, rotation)
+  stepAnime25DTorsoShellRotation({ value: yaw * 0.45, velocity: 0 }, yaw, 0, 0, rotation)
   const headRotation = { ...rotation, pitchCosine: 1, pitchSine: 0 }
   writeAnime25DShellRotation(yaw, pitch, headRotation)
   const top = anchors.face.y1 + anchors.faceScale * 5
@@ -739,6 +739,8 @@ function frame(
     torsoChestShape: null,
     torsoShellBlend: shell.blend * shell.torso.blend,
     torsoNeckOffsetX: 0,
+    bodyRotationCosine: 1,
+    bodyRotationSine: 0,
     torsoShellRotation: rotation,
   }
 }

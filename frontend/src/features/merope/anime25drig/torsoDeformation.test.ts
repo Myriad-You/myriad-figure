@@ -20,6 +20,48 @@ const profile: Anime25DTorsoShellProfile = {
   radiusZ: 169.4,
 }
 
+test('short turns retain more motion than the fork filter without exceeding the authored target', () => {
+  const state = { value: 0, velocity: 0 }
+  const rotation = { active: false, yawCosine: 1, yawSine: 0 }
+  let previousFilter = 0
+  let reached = 0
+  for (let i = 1; i <= 120; i++) {
+    previousFilter += (0.45 - previousFilter) * (2.5 / 120)
+    stepAnime25DTorsoShellRotation(state, 1, 0, 1 / 120, rotation)
+    assert.ok(state.value >= 0 && state.value <= 0.45 + 1e-12)
+    if (i === 24) assert.ok(state.value > previousFilter * 1.6)
+    if (!reached && state.value >= 0.45 * 0.95) reached = i / 120
+  }
+  assert.ok(reached > 0 && reached <= 0.4)
+})
+
+test('torso reversals preserve velocity and constant-target integration agrees across rates', () => {
+  const run = (fps: number) => {
+    const state = { value: 0, velocity: 0 }
+    const rotation = { active: false, yawCosine: 1, yawSine: 0 }
+    for (const goal of [1, -1, 0.5, 0]) {
+      for (let i = 0; i < fps / 5; i++) stepAnime25DTorsoShellRotation(state, goal, 0, 1 / fps, rotation)
+    }
+    return state
+  }
+  const reference = run(120)
+  for (const fps of [30, 60]) {
+    const state = run(fps)
+    assert.ok(Math.abs(state.value - reference.value) < 1e-12)
+    assert.ok(Math.abs(state.velocity - reference.velocity) < 1e-12)
+  }
+  const state = { value: 0, velocity: 0 }
+  const rotation = { active: false, yawCosine: 1, yawSine: 0 }
+  stepAnime25DTorsoShellRotation(state, 1, 0, 0.1, rotation)
+  const before = { ...state }
+  stepAnime25DTorsoShellRotation(state, -1, 0, 1e-7, rotation)
+  assert.ok(state.value > before.value, 'existing velocity is not discarded at reversal')
+  assert.ok(Math.abs(state.velocity - before.velocity) < 0.0001)
+  const retained = { ...state }
+  for (const dt of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) stepAnime25DTorsoShellRotation(state, 1, 0, dt, rotation)
+  assert.deepEqual(state, retained)
+})
+
 const chestProfile: Anime25DChestProfile = {
   version: 2,
   enabled: true,
@@ -63,18 +105,18 @@ test('binds body garments fully and both split-collar layers through one field',
   }
 })
 
-test('matches the fork low-pass torso yaw response', () => {
-  const state = { value: 0 }
+test('retains the fork target while giving torso follow a continuous exact response', () => {
+  const state = { value: 0, velocity: 0 }
   const rotation = { active: false, yawCosine: 1, yawSine: 0 }
   stepAnime25DTorsoShellRotation(state, 1, 0, 0.05, rotation)
-  const expectedYaw = 0.45 * (0.05 * 2.5)
-  assert.equal(state.value, expectedYaw)
+  const expectedYaw = 0.45 * (1 - (1 + 12 * 0.05) * Math.exp(-12 * 0.05))
+  assert.ok(Math.abs(state.value - expectedYaw) < 1e-12)
   assert.equal(rotation.active, true)
-  assert.equal(rotation.yawCosine, Math.cos(expectedYaw))
-  assert.equal(rotation.yawSine, Math.sin(expectedYaw))
+  assert.equal(rotation.yawCosine, Math.cos(state.value))
+  assert.equal(rotation.yawSine, Math.sin(state.value))
 
   stepAnime25DTorsoShellRotation(state, 1, -0.5, 0, rotation)
-  assert.equal(state.value, expectedYaw)
+  assert.ok(Math.abs(state.value - expectedYaw) < 1e-12)
 })
 
 test('the per-model follow scales the head share and leaves the body alone', () => {
@@ -83,7 +125,7 @@ test('the per-model follow scales the head share and leaves the body alone', () 
     body: number,
     yawFollowScale?: number,
   ): number => {
-    const state = { value: 0 }
+    const state = { value: 0, velocity: 0 }
     const rotation = { active: false, yawCosine: 1, yawSine: 0 }
     stepAnime25DTorsoShellRotation(
       state,
@@ -103,7 +145,7 @@ test('the per-model follow scales the head share and leaves the body alone', () 
 
 test('a manifest with no authored follow, or a bad one, turns fully', () => {
   const full = (() => {
-    const state = { value: 0 }
+    const state = { value: 0, velocity: 0 }
     stepAnime25DTorsoShellRotation(state, 1, 0, 0.05, {
       active: false,
       yawCosine: 1,
@@ -112,7 +154,7 @@ test('a manifest with no authored follow, or a bad one, turns fully', () => {
     return state.value
   })()
   for (const scale of [undefined, Number.NaN, Number.POSITIVE_INFINITY, 4, 1]) {
-    const state = { value: 0 }
+    const state = { value: 0, velocity: 0 }
     stepAnime25DTorsoShellRotation(
       state,
       1,
@@ -123,7 +165,7 @@ test('a manifest with no authored follow, or a bad one, turns fully', () => {
     )
     assert.equal(state.value, full, `${scale}`)
   }
-  const negative = { value: 0 }
+  const negative = { value: 0, velocity: 0 }
   stepAnime25DTorsoShellRotation(
     negative,
     1,

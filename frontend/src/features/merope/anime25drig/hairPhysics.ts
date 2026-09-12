@@ -32,8 +32,11 @@ export interface HairSpringState {
 }
 
 export interface Anime25DHairSpringBinding {
+  supportX: number
+  supportY: number
   stiff: HairSpringState
   soft: HairSpringState
+  vertical: HairSpringState
   phase: number
   stiffnessScale: number
   dampingScale: number
@@ -46,12 +49,7 @@ export interface Anime25DHairSpringLayer {
 export interface Anime25DHairSpringFrame {
   enabled: boolean
   idle: boolean
-  angleX: number
-  angleZ: number
   faceScale: number
-  neckPivotY: number
-  faceCenterY: number
-  parentOffsetX: number
   time: number
 }
 
@@ -92,7 +90,6 @@ export function stepHairSpring(
   target: number,
   stiffness: number,
   damping: number,
-  pull: number,
   elapsedSeconds: number,
 ): void {
   if (!Number.isFinite(elapsedSeconds) || elapsedSeconds <= 0) return
@@ -110,9 +107,9 @@ export function stepHairSpring(
     spring.v += acceleration * dt
     spring.x += spring.v * dt
   }
-  // The spring position lags its moving support. Keep that relative offset:
-  // negating it makes the hair lead the head instead of trailing behind it.
-  spring.dx = (spring.x - target) * pull
+  // Support is already in displayed mesh pixels. Preserve its relative lag;
+  // only the animation driver owns amplitude, not an estimated-input multiplier.
+  spring.dx = spring.x - target
 }
 
 export function stepAnime25DHairLayerSprings(
@@ -121,10 +118,6 @@ export function stepAnime25DHairLayerSprings(
   elapsedSeconds: number,
 ): void {
   if (!frame.enabled) return
-  const headOffsetX =
-    (frame.angleX * 14 +
-      frame.angleZ * 0.07 * (frame.neckPivotY - frame.faceCenterY)) *
-    frame.faceScale + frame.parentOffsetX
   const windAmplitude = frame.idle ? 1 : 0
   for (const layer of layers) {
     if (!layer.springs) continue
@@ -133,13 +126,12 @@ export function stepAnime25DHairLayerSprings(
         windAmplitude *
         (1.8 * Math.sin(frame.time * 0.8 + spring.phase) +
           Math.sin(frame.time * 1.9 + spring.phase * 2.3))
-      const target = headOffsetX + wind * frame.faceScale
+      const target = spring.supportX + wind * frame.faceScale
       stepHairSpring(
         spring.stiff,
         target,
         70 * spring.stiffnessScale,
         9 * spring.dampingScale,
-        2.2,
         elapsedSeconds,
       )
       stepHairSpring(
@@ -147,7 +139,16 @@ export function stepAnime25DHairLayerSprings(
         target,
         16 * spring.stiffnessScale,
         1.3 * spring.dampingScale,
-        3,
+        elapsedSeconds,
+      )
+      // Projected vertical following is less compliant than lateral bending.
+      // Near-critical damping avoids an axial rubber-band bounce. This is an
+      // authored 2.5D response, not a measured material constant.
+      stepHairSpring(
+        spring.vertical,
+        spring.supportY,
+        140 * spring.stiffnessScale,
+        24 * spring.dampingScale,
         elapsedSeconds,
       )
     }
