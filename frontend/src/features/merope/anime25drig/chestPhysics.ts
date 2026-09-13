@@ -571,7 +571,7 @@ export function buildChestWeightField(
     weights[index] = clamp(chestWeight, 0, 1)
     populated[index] = 1
   }
-  if (populated.some((value) => value === 0)) return null
+  if (populated.includes(0)) return null
   return {
     xs: Float32Array.from(xs),
     ys: Float32Array.from(ys),

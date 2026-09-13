@@ -36,7 +36,8 @@ export function appendPoseCorrectionPatch(current: readonly PoseCorrection[], ca
   const corrections = structuredClone(current) as PoseCorrection[]
   let index = corrections.findIndex(c => poseCorrectionCornerKey(c) === poseCorrectionCornerKey(candidate))
   if (index < 0) { index = corrections.length; corrections.push(structuredClone(candidate)) }
-  else corrections[index].patches.push(...structuredClone(candidate.patches))
+  else { corrections[index].patches.push(...structuredClone(candidate.patches))
+}
   return isPoseCorrections(corrections) ? { corrections, index, patch: corrections[index].patches.length - 1 } : null
 }
 

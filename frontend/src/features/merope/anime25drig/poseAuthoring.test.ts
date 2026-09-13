@@ -38,7 +38,7 @@ test('adding patches reuses the existing corner without overwriting its calibrat
   assert.equal(current[0].patches.length, 1)
   result.corrections[0].patches[0].dx = 0.2
   assert.equal(current[0].patches[0].dx, 0.1)
-  assert.equal(appendPoseCorrectionPatch([{ ...c, patches: Array(8).fill(c.patches[0]) }], candidate), null)
+  assert.equal(appendPoseCorrectionPatch([{ ...c, patches: Array.from({ length: 8 }).fill(c.patches[0]) }], candidate), null)
 })
 
 test('selecting a correction freezes distracting motion and preserves unrelated expression controls', () => {
