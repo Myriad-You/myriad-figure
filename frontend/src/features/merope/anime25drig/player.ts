@@ -10,7 +10,6 @@ import type {
   ChestDynamicsTuning,
   ChestMotionGeometry,
   ChestSpatialField,
-  ChestWeightField,
 } from './chestPhysics'
 import type { CollarClipMesh, CollarMotionPose } from './collarRuntime'
 import type { Anime25DDeformationChangeState } from './deformationDependencies'
@@ -391,7 +390,6 @@ export class Anime25DPlayer {
   private chestField!: ChestSpatialField
   private chestGeometry!: ChestMotionGeometry
   private chestRegion!: ChestDeformationRegion
-  private chestWeightField: ChestWeightField | null = null
   private readonly jaw = createJawMotionState()
   private jawTravel = 0
   private motionEnvelopeProfile!: Anime25DMotionEnvelopeProfile
@@ -604,11 +602,6 @@ export class Anime25DPlayer {
       depth:
         playback.layers.find((layer) => layer.role === 'topwear')?.depth ?? 0.9,
     }
-    this.chestWeightField = chestProfileUsesGeometryWeights(
-      playback.chestProfile,
-    )
-      ? buildChestWeightField(rigManifest)
-      : null
     const neckFollowTop = Math.min(
       anchors.neckBottom - 1,
       Math.max(anchors.neckTop, anchors.face.y1 + anchors.faceScale * 5),
