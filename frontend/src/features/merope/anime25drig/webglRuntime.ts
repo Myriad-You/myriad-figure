@@ -251,6 +251,28 @@ export function readLayerPixels(
   }
 }
 
+/** Packed atlas gutter in pixels; must match ATLAS_PADDING in anime25dAtlasCompiler. */
+export const ANIME25D_ATLAS_MIP_GUTTER_PX = 8
+
+/**
+ * Highest mipmap level that still leaves two gutter texels between sprites.
+ * Trilinear filtering also samples the next level, so level 3 (8 px texels)
+ * would mix neighbouring packed drawings across an 8 px gutter.
+ */
+export function anime25DAtlasMaxMipLevel(gutterPx: number): number {
+  if (!Number.isFinite(gutterPx) || gutterPx < 2) return 0
+  return Math.max(0, Math.floor(Math.log2(gutterPx)) - 1)
+}
+
+/**
+ * Sample half a lod finer than the generated cap so small faces stay a bit
+ * sharper. Level 2 is still generated; we just do not sit fully on it.
+ */
+export function anime25DAtlasMaxLod(gutterPx: number): number {
+  const maxLevel = anime25DAtlasMaxMipLevel(gutterPx)
+  return maxLevel > 0 ? maxLevel - 0.5 : 0
+}
+
 export function createAtlasTexture(
   gl: WebGL2RenderingContext,
   atlas: HTMLImageElement,
@@ -261,10 +283,22 @@ export function createAtlasTexture(
   try {
     gl.bindTexture(gl.TEXTURE_2D, texture)
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    const maxLevel = anime25DAtlasMaxMipLevel(ANIME25D_ATLAS_MIP_GUTTER_PX)
+    const maxLod = anime25DAtlasMaxLod(ANIME25D_ATLAS_MIP_GUTTER_PX)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    if (maxLevel > 0) {
+      gl.texParameteri(
+        gl.TEXTURE_2D,
+        gl.TEXTURE_MIN_FILTER,
+        gl.LINEAR_MIPMAP_LINEAR,
+      )
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, maxLevel)
+      gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAX_LOD, maxLod)
+    } else {
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    }
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, atlas)
     // Typed-array uploads are premultiplied explicitly, unlike DOM sources.
     if (patches.length) gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
@@ -289,6 +323,9 @@ export function createAtlasTexture(
       )
     }
     if (patches.length) gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1)
+    // After patches so accessory/neckwear edits are in the chain. MAX_LEVEL
+    // limits generateMipmap to the gutter-safe levels; not a per-frame cost.
+    if (maxLevel > 0) gl.generateMipmap(gl.TEXTURE_2D)
     return texture
   } catch (error) {
     gl.deleteTexture(texture)

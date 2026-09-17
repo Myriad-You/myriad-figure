@@ -79,7 +79,7 @@ test('runs frames only after the atlas is ready and the canvas is visible', () =
   assert.equal(shouldAnimateAnime25D({ ...active, cancelled: true }), false)
 })
 
-test('sizes the backing surface to the fitted CSS display', () => {
+test('shrinks the backing store slower than the CSS box', () => {
   assert.deepEqual(
     resolveAnime25DRenderSurface({
       sourceWidth: 2048,
@@ -89,12 +89,28 @@ test('sizes the backing surface to the fitted CSS display', () => {
       devicePixelRatio: 2,
     }),
     {
-      bufferWidth: 1024,
-      bufferHeight: 512,
+      bufferWidth: 1261,
+      bufferHeight: 630,
       displayWidth: 512,
       displayHeight: 256,
     },
   )
+})
+
+test('keeps extra backing pixels on a small face without reaching source size', () => {
+  const surface = resolveAnime25DRenderSurface({
+    sourceWidth: 2048,
+    sourceHeight: 2048,
+    cssWidth: 201,
+    cssHeight: 201,
+    devicePixelRatio: 2,
+  })
+  assert.equal(surface.displayWidth, 201)
+  assert.equal(surface.displayHeight, 201)
+  assert.equal(surface.bufferWidth, 569)
+  assert.equal(surface.bufferHeight, 569)
+  assert.ok(surface.bufferWidth > 201 * 2)
+  assert.ok(surface.bufferWidth < 2048 * 2)
 })
 
 test('preserves the old source-resolution ceiling when enlarged', () => {

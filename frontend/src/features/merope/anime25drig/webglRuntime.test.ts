@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
+  ANIME25D_ATLAS_MIP_GUTTER_PX,
+  anime25DAtlasMaxLod,
+  anime25DAtlasMaxMipLevel,
   atlasUrlNeedsCors,
   createAtlasTexture,
   createIndexedDeformableMesh,
@@ -9,89 +12,85 @@ import {
   resetCachedAtlasImagesForTests,
 } from './webglRuntime'
 
-test('uploads a packed character atlas through one WebGL texture allocation', () => {
-  const calls = { create: 0, image: 0, parameters: 0 }
-  const texture = {} as WebGLTexture
-  const gl = {
-    TEXTURE_2D: 1,
-    UNPACK_PREMULTIPLY_ALPHA_WEBGL: 2,
-    TEXTURE_MIN_FILTER: 3,
-    TEXTURE_MAG_FILTER: 4,
-    TEXTURE_WRAP_S: 5,
-    TEXTURE_WRAP_T: 6,
-    LINEAR: 7,
-    CLAMP_TO_EDGE: 8,
-    RGBA: 9,
-    UNSIGNED_BYTE: 10,
-    createTexture() {
-      calls.create += 1
-      return texture
-    },
-    bindTexture() {},
-    pixelStorei() {},
-    texParameteri() {
-      calls.parameters += 1
-    },
-    texImage2D() {
-      calls.image += 1
-    },
-  } as unknown as WebGL2RenderingContext
+test('mip lod clamp tracks the packed atlas gutter', () => {
+  assert.equal(anime25DAtlasMaxMipLevel(ANIME25D_ATLAS_MIP_GUTTER_PX), 2)
+  assert.equal(anime25DAtlasMaxLod(ANIME25D_ATLAS_MIP_GUTTER_PX), 1.5)
+  assert.equal(anime25DAtlasMaxMipLevel(16), 3)
+  assert.equal(anime25DAtlasMaxLod(16), 2.5)
+  assert.equal(anime25DAtlasMaxMipLevel(4), 1)
+  assert.equal(anime25DAtlasMaxLod(4), 0.5)
+  assert.equal(anime25DAtlasMaxMipLevel(2), 0)
+  assert.equal(anime25DAtlasMaxLod(2), 0)
+  assert.equal(anime25DAtlasMaxMipLevel(1), 0)
+  assert.equal(anime25DAtlasMaxMipLevel(0), 0)
+  assert.equal(anime25DAtlasMaxMipLevel(Number.NaN), 0)
+  const compiler = readFileSync(
+    new URL('../rig/anime25dAtlasCompiler.ts', import.meta.url),
+    'utf8',
+  )
+  assert.match(
+    compiler,
+    new RegExp(`const ATLAS_PADDING = ${ANIME25D_ATLAS_MIP_GUTTER_PX}\\b`),
+  )
+})
 
+test('uploads a packed character atlas through one WebGL texture allocation', () => {
+  const { gl, calls, texture } = stubAtlasGl()
   assert.equal(createAtlasTexture(gl, {} as HTMLImageElement), texture)
-  assert.deepEqual(calls, { create: 1, image: 1, parameters: 4 })
+  assert.equal(calls.create, 1)
+  assert.equal(calls.image, 1)
+  assert.equal(calls.mipmaps, 1)
+  assert.equal(
+    parameter(calls, gl.TEXTURE_MIN_FILTER),
+    gl.LINEAR_MIPMAP_LINEAR,
+  )
+  assert.equal(parameter(calls, gl.TEXTURE_MAX_LEVEL), 2)
+  assert.equal(parameter(calls, gl.TEXTURE_MAX_LOD), 1.5)
+  assert.equal(parameter(calls, gl.TEXTURE_MAG_FILTER), gl.LINEAR)
 })
 
 test('releases an atlas texture when its upload fails', () => {
   const texture = {} as WebGLTexture
   let deleted = false
-  const gl = {
-    TEXTURE_2D: 1,
-    UNPACK_PREMULTIPLY_ALPHA_WEBGL: 2,
-    TEXTURE_MIN_FILTER: 3,
-    TEXTURE_MAG_FILTER: 4,
-    TEXTURE_WRAP_S: 5,
-    TEXTURE_WRAP_T: 6,
-    LINEAR: 7,
-    CLAMP_TO_EDGE: 8,
-    RGBA: 9,
-    UNSIGNED_BYTE: 10,
+  const { gl, calls } = stubAtlasGl({
     createTexture: () => texture,
-    bindTexture() {},
-    pixelStorei() {},
-    texParameteri() {},
     texImage2D() {
       throw new Error('upload failed')
     },
     deleteTexture(candidate: WebGLTexture) {
       deleted = candidate === texture
     },
-  } as unknown as WebGL2RenderingContext
+  })
 
   assert.throws(() => createAtlasTexture(gl, {} as HTMLImageElement))
   assert.equal(deleted, true)
+  assert.equal(calls.mipmaps, 0)
 })
 
 test('accessory alpha patch reaches the same GPU atlas with premultiplied pixels', () => {
-  const calls: unknown[][] = []
+  const order: string[] = []
+  const subCalls: unknown[][] = []
   const pixels = new Uint8ClampedArray([200, 100, 50, 128, 90, 80, 70, 0])
-  const gl = {
-    createTexture: () => ({}),
-    bindTexture() {},
-    pixelStorei() {},
-    texParameteri() {},
-    texImage2D() {},
-    texSubImage2D(...args: unknown[]) {
-      calls.push(args)
+  const { gl } = stubAtlasGl({
+    texImage2D() {
+      order.push('image')
     },
-    deleteTexture() {},
-  } as unknown as WebGL2RenderingContext
+    texSubImage2D(...args: unknown[]) {
+      order.push('sub')
+      subCalls.push(args)
+    },
+    generateMipmap() {
+      order.push('mip')
+    },
+  })
   createAtlasTexture(gl, {} as HTMLImageElement, [
     { x: 12, y: 24, width: 2, height: 1, pixels },
   ])
-  assert.equal(calls.length, 1)
-  assert.deepEqual(calls[0].slice(2, 6), [12, 24, 2, 1])
+  assert.deepEqual(order, ['image', 'sub', 'mip'])
+  assert.equal(subCalls.length, 1)
+  assert.deepEqual(subCalls[0].slice(2, 6), [12, 24, 2, 1])
   assert.deepEqual(
-    Iterator.from(calls[0][8] as Uint8Array).toArray(),
+    Iterator.from(subCalls[0][8] as Uint8Array).toArray(),
     [100, 50, 25, 128, 0, 0, 0, 0],
   )
   assert.deepEqual(Iterator.from(pixels).toArray(), [200, 100, 50, 128, 90, 80, 70, 0])
@@ -269,6 +268,71 @@ test('decoded atlas cache keeps only the latest image', async () => {
     resetCachedAtlasImagesForTests()
   }
 })
+
+function parameter(
+  calls: { parameters: Array<{ pname: number; param: number }> },
+  pname: number,
+): number | undefined {
+  return calls.parameters.find((entry) => entry.pname === pname)?.param
+}
+
+function stubAtlasGl(
+  overrides: Record<string, unknown> = {},
+): {
+  gl: WebGL2RenderingContext
+  calls: {
+    create: number
+    image: number
+    mipmaps: number
+    parameters: Array<{ pname: number; param: number }>
+  }
+  texture: WebGLTexture
+} {
+  const calls = {
+    create: 0,
+    image: 0,
+    mipmaps: 0,
+    parameters: [] as Array<{ pname: number; param: number }>,
+  }
+  const texture = {} as WebGLTexture
+  const gl = {
+    TEXTURE_2D: 1,
+    UNPACK_PREMULTIPLY_ALPHA_WEBGL: 2,
+    TEXTURE_MIN_FILTER: 3,
+    TEXTURE_MAG_FILTER: 4,
+    TEXTURE_WRAP_S: 5,
+    TEXTURE_WRAP_T: 6,
+    LINEAR: 7,
+    CLAMP_TO_EDGE: 8,
+    RGBA: 9,
+    UNSIGNED_BYTE: 10,
+    LINEAR_MIPMAP_LINEAR: 11,
+    TEXTURE_MAX_LEVEL: 12,
+    TEXTURE_MAX_LOD: 13,
+    createTexture() {
+      calls.create += 1
+      return texture
+    },
+    bindTexture() {},
+    pixelStorei() {},
+    texParameteri(_target: number, pname: number, param: number) {
+      calls.parameters.push({ pname, param })
+    },
+    texParameterf(_target: number, pname: number, param: number) {
+      calls.parameters.push({ pname, param })
+    },
+    texImage2D() {
+      calls.image += 1
+    },
+    texSubImage2D() {},
+    generateMipmap() {
+      calls.mipmaps += 1
+    },
+    deleteTexture() {},
+    ...overrides,
+  } as unknown as WebGL2RenderingContext
+  return { gl, calls, texture }
+}
 
 class FakeImage {
   complete = false

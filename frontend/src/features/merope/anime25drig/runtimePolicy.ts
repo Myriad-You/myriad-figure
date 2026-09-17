@@ -12,6 +12,13 @@ export interface Anime25DRenderSurface {
   displayHeight: number
 }
 
+/**
+ * Backing store shrinks slower than the CSS box (`scale ** power`).
+ * Small faces keep extra texels; 1:1 and enlarged views still cap at
+ * source × dpr. Not an SSAA pass on top of native pixels.
+ */
+const BACKING_DOWNSCALE_POWER = 0.85
+
 export function resolveAnime25DRenderSurface(input: {
   sourceWidth: number
   sourceHeight: number
@@ -34,7 +41,8 @@ export function resolveAnime25DRenderSurface(input: {
     cssWidth / sourceWidth,
     cssHeight / sourceHeight,
   )
-  const renderScale = Math.min(1, displayScale) * dpr
+  const fitted = Math.min(1, displayScale)
+  const renderScale = fitted ** BACKING_DOWNSCALE_POWER * dpr
   return {
     bufferWidth: Math.max(1, Math.round(sourceWidth * renderScale)),
     bufferHeight: Math.max(1, Math.round(sourceHeight * renderScale)),
