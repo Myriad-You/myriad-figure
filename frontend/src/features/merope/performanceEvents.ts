@@ -5,7 +5,12 @@ import type {
   PerformanceDirective,
   RigMotionStyle,
 } from '../../services/agent/types'
+import type { MeropeStateEventDetail } from './meropeAffectState'
 import { moodBand } from '../../components/agent/meropeVitals'
+import {
+  currentMeropeState,
+  writeMeropeState,
+} from './meropeAffectState'
 import {
   PERFORMANCE_BASELINE_EXPRESSIONS,
   PERFORMANCE_CUE_INTENTS,
@@ -14,19 +19,13 @@ import {
 } from './performanceContract'
 import { sanitizeSpeechPhrases } from './speech/phrasePlan'
 
-import {
-  currentMeropeState,
-  writeMeropeState,
-  type MeropeStateEventDetail,
-} from './meropeAffectState'
-
 export const MEROPE_PERFORMANCE_EVENT = 'merope-performance'
 export const MEROPE_STATE_EVENT = 'merope-state'
 
 export {
   currentMeropeState,
-  resetMeropeState,
   type MeropeStateEventDetail,
+  resetMeropeState,
 } from './meropeAffectState'
 
 export interface MeropePerformanceEventDetail {
