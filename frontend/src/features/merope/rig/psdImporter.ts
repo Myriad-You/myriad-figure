@@ -1,4 +1,5 @@
 import type { PreparedAnime25DRigImport } from './anime25dImporter'
+import { API_URL } from '../../../config'
 import { currentCopy } from '../../../i18n/localeCopy'
 import { anime25DImportCopy } from './anime25dImportCopy'
 import { importRigPsdInWorker } from './psdImportClient'
@@ -6,6 +7,10 @@ import { importRigPsdInWorker } from './psdImportClient'
 const MAX_PSD_BYTES = 32 * 1024 * 1024
 
 export type PreparedRigPsdImport = PreparedAnime25DRigImport
+
+export function sourceMasterFetchUrl(source: string, pageUrl: string, apiUrl = API_URL): string {
+  return new URL(source, apiUrl ? new URL(apiUrl, pageUrl).href : pageUrl).href
+}
 
 export async function prepareRigPsdImport(
   file: File,
@@ -26,7 +31,7 @@ export async function prepareRigPsdImport(
       buffer,
       sourceMasterAssetId,
       // Resolve against the page, not the worker chunk URL.
-      sourceMasterUrl: new URL(sourceMasterAssetId, document.baseURI).href,
+      sourceMasterUrl: sourceMasterFetchUrl(sourceMasterAssetId, document.baseURI),
       sourceGenerationFingerprint,
       copy: anime25DImportCopy(),
     },
