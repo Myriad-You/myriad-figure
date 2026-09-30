@@ -1,8 +1,8 @@
-import type { PerformanceDirective } from '../../services/agent/types'
-import type { MeropePerformanceEventDetail } from './performanceEvents'
-import type { MeropeSpeechEventDetail } from './speechEvents'
-import { acceptLiveMotionGeneration } from './motion/liveGeneration'
-import { markTurnTrace } from './turnTrace'
+import type { PerformanceDirective } from '../../../services/agent/types'
+import type { MeropePerformanceEventDetail } from '../events/performanceEvents'
+import type { MeropeSpeechEventDetail } from '../speech/speechEvents'
+import { markTurnTrace } from '../events/turnTrace'
+import { acceptLiveMotionGeneration } from './liveGeneration'
 
 export interface PerformanceLifecycleTarget {
   applyPerformanceDirective: (

@@ -1,11 +1,11 @@
-import type { SpeechArticulation, SpeechViseme } from './rig/articulation'
-import type { SpeechGesture } from './speech/phraseGestures'
-import type { SpeechProsodyPlan } from './speech/prosody'
-import { SPEECH_GESTURES } from './speech/phraseGestures'
+import type { SpeechArticulation, SpeechViseme } from '../rig/articulation'
+import type { SpeechGesture } from './phraseGestures'
+import type { SpeechProsodyPlan } from './prosody'
+import { SPEECH_GESTURES } from './phraseGestures'
 import {
   MAX_AUDIO_PROSODY_ACCENTS,
   MAX_AUDIO_PROSODY_MS,
-} from './speech/prosody'
+} from './prosody'
 
 export const MEROPE_SPEECH_EVENT = 'merope-speech'
 

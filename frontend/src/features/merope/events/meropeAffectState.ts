@@ -1,4 +1,4 @@
-import type { MoodTransition } from '../../services/agent/types'
+import type { MoodTransition } from '../../../services/agent/types'
 
 export interface MeropeStateEventDetail {
   mood: MoodTransition

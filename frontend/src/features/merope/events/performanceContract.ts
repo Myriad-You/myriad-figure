@@ -1,8 +1,9 @@
 import type {
   PerformanceBaseline,
   PerformanceCue,
-} from '../../services/agent/types'
-import contract from '../../../../shared/merope_performance_contract.json' with { type: 'json' }
+  SpeechPhrase,
+} from '../../../services/agent/types'
+import contract from '../../../../../shared/merope_performance_contract.json' with { type: 'json' }
 
 export const PERFORMANCE_BASELINE_EXPRESSIONS =
   contract.baselineExpressions as PerformanceBaseline['expression'][]
@@ -34,4 +35,32 @@ export function performanceContractIsComplete(): boolean {
       return Number.isInteger(priority) && priority >= 1 && priority <= 3
     })
   )
+}
+
+/** Speech phrases as the contract allows them; anything else is dropped. */
+export function sanitizeSpeechPhrases(value: unknown): SpeechPhrase[] {
+  if (!Array.isArray(value)) return []
+  const result: SpeechPhrase[] = []
+  for (const item of value.slice(0, 6)) {
+    if (
+      !item ||
+      typeof item !== 'object' ||
+      typeof item.text !== 'string' ||
+      !contract.phraseIntents.includes(item.intent)
+    ) {
+      continue
+    }
+    const text = item.text.normalize('NFKC')
+    const units = Iterator.from(text).reduce((n: number) => n + 1, 0)
+    if (
+      units < 2 ||
+      units > 120 ||
+      text.trim() !== text ||
+      result.some((other) => other.text === text)
+    ) {
+      continue
+    }
+    result.push({ text, intent: item.intent })
+  }
+  return result
 }

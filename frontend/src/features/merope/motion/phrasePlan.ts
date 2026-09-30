@@ -2,11 +2,11 @@ import type {
   PerformanceCue,
   SpeechPhrase,
 } from '../../../services/agent/types'
-import type { BehaviorPlan, BehaviorSnapshot } from '../motion/behavior'
-import type { SpeechProsodyPlan } from './prosody'
-import contract from '../../../../../shared/merope_performance_contract.json' with { type: 'json' }
-import { speechAccentBehaviorId } from '../motion/speechBehaviorPlan'
-import { unquotedSpeechText } from './phraseGestures'
+import type { SpeechProsodyPlan } from '../speech/prosody'
+import type { BehaviorPlan, BehaviorSnapshot } from './behavior'
+import { sanitizeSpeechPhrases } from '../events/performanceContract'
+import { unquotedSpeechText } from '../speech/phraseGestures'
+import { speechAccentBehaviorId } from './speechBehaviorPlan'
 
 type Gesture = NonNullable<SpeechProsodyPlan['accents'][number]['gesture']>
 const FORM: Record<SpeechPhrase['intent'], Gesture> = {
@@ -31,33 +31,6 @@ export interface PhraseCoverage {
   gesture: Gesture
   startMs: number
   endMs: number
-}
-
-export function sanitizeSpeechPhrases(value: unknown): SpeechPhrase[] {
-  if (!Array.isArray(value)) return []
-  const result: SpeechPhrase[] = []
-  for (const item of value.slice(0, 6)) {
-    if (
-      !item ||
-      typeof item !== 'object' ||
-      typeof item.text !== 'string' ||
-      !contract.phraseIntents.includes(item.intent)
-    ) {
-      continue
-    }
-    const text = item.text.normalize('NFKC')
-    const units = Iterator.from(text).reduce((n: number) => n + 1, 0)
-    if (
-      units < 2 ||
-      units > 120 ||
-      text.trim() !== text ||
-      result.some((other) => other.text === text)
-    ) {
-      continue
-    }
-    result.push({ text, intent: item.intent })
-  }
-  return result
 }
 
 /** Updates describe fragments, not a replacement for queued spoken segments. */

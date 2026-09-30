@@ -1,12 +1,12 @@
-import type { SpeechArticulation } from './rig/articulation'
-import type { SpeechProsodyPlan } from './speech/prosody'
-import type { MeropeSpeechEventDetail } from './speechEvents'
-import { isLiveMotionGeneration } from './motion/liveGeneration'
+import type { SpeechArticulation } from '../rig/articulation'
+import type { SpeechProsodyPlan } from '../speech/prosody'
+import type { MeropeSpeechEventDetail } from '../speech/speechEvents'
+import { noteTurnTraceDrop } from '../events/turnTrace'
 import {
-  estimateVisualSpeechTailMs,
+  estimateAutoSpeechDurationMs,
   MAX_VISUAL_SPEECH_TEXT_UNITS,
-} from './speech/textTiming'
-import { noteTurnTraceDrop } from './turnTrace'
+} from '../speech/textTiming'
+import { isLiveMotionGeneration } from './liveGeneration'
 
 export interface SpeechLifecycleTarget {
   setSpeechActive: (active: boolean) => void
@@ -255,14 +255,4 @@ export class SpeechLifecycleController {
     this.notifiedBusy = busy
     this.onBusyChange?.(busy)
   }
-}
-
-export function estimateAutoSpeechDurationMs(
-  text: string,
-  locale?: string,
-): number {
-  return estimateVisualSpeechTailMs(
-    text.slice(0, MAX_VISUAL_SPEECH_TEXT_UNITS),
-    locale,
-  )
 }

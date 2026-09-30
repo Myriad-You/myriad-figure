@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { HumanPerformanceRuntime } from '../motion/humanPerformanceRuntime'
-import { compileSpeechBehaviorPlan } from '../motion/speechBehaviorPlan'
+import { sanitizeSpeechPhrases } from '../events/performanceContract'
+import { predictTextProsody } from '../speech/textProsody'
+import { HumanPerformanceRuntime } from './humanPerformanceRuntime'
 import {
   directorPhraseCoverage,
   mergeSpeechPhrases,
   refineSpeechPhrases,
-  sanitizeSpeechPhrases,
   upcomingSpeechText,
 } from './phrasePlan'
-import { predictTextProsody } from './textProsody'
+import { compileSpeechBehaviorPlan } from './speechBehaviorPlan'
 
 const text = '也许我们能试一下。其实可以先解释清楚。你觉得呢？'
 const base = predictTextProsody({

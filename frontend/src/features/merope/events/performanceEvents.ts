@@ -4,9 +4,9 @@ import type {
   PerformanceCue,
   PerformanceDirective,
   RigMotionStyle,
-} from '../../services/agent/types'
+} from '../../../services/agent/types'
 import type { MeropeStateEventDetail } from './meropeAffectState'
-import { moodBand } from '../../components/agent/meropeVitals'
+import { moodBand } from '../../../components/agent/meropeVitals'
 import {
   currentMeropeState,
   writeMeropeState,
@@ -16,8 +16,8 @@ import {
   PERFORMANCE_CUE_INTENTS,
   PERFORMANCE_INTERRUPT_MODES,
   PERFORMANCE_POSTURES,
+  sanitizeSpeechPhrases,
 } from './performanceContract'
-import { sanitizeSpeechPhrases } from './speech/phrasePlan'
 
 export const MEROPE_PERFORMANCE_EVENT = 'merope-performance'
 export const MEROPE_STATE_EVENT = 'merope-state'

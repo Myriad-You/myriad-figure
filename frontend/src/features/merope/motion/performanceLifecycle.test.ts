@@ -1,4 +1,4 @@
-import type { MeropePerformanceEventDetail } from './performanceEvents'
+import type { MeropePerformanceEventDetail } from '../events/performanceEvents'
 import type { PerformanceLifecycleTarget } from './performanceLifecycle'
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -184,7 +184,7 @@ test('does not transfer cancellation ownership to a plan rejected by the rig', (
 })
 
 test('drops an older generation plan and ignores a replay of the active plan', async () => {
-  const { setLiveMotionGeneration } = await import('./motion/liveGeneration')
+  const { setLiveMotionGeneration } = await import('./liveGeneration')
   setLiveMotionGeneration(2)
   const played: (typeof performance)[] = []
   const controller = new PerformanceLifecycleController({
@@ -293,7 +293,7 @@ test('a rejected plan can be retried and is remembered only after acceptance', (
 })
 
 test('identical plans in distinct live generations or sources are independent', async () => {
-  const { setLiveMotionGeneration } = await import('./motion/liveGeneration')
+  const { setLiveMotionGeneration } = await import('./liveGeneration')
   const { controller, played } = recordingController()
   try {
     setLiveMotionGeneration(1)
