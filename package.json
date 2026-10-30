@@ -1,15 +1,16 @@
 {
   "name": "@myriad/figure",
+  "type": "module",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.25.0",
   "description": "Myriad's 2.5D figure: the runtime that plays her rig and the tools that build one from a layered picture.",
   "license": "AGPL-3.0-only",
-  "type": "module",
-  "packageManager": "pnpm@11.25.0",
   "exports": {
     "./*": "./src/*.ts"
   },
   "scripts": {
+    "lint": "eslint .",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },
@@ -18,7 +19,9 @@
     "pinyin-pro": "3.29.5"
   },
   "devDependencies": {
+    "@antfu/eslint-config": "^9.5.1",
     "@types/node": "26.5.1",
+    "eslint": "^10.13.0",
     "sharp": "0.35.5",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3"

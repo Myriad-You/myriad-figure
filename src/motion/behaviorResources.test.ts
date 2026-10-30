@@ -5,13 +5,13 @@ import {
   PERFORMANCE_CUE_DEFINITIONS,
   performanceCueChannels,
 } from '../anime25drig/performanceCueDefinitions'
+import { coreFile } from '../testing/coreFile.test-support'
 import {
   resourceInGroup,
   resourcesConflict,
   resourcesForRigChannels,
   rigChannelsForResources,
 } from './behaviorResources'
-import { coreFile } from '../testing/coreFile.test-support'
 
 test('resource hierarchy permits independent limbs but conflicts with parents', () => {
   assert.equal(resourcesConflict('body.arm.left', 'body.arm.right'), false)
