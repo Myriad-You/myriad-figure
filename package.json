@@ -6,8 +6,18 @@
   "packageManager": "pnpm@11.25.0",
   "description": "Myriad's 2.5D figure: the runtime that plays her rig and the tools that build one from a layered picture.",
   "license": "AGPL-3.0-only",
+  "sideEffects": false,
   "exports": {
-    "./*": "./src/*.ts"
+    "./anime25drig": "./src/anime25drig/index.ts",
+    "./events": "./src/events/index.ts",
+    "./host": "./src/figureHost.ts",
+    "./interaction": "./src/interaction/index.ts",
+    "./motion": "./src/motion/index.ts",
+    "./performance": "./src/performance/index.ts",
+    "./rig": "./src/rig/index.ts",
+    "./singing": "./src/singing/index.ts",
+    "./speech": "./src/speech/index.ts",
+    "./testing": "./src/testing/index.ts"
   },
   "scripts": {
     "lint": "eslint .",

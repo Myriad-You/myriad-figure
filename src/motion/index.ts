@@ -1,0 +1,23 @@
+// Motion scheduling: the coordinator, the runtime and its sources, and how a frame reaches a rig.
+// The public surface of this directory; everything else in it is internal.
+
+export { applyMotionFrame, createMotionApplyState } from './applyFrame'
+export type { RigBearing } from './bearing'
+export type { BehaviorPlan } from './behavior'
+export type { MotionLeaseHandle } from './coordinator'
+export { getRigMotionCoordinator, RigMotionCoordinator } from './coordinator'
+export { HumanPerformanceRuntime } from './humanPerformanceRuntime'
+export { isLiveMotionGeneration, liveMotionGeneration, newMotionIntentId, setLiveMotionGeneration } from './liveGeneration'
+export type { MusicMotionAudio, MusicMotionClock, MusicMotionVisibility } from './musicSource'
+export { MusicMotionSource } from './musicSource'
+export type { MotionChannelPolicy } from './policy'
+export { IDLE_MOTION_POLICY } from './policy'
+export { PreviewMotionScope } from './previewScope'
+export { captureRigStateSummary, semanticRigCapabilities } from './rigStateSummary'
+export type { LiveFaceConsumer } from './runtime'
+export { createLiveMotionRuntime, createPreviewMotionRuntime, MotionRuntime } from './runtime'
+export type { ResolvedScore } from './scoreTimeline'
+export type { SpeechLifecycleScheduler, SpeechLifecycleTarget } from './speechLifecycle'
+export { SpeechLifecycleController } from './speechLifecycle'
+export { SpeechMotionSource } from './speechSource'
+export { TouchMotionSource } from './touchSource'
