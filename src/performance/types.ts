@@ -129,8 +129,7 @@ export interface PerformanceDirective {
   }
 }
 
-export type ScoreMoveKind =
-  | 'nod' | 'shake' | 'glance' | 'blink' | 'wink' | 'beat' | 'shrug' | 'sigh' | 'bounce' | 'startle'
+export type ScoreMoveKind = keyof typeof performanceContract.scoreMoves
 export type ScoreSide = 'left' | 'right' | 'both'
 export type ScoreDirection =
   | 'left' | 'right' | 'up' | 'down' | 'up-left' | 'up-right' | 'down-left' | 'down-right'
