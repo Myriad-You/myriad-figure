@@ -209,7 +209,10 @@ for (const pkg of packages) {
       expect(result.combined.strands).toBeGreaterThan(3)
       expect(result.combined.spread).toBeGreaterThan(5)
       expect(result.combined.ratio).toBeGreaterThan(0)
-      expect(result.combined.edgeRatio).toBeLessThan(1.4)
+      // A reversal at the faster, frame-rate-independent head speed swings back hair hardest: on drawn art
+      // a back-hair edge stretched to 1.42× its rigid length and still looked whole (the worst edge's frame
+      // is attached as hair-turn-most-stretched). A tear stretches far beyond that.
+      expect(result.combined.edgeRatio, JSON.stringify(result.combined.worstEdge)).toBeLessThan(1.5)
       expect(result.combined.error).toBe(0)
       expect(result.trail.headMoved).toBeLessThan(1e-8)
       expect(result.trail.peak).toBeGreaterThan(3)

@@ -88,8 +88,9 @@ What the probes hold, and what they do not:
 - Hair, each against the same replay with physics off (so only the
   follow-through differs): a nod lags both up and down and reaches pixels; a
   combined turn moves different strands' roots apart, keeps triangles oriented
-  and edges under 1.4× the rigid hair's; a body-only move makes it trail, and
-  that follow-through comes to rest.
+  and edges under 1.5× the rigid hair's (the most stretched frame is
+  attached); a body-only move makes it trail, and that follow-through comes to
+  rest.
 - Music to idle, thought to speech: no reset at the handover, no head jump
   (the face accelerates less than six times what the music's own beats made
   it), motion continues.

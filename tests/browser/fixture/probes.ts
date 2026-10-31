@@ -112,6 +112,17 @@ function hash(pixels: Uint8Array): number {
   return h
 }
 
+/** A frame kept with readPixels, as a PNG the right way up. */
+function picture(pixels: Uint8Array, width: number, height: number): string {
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const image = new ImageData(width, height)
+  for (let y = 0; y < height; y++) image.data.set(pixels.subarray((height - 1 - y) * width * 4, (height - y) * width * 4), y * width * 4)
+  canvas.getContext('2d')!.putImageData(image, 0, 0)
+  return canvas.toDataURL('image/png').split(',')[1]!
+}
+
 function screenshot(gl: WebGL2RenderingContext): string {
   return (gl.canvas as HTMLCanvasElement).toDataURL('image/png').split(',')[1]!
 }
@@ -738,7 +749,7 @@ async function hair(ref: PackageRef) {
             pixels.push(readPixels(gl))
           }
         }
-        return { hair, pixels, ratio, shot: screenshot(gl), driver: player.inspect().driver, error: gl.getError(), inspection: player.inspect() }
+        return { hair, pixels, size: [gl.drawingBufferWidth, gl.drawingBufferHeight] as const, ratio, shot: screenshot(gl), driver: player.inspect().driver, error: gl.getError(), inspection: player.inspect() }
       }
       finally { close() }
     }
@@ -764,6 +775,8 @@ async function hair(ref: PackageRef) {
     const [combined, combinedRigid] = [await replay(true, 240, combinedPose, sampled), await replay(false, 240, combinedPose, sampled)]
     const hairViews = combined.inspection.layers.filter(layer => layer.hairBase)
     let spread = 0; let edgeRatio = 1
+    // Kept in an object: written inside the callbacks below, which a bare `let` would not see narrowed.
+    const worst: { edge: { layer: string, frame: number, rigid: number, stretched: number, at: Anime25DPoint } | null } = { edge: null }
     combined.hair.forEach((frame, n) => {
       const rigid = combinedRigid.hair[n]!
       const shifts: number[] = []
@@ -779,7 +792,12 @@ async function hair(ref: PackageRef) {
           for (const [u, v] of [[0, 1], [1, 2], [2, 0]] as const) {
             const a = view.indices[i + u]! * 2; const b = view.indices[i + v]! * 2
             const length = Math.hypot(rigid[k]![a]! - rigid[k]![b]!, rigid[k]![a + 1]! - rigid[k]![b + 1]!)
-            if (length > 0.5) edgeRatio = Math.max(edgeRatio, Math.hypot(frame[k]![a]! - frame[k]![b]!, frame[k]![a + 1]! - frame[k]![b + 1]!) / length)
+            if (length <= 0.5) continue
+            const stretched = Math.hypot(frame[k]![a]! - frame[k]![b]!, frame[k]![a + 1]! - frame[k]![b + 1]!)
+            if (stretched / length > edgeRatio) {
+              edgeRatio = stretched / length
+              worst.edge = { layer: view.name, frame: n * 4, rigid: length, stretched, at: { x: (frame[k]![a]! + frame[k]![b]!) / 2, y: (frame[k]![a + 1]! + frame[k]![b + 1]!) / 2 } }
+            }
           }
         }
       })
@@ -797,9 +815,12 @@ async function hair(ref: PackageRef) {
     for (let i = 61; i < trail.hair.length; i++) settledMotion = Math.max(settledMotion, hairDifference(followThrough(i), followThrough(i - 1)).max * 60)
     return {
       nod: { ...nodLag, ratio: nod.ratio, error: Math.max(nod.error, nodRigid.error) },
-      combined: { strands: strands.length, spread, edgeRatio, ratio: combined.ratio, error: Math.max(combined.error, combinedRigid.error) },
+      combined: { strands: strands.length, spread, edgeRatio, worstEdge: worst.edge, ratio: combined.ratio, error: Math.max(combined.error, combinedRigid.error) },
       trail: { peak, headMoved: Math.max(Math.abs(trail.driver.angleX), Math.abs(trail.driver.angleZ)), settledMotion, error: Math.max(trail.error, trailRigid.error) },
-      shots: [{ name: 'hair-nod', image: nod.shot }],
+      shots: [{ name: 'hair-nod', image: nod.shot }, ...worst.edge
+        ? [{ name: 'hair-turn-most-stretched', image: picture(combined.pixels[worst.edge.frame / 4]!, ...combined.size) },
+            { name: 'hair-turn-most-stretched-rigid', image: picture(combinedRigid.pixels[worst.edge.frame / 4]!, ...combined.size) }]
+        : []],
     }
   })
 }
