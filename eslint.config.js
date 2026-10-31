@@ -6,8 +6,8 @@ export default antfu(
   {
     formatters: false,
     react: false,
-    // Anime2.5DRig's license and notice; the files in core/ belong to myriad-core.
-    ignores: ['src/anime25drig/vendor/**', 'core/**'],
+    // Anime2.5DRig's license and notice; contracts/ are byte copies of myriad-core's.
+    ignores: ['src/anime25drig/vendor/**', 'contracts/**'],
   },
   {
     rules: {

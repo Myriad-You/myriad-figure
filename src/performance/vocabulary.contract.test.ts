@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import contract from '@myriad/core/shared/merope_performance_contract.json' with { type: 'json' }
+import contract from '../../contracts/merope_performance_contract.json' with { type: 'json' }
 import {
   BASELINE_EXPRESSIONS,
   CUE_INTENTS,

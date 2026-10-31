@@ -6,7 +6,7 @@ import type {
   ScoreMove,
   SpeechPhrase,
 } from '../performance/types'
-import contract from '@myriad/core/shared/merope_performance_contract.json' with { type: 'json' }
+import contract from '../../contracts/merope_performance_contract.json' with { type: 'json' }
 import { CUE_INTENTS, isWord, PHRASE_INTENTS, SCORE_DIRECTIONS, SCORE_SIDES } from '../performance/vocabulary'
 
 export {

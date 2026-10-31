@@ -1,4 +1,4 @@
-import type performanceContract from '@myriad/core/shared/merope_performance_contract.json'
+import type performanceContract from '../../contracts/merope_performance_contract.json'
 import type {
   BASELINE_EXPRESSIONS,
   CUE_INTENTS,

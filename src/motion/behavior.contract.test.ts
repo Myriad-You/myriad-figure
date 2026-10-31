@@ -2,12 +2,10 @@ import type { RigMotionPort } from '../rig/motionPort'
 import type { ScheduledBehavior } from './behavior'
 import type { MotionFrame } from './intents'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { PERFORMANCE_CUE_INTENTS } from '../events/performanceContract'
 import { MUSIC_MODES } from '../singing/musicSignal'
 import { musicSignalAt } from '../singing/musicSignal.test-support'
-import { coreFile } from '../testing/coreFile.test-support'
 import { applyMotionFrame, createMotionApplyState } from './applyFrame'
 import { applySingingWrite } from './applySnapshot'
 import { MOTION_CHANNELS } from './channels'
@@ -196,6 +194,7 @@ test('idle self-motion never shows up as a semantic behavior', () => {
   }
 })
 
+// The same lists against the director's: Myriad's frontend/src/features/merope/figureCore.test.ts.
 test('the behavior vocabulary is exactly what a producer can emit', () => {
   const functions = new Set<string>()
   const sources = new Set<string>()
@@ -249,26 +248,4 @@ test('the behavior vocabulary is exactly what a producer can emit', () => {
     Iterator.from(sources).toArray().toSorted(),
     BEHAVIOR_SOURCES.toSorted(),
   )
-
-  const contract = readFileSync(coreFile('crates/myriad-merope/src/rig_state.rs'), 'utf8')
-  assert.deepEqual(
-    rustList(contract, 'RIG_STATE_BEHAVIOR_FUNCTIONS').toSorted(),
-    Iterator.from(functions).toArray().toSorted(),
-  )
-  assert.deepEqual(
-    rustList(contract, 'RIG_STATE_BEHAVIOR_SOURCES').toSorted(),
-    Iterator.from(sources).toArray().toSorted(),
-  )
 })
-
-function rustList(contract: string, name: string): string[] {
-  const block = new RegExp(
-    `${RegExp.escape(name)}: &\\[&str\\] = &\\[([^\\]]*)\\]`,
-  ).exec(
-    contract,
-  )?.[1]
-  assert.ok(block, `${name} missing from the director contract`)
-  return Iterator.from(block.matchAll(/"([a-z.]+)"/gi))
-    .map((match) => match[1]!)
-    .toArray()
-}

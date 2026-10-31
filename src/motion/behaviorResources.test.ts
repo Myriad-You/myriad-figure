@@ -5,7 +5,6 @@ import {
   PERFORMANCE_CUE_DEFINITIONS,
   performanceCueChannels,
 } from '../anime25drig/performanceCueDefinitions'
-import { coreFile } from '../testing/coreFile.test-support'
 import {
   resourceInGroup,
   resourcesConflict,
@@ -99,34 +98,15 @@ function source(relative: string): string {
   return readFileSync(new URL(relative, import.meta.url), 'utf8')
 }
 
-test('the resource vocabulary matches the director contract and the rig boundary', () => {
+// That the director's list matches this one is checked where both are checked out: Myriad's
+// frontend/src/features/merope/figureCore.test.ts.
+test('the resource vocabulary stays inside the rig boundary', () => {
   const local = source('./behaviorResources.ts')
-  const summary = source('./rigStateSummary.ts')
-  const contract = readFileSync(coreFile('crates/myriad-merope/src/rig_state.rs'), 'utf8')
   const boundary = source('../rig/README.md')
-
-  const block = /RIG_STATE_BEHAVIOR_RESOURCES: &\[&str\] = &\[([^\]]*)\]/.exec(
-    contract,
-  )?.[1]
-  assert.ok(block, 'director contract has no RIG_STATE_BEHAVIOR_RESOURCES block')
-  const declared = Iterator.from(block.matchAll(/"([a-z.]+)"/g))
-    .map((match) => match[1])
-    .toArray()
-  assert.ok(declared.length > 0, 'director contract listed no resources')
-  for (const resource of declared) {
-    assert.match(local, new RegExp(`\\| '${RegExp.escape(resource)}'`), resource)
-    assert.match(summary, new RegExp(`'${RegExp.escape(resource)}',`), resource)
-  }
-
   assert.match(boundary, /no shoulder, elbow, wrist, leg, foot/)
   for (const forbidden of ['legs', 'foot', 'feet', 'locomotion']) {
     assert.doesNotMatch(
       local,
-      new RegExp(`body\\.${RegExp.escape(forbidden)}`),
-      forbidden,
-    )
-    assert.doesNotMatch(
-      contract,
       new RegExp(`body\\.${RegExp.escape(forbidden)}`),
       forbidden,
     )

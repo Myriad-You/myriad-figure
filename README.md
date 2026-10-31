@@ -23,7 +23,9 @@ Myriad 的 2.5D 形象：在浏览器里演她的 rig 的运行时，和从分�
 
 ## 共用核心
 
-rig 契约和表演契约在共用核心（[Myriad-You/myriad-core](https://github.com/Myriad-You/myriad-core)）的 `shared/` 里，本仓库按 `@myriad/core/shared/...` 引用。单独检出时 `@myriad/core` 指本仓库的子模块 `core/`；在 Myriad 里这个子模块不检出，指 Myriad 自己的 `core/`（`tsconfig.json` 的 `paths` 两处都列了，站点的 vite 和 tsconfig 另配同名别名）。所以在 Myriad 里形象总是跟站点用同一份核心。
+rig 契约和表演契约的源头在共用核心（[Myriad-You/myriad-core](https://github.com/Myriad-You/myriad-core)）的 `shared/` 里：核心的 Rust 从它们生成代码，她发给各端的表演指令也用这套词表。本仓库在 `contracts/` 带一份逐字节的副本，只读这份，不依赖 myriad-core，单独克隆就能装、能测。
+
+副本不手改。契约在 myriad-core 里改，再在 Myriad 里跑 `scripts/extra/figure-contracts.sh sync` 拷过来；Myriad 的 CI 检查副本是 core 历史上出现过的某一版（core 可以单独往前升，但形象不能带一份核心没有过的契约）。本仓库常量与核心 Rust 源码的对照（行为词表、资源、心情分档）也在 Myriad 里检查，见那边的 `frontend/src/features/merope/figureCore.test.ts`。
 
 ## 开发
 
