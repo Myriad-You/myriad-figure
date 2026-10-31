@@ -1,6 +1,5 @@
 import type { CollarClipMesh } from '../../../src/anime25drig/collarRuntime'
 import type { Anime25DGpuLayer } from '../../../src/anime25drig/layerGpuBinding'
-import type { RigPsdImportOptions } from '../../../src/rig/psdImporter'
 import { writePsd } from 'ag-psd'
 import { realizeAnime25DBehaviorPlan } from '../../../src/anime25drig/behaviorRealizer'
 import { Anime25DPlayer } from '../../../src/anime25drig/player'
@@ -16,63 +15,12 @@ import { RigMotionCoordinator } from '../../../src/motion/coordinator'
 import { MusicMotionSource } from '../../../src/motion/musicSource'
 import { MotionRuntime } from '../../../src/motion/runtime'
 import { prepareAnime25DRigPsd } from '../../../src/rig/anime25dImporter'
-import { syntheticSeeThroughPsd } from '../../../src/rig/anime25dImporter.fixture'
 import { decodeRigPsd } from '../../../src/rig/psdDecode'
-import { prepareRigPsdImport } from '../../../src/rig/psdImporter'
 import { dispatchMeropeSpeech } from '../../../src/speech/speechEvents'
+import { fixture, importPsd } from './synthetic'
 
 // What the page directs its figure on, as a site would keep one.
 const channel = new FigureChannel()
-
-/** The figure's import against this page, which serves the API itself. */
-function importPsd(file: File, options: Omit<RigPsdImportOptions, 'apiUrl'>) {
-  return prepareRigPsdImport(file, { ...options, apiUrl: '' })
-}
-
-function fixture(kind: string) {
-  const psd = syntheticSeeThroughPsd()
-  if (kind === 'alternate-eyes') {
-    const closed = psd.children!.find((l) => l.name === 'eyelash_c')!
-    const data = new Uint8ClampedArray(closed.imageData!.data)
-    for (let y = 0; y < 256; y++)
-      data.fill(0, (y * 256 + 128) * 4, (y + 1) * 256 * 4)
-    psd.children!.push({
-      ...closed,
-      name: 'eye_close2',
-      imageData: { ...closed.imageData!, data },
-    })
-  }
-  if (kind === 'missing-face')
-    psd.children = psd.children!.filter((l) => l.name !== 'face')
-  if (kind === 'collar' || kind === 'necklace') {
-    // Portrait placement is fitted to this non-square PSD canvas.
-    psd.height = 300
-    const data = new Uint8ClampedArray(40 * 50 * 4)
-    for (let i = 0; i < data.length; i += 4) data.set([245, 205, 190, 255], i)
-    psd.children!.push({
-      name: 'neck',
-      left: 108,
-      top: 138,
-      imageData: { width: 40, height: 50, data },
-    })
-    if (kind === 'necklace') {
-      const topwear = psd.children!.find((l) => l.name === 'topwear')!
-      const pixels = topwear.imageData!.data
-      pixels.fill(0, 0, 180 * 256 * 4)
-      psd.children!.push({
-        name: 'neckwear_1',
-        left: 124,
-        top: 144,
-        imageData: {
-          width: 8,
-          height: 32,
-          data: new Uint8ClampedArray(8 * 32 * 4).fill(255),
-        },
-      })
-    }
-  }
-  return psd
-}
 
 async function pngPixels(blob: Blob) {
   const image = await createImageBitmap(blob)
@@ -220,11 +168,13 @@ async function livePackage(slowUrl: string) {
     return new Anime25DPlayer(canvas, playback)
   }
   const internals = (player: Anime25DPlayer) => player as unknown as { atlasTexture: unknown, playback: { engineUrl: string } }
+  // Each load carries its own marker where the engine URL goes, to tell which one landed.
+  const marked = (marker: string) => ({ ...playback, engineUrl: marker }) as unknown as typeof playback
   try {
     const player = make()
     await player.loadAtlas(url)
     const first = internals(player).atlasTexture
-    await player.replaceLivePackage({ ...playback, engineUrl: 'swapped' }, undefined, url)
+    await player.replaceLivePackage(marked('swapped'), undefined, url)
     const swapped = {
       sameTexture: internals(player).atlasTexture === first,
       bound: internals(player).atlasTexture !== null,
@@ -232,15 +182,15 @@ async function livePackage(slowUrl: string) {
     }
     // A slow load is overtaken by a later one: it rejects as aborted and never lands.
     const abortName = (error: unknown) => error instanceof Error ? error.name : String(error)
-    const slow = player.replaceLivePackage({ ...playback, engineUrl: 'slow' }, undefined, slowUrl).then(() => 'landed', abortName)
-    const fast = player.replaceLivePackage({ ...playback, engineUrl: 'fast' }, undefined, url)
+    const slow = player.replaceLivePackage(marked('slow'), undefined, slowUrl).then(() => 'landed', abortName)
+    const fast = player.replaceLivePackage(marked('fast'), undefined, url)
     const [slowOutcome] = await Promise.all([slow, fast])
     const superseded = { slow: slowOutcome, engineUrl: internals(player).playback.engineUrl }
     player.dispose()
     // A load still in flight when the player is disposed must not bind anything.
     const late = make()
     await late.loadAtlas(url)
-    const pending = late.replaceLivePackage({ ...playback, engineUrl: 'late' }, undefined, slowUrl)
+    const pending = late.replaceLivePackage(marked('late'), undefined, slowUrl)
     late.dispose()
     await pending.catch(() => {})
     const afterDispose = { texture: internals(late).atlasTexture, engineUrl: internals(late).playback.engineUrl }
@@ -377,7 +327,7 @@ async function directorReplay(parallel = false, race = false, touchCase = '', fp
   const player = new Anime25DPlayer(canvas, prepared.source.anime25dPlayback!)
   const url = URL.createObjectURL(prepared.atlas)
   let now = 1000
-  let musicTick: ((time: number) => void) | null = null
+  const musicClock: { tick: ((time: number) => void) | null } = { tick: null }
   const coordinator = new RigMotionCoordinator()
   const audio = { paused: false, currentTime: 0 }
   const music = new MusicMotionSource(
@@ -385,11 +335,11 @@ async function directorReplay(parallel = false, race = false, touchCase = '', fp
     {
       now: () => now,
       raf: (callback) => {
-        musicTick = callback
+        musicClock.tick = callback
         return 1
       },
       caf: () => {
-        musicTick = null
+        musicClock.tick = null
       },
     },
     {
@@ -627,7 +577,7 @@ async function directorReplay(parallel = false, race = false, touchCase = '', fp
       }
       if (parallel) {
         audio.currentTime = (now - 1000) / 1000
-        musicTick?.(now)
+        musicClock.tick?.(now)
         if (i === 120 && !race) runtime.speech.stop()
         if (i === 240) {
           audio.paused = true
@@ -908,33 +858,24 @@ async function bodyReplay(kind: string, fps: number) {
         })
         previous = points
         for (const layer of state.layers) {
-          if (!layer.springs?.length || !layer.alongStrand) continue
-          for (
-            let vertex = 0;
-            vertex < layer.alongStrand.length - 1;
-            vertex++
-          ) {
-            if (
-              (vertex + 1) % (layer.cols + 1) === 0 ||
-              layer.alongStrand[vertex] > 0.1 ||
-              layer.alongStrand[vertex + 1] > 0.1
-            ) {
-              continue
-            }
-            const i = vertex * 2
+          const along = layer.alongStrand
+          if (!layer.springs?.length || !along) continue
+          // Neighbouring vertices are the mesh's own edges, near the strand roots.
+          for (const [a, b] of meshEdges(layer.indices)) {
+            if (along[a]! > 0.1 || along[b]! > 0.1) continue
             // Secondary motion is measured against this frame's projected
             // head surface, as in constrainHairSurface. The neutral drawing
             // also includes turn foreshortening, which is not spring collapse.
             const base = layer.hairSurface?.base ?? layer.rest
             const restLength = Math.hypot(
-              base[i + 2] - base[i],
-              base[i + 3] - base[i + 1],
+              base[b * 2]! - base[a * 2]!,
+              base[b * 2 + 1]! - base[a * 2 + 1]!,
             )
             if (restLength < 0.001) continue
             const stretch =
               Math.hypot(
-                layer.deformed[i + 2] - layer.deformed[i],
-                layer.deformed[i + 3] - layer.deformed[i + 1],
+                layer.deformed[b * 2]! - layer.deformed[a * 2]!,
+                layer.deformed[b * 2 + 1]! - layer.deformed[a * 2 + 1]!,
               ) / restLength
             minRootStretch = Math.min(minRootStretch, stretch)
             maxRootStretch = Math.max(maxRootStretch, stretch)
@@ -1285,4 +1226,20 @@ async function eyePixels(fps: number) {
     player.dispose()
     URL.revokeObjectURL(url)
   }
+}
+
+/** Each edge of a triangle mesh once, as vertex index pairs. */
+function meshEdges(indices: Uint16Array): [number, number][] {
+  const seen = new Set<number>()
+  const edges: [number, number][] = []
+  for (let i = 0; i < indices.length; i += 3) {
+    for (const [u, v] of [[0, 1], [1, 2], [2, 0]] as const) {
+      const a = Math.min(indices[i + u]!, indices[i + v]!)
+      const b = Math.max(indices[i + u]!, indices[i + v]!)
+      if (seen.has(a * 65536 + b)) continue
+      seen.add(a * 65536 + b)
+      edges.push([a, b])
+    }
+  }
+  return edges
 }

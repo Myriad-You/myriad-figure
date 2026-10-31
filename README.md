@@ -37,7 +37,7 @@ pnpm exec playwright install chromium
 pnpm test:browser
 ```
 
-在 Myriad 里，`frontend/` 的 `pnpm install` 会一起装好本仓库的依赖，`pnpm test:unit` 和 `pnpm typecheck` 也会跑本仓库的测试和类型检查。浏览器测试（`tests/browser/`：真实 Worker 导入、真实 WebGL 下的播放器、触摸、换装）在本仓库里用 `pnpm test:browser` 跑；一部分要用真实素材，没有素材时跳过。
+在 Myriad 里，`frontend/` 的 `pnpm install` 会一起装好本仓库的依赖，`pnpm test:unit` 和 `pnpm typecheck` 也会跑本仓库的测试和类型检查。浏览器测试（`tests/browser/`：真实 Worker 导入、真实 WebGL 下的播放器、触摸、换装，以及只经公开接口的形象探针）在本仓库里用 `pnpm test:browser` 跑。探针在 CI 上用合成素材；设 `FIGURE_REAL_ASSETS` 指向本机的形象包目录，就同样在真实素材上跑，说明见 `tests/browser/README.md`。
 
 本仓库 2026-10-31 带着历史从 Myriad 拆出来，之前的提交记录照原样保留（提交说明里的 `#数字` 指 Myriad 的 PR）。
 
