@@ -4,17 +4,22 @@ Myriad 的 2.5D 形象：在浏览器里演她的 rig 的运行时，和从分�
 
 - **运行时**：`anime25drig/`（网格变形、头壳转头与关键形、头发和胸的物理、表情、嘴形、WebGL 渲染、播放器）、`motion/`（行为排程、表演、说话和唱歌时的身体、触摸）、`expressionShapes/`（特殊表情的形状）、`singing/`（音乐信号、节拍、歌词时间线）、`speech/`（韵律、口型、重音）、`interaction/`（触摸手势和反应）、`events/`（表演事件和表演契约）、`performance/`（表演类型、心情分档）。
 - **处理工具**：`rig/`（PSD 与拆层导入、图集、骨骼、部件、补遮挡、转头和转身关键形的拟合与放置），PSD 解码在 Worker 里跑。
-- **宿主**：`figureHost.ts`。形象自己不知道语言、API 在哪、怎么记一轮对话；这些由宿主页面 `installFigureHost` 借给它。没装时说英文、按页面地址取、不记录。
+- **通道、错误、记录**：`channel.ts`、`errors.ts`、`trace.ts`。形象没有页面级的状态：页面为它演的那一个形象建一个 `FigureChannel`，表演、说话、她的状态、对方在打字都派发在这条通道上，当前是哪一轮、她最后的状态也记在这里，再交给那个形象的运行时。报错是带错误码和参数的 `FigureError`，消息是英文兜底，页面按错误码换成自己的话。API 地址和一轮对话的记录（`FigureTrace`）由建播放器、协调器、运行时、导入的人在构造时给。
 
 谁在用：[Myriad](https://github.com/Myriad-You/Myriad) 的站点以子模块 `figure/` 钉住本仓库，作为 pnpm workspace 包 `@myriad/figure` 引用。Myriad 的 macOS 原生 App 和 Android XR 端按钉住的提交照本仓库移植。
 
 ## 入口
 
-外面只能经 `package.json` 的 `exports` 取：`@myriad/figure/anime25drig`、`events`、`host`、`interaction`、`motion`、`performance`、`rig`、`singing`、`speech`、`testing`，每个对应目录下的 `index.ts`。入口里列出的就是对外的全部，目录里别的文件都是内部的，可以随时改名、拆分。站点要用一个还没列出的东西，先在这里把它加进入口。
+外面只能经 `package.json` 的 `exports` 取，按用途分：
 
-`performance` 是导演写给她的东西（表演指令、提示、节拍）和她回报的状态的类型。词表以核心的表演契约为准，`src/performance/types.contract.test.ts` 逐项对照。
+- `@myriad/figure`：通道、错误、记录（上面那三样）。
+- 演她的页面用：`anime25drig`（播放器和它的驱动补丁）、`motion`（运行时、协调器、动作源、把一帧写到 rig）、`events`（表演和状态事件）、`speech`（说话事件、韵律、口型）、`singing`（音乐信号、歌词）、`interaction`（触摸）、`performance`（导演写给她、她回报的类型）、`rig`（导入、清单、诊断）。
+- `workbench`：调 rig 的工作台才需要的（表情预设、姿势修正与它在屏幕上的位置、动作包络探针、表情与节拍词表、PSD 对账颜色、预览范围）。演她的页面不需要。
+- `testing`：从外面驱动形象的测试用的夹具和零件。生产页面不用，随测试改。
 
-一个页面只能装一份本仓库：宿主、动作协调器、当前动作代次和情绪状态都是模块里的单例，两份会各管各的而不报错。`figureHost.ts` 发现第二份时会在控制台报错。
+入口列出的就是对外的全部，目录里别的文件都是内部的，可以随时改名、拆分。站点要用一个还没列出的东西，先在这里想清楚它属于哪个用途，再加进那个入口。
+
+`performance` 的词表以核心的表演契约为准：每份词表在 `src/performance/vocabulary.ts` 里只写一次，类型由它推导，`vocabulary.contract.test.ts` 逐字对照契约。
 
 ## 共用核心
 
@@ -28,9 +33,11 @@ cd myriad-figure
 pnpm install
 pnpm typecheck
 pnpm test
+pnpm exec playwright install chromium
+pnpm test:browser
 ```
 
-在 Myriad 里，`frontend/` 的 `pnpm install` 会一起装好本仓库的依赖，`pnpm test:unit` 和 `pnpm typecheck` 也会跑本仓库的测试和类型检查。
+在 Myriad 里，`frontend/` 的 `pnpm install` 会一起装好本仓库的依赖，`pnpm test:unit` 和 `pnpm typecheck` 也会跑本仓库的测试和类型检查。浏览器测试（`tests/browser/`：真实 Worker 导入、真实 WebGL 下的播放器、触摸、换装）在本仓库里用 `pnpm test:browser` 跑；一部分要用真实素材，没有素材时跳过。
 
 本仓库 2026-10-31 带着历史从 Myriad 拆出来，之前的提交记录照原样保留（提交说明里的 `#数字` 指 Myriad 的 PR）。
 
