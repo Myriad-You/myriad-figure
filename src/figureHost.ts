@@ -78,6 +78,17 @@ const DEFAULT_HOST: FigureHost = {
 
 let current = DEFAULT_HOST
 
+// The figure keeps page-wide state in modules: this host, the motion
+// coordinator, the live motion generation and the affect state. A second copy
+// of the package on one page would split that state without failing, so say
+// so. A hot module reload re-runs this file on purpose and is not a copy.
+const LOADED = Symbol.for('myriad.figure.loaded')
+const page = globalThis as { [LOADED]?: true }
+if (page[LOADED] && !(import.meta as { hot?: unknown }).hot) {
+  console.error('@myriad/figure is loaded twice on this page; the copies do not share their host or motion state.')
+}
+page[LOADED] = true
+
 export function installFigureHost(host: Partial<FigureHost>): void {
   current = { ...DEFAULT_HOST, ...host }
 }

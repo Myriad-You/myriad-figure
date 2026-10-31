@@ -6,7 +6,15 @@ Myriad 的 2.5D 形象：在浏览器里演她的 rig 的运行时，和从分�
 - **处理工具**：`rig/`（PSD 与拆层导入、图集、骨骼、部件、补遮挡、转头和转身关键形的拟合与放置），PSD 解码在 Worker 里跑。
 - **宿主**：`figureHost.ts`。形象自己不知道语言、API 在哪、怎么记一轮对话；这些由宿主页面 `installFigureHost` 借给它。没装时说英文、按页面地址取、不记录。
 
-谁在用：[Myriad](https://github.com/Myriad-You/Myriad) 的站点以子模块 `figure/` 钉住本仓库，作为 pnpm workspace 包 `@myriad/figure` 引用（`@myriad/figure/anime25drig/player` 这样按文件取）。Myriad 的 macOS 原生 App 和 Android XR 端按钉住的提交照本仓库移植。
+谁在用：[Myriad](https://github.com/Myriad-You/Myriad) 的站点以子模块 `figure/` 钉住本仓库，作为 pnpm workspace 包 `@myriad/figure` 引用。Myriad 的 macOS 原生 App 和 Android XR 端按钉住的提交照本仓库移植。
+
+## 入口
+
+外面只能经 `package.json` 的 `exports` 取：`@myriad/figure/anime25drig`、`events`、`host`、`interaction`、`motion`、`performance`、`rig`、`singing`、`speech`、`testing`，每个对应目录下的 `index.ts`。入口里列出的就是对外的全部，目录里别的文件都是内部的，可以随时改名、拆分。站点要用一个还没列出的东西，先在这里把它加进入口。
+
+`performance` 是导演写给她的东西（表演指令、提示、节拍）和她回报的状态的类型。词表以核心的表演契约为准，`src/performance/types.contract.test.ts` 逐项对照。
+
+一个页面只能装一份本仓库：宿主、动作协调器、当前动作代次和情绪状态都是模块里的单例，两份会各管各的而不报错。`figureHost.ts` 发现第二份时会在控制台报错。
 
 ## 共用核心
 
