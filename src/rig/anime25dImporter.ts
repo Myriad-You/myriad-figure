@@ -1,5 +1,4 @@
 import type { Psd } from 'ag-psd'
-import type { Anime25DImportCopy } from './anime25dImportCopy'
 import type { Anime25DSourceReference } from './anime25dImportTypes'
 import type { AuthoredExpressionReference } from './authoredExpression'
 import type { CharacterAssetProfile } from './contract'
@@ -10,6 +9,7 @@ import type { MeropeRigImportSource } from './types'
 import { analyzeAnime25DMouthProfile } from '../anime25drig/mouthProfile'
 import { buildAnime25DPlayback, remapRiggerAnchors } from '../anime25drig/playback'
 import { rigger as Rigger } from '../anime25drig/upstream/rigger'
+import { FigureError } from '../errors'
 import { estimateAnime25DMouthAnchor, resolveAnime25DFaceFrame } from '../expressionShapes/faceFrame'
 import { paintAccessoriesFromReference } from './accessoryPaint'
 import { validateAnime25DCharacterLayers } from './anime25dAssetValidation'
@@ -25,7 +25,6 @@ import { keepClosedEyeLines } from './closedEyeLines'
 import { CHARACTER_ASSET_PROFILES, MAX_RIG_PARTS, RIG_IR_VERSION } from './contract'
 import { raiseEarwearOverFrontHair } from './earwearOrder'
 import { synthesizeMissingExpressionAccents } from './expressionAccentLayers'
-import { formatTemplate } from './formatTemplate'
 import { underlapHairLocks } from './hairLockUnderlap'
 import { liftHairShadowOffSkin } from './hairShadow'
 import { hangTopPiecesOnHeadwear } from './headOrnaments'
@@ -68,19 +67,32 @@ export function isAnime25DDocument(psd: Psd): boolean {
   return names.some((name) => anime25DBaseRole(name) === 'face')
 }
 
+export interface Anime25DRigPsdOptions {
+  sourceMasterAssetId: string
+  onStage?: (stage: 'validated' | 'packing') => void
+  sourceGenerationFingerprint?: string
+  /** The portrait drawn onto the PSD's frame, to reconcile the layers with. */
+  sourceReference?: Anime25DSourceReference
+  expressionReferences?: readonly AuthoredExpressionReference[]
+  /** The bust by default. */
+  profile?: CharacterAssetProfile
+  skeleton?: PsdSkeleton
+}
+
 export async function prepareAnime25DRigPsd(
   psd: Psd,
-  sourceMasterAssetId: string,
-  copy: Anime25DImportCopy,
-  onStage?: (stage: 'validated' | 'packing') => void,
-  sourceGenerationFingerprint?: string,
-  sourceReference?: Anime25DSourceReference,
-  expressionReferences: readonly AuthoredExpressionReference[] = [],
-  profile: CharacterAssetProfile = 'bust',
-  skeleton?: PsdSkeleton,
+  {
+    sourceMasterAssetId,
+    onStage,
+    sourceGenerationFingerprint,
+    sourceReference,
+    expressionReferences = [],
+    profile = 'bust',
+    skeleton,
+  }: Anime25DRigPsdOptions,
 ): Promise<PreparedAnime25DRigImport> {
   if (!isAnime25DDocument(psd)) {
-    throw new Error(copy.anime25dMissingFace)
+    throw new FigureError('anime25dMissingFace')
   }
   const importProfile = anime25DImportProfile(profile)
   const staticSeeThroughMouth = hasStaticSeeThroughMouth(psd)
@@ -97,7 +109,7 @@ export async function prepareAnime25DRigPsd(
         ),
     )
   ) {
-    throw new Error(copy.anime25dMissingFace)
+    throw new FigureError('anime25dMissingFace')
   }
   const rig = Rigger.buildRig(working, { generic: genericCloseParts() })
   compensateSyntheticClosedEyeAngles(rig.layers)
@@ -153,7 +165,7 @@ export async function prepareAnime25DRigPsd(
     layer.order = index
   })
   assignCrossfadeSlots(layers)
-  validateAnime25DCharacterLayers(layers, copy)
+  validateAnime25DCharacterLayers(layers)
   let reconciliation: Anime25DPsdReconciliation | null = null
   if (sourceReference) {
     const repair = repairAnime25DPsd(
@@ -208,14 +220,12 @@ export async function prepareAnime25DRigPsd(
     y: rig.anchors.face.cy,
   }
   if (layers.length === 0 || layers.length > MAX_RIG_PARTS) {
-    throw new Error(
-      formatTemplate(copy.anime25dPartCount, { max: MAX_RIG_PARTS }),
-    )
+    throw new FigureError('anime25dPartCount', { max: MAX_RIG_PARTS })
   }
   const frame = contentFrame(psd, layers, importProfile)
   const stance = importProfile.bodyPivot === 'hips' ? standingStance(layers) : null
   if (importProfile.bodyPivot === 'hips' && !stance) {
-    throw new Error(formatTemplate(copy.anime25dMissingLayer, { role: 'legwear' }))
+    throw new FigureError('anime25dMissingLayer', { role: 'legwear' })
   }
   onStage?.('packing')
   const {
@@ -224,10 +234,10 @@ export async function prepareAnime25DRigPsd(
     layers: prepared,
     width: packedWidth,
     height: packedHeight,
-  } = await packAnime25DAtlas(frame, layers, copy)
-  const anchors = deriveAnchors(frame, prepared, faceCenter, copy)
+  } = await packAnime25DAtlas(frame, layers)
+  const anchors = deriveAnchors(frame, prepared, faceCenter)
   const { bones, layerHandles, secondaryBoneIds } =
-    buildAnime25DBonesAndHandles(prepared, anchors, copy)
+    buildAnime25DBonesAndHandles(prepared, anchors)
   const rigLayers = buildAnime25DLayerSources(prepared, layerHandles)
   const partIds = prepared.map((layer) => `a25d-${layer.id}`)
   const playbackAnchors = remapRiggerAnchors(rig.anchors, frame, stance)
@@ -246,7 +256,6 @@ export async function prepareAnime25DRigPsd(
       anchors: playbackAnchors,
       mouthProfile,
     },
-    copy,
   )
   const outfitProfile = inferOutfitProfileFromPartIds(partIds)
   const semanticBones: Record<string, string> = {

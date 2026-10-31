@@ -1,5 +1,6 @@
+import type { FigureTrace } from '../trace'
 import type { MotionChannel, MotionSourceId } from './channels'
-import { figureHost } from '../figureHost'
+import { NO_TRACE } from '../trace'
 import { channelPriority } from './channels'
 
 export interface MotionLeaseHandle {
@@ -35,6 +36,8 @@ export interface MotionClaimOptions {
 const IDLE: MotionSourceId = 'idle'
 
 export class RigMotionCoordinator {
+  constructor(private readonly trace: FigureTrace = NO_TRACE) {}
+
   private readonly leases = new Map<string, PrivateLease>()
   private generation = 0
   private clockMs = 0
@@ -132,7 +135,7 @@ export class RigMotionCoordinator {
     }
     if (expired > 0) {
       this.generation += 1
-      figureHost().trace.leaseExpiry(expired)
+      this.trace.leaseExpiry(expired)
     }
   }
 
@@ -193,12 +196,6 @@ export class RigMotionCoordinator {
     if (current.source !== handle.source) return null
     return current
   }
-}
-
-const runtime = { current: new RigMotionCoordinator() }
-
-export function getRigMotionCoordinator(): RigMotionCoordinator {
-  return runtime.current
 }
 
 function uniqueChannels(channels: readonly MotionChannel[]): MotionChannel[] {

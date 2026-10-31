@@ -1,5 +1,4 @@
 import type { Anime25DLayerRole } from './anime25d'
-import type { Anime25DImportCopy } from './anime25dImportCopy'
 import type { AnimeAnchors, PreparedLayer } from './anime25dImportTypes'
 import type {
   RigBone,
@@ -9,14 +8,13 @@ import type {
   RigPoint,
   RigRect,
 } from './types'
+import { FigureError } from '../errors'
 import { ANIME25D_LAYER_DEPTH } from './anime25d'
 import { MAX_RIG_BONES } from './contract'
-import { formatTemplate } from './formatTemplate'
 
 export function buildAnime25DBonesAndHandles(
   layers: PreparedLayer[],
   anchors: AnimeAnchors,
-  copy: Anime25DImportCopy,
 ): {
   bones: RigBone[]
   layerHandles: Map<string, RigBoneHandle[]>
@@ -141,9 +139,7 @@ export function buildAnime25DBonesAndHandles(
     hairBones.set(layer.id, handles)
   }
   if (bones.length > MAX_RIG_BONES) {
-    throw new Error(
-      formatTemplate(copy.anime25dBoneLimit, { max: MAX_RIG_BONES }),
-    )
+    throw new FigureError('anime25dBoneLimit', { max: MAX_RIG_BONES })
   }
 
   const layerHandles = new Map<string, RigBoneHandle[]>()

@@ -1,3 +1,4 @@
+import type { FigureChannel } from '../channel'
 import type {
   MoodTransition,
   PerformanceBaseline,
@@ -8,10 +9,6 @@ import type {
 import type { MeropeStateEventDetail } from './meropeAffectState'
 import { moodBand } from '../performance/mood'
 import { isWord } from '../performance/vocabulary'
-import {
-  currentMeropeState,
-  writeMeropeState,
-} from './meropeAffectState'
 import {
   FACE_PRESETS,
   FACE_SHIFT_NAMES,
@@ -31,11 +28,7 @@ export const MEROPE_STATE_EVENT = 'merope-state'
 /** They typed to her: a listener's attention, nothing more is sent. */
 export const MEROPE_LISTENING_EVENT = 'merope-listening'
 
-export {
-  currentMeropeState,
-  type MeropeStateEventDetail,
-  resetMeropeState,
-} from './meropeAffectState'
+export type { MeropeStateEventDetail } from './meropeAffectState'
 
 export interface MeropePerformanceEventDetail {
   text: string
@@ -48,7 +41,7 @@ export interface MeropePerformanceEventDetail {
 }
 
 /** A slow GET must not undo a newer live event */
-export function resolveLoadedMeropeAffect(snapshot: {
+export function resolveLoadedMeropeAffect(channel: FigureChannel, snapshot: {
   mood?: number
   arousal?: number
   moodRevision?: number
@@ -57,7 +50,7 @@ export function resolveLoadedMeropeAffect(snapshot: {
   const mood = snapshot.mood ?? 70
   const arousal = snapshot.arousal ?? 48
   const revision = snapshot.moodRevision ?? 0
-  dispatchMeropeState({
+  dispatchMeropeState(channel, {
     mood: {
       before: mood,
       after: mood,
@@ -71,7 +64,7 @@ export function resolveLoadedMeropeAffect(snapshot: {
     },
     activity: snapshot.activity ?? 'idle',
   })
-  const live = currentMeropeState()
+  const live = channel.currentState()
   if (live && live.mood.revision > revision) {
     return {
       mood: live.mood.after,
@@ -81,10 +74,10 @@ export function resolveLoadedMeropeAffect(snapshot: {
   return { mood, arousal }
 }
 
-export function dispatchMeropePerformance(detail: unknown): void {
+export function dispatchMeropePerformance(channel: FigureChannel, detail: unknown): void {
   const sanitized = meropePerformanceEventDetail(detail)
-  if (!sanitized || typeof window === 'undefined') return
-  window.dispatchEvent(
+  if (!sanitized) return
+  channel.dispatchEvent(
     new CustomEvent<MeropePerformanceEventDetail>(MEROPE_PERFORMANCE_EVENT, {
       detail: sanitized,
     }),
@@ -131,15 +124,14 @@ export function meropePerformanceEventDetail(
   }
 }
 
-export function dispatchMeropeState(value: unknown): void {
+export function dispatchMeropeState(channel: FigureChannel, value: unknown): void {
   const detail = meropeStateEventDetail(value)
-  const live = currentMeropeState()
+  const live = channel.currentState()
   if (!detail || (live && detail.mood.revision <= live.mood.revision)) {
     return
   }
-  writeMeropeState(detail)
-  if (typeof window === 'undefined') return
-  window.dispatchEvent(
+  channel.writeState(detail)
+  channel.dispatchEvent(
     new CustomEvent<MeropeStateEventDetail>(MEROPE_STATE_EVENT, {
       detail,
     }),
@@ -335,7 +327,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** They typed a character to her; she attends while it goes on. */
-export function dispatchMeropeListening(): void {
-  if (typeof window === 'undefined') return
-  window.dispatchEvent(new Event(MEROPE_LISTENING_EVENT))
+export function dispatchMeropeListening(channel: FigureChannel): void {
+  channel.dispatchEvent(new Event(MEROPE_LISTENING_EVENT))
 }

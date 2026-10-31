@@ -1,6 +1,7 @@
 import type { Anime25DSourceReference } from './anime25dImportTypes'
 import type { AuthoredExpressionReference } from './authoredExpression'
 import type { RigPsdImportReply, RigPsdImportRequest } from './psdImportClient'
+import { FigureError } from '../errors'
 import { prepareAnime25DRigPsd } from './anime25dImporter'
 import { decodeRigPsd } from './psdDecode'
 import { psdPlacement } from './psdPlacement'
@@ -15,53 +16,43 @@ globalThis.onmessage = async (event: MessageEvent<RigPsdImportRequest>) => {
     sourceMasterUrl,
     sourceGenerationFingerprint,
     expressions,
-    copy,
     profile,
     skeleton,
   } = event.data
   try {
-    // The worker cannot read the page's saved locale.
     const psd = (() => {
       try {
         return decodeRigPsd(buffer)
       } catch (error) {
         const code = error instanceof Error ? error.message : ''
-        throw new Error(
-          code === 'psdTooLarge'
-            ? copy.psdTooLarge
-            : code === 'psdLayerCountInvalid'
-              ? copy.psdLayerCountInvalid
-              : copy.psdSpecInvalid,
-        )
+        throw new FigureError(code === 'psdTooLarge' || code === 'psdLayerCountInvalid' ? code : 'psdSpecInvalid')
       }
     })()
-    const master = await alignSourceMaster(
-      sourceMasterUrl,
-      psd.width,
-      psd.height,
-      copy.psdPreviewFailed,
-    )
+    const master = await alignSourceMaster(sourceMasterUrl, psd.width, psd.height)
     const expressionReferences = master
       ? await alignExpressions(expressions ?? [], psd.width, psd.height, master.size)
       : []
-    const prepared = await prepareAnime25DRigPsd(
-      psd,
+    const prepared = await prepareAnime25DRigPsd(psd, {
       sourceMasterAssetId,
-      copy,
-      (stage) => reply({ stage }),
+      onStage: (stage) => reply({ stage }),
       sourceGenerationFingerprint,
-      master?.reference,
+      sourceReference: master?.reference,
       expressionReferences,
       profile,
-      skeleton && skeleton.sourceMasterAssetId === sourceMasterAssetId
+      skeleton: skeleton && skeleton.sourceMasterAssetId === sourceMasterAssetId
         ? (alignSkeletonToPsd(skeleton, psd.width, psd.height) ?? undefined)
         : undefined,
-    )
+    })
     reply({ prepared })
   } catch (error) {
-    reply({
-      error: error instanceof Error ? error.message : copy.psdSpecInvalid,
-    })
+    // Errors cross the worker boundary as data; the page rebuilds a FigureError from the code.
+    reply(
+      error instanceof FigureError
+        ? { error: { code: error.code, params: error.params } }
+        : error instanceof Error
+          ? { failure: error.message }
+          : { error: { code: 'psdSpecInvalid', params: {} } },
+    )
   }
 }
 
@@ -74,15 +65,14 @@ async function alignSourceMaster(
   url: string,
   width: number,
   height: number,
-  failure: string,
 ): Promise<{ reference: Anime25DSourceReference; size: ImageSize } | undefined> {
   const response = await fetch(url)
-  if (!response.ok) throw new Error(failure)
+  if (!response.ok) throw new FigureError('psdPreviewFailed')
   const bitmap = await createImageBitmap(await response.blob())
   try {
     const size = { width: bitmap.width, height: bitmap.height }
     const reference = drawIntoPsd(bitmap, size, width, height)
-    if (!reference) throw new Error(failure)
+    if (!reference) throw new FigureError('psdPreviewFailed')
     return { reference, size }
   } finally {
     bitmap.close()

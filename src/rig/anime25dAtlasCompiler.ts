@@ -1,11 +1,10 @@
-import type { Anime25DImportCopy } from './anime25dImportCopy'
 import type {
   PreparedLayer,
   RasterLayer,
   RigCanvasFrame,
 } from './anime25dImportTypes'
+import { FigureError } from '../errors'
 import { trimRaster } from './anime25dRaster'
-import { formatTemplate } from './formatTemplate'
 
 const ATLAS_PADDING = 8
 const MAX_ATLAS_EDGE = 8192
@@ -21,10 +20,6 @@ export interface AtlasSpriteSize {
 
 export function layoutAnime25DAtlas(
   layers: AtlasSpriteSize[],
-  copy: Pick<
-    Anime25DImportCopy,
-    'anime25dLayerTooWide' | 'anime25dAtlasOverflow'
-  >,
 ): { places: Array<{ x: number; y: number }>; width: number; height: number } {
   if (layers.length === 0) {
     return {
@@ -42,12 +37,10 @@ export function layoutAnime25DAtlas(
       drawWidth + ATLAS_PADDING * 2 > MAX_ATLAS_EDGE ||
       drawHeight + ATLAS_PADDING * 2 > MAX_ATLAS_EDGE
     ) {
-      throw new Error(
-        formatTemplate(copy.anime25dLayerTooWide, {
+      throw new FigureError('anime25dLayerTooWide', {
           id: layer.id,
           max: MAX_ATLAS_EDGE,
-        }),
-      )
+        })
     }
     maxSprite = Math.max(
       maxSprite,
@@ -74,9 +67,7 @@ export function layoutAnime25DAtlas(
       }
     }
     if (edge >= MAX_ATLAS_EDGE) {
-      throw new Error(
-        formatTemplate(copy.anime25dAtlasOverflow, { max: MAX_ATLAS_EDGE }),
-      )
+      throw new FigureError('anime25dAtlasOverflow', { max: MAX_ATLAS_EDGE })
     }
     edge = Math.min(
       MAX_ATLAS_EDGE,
@@ -227,7 +218,6 @@ function rectContains(outer: FreeRect, inner: FreeRect): boolean {
 export async function packAnime25DAtlas(
   frame: RigCanvasFrame,
   layers: RasterLayer[],
-  copy: Anime25DImportCopy,
 ): Promise<{
   atlas: Blob
   analysisReference: Blob
@@ -237,7 +227,7 @@ export async function packAnime25DAtlas(
 }> {
   const trimmed = layers.map(trimRaster)
   const { places, width: packedWidth, height: packedHeight } =
-    layoutAnime25DAtlas(trimmed, copy)
+    layoutAnime25DAtlas(trimmed)
   const createCanvas = () =>
     typeof document === 'undefined'
       ? new OffscreenCanvas(1, 1)
@@ -245,7 +235,7 @@ export async function packAnime25DAtlas(
   const requiredContext = (canvas: HTMLCanvasElement | OffscreenCanvas) => {
     const context = canvas.getContext('2d', { willReadFrequently: true }) as
       CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null
-    if (!context) throw new Error(copy.canvasUnsupported)
+    if (!context) throw new FigureError('canvasUnsupported')
     return context
   }
   const atlas = createCanvas()
@@ -308,8 +298,8 @@ export async function packAnime25DAtlas(
     })
   }
   const [blob, analysisReference] = await Promise.all([
-    canvasPng(atlas, copy.rigAtlasFailed),
-    canvasPng(analysisCanvas, copy.rigAtlasFailed),
+    canvasPng(atlas),
+    canvasPng(analysisCanvas),
   ])
   return {
     atlas: blob,
@@ -346,13 +336,12 @@ export function visibleInAnalysisReference(layer: RasterLayer): boolean {
 
 function canvasPng(
   canvas: HTMLCanvasElement | OffscreenCanvas,
-  failure: string,
 ): Promise<Blob> {
   if ('convertToBlob' in canvas)
     return canvas.convertToBlob({ type: 'image/png' })
   return new Promise<Blob>((resolve, reject) =>
     canvas.toBlob(
-      (value) => (value ? resolve(value) : reject(new Error(failure))),
+      (value) => (value ? resolve(value) : reject(new FigureError('rigAtlasFailed'))),
       'image/png',
     ),
   )

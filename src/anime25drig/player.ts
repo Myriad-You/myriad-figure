@@ -4,6 +4,7 @@ import type { PerformanceBaseline } from '../performance/types'
 import type { MeropeRigManifest } from '../rig/types'
 import type { MusicMotionSignal } from '../singing/musicSignal'
 import type { SpeechProsodyPlan } from '../speech/prosody'
+import type { FigureTrace } from '../trace'
 import type { Anime25DMotionUnit } from './behaviorMotion'
 
 import type { CollarClipMesh } from './collarRuntime'
@@ -29,10 +30,11 @@ import type {
   VisibleTouchHit,
 } from './touchVisibility'
 import type { Anime25DPlayback } from './types'
-import { figureHost } from '../figureHost'
+import { FigureError } from '../errors'
 import { IDLE_MOTION_POLICY } from '../motion/policy'
 import { boundRigCapabilities } from '../motion/rigStateSummary'
 import { resolveAnime25DLayerSemantics } from '../rig/anime25dLayerSemantics'
+import { NO_TRACE } from '../trace'
 import { Anime25DBodyFrames } from './bodyFrames'
 
 import { ClosedEyePresentation } from './closedEyePresentation'
@@ -197,6 +199,7 @@ export class Anime25DPlayer {
     canvas: HTMLCanvasElement,
     playback: Anime25DPlayback,
     rigManifest?: MeropeRigManifest,
+    private readonly trace: FigureTrace = NO_TRACE,
   ) {
     const gl = canvas.getContext('webgl2', {
       alpha: true,
@@ -206,7 +209,7 @@ export class Anime25DPlayer {
       preserveDrawingBuffer: true,
       powerPreference: 'low-power',
     })
-    if (!gl) throw new Error(figureHost().copy().anime25dWebglFailed)
+    if (!gl) throw new FigureError('anime25dWebglFailed')
     this.gl = gl
     this.program = compileProgram(gl)
     try {
@@ -497,7 +500,7 @@ export class Anime25DPlayer {
       this.deform()
       this.uploadGeometry()
       this.draw()
-      if (dropped) figureHost().trace.frame({ dropped: true })
+      if (dropped) this.trace.frame({ dropped: true })
       return
     }
     const work = createAnime25DFrameWork()
@@ -528,7 +531,7 @@ export class Anime25DPlayer {
       deformMs: deformFinished - springsFinished,
       drawSubmitMs: drawFinished - deformFinished,
     })
-    figureHost().trace.frame({
+    this.trace.frame({
       dropped,
       cpuMs: drawFinished - frameStarted,
     })

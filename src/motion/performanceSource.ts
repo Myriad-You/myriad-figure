@@ -6,17 +6,15 @@ import type { BehaviorPlan, BehaviorSnapshot } from './behavior'
 import type { RigMotionCoordinator } from './coordinator'
 import type { PerformanceIntent } from './intents'
 import type { ResolvedScore, SpokenUtterance } from './scoreTimeline'
+import { FigureChannel } from '../channel'
 import {
-  currentMeropeState,
   MEROPE_PERFORMANCE_EVENT,
   MEROPE_STATE_EVENT,
   meropePerformanceEventDetail,
   meropeStateEventDetail,
 } from '../events/performanceEvents'
-import { figureHost } from '../figureHost'
 import { MEROPE_SPEECH_EVENT, meropeSpeechEventDetail } from '../speech/speechEvents'
 import { bearingFromDirective } from './bearing'
-import { newMotionIntentId } from './liveGeneration'
 import {
   compilePerformanceBehaviorPlan,
   PERFORMANCE_BEHAVIOR_PLAN_ID,
@@ -55,6 +53,7 @@ export class PerformanceMotionSource {
       event: MeropePerformanceEventDetail | undefined,
       plan: BehaviorPlan | null,
     ) => void = () => {},
+    private readonly channel: FigureChannel = new FigureChannel(),
   ) {
     this.leases = new PerformanceMotionLeases(coordinator)
   }
@@ -90,22 +89,18 @@ export class PerformanceMotionSource {
       applyPerformanceDirective: (performance, event) =>
         this.publish(performance, event),
       clearPerformanceDirective: () => this.cancel(),
-    })
-    if (typeof window !== 'undefined') {
-      window.addEventListener(MEROPE_PERFORMANCE_EVENT, this.onPerformance)
-      window.addEventListener(MEROPE_SPEECH_EVENT, this.onSpeech)
-      window.addEventListener(MEROPE_STATE_EVENT, this.onState)
-    }
+    }, this.channel)
+    this.channel.addEventListener(MEROPE_PERFORMANCE_EVENT, this.onPerformance)
+    this.channel.addEventListener(MEROPE_SPEECH_EVENT, this.onSpeech)
+    this.channel.addEventListener(MEROPE_STATE_EVENT, this.onState)
     this.listening = true
   }
 
   stop(): void {
     if (!this.listening) return
-    if (typeof window !== 'undefined') {
-      window.removeEventListener(MEROPE_PERFORMANCE_EVENT, this.onPerformance)
-      window.removeEventListener(MEROPE_SPEECH_EVENT, this.onSpeech)
-      window.removeEventListener(MEROPE_STATE_EVENT, this.onState)
-    }
+    this.channel.removeEventListener(MEROPE_PERFORMANCE_EVENT, this.onPerformance)
+    this.channel.removeEventListener(MEROPE_SPEECH_EVENT, this.onSpeech)
+    this.channel.removeEventListener(MEROPE_STATE_EVENT, this.onState)
     this.controller?.dispose()
     this.controller = null
     this.listening = false
@@ -144,7 +139,7 @@ export class PerformanceMotionSource {
     if (!this.preview) {
       performance = performanceAtMoodRevision(
         performance,
-        currentMeropeState()?.mood.revision ?? 0,
+        this.channel.currentState()?.mood.revision ?? 0,
       )
     }
     if (
@@ -176,7 +171,7 @@ export class PerformanceMotionSource {
     const selected = selection.directive
     if (!this.preview) {
       for (const decision of selection.decisions) {
-        figureHost().trace.mark('performance_decision', {
+        this.channel.trace.mark('performance_decision', {
           intent: decision.intent,
           reason: decision.reason,
           atMs: decision.atMs,
@@ -193,7 +188,7 @@ export class PerformanceMotionSource {
       this.onChange(this.intent)
       return true
     }
-    const motionIntentId = newMotionIntentId()
+    const motionIntentId = this.channel.newIntentId()
     const behaviorPlan = compilePerformanceBehaviorPlan(
       selected,
       startedAtMs,

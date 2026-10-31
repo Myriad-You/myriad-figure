@@ -1,8 +1,7 @@
 import type { MeropePerformanceEventDetail } from '../events/performanceEvents'
 import type { PerformanceDirective } from '../performance/types'
 import type { MeropeSpeechEventDetail } from '../speech/speechEvents'
-import { figureHost } from '../figureHost'
-import { acceptLiveMotionGeneration } from './liveGeneration'
+import { FigureChannel } from '../channel'
 
 export interface PerformanceLifecycleTarget {
   applyPerformanceDirective: (
@@ -20,11 +19,14 @@ export class PerformanceLifecycleController {
   private readonly cancelledMessageIds = new Set<string>()
   private readonly cancellationOrder: string[] = []
 
-  constructor(private readonly target: PerformanceLifecycleTarget) {}
+  constructor(
+    private readonly target: PerformanceLifecycleTarget,
+    private readonly channel: FigureChannel = new FigureChannel(),
+  ) {}
 
   handle(event: MeropePerformanceEventDetail): void {
     if (!event.performance) return
-    if (!acceptLiveMotionGeneration(event.generation)) return
+    if (!this.channel.acceptLive(event.generation)) return
     if (event.messageId && this.cancelledMessageIds.has(event.messageId)) {
       this.noteDrop(event, 'cancelled')
       return
@@ -100,7 +102,7 @@ export class PerformanceLifecycleController {
 
   private noteDrop(event: MeropePerformanceEventDetail, reason: string): void {
     if (event.source === 'preview') return
-    figureHost().trace.mark('performance_dropped', {
+    this.channel.trace.mark('performance_dropped', {
       reason,
       generation: event.generation ?? 0,
       ...(event.runId ? { runId: event.runId } : {}),

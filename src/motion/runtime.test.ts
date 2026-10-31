@@ -2,7 +2,8 @@ import type { PerformanceDirective } from '../performance/types'
 import type { MusicMotionSource, SingingFrame } from './musicSource'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { resetMeropeState, resolveLoadedMeropeAffect } from '../events/performanceEvents'
+import { FigureChannel } from '../channel'
+import { resolveLoadedMeropeAffect } from '../events/performanceEvents'
 import { RigMotionCoordinator } from './coordinator'
 import {
   createLiveMotionRuntime,
@@ -11,10 +12,10 @@ import {
 } from './runtime'
 
 test('late director keeps its gesture without reinstalling a pre-appraisal standing face', () => {
-  resetMeropeState()
-  try {
-    resolveLoadedMeropeAffect({ mood: 60, arousal: 48, moodRevision: 12 })
-    const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const channel = new FigureChannel()
+  {
+    resolveLoadedMeropeAffect(channel, { mood: 60, arousal: 48, moodRevision: 12 })
+    const runtime = new MotionRuntime(new RigMotionCoordinator(), null, channel)
     runtime.mood.set(60, 'idle', 48)
     runtime.performance.handleForTest({
       phase: 'delivery', moodRevision: 10, motionStyle: 'even',
@@ -27,8 +28,6 @@ test('late director keeps its gesture without reinstalling a pre-appraisal stand
     assert.equal(frame.bearing?.expression, 'steady')
     assert.ok(frame.behaviors.some((behavior) => behavior.form.id === 'question'))
     assert.equal(frame.snapshot.owners.mouth, 'idle')
-  } finally {
-    resetMeropeState()
   }
 })
 
@@ -206,7 +205,7 @@ test('live runtime attaches music without inventing semantic idle reactions', ()
   const coordinator = new RigMotionCoordinator()
   coordinator.claim('music', ['mouth', 'headBody'], { nowMs: 0 })
   const music = stubMusic()
-  const live = createLiveMotionRuntime(coordinator, music)
+  const live = createLiveMotionRuntime(coordinator, music, new FigureChannel())
   const release = live.retain()
   assert.equal(music.listeners, 1)
   assert.equal(live.frame().snapshot.owners.expression, 'idle')

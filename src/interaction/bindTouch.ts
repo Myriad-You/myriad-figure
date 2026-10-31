@@ -1,12 +1,18 @@
 import type { TouchObservation, TouchRegion } from './touchGesture'
 import { TouchGestureTracker } from './touchGesture'
 
+export interface CharacterTouchBinding {
+  /** Drop the touch in progress, as when the page's reason to be touched is gone. */
+  cancel: () => void
+  unbind: () => void
+}
+
 export function bindCharacterTouch(
   canvas: HTMLCanvasElement,
   hit: (x: number, y: number) => { region: TouchRegion | null } | null,
   emit: (touch: TouchObservation, now: number) => void,
   cancelReaction: () => void,
-): () => void {
+): CharacterTouchBinding {
   const tracker = new TouchGestureTracker()
   let pointer: { id: number; x: number; y: number; width: number } | null = null
   let frame = 0
@@ -85,9 +91,8 @@ export function bindCharacterTouch(
   canvas.addEventListener('pointercancel', pointerCancel)
   canvas.addEventListener('lostpointercapture', pointerCancel)
   window.addEventListener('blur', cancel)
-  window.addEventListener('auth-state-changed', cancel)
   document.addEventListener('visibilitychange', visibility)
-  return () => {
+  const unbind = () => {
     cancel()
     canvas.removeEventListener('pointerdown', down)
     canvas.removeEventListener('pointermove', move)
@@ -95,7 +100,7 @@ export function bindCharacterTouch(
     canvas.removeEventListener('pointercancel', pointerCancel)
     canvas.removeEventListener('lostpointercapture', pointerCancel)
     window.removeEventListener('blur', cancel)
-    window.removeEventListener('auth-state-changed', cancel)
     document.removeEventListener('visibilitychange', visibility)
   }
+  return { cancel, unbind }
 }

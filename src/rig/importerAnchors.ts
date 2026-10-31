@@ -1,12 +1,11 @@
 import type { Psd } from 'ag-psd'
 import type { Anime25DLayerRole } from './anime25d'
-import type { Anime25DImportCopy } from './anime25dImportCopy'
 import type { Anime25DImportProfile } from './anime25dImportProfile'
 import type { AnimeAnchors, EyeSide, PreparedLayer, RasterLayer, RigCanvasFrame } from './anime25dImportTypes'
 import type { MeropeRigImportSource, RigPoint } from './types'
+import { FigureError } from '../errors'
 import { anime25DImportProfile } from './anime25dImportProfile'
 import { anime25DLayerAffectsFraming, isAnime25DLiningPiece } from './anime25dLayerSemantics'
-import { formatTemplate } from './formatTemplate'
 
 /** Removes model letterboxing, then pads (never stretches) into the profile's stage. */
 export function contentFrame(
@@ -79,9 +78,8 @@ export function deriveAnchors(
   frame: RigCanvasFrame,
   layers: PreparedLayer[],
   rawFaceCenter: RigPoint,
-  copy: Anime25DImportCopy,
 ): AnimeAnchors {
-  const face = requiredLayer(layers, 'face', copy).bounds
+  const face = requiredLayer(layers, 'face').bounds
   const center = (layer: PreparedLayer | undefined): RigPoint | undefined =>
     layer
       ? {
@@ -173,11 +171,10 @@ export function semanticAnchors(
 function requiredLayer(
   layers: PreparedLayer[],
   role: Anime25DLayerRole,
-  copy: Anime25DImportCopy,
 ): PreparedLayer {
   const layer = layers.find((candidate) => candidate.role === role)
   if (!layer) {
-    throw new Error(formatTemplate(copy.anime25dMissingLayer, { role }))
+    throw new FigureError('anime25dMissingLayer', { role })
   }
   return layer
 }

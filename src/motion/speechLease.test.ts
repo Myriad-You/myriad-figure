@@ -41,9 +41,7 @@ test('speech start claims the mouth and dispose releases only that producer', ()
       setSpeechArticulation: () => {},
       enqueueSpeechText: () => {},
     },
-    undefined,
-    undefined,
-    (busy) => panel.setBusy(busy),
+    { onBusyChange: (busy) => panel.setBusy(busy) },
   )
   home.setBusy(true)
   controller.handle({
@@ -57,4 +55,24 @@ test('speech start claims the mouth and dispose releases only that producer', ()
   assert.equal(coordinator.owner('mouth', 0), 'speech')
   home.release()
   assert.equal(coordinator.owner('mouth', 0), 'idle')
+})
+
+test('a cancelled speech releases its mouth lease at once', () => {
+  const coordinator = new RigMotionCoordinator()
+  const lease = new SpeechMotionLease(coordinator)
+  const controller = new SpeechLifecycleController(
+    {
+      setSpeechActive: () => {},
+      setAutoSpeech: () => {},
+      setSpeechEnergy: () => {},
+      setSpeechArticulation: () => {},
+      enqueueSpeechText: () => {},
+    },
+    { onBusyChange: (busy) => lease.setBusy(busy) },
+  )
+  const base = { messageId: 'message-1', utteranceId: 'message-1:final', source: 'reply' as const }
+  controller.handle({ ...base, phase: 'start' })
+  assert.equal(coordinator.leaseCount(), 1)
+  controller.handle({ ...base, phase: 'cancel' })
+  assert.equal(coordinator.leaseCount(), 0)
 })

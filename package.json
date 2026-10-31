@@ -8,16 +8,17 @@
   "license": "AGPL-3.0-only",
   "sideEffects": false,
   "exports": {
+    ".": "./src/index.ts",
     "./anime25drig": "./src/anime25drig/index.ts",
     "./events": "./src/events/index.ts",
-    "./host": "./src/figureHost.ts",
     "./interaction": "./src/interaction/index.ts",
     "./motion": "./src/motion/index.ts",
     "./performance": "./src/performance/index.ts",
     "./rig": "./src/rig/index.ts",
     "./singing": "./src/singing/index.ts",
     "./speech": "./src/speech/index.ts",
-    "./testing": "./src/testing/index.ts"
+    "./testing": "./src/testing/index.ts",
+    "./workbench": "./src/workbench/index.ts"
   },
   "scripts": {
     "lint": "eslint .",

@@ -2,8 +2,7 @@ import type { PreparedAnime25DRigImport } from './anime25dImporter'
 import type { AuthoredExpressionKind } from './authoredExpression'
 import type { CharacterAssetProfile } from './contract'
 import type { DetectedSkeleton } from './skeleton'
-import { figureHost } from '../figureHost'
-import { anime25DImportCopy } from './anime25dImportCopy'
+import { FigureError } from '../errors'
 import { importRigPsdInWorker } from './psdImportClient'
 import { placeBodyTurnKeyforms, placeTurnKeyforms, turnKeyformsFor } from './turnKeyformImport'
 
@@ -12,26 +11,43 @@ const MAX_PSD_BYTES = 96 * 1024 * 1024
 
 export type PreparedRigPsdImport = PreparedAnime25DRigImport
 
-export function sourceMasterFetchUrl(source: string, pageUrl: string, apiUrl = figureHost().apiUrl()): string {
+export function sourceMasterFetchUrl(source: string, pageUrl: string, apiUrl: string): string {
   return new URL(source, apiUrl ? new URL(apiUrl, pageUrl).href : pageUrl).href
+}
+
+export interface RigPsdImportOptions {
+  sourceMasterAssetId: string
+  /** Where the API serving the master portrait lives; empty is the page's own origin. */
+  apiUrl: string
+  onStage?: (stage: 'validated' | 'packing') => void
+  sourceGenerationFingerprint?: string
+  signal?: AbortSignal
+  expressions?: ReadonlyArray<{ kind: AuthoredExpressionKind; url: string }>
+  /** The bust by default. */
+  profile?: CharacterAssetProfile
+  skeleton?: DetectedSkeleton
+  /** The picture the decomposition was cut from when it is not the master itself (an enlarged figure's). */
+  referenceUrl?: string
 }
 
 export async function prepareRigPsdImport(
   file: File,
-  sourceMasterAssetId: string,
-  onStage?: (stage: 'validated' | 'packing') => void,
-  sourceGenerationFingerprint?: string,
-  signal?: AbortSignal,
-  expressions: ReadonlyArray<{ kind: AuthoredExpressionKind; url: string }> = [],
-  profile: CharacterAssetProfile = 'bust',
-  skeleton?: DetectedSkeleton,
-  /** The picture the decomposition was cut from when it is not the master itself (an enlarged figure's). */
-  referenceUrl?: string,
+  {
+    sourceMasterAssetId,
+    apiUrl,
+    onStage,
+    sourceGenerationFingerprint,
+    signal,
+    expressions = [],
+    profile = 'bust',
+    skeleton,
+    referenceUrl,
+  }: RigPsdImportOptions,
 ): Promise<PreparedRigPsdImport> {
   signal?.throwIfAborted()
-  if (!sourceMasterAssetId) throw new Error(figureHost().copy().psdNeedAsset)
+  if (!sourceMasterAssetId) throw new FigureError('psdNeedAsset')
   if (file.size <= 0 || file.size > MAX_PSD_BYTES) {
-    throw new Error(figureHost().copy().psdTooLarge)
+    throw new FigureError('psdTooLarge')
   }
   const buffer = await file.arrayBuffer()
   signal?.throwIfAborted()
@@ -40,13 +56,12 @@ export async function prepareRigPsdImport(
       buffer,
       sourceMasterAssetId,
       // Resolve against the page, not the worker chunk URL.
-      sourceMasterUrl: referenceUrl ?? sourceMasterFetchUrl(sourceMasterAssetId, document.baseURI),
+      sourceMasterUrl: referenceUrl ?? sourceMasterFetchUrl(sourceMasterAssetId, document.baseURI, apiUrl),
       sourceGenerationFingerprint,
       expressions: expressions.map(({ kind, url }) => ({
         kind,
-        url: sourceMasterFetchUrl(url, document.baseURI),
+        url: sourceMasterFetchUrl(url, document.baseURI, apiUrl),
       })),
-      copy: anime25DImportCopy(),
       profile,
       ...(skeleton ? { skeleton } : {}),
     },

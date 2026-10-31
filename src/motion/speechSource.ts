@@ -11,7 +11,7 @@ import type { SpeechIntent, SpeechTextChunk } from './intents'
 import type { PhraseCoverage } from './phrasePlan'
 import type { SpokenUtterance } from './scoreTimeline'
 import type { SpeechLifecycleScheduler } from './speechLifecycle'
-import { figureHost } from '../figureHost'
+import { FigureChannel } from '../channel'
 import { MEROPE_SPEECH_EVENT, meropeSpeechEventDetail } from '../speech/speechEvents'
 import { continueTextProsody, predictTextProsody } from '../speech/textProsody'
 import { MAX_VISUAL_SPEECH_TEXT_UNITS } from '../speech/textTiming'
@@ -73,6 +73,7 @@ export class SpeechMotionSource {
     private readonly onChange: (intent: SpeechIntent) => void,
     private readonly activeBehaviors: () => readonly BehaviorSnapshot[] = () => [],
     private readonly scheduler?: SpeechLifecycleScheduler,
+    private readonly channel: FigureChannel = new FigureChannel(),
   ) {
     this.mouth = new SpeechMotionLease(coordinator)
   }
@@ -156,9 +157,10 @@ export class SpeechMotionSource {
           this.flush()
         },
       },
-      this.scheduler,
-      undefined,
-      (busy) => {
+      {
+        scheduler: this.scheduler,
+        channel: this.channel,
+        onBusyChange: (busy) => {
         this.mouth.setBusy(busy)
         if (busy) {
           this.claimCoSpeech()
@@ -168,18 +170,15 @@ export class SpeechMotionSource {
         }
         this.flush()
       },
+      },
     )
-    if (typeof window !== 'undefined') {
-      window.addEventListener(MEROPE_SPEECH_EVENT, this.onSpeech)
-    }
+    this.channel.addEventListener(MEROPE_SPEECH_EVENT, this.onSpeech)
     this.listening = true
   }
 
   stop(): void {
     if (!this.listening) return
-    if (typeof window !== 'undefined') {
-      window.removeEventListener(MEROPE_SPEECH_EVENT, this.onSpeech)
-    }
+    this.channel.removeEventListener(MEROPE_SPEECH_EVENT, this.onSpeech)
     this.controller?.dispose()
     this.controller = null
     this.mouth.release()
@@ -312,7 +311,7 @@ export class SpeechMotionSource {
           )
           return old && old.gesture !== accent.gesture
         }).length ?? 0
-      figureHost().trace.mark('director_phrase_effect', {
+      this.channel.trace.mark('director_phrase_effect', {
         messageId: event.messageId,
         phraseCount: directive.phrases?.length ?? 0,
         changedAccents: changed,
@@ -320,7 +319,7 @@ export class SpeechMotionSource {
       })
       this.flush()
     } else if (directive.phrases?.length) {
-      figureHost().trace.mark('director_phrase_effect', {
+      this.channel.trace.mark('director_phrase_effect', {
         messageId: event.messageId,
         phraseCount: directive.phrases.length,
         changedAccents: 0,
@@ -359,7 +358,7 @@ export class SpeechMotionSource {
         (accent, index) => accent.gesture !== base.accents[index]?.gesture,
       ).length
       if (changed) {
-        figureHost().trace.mark('director_phrase_effect', {
+        this.channel.trace.mark('director_phrase_effect', {
           utteranceId: base.utteranceId,
           phraseCount: direction.phrases.length,
           changedAccents: changed,

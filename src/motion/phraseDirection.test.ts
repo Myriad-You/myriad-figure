@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { FigureChannel } from '../channel'
 import { sanitizePerformanceDirective } from '../events/performanceEvents'
 import { meropeSpeechEventDetail } from '../speech/speechEvents'
 import { predictTextProsody } from '../speech/textProsody'
 import { RigMotionCoordinator } from './coordinator'
-import { liveMotionGeneration, setLiveMotionGeneration } from './liveGeneration'
 import { MotionRuntime } from './runtime'
 
 const text = '你真的这么想吗？'
@@ -71,11 +71,11 @@ test('accepted director evidence reaches upcoming TTS segments and stays message
 })
 
 test('matching message ids cannot borrow phrases across sources or turn generations', () => {
-  const saved = liveMotionGeneration()
-  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const channel = new FigureChannel()
+  const runtime = new MotionRuntime(new RigMotionCoordinator(), null, channel)
   const release = runtime.retain()
   try {
-    setLiveMotionGeneration(7)
+    channel.setGeneration(7)
     runtime.performance.handleForTest(directive, {
       source: 'reply',
       messageId: 'same-id',
@@ -107,11 +107,10 @@ test('matching message ids cannot borrow phrases across sources or turn generati
     }
     assert.ok(!speak('proactive', 0).includes('tease'))
     assert.ok(speak('reply', 7).includes('tease'))
-    setLiveMotionGeneration(8)
+    channel.setGeneration(8)
     assert.ok(!speak('reply', 8).includes('tease'))
   } finally {
     release()
-    setLiveMotionGeneration(saved)
   }
 })
 

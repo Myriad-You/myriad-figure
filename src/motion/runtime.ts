@@ -6,6 +6,7 @@ import type { MeropeActivity } from '../types'
 import type { BehaviorRealizerReport } from './behavior'
 import type { MoodIntent, MotionFrame } from './intents'
 import type { MusicMotionSource, SingingFrame } from './musicSource'
+import { FigureChannel } from '../channel'
 import { AmbientMotionSource } from './ambientSource'
 import { RigMotionCoordinator } from './coordinator'
 import { HumanPerformanceRuntime } from './humanPerformanceRuntime'
@@ -68,15 +69,19 @@ export class MotionRuntime {
   constructor(
     coordinator: RigMotionCoordinator,
     musicSource: MusicMotionSource | null = null,
+    /** Where the page sends this figure performances, speech and her state. */
+    readonly channel: FigureChannel = new FigureChannel(),
   ) {
     this.coordinator = coordinator
     this.touch = new TouchMotionSource(coordinator, () => this.emit())
-    this.listening = new ListeningMotionSource(() => this.emit(), currentNow)
+    this.listening = new ListeningMotionSource(() => this.emit(), currentNow, channel)
     this.musicSource = musicSource
     this.speech = new SpeechMotionSource(
       coordinator,
       () => this.emit(),
       () => this.humanPerformance.snapshots(currentNow()),
+      undefined,
+      channel,
     )
     this.performance = new PerformanceMotionSource(
       coordinator,
@@ -94,6 +99,7 @@ export class MotionRuntime {
       () => this.humanPerformance.snapshots(currentNow()),
       (directive, event, plan) =>
         this.speech.applyDirector(directive, event, plan),
+      channel,
     )
     this.speech.onUtterance = (utterance) => this.performance.noteUtterance(utterance)
     this.mood = new MoodMotionSource(coordinator, (intent, bandChanged) => {
@@ -321,12 +327,14 @@ function hasSpeechIntent(
 export function createLiveMotionRuntime(
   coordinator: RigMotionCoordinator,
   musicSource: MusicMotionSource | null,
+  channel: FigureChannel,
 ): MotionRuntime {
-  return new MotionRuntime(coordinator, musicSource)
+  return new MotionRuntime(coordinator, musicSource, channel)
 }
 
-export function createPreviewMotionRuntime(): MotionRuntime {
-  return new MotionRuntime(new RigMotionCoordinator())
+/** Its own coordinator, so a preview never takes the live figure's channels; it hears the channel it is given. */
+export function createPreviewMotionRuntime(channel?: FigureChannel): MotionRuntime {
+  return new MotionRuntime(new RigMotionCoordinator(channel?.trace), null, channel)
 }
 
 function currentNow(): number {

@@ -1,3 +1,4 @@
+import type { FigureChannel } from '../channel'
 import type { SpeechArticulation, SpeechViseme } from '../rig/articulation'
 import type { SpeechGesture } from './phraseGestures'
 import type { SpeechProsodyPlan } from './prosody'
@@ -62,10 +63,10 @@ const VISEMES: readonly SpeechViseme[] = [
   'narrow',
 ]
 
-export function dispatchMeropeSpeech(detail: unknown): void {
+export function dispatchMeropeSpeech(channel: FigureChannel, detail: unknown): void {
   const sanitized = meropeSpeechEventDetail(detail)
-  if (!sanitized || typeof window === 'undefined') return
-  window.dispatchEvent(
+  if (!sanitized) return
+  channel.dispatchEvent(
     new CustomEvent<MeropeSpeechEventDetail>(MEROPE_SPEECH_EVENT, {
       detail: sanitized,
     }),
@@ -73,6 +74,7 @@ export function dispatchMeropeSpeech(detail: unknown): void {
 }
 
 export function dispatchMeropeSpeechUtterance(
+  channel: FigureChannel,
   utterance: SpeechUtteranceInput,
 ): void {
   const text = boundedText(utterance.text)
@@ -86,9 +88,9 @@ export function dispatchMeropeSpeechUtterance(
       ? { generation: utterance.generation }
       : {}),
   }
-  dispatchMeropeSpeech({ ...base, phase: 'start' })
-  dispatchMeropeSpeech({ ...base, phase: 'chunk', text })
-  dispatchMeropeSpeech({ ...base, phase: 'end' })
+  dispatchMeropeSpeech(channel, { ...base, phase: 'start' })
+  dispatchMeropeSpeech(channel, { ...base, phase: 'chunk', text })
+  dispatchMeropeSpeech(channel, { ...base, phase: 'end' })
 }
 
 export function meropeSpeechEventDetail(

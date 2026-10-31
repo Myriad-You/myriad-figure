@@ -3,7 +3,6 @@ import { createRequire } from 'node:module'
 import test from 'node:test'
 import { Worker as ThreadWorker } from 'node:worker_threads'
 import { writePsd } from 'ag-psd'
-import { anime25DImportCopy } from './anime25dImportCopy'
 import {
   decodeRigPsd,
   validateRigPsdHeader,
@@ -110,7 +109,7 @@ test('production worker bundles for the browser and reports localized parser err
     !Object.keys(bundle.metafile.inputs).some((path) =>
       path.includes('/i18n/'),
     ),
-    'the worker receives import copy; it must not bundle UI language packs',
+    'the worker reports error codes; it must not bundle UI language packs',
   )
   const worker = new ThreadWorker(
     `
@@ -122,18 +121,14 @@ test('production worker bundles for the browser and reports localized parser err
     { eval: true },
   )
   try {
-    const result = new Promise<{ error: string }>((resolve, reject) => {
+    const result = new Promise<unknown>((resolve, reject) => {
       worker.once('message', resolve)
       worker.once('error', reject)
     })
     const bytes = header()
-    const copy = {
-      ...anime25DImportCopy(),
-      psdSpecInvalid: '指定语言：PSD 无效',
-    }
-    worker.postMessage({ buffer: bytes, copy }, [bytes])
+    worker.postMessage({ buffer: bytes }, [bytes])
     assert.equal(bytes.byteLength, 0)
-    assert.deepEqual(await result, { error: copy.psdSpecInvalid })
+    assert.deepEqual(await result, { error: { code: 'psdSpecInvalid', params: {} } })
   } finally {
     await worker.terminate()
   }
@@ -209,7 +204,6 @@ function request(buffer = header()) {
     buffer,
     sourceMasterAssetId: '/master.png',
     sourceMasterUrl: 'http://localhost/master.png',
-    copy: anime25DImportCopy(),
   }
 }
 

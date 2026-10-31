@@ -1,4 +1,5 @@
 import type { BehaviorPlan } from './behavior'
+import { FigureChannel } from '../channel'
 import { MEROPE_LISTENING_EVENT } from '../events/performanceEvents'
 import { compilePerformanceBehaviorPlan } from './performanceBehaviorPlan'
 
@@ -21,16 +22,20 @@ export class ListeningMotionSource {
   private timer: ReturnType<typeof setTimeout> | null = null
   private listening = false
 
-  constructor(private readonly changed: () => void, private readonly now: () => number) {}
+  constructor(
+    private readonly changed: () => void,
+    private readonly now: () => number,
+    private readonly channel: FigureChannel = new FigureChannel(),
+  ) {}
 
   start(): void {
-    if (this.listening || typeof window === 'undefined') return
-    window.addEventListener(MEROPE_LISTENING_EVENT, this.onTyping)
+    if (this.listening) return
+    this.channel.addEventListener(MEROPE_LISTENING_EVENT, this.onTyping)
     this.listening = true
   }
 
   stop(): void {
-    if (typeof window !== 'undefined') window.removeEventListener(MEROPE_LISTENING_EVENT, this.onTyping)
+    this.channel.removeEventListener(MEROPE_LISTENING_EVENT, this.onTyping)
     this.listening = false
     this.clear()
   }

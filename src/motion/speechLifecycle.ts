@@ -1,12 +1,11 @@
 import type { SpeechArticulation } from '../rig/articulation'
 import type { SpeechProsodyPlan } from '../speech/prosody'
 import type { MeropeSpeechEventDetail } from '../speech/speechEvents'
-import { figureHost } from '../figureHost'
+import { FigureChannel } from '../channel'
 import {
   estimateAutoSpeechDurationMs,
   MAX_VISUAL_SPEECH_TEXT_UNITS,
 } from '../speech/textTiming'
-import { isLiveMotionGeneration } from './liveGeneration'
 
 export interface SpeechLifecycleTarget {
   setSpeechActive: (active: boolean) => void
@@ -28,6 +27,14 @@ export interface SpeechOccupancy {
 }
 
 export type SpeechLifecycleDisposition = 'active' | 'finished' | 'ignored'
+
+export interface SpeechLifecycleOptions {
+  scheduler?: SpeechLifecycleScheduler
+  occupancy?: SpeechOccupancy
+  onBusyChange?: (busy: boolean) => void
+  /** Whose live turn speech must belong to, and where drops are recorded. */
+  channel?: FigureChannel
+}
 
 const MIN_END_TAIL_MS = 180
 const STALLED_SPEECH_TIMEOUT_MS = 12_000
@@ -53,14 +60,22 @@ export class SpeechLifecycleController {
   private readonly scheduler: SpeechLifecycleScheduler
   private readonly occupancy?: SpeechOccupancy
 
+  private readonly onBusyChange?: (busy: boolean) => void
+  private readonly channel: FigureChannel
+
   constructor(
     private readonly target: SpeechLifecycleTarget,
-    scheduler: SpeechLifecycleScheduler = defaultScheduler,
-    occupancy?: SpeechOccupancy,
-    private readonly onBusyChange?: (busy: boolean) => void,
+    {
+      scheduler = defaultScheduler,
+      occupancy,
+      onBusyChange,
+      channel = new FigureChannel(),
+    }: SpeechLifecycleOptions = {},
   ) {
-    this.scheduler = scheduler ?? defaultScheduler
+    this.scheduler = scheduler
     this.occupancy = occupancy
+    this.onBusyChange = onBusyChange
+    this.channel = channel
   }
 
   handle(event: MeropeSpeechEventDetail): SpeechLifecycleDisposition {
@@ -80,8 +95,8 @@ export class SpeechLifecycleController {
       return 'ignored'
     }
 
-    if (!isLiveMotionGeneration(event.generation)) {
-      if (event.phase === 'start') figureHost().trace.drop('stale_generation')
+    if (!this.channel.isLive(event.generation)) {
+      if (event.phase === 'start') this.channel.trace.drop('stale_generation')
       return 'ignored'
     }
 
@@ -105,7 +120,7 @@ export class SpeechLifecycleController {
       if (event.phase === 'end') return 'ignored'
       // A sampled frame may open an idle mouth but must not evict a live utterance.
       if (this.speechActive && event.phase !== 'chunk') {
-        figureHost().trace.drop('foreign_speech_frame')
+        this.channel.trace.drop('foreign_speech_frame')
         return 'ignored'
       }
       this.start(event.messageId, event.utteranceId, event.locale)

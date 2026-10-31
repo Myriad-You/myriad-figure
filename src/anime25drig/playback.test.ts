@@ -1,7 +1,6 @@
 import type { Anime25DPlaybackBuildLayer } from './playback'
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { anime25DImportCopy } from '../rig/anime25dImportCopy'
 import { analyzeAnime25DMouthProfile } from './mouthProfile'
 import { buildAnime25DPlayback, remapRiggerAnchors } from './playback'
 import { isAnime25DPlayback } from './types'
@@ -95,7 +94,6 @@ describe('Anime2.5DRig playback', () => {
           }),
         ],
       },
-      anime25DImportCopy(),
     )
     assert.equal(isAnime25DPlayback(playback), true)
     assert.equal(playback.engine, 'Anime2.5DRig')
@@ -160,7 +158,6 @@ describe('Anime2.5DRig playback', () => {
           }),
         ],
       },
-      anime25DImportCopy(),
     )
     const front = playback.layers.find((item) => item.role === 'front-hair')
     const back = playback.layers.find((item) => item.role === 'back-hair')
@@ -197,7 +194,6 @@ describe('Anime2.5DRig playback', () => {
           }),
         ],
       },
-      anime25DImportCopy(),
     )
     const dizzy = playback.layers.find((item) => item.role === 'eye-dizzy')
     assert.equal(dizzy?.side, 'L')
@@ -226,7 +222,6 @@ describe('Anime2.5DRig playback', () => {
           }),
         ],
       },
-      anime25DImportCopy(),
     )
     const squeeze = playback.layers.find((item) => item.role === 'eye-squeeze')
     assert.equal(squeeze?.side, 'L')
@@ -255,7 +250,6 @@ describe('Anime2.5DRig playback', () => {
           }),
         ],
       },
-      anime25DImportCopy(),
     )
     const cry = playback.layers.find((item) => item.role === 'eye-cry')
     assert.equal(cry?.side, 'L')

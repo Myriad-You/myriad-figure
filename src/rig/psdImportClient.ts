@@ -1,8 +1,9 @@
-import type { Anime25DImportCopy } from './anime25dImportCopy'
+import type { FigureErrorCode, FigureErrorParams } from '../errors'
 import type { PreparedAnime25DRigImport } from './anime25dImporter'
 import type { AuthoredExpressionKind } from './authoredExpression'
 import type { CharacterAssetProfile } from './contract'
 import type { DetectedSkeleton } from './skeleton'
+import { FigureError, isFigureErrorCode } from '../errors'
 
 export interface RigPsdImportRequest {
   buffer: ArrayBuffer
@@ -11,7 +12,6 @@ export interface RigPsdImportRequest {
   sourceGenerationFingerprint?: string
   /** Image-model redraws of the portrait, cut into authored expression parts. */
   expressions?: ReadonlyArray<{ kind: AuthoredExpressionKind; url: string }>
-  copy: Anime25DImportCopy
   /** The bust by default. */
   profile?: CharacterAssetProfile
   /** Joints found on the portrait, to bind the rig to. */
@@ -22,7 +22,8 @@ export type RigPsdImportStage = 'validated' | 'packing'
 export type RigPsdImportReply =
   | { stage: RigPsdImportStage }
   | { prepared: PreparedAnime25DRigImport }
-  | { error: string }
+  | { error: { code: FigureErrorCode; params: FigureErrorParams } }
+  | { failure: string }
 
 /** A hung import gives up after this long for a PSD of IMPORT_TIMEOUT_PIXELS or less. */
 const IMPORT_TIMEOUT_MS = 60_000
@@ -65,7 +66,7 @@ export function importRigPsdInWorker(
     const abort = () =>
       finish(signal?.reason ?? new DOMException('Aborted', 'AbortError'))
     const timeout = setTimeout(
-      () => finish(new Error(request.copy.psdSpecInvalid)),
+      () => finish(new FigureError('psdSpecInvalid')),
       importTimeoutMs(request.buffer),
     )
     worker.onmessage = (event: MessageEvent<RigPsdImportReply>) => {
@@ -85,12 +86,15 @@ export function importRigPsdInWorker(
           undefined,
           (event.data as { prepared: PreparedAnime25DRigImport }).prepared,
         )
+      } else if (Object.hasOwn(event.data, 'error')) {
+        const { code, params } = (event.data as { error: { code: FigureErrorCode; params: FigureErrorParams } }).error
+        finish(new FigureError(isFigureErrorCode(code) ? code : 'psdSpecInvalid', params))
       } else {
-        finish(new Error((event.data as { error: string }).error))
+        finish(new Error((event.data as { failure: string }).failure))
       }
     }
-    worker.onerror = () => finish(new Error(request.copy.psdSpecInvalid))
-    worker.onmessageerror = () => finish(new Error(request.copy.psdSpecInvalid))
+    worker.onerror = () => finish(new FigureError('psdSpecInvalid'))
+    worker.onmessageerror = () => finish(new FigureError('psdSpecInvalid'))
     signal?.addEventListener('abort', abort, { once: true })
     if (signal?.aborted) {
       abort()

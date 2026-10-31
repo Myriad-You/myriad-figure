@@ -2,6 +2,7 @@ import type { MeropePerformanceEventDetail } from '../events/performanceEvents'
 import type { PerformanceLifecycleTarget } from './performanceLifecycle'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { FigureChannel } from '../channel'
 import { PerformanceLifecycleController } from './performanceLifecycle'
 
 const performance = {
@@ -183,9 +184,9 @@ test('does not transfer cancellation ownership to a plan rejected by the rig', (
   assert.equal(stopped, 1)
 })
 
-test('drops an older generation plan and ignores a replay of the active plan', async () => {
-  const { setLiveMotionGeneration } = await import('./liveGeneration')
-  setLiveMotionGeneration(2)
+test('drops an older generation plan and ignores a replay of the active plan', () => {
+  const channel = new FigureChannel()
+  channel.setGeneration(2)
   const played: (typeof performance)[] = []
   const controller = new PerformanceLifecycleController({
     applyPerformanceDirective: (value) => {
@@ -193,7 +194,7 @@ test('drops an older generation plan and ignores a replay of the active plan', a
       return true
     },
     clearPerformanceDirective: () => undefined,
-  })
+  }, channel)
   controller.handle({
     text: 'stale',
     source: 'reply',
@@ -219,10 +220,9 @@ test('drops an older generation plan and ignores a replay of the active plan', a
     performance,
   })
   assert.equal(played.length, 1)
-  setLiveMotionGeneration(0)
 })
 
-function recordingController() {
+function recordingController(channel = new FigureChannel()) {
   const played: unknown[] = []
   const controller = new PerformanceLifecycleController({
     applyPerformanceDirective: (value) => {
@@ -230,7 +230,7 @@ function recordingController() {
       return true
     },
     clearPerformanceDirective: () => undefined,
-  })
+  }, channel)
   return { controller, played }
 }
 
@@ -292,19 +292,15 @@ test('a rejected plan can be retried and is remembered only after acceptance', (
   assert.equal(attempts, 2)
 })
 
-test('identical plans in distinct live generations or sources are independent', async () => {
-  const { setLiveMotionGeneration } = await import('./liveGeneration')
-  const { controller, played } = recordingController()
-  try {
-    setLiveMotionGeneration(1)
-    controller.handle({ ...firstPlan, generation: 1 })
-    setLiveMotionGeneration(2)
-    controller.handle({ ...firstPlan, generation: 2 })
-    controller.handle({ ...firstPlan, generation: 2, source: 'proactive' })
-    assert.equal(played.length, 3)
-  } finally {
-    setLiveMotionGeneration(0)
-  }
+test('identical plans in distinct live generations or sources are independent', () => {
+  const channel = new FigureChannel()
+  const { controller, played } = recordingController(channel)
+  channel.setGeneration(1)
+  controller.handle({ ...firstPlan, generation: 1 })
+  channel.setGeneration(2)
+  controller.handle({ ...firstPlan, generation: 2 })
+  controller.handle({ ...firstPlan, generation: 2, source: 'proactive' })
+  assert.equal(played.length, 3)
 })
 
 test('replay history is bounded and dispose clears it', () => {
