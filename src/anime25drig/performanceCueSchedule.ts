@@ -5,6 +5,7 @@ import type { CueIntent } from './performanceCueDefinitions'
 import type { PerformanceExpressionOffset, ScheduledExpressionCue } from './performanceExpressionShared'
 import { PERFORMANCE_CUE_INTENTS } from '../events/performanceContract'
 import { TOUCH_REACTIONS } from '../interaction/touchReaction'
+import { isWord } from '../performance/vocabulary'
 import { cueIsSticker } from './performanceCueDefinitions'
 import { clamp, finiteOrZero, intentExpressionOffset, OFFSET_KEYS, smootherstep } from './performanceExpressionShared'
 import { MIN_STICKER_FADE_OUT } from './performanceMotion'
@@ -43,7 +44,7 @@ export function scheduledCueFromUnit(
 ): ScheduledExpressionCue | null {
   const intent = unit.form as CueIntent
   const touch = unit.family === 'touch'
-  if (touch ? !TOUCH_REACTIONS.includes(unit.form as TouchReaction) : !PERFORMANCE_CUE_INTENTS.includes(intent)) return null
+  if (touch ? !TOUCH_REACTIONS.includes(unit.form as TouchReaction) : !isWord(PERFORMANCE_CUE_INTENTS, intent)) return null
   const local = (atMs: number): number =>
     playerNow + (finiteOrZero(atMs) - wallNowMs) / 1_000
   const start = local(unit.timing.startMs)

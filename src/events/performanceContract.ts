@@ -1,22 +1,20 @@
 import type {
   BodyControl,
   BodyPose,
-  PerformanceBaseline,
   PerformanceCue,
   ScoreBeat,
   ScoreMove,
   SpeechPhrase,
 } from '../performance/types'
 import contract from '@myriad/core/shared/merope_performance_contract.json' with { type: 'json' }
+import { CUE_INTENTS, isWord, PHRASE_INTENTS, SCORE_DIRECTIONS, SCORE_SIDES } from '../performance/vocabulary'
 
-export const PERFORMANCE_BASELINE_EXPRESSIONS =
-  contract.baselineExpressions as PerformanceBaseline['expression'][]
-export const PERFORMANCE_POSTURES =
-  contract.postures as PerformanceBaseline['posture'][]
-export const PERFORMANCE_CUE_INTENTS =
-  contract.cueIntents as PerformanceCue['intent'][]
-export const PERFORMANCE_INTERRUPT_MODES =
-  contract.interruptModes as PerformanceCue['interrupt'][]
+export {
+  BASELINE_EXPRESSIONS as PERFORMANCE_BASELINE_EXPRESSIONS,
+  CUE_INTENTS as PERFORMANCE_CUE_INTENTS,
+  INTERRUPT_MODES as PERFORMANCE_INTERRUPT_MODES,
+  POSTURES as PERFORMANCE_POSTURES,
+} from '../performance/vocabulary'
 
 export const BODY_CONTROLS = contract.bodyControls
 export const BODY_POSE_TIMING = contract.bodyPoseTiming
@@ -77,10 +75,7 @@ export function sanitizeBodyPose(value: unknown): BodyPose | null {
   }
 }
 
-const PERFORMANCE_CUE_PRIORITIES = contract.cuePriorities as Record<
-  PerformanceCue['intent'],
-  number
->
+const PERFORMANCE_CUE_PRIORITIES: Record<PerformanceCue['intent'], number> = contract.cuePriorities
 
 export function performanceCuePriority(
   intent: PerformanceCue['intent'],
@@ -90,10 +85,10 @@ export function performanceCuePriority(
 
 export function performanceContractIsComplete(): boolean {
   return (
-    new Set(PERFORMANCE_CUE_INTENTS).size === PERFORMANCE_CUE_INTENTS.length &&
+    new Set(CUE_INTENTS).size === CUE_INTENTS.length &&
     Object.keys(PERFORMANCE_CUE_PRIORITIES).length ===
-      PERFORMANCE_CUE_INTENTS.length &&
-    PERFORMANCE_CUE_INTENTS.every((intent) => {
+      CUE_INTENTS.length &&
+    CUE_INTENTS.every((intent) => {
       const priority = PERFORMANCE_CUE_PRIORITIES[intent]
       return Number.isInteger(priority) && priority >= 1 && priority <= 3
     })
@@ -109,7 +104,7 @@ export function sanitizeSpeechPhrases(value: unknown): SpeechPhrase[] {
       !item ||
       typeof item !== 'object' ||
       typeof item.text !== 'string' ||
-      !contract.phraseIntents.includes(item.intent)
+      !isWord(PHRASE_INTENTS, item.intent)
     ) {
       continue
     }
@@ -184,13 +179,13 @@ function sanitizeScoreMove(value: unknown): ScoreMove | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const raw = value as Record<string, unknown>
   if (typeof raw.kind !== 'string' || !Object.hasOwn(SCORE_MOVES, raw.kind)) return null
-  const word = <T extends string>(key: string, allowed: readonly string[]): T | undefined | null => {
+  const word = <T extends string>(key: string, allowed: readonly T[]): T | undefined | null => {
     const entry = raw[key]
     if (entry === undefined || entry === null) return undefined
-    return typeof entry === 'string' && allowed.includes(entry) ? (entry as T) : null
+    return isWord(allowed, entry) ? entry : null
   }
-  const side = word<NonNullable<ScoreMove['side']>>('side', contract.scoreSides)
-  const direction = word<NonNullable<ScoreMove['direction']>>('direction', contract.scoreDirections)
+  const side = word('side', SCORE_SIDES)
+  const direction = word('direction', SCORE_DIRECTIONS)
   if (side === null || direction === null) return null
   const number = (key: string, fallback: number) => {
     const entry = raw[key]

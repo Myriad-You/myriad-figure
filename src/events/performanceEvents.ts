@@ -7,6 +7,7 @@ import type {
 } from '../performance/types'
 import type { MeropeStateEventDetail } from './meropeAffectState'
 import { moodBand } from '../performance/mood'
+import { isWord } from '../performance/vocabulary'
 import {
   currentMeropeState,
   writeMeropeState,
@@ -271,12 +272,8 @@ function sanitizeBaseline(value: unknown): PerformanceBaseline | null {
   if (pose === null) return null
   if (!isRecord(value)) return null
   if (
-    !PERFORMANCE_BASELINE_EXPRESSIONS.includes(
-      value.expression as PerformanceBaseline['expression'],
-    ) ||
-    !PERFORMANCE_POSTURES.includes(
-      value.posture as PerformanceBaseline['posture'],
-    ) ||
+    !isWord(PERFORMANCE_BASELINE_EXPRESSIONS, value.expression) ||
+    !isWord(PERFORMANCE_POSTURES, value.posture) ||
     typeof value.motionEnergy !== 'number' ||
     !Number.isFinite(value.motionEnergy) ||
     typeof value.attention !== 'number' ||
@@ -285,8 +282,8 @@ function sanitizeBaseline(value: unknown): PerformanceBaseline | null {
     return null
   }
   return {
-    expression: value.expression as PerformanceBaseline['expression'],
-    posture: value.posture as PerformanceBaseline['posture'],
+    expression: value.expression,
+    posture: value.posture,
     motionEnergy: clamp(value.motionEnergy, 0.2, 1.4),
     attention: clamp(value.attention, 0, 1),
     ...(pose ? { pose } : {}),
@@ -299,12 +296,8 @@ function sanitizeBaseline(value: unknown): PerformanceBaseline | null {
 function sanitizeCue(value: unknown): PerformanceCue | null {
   if (!isRecord(value)) return null
   if (
-    !PERFORMANCE_CUE_INTENTS.includes(
-      value.intent as PerformanceCue['intent'],
-    ) ||
-    !PERFORMANCE_INTERRUPT_MODES.includes(
-      value.interrupt as PerformanceCue['interrupt'],
-    )
+    !isWord(PERFORMANCE_CUE_INTENTS, value.intent) ||
+    !isWord(PERFORMANCE_INTERRUPT_MODES, value.interrupt)
   ) {
     return null
   }
@@ -323,13 +316,13 @@ function sanitizeCue(value: unknown): PerformanceCue | null {
     return null
   }
   return {
-    intent: value.intent as PerformanceCue['intent'],
+    intent: value.intent,
     atMs: Math.trunc(clamp(value.atMs as number, 0, 5_000)),
     intensity: clamp(value.intensity as number, 0.2, 1.4),
     tempo: clamp(value.tempo as number, 0.5, 1.6),
     fadeInMs: Math.trunc(clamp(value.fadeInMs as number, 40, 600)),
     fadeOutMs: Math.trunc(clamp(value.fadeOutMs as number, 60, 800)),
-    interrupt: value.interrupt as PerformanceCue['interrupt'],
+    interrupt: value.interrupt,
   }
 }
 

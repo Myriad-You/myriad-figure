@@ -1,4 +1,13 @@
 import type performanceContract from '@myriad/core/shared/merope_performance_contract.json'
+import type {
+  BASELINE_EXPRESSIONS,
+  CUE_INTENTS,
+  INTERRUPT_MODES,
+  PHRASE_INTENTS,
+  POSTURES,
+  SCORE_DIRECTIONS,
+  SCORE_SIDES,
+} from './vocabulary'
 
 export type BodyControl = keyof typeof performanceContract.bodyControls
 export interface BodyPose {
@@ -75,8 +84,8 @@ export type PerformancePhase =
   'reaction' | 'delivery' | 'outcome' | 'proactive' | 'mood' | 'presence'
 
 export interface PerformanceBaseline {
-  expression: 'withdrawn' | 'subdued' | 'steady' | 'warm' | 'tense'
-  posture: 'closed' | 'neutral' | 'open'
+  expression: typeof BASELINE_EXPRESSIONS[number]
+  posture: typeof POSTURES[number]
   motionEnergy: number
   attention: number
   pose?: BodyPose
@@ -89,29 +98,14 @@ export interface PerformanceBaseline {
 }
 
 export interface PerformanceCue {
-  intent:
-    | 'greet'
-    | 'respond'
-    | 'question'
-    | 'delight'
-    | 'emphasize'
-    | 'listen'
-    | 'notify'
-    | 'think'
-    | 'dizzy'
-    | 'cry'
-    | 'angry'
-    | 'speechless'
-    | 'maniac'
-    | 'silly'
-    | 'lovestruck'
+  intent: typeof CUE_INTENTS[number]
   atMs: number
   intensity: number
   tempo: number
   fadeInMs: number
   fadeOutMs: number
   holdMs?: number
-  interrupt: 'replace' | 'queue' | 'if-lower'
+  interrupt: typeof INTERRUPT_MODES[number]
 }
 
 export interface PerformanceDirective {
@@ -130,9 +124,8 @@ export interface PerformanceDirective {
 }
 
 export type ScoreMoveKind = keyof typeof performanceContract.scoreMoves
-export type ScoreSide = 'left' | 'right' | 'both'
-export type ScoreDirection =
-  | 'left' | 'right' | 'up' | 'down' | 'up-left' | 'up-right' | 'down-left' | 'down-right'
+export type ScoreSide = typeof SCORE_SIDES[number]
+export type ScoreDirection = typeof SCORE_DIRECTIONS[number]
 
 /** A movement that goes and comes back by itself, such as a nod. */
 export interface ScoreMove {
@@ -159,8 +152,7 @@ export interface ScoreBeat {
 
 export interface SpeechPhrase {
   text: string
-  intent:
-    'ask' | 'hesitate' | 'tease' | 'explain' | 'check-in' | 'laugh' | 'none'
+  intent: typeof PHRASE_INTENTS[number]
 }
 
 export type MoodBandName = 'floor' | 'sad' | 'tense' | 'calm' | 'excited'

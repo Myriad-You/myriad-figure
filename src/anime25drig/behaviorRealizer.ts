@@ -3,10 +3,10 @@ import type { BehaviorPlan, BehaviorRealizerReport } from '../motion/behavior'
 import type { BehaviorRealizerContext } from '../motion/behaviorRealizerRegistry'
 import type { SpeechGesture } from '../speech/phraseGestures'
 import type { Anime25DMotionUnit } from './behaviorMotion'
-import type { CueIntent } from './performanceCueDefinitions'
 import { PERFORMANCE_CUE_INTENTS } from '../events/performanceContract'
 import { TOUCH_REACTIONS } from '../interaction/touchReaction'
 import { BehaviorRealizerRegistry } from '../motion/behaviorRealizerRegistry'
+import { isWord } from '../performance/vocabulary'
 import { isMusicMode } from '../singing/musicSignal'
 import { SPEECH_GESTURES } from '../speech/phraseGestures'
 import { completeBehaviorQuality } from './behaviorMotion'
@@ -19,7 +19,7 @@ export interface Anime25DBehaviorRealization {
 const registry = new BehaviorRealizerRegistry<Anime25DMotionUnit>().register(
   'performance-cue',
   (behavior, context) => {
-    if (!PERFORMANCE_CUE_INTENTS.includes(behavior.form.id as CueIntent)) {
+    if (!isWord(PERFORMANCE_CUE_INTENTS, behavior.form.id)) {
       return null
     }
     const timing = realizedUnitTiming(behavior.timing, context)
