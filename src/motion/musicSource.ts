@@ -20,6 +20,7 @@ import {
 } from '../singing/singingClock'
 import { singingPlaybackGap } from '../singing/singingHold'
 import { compileSingingTimeline } from '../singing/singingTimeline'
+import { compileMusicBehaviorPlan } from './musicBehaviorPlan'
 import { MUSIC_QUALITY, MusicReactionPlanner } from './musicReaction'
 import { resolveSingingApply } from './singingApply'
 
@@ -408,63 +409,11 @@ export class MusicMotionSource {
     }
     this.musicMode = mode
     this.behaviorSequence += 1
-    const prefix = `music-${this.behaviorSequence}`
-    const start = `${prefix}:start`
-    const ready = `${prefix}:ready`
-    const strokeStart = `${prefix}:stroke-start`
-    const strokePeak = `${prefix}:stroke-peak`
-    const strokeEnd = `${prefix}:stroke-end`
-    const anticipation = `${prefix}:next-beat`
-    const behaviorId = `${prefix}:entrain`
-    this.behaviorPlan = {
-      id: prefix,
-      originMs: nowMs,
-      pegs: [
-        { id: start, atMs: nowMs, revision: 0 },
-        { id: ready, atMs: nowMs + 55, revision: 0 },
-        { id: strokeStart, atMs: nowMs + 88, revision: 0 },
-        { id: strokePeak, atMs: nowMs + 120, revision: 0 },
-        { id: strokeEnd, atMs: nowMs + 180, revision: 0 },
-        {
-          id: anticipation,
-          atMs: nowMs + 500,
-          revision: 0,
-          confidence: 0,
-        },
-      ],
-      behaviors: [
-        {
-          id: behaviorId,
-          function: 'entrain',
-          kind: 'rhythmic',
-          source: 'music',
-          resources: [
-            'body.head',
-            'body.torso',
-            'body.arm.left',
-            'body.arm.right',
-          ],
-          channels: ['headBody'],
-          timing: {
-            start,
-            ready,
-            strokeStart,
-            strokePeak,
-            strokeEnd,
-            relax: null,
-            end: null,
-          },
-          anticipation,
-          form: { family: 'music', id: mode },
-          intensity: 1,
-          quality: MUSIC_QUALITY[mode],
-          confidence: 0.8,
-        },
-      ],
-    }
+    this.behaviorPlan = compileMusicBehaviorPlan(this.behaviorSequence, nowMs, mode)
+    const [entrain] = this.behaviorPlan.behaviors
     this.behaviorTrackId = trackId
-    this.behaviorId = behaviorId
-    this.anticipationPegId = anticipation
+    this.behaviorId = entrain!.id
+    this.anticipationPegId = entrain!.anticipation!
   }
 
   private updateBeatAnticipation(

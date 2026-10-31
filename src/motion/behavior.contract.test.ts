@@ -1,22 +1,23 @@
+import type { RigMotionPort } from '../rig/motionPort'
 import type { ScheduledBehavior } from './behavior'
 import type { MotionFrame } from './intents'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { PERFORMANCE_CUE_INTENTS } from '../events/performanceContract'
+import { MUSIC_MODES } from '../singing/musicSignal'
 import { musicSignalAt } from '../singing/musicSignal.test-support'
 import { coreFile } from '../testing/coreFile.test-support'
 import { applyMotionFrame, createMotionApplyState } from './applyFrame'
 import { applySingingWrite } from './applySnapshot'
+import { MOTION_CHANNELS } from './channels'
 import { RigMotionCoordinator } from './coordinator'
+import { compileMusicBehaviorPlan } from './musicBehaviorPlan'
 import { compilePerformanceBehaviorPlan } from './performanceBehaviorPlan'
-import { BEHAVIOR_FUNCTIONS, BEHAVIOR_SOURCES } from './rigStateSummary'
+import { BEHAVIOR_FUNCTIONS, BEHAVIOR_SOURCES, captureRigStateSummary } from './rigStateSummary'
+import { MotionRuntime } from './runtime'
 import { resolveSingingApply } from './singingApply'
 import { compileSpeechBehaviorPlan } from './speechBehaviorPlan'
-
-function source(relative: string): string {
-  return readFileSync(new URL(relative, import.meta.url), 'utf8')
-}
 
 function recordingRig() {
   const calls: string[] = []
@@ -131,31 +132,68 @@ test('applyFrame writes speech text only while speech owns the mouth', () => {
   assert.ok(host.calls.includes('text:你好'))
 })
 
-test('motion sources do not take a rig', () => {
-  assert.doesNotMatch(source('./speechSource.ts'), /rigRef/)
-  assert.doesNotMatch(source('./performanceSource.ts'), /rigRef/)
+test('a frame reaches the rig only through the renderer-neutral port', () => {
+  // Whatever the frame holds, applyFrame may call only the port's own methods:
+  // no driver writes, debug snapshots or renderer-specific calls.
+  const called = new Set<string>()
+  const port = new Proxy({}, {
+    get: (_target, name) => {
+      called.add(String(name))
+      return name === 'playBehaviorPlan' ? () => [] : () => undefined
+    },
+  }) as RigMotionPort
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const release = runtime.retain()
+  try {
+    runtime.mood.set(40, 'thinking', 70)
+    runtime.performance.handleForTest({
+      phase: 'delivery', moodRevision: 1, motionStyle: 'even',
+      plan: { cues: [{ intent: 'question', atMs: 0, intensity: 1, tempo: 1, fadeInMs: 80, fadeOutMs: 200, interrupt: 'replace' }] },
+    })
+    applyMotionFrame(port, runtime.frame(), createMotionApplyState())
+  } finally {
+    release()
+  }
+  const allowed: ReadonlySet<string> = new Set(Object.keys(PORT_METHODS))
+  assert.deepEqual([...called].filter(name => !allowed.has(name)), [])
+  assert.ok(called.has('setMotionPolicy'))
 })
 
-test('the production rig port stays renderer-neutral', () => {
-  const port = source('../rig/motionPort.ts')
-  assert.doesNotMatch(port, /Anime25D|setDriver|debugSnapshot/)
-  assert.doesNotMatch(port, /PerformanceDirective|playMotionPlan/)
-  assert.doesNotMatch(source('./applyFrame.ts'), /RigCharacter/)
-})
+// Every method of RigMotionPort, so the check above names the whole port.
+const PORT_METHODS: Record<keyof RigMotionPort, true> = {
+  setMotionPolicy: true, setBearing: true, setScore: true, setMood: true,
+  setSpeechActive: true, setAutoSpeech: true, setSpeechEnergy: true, setSpeechArticulation: true,
+  setSpeechProsody: true, enqueueSpeechText: true, setSinging: true, setSingingTrack: true,
+  setMusicSignal: true, playBehaviorPlan: true, stopBehaviorPlan: true,
+}
 
 test('dead motion channels stay removed', () => {
-  assert.doesNotMatch(source('./channels.ts'), /['"]physics['"]/)
+  assert.ok(!(MOTION_CHANNELS as readonly string[]).includes('physics'))
 })
 
-test('agent turns send a semantic rig summary instead of per-frame drivers', () => {
-  assert.doesNotMatch(source('./rigStateSummary.ts'), /mouthOpen/)
-  assert.doesNotMatch(source('./rigStateSummary.ts'), /angleX/)
-  assert.doesNotMatch(source('../anime25drig/player.ts'), /captureRigStateSummary/)
+test('agent turns get a semantic rig summary, not per-frame drivers', () => {
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  runtime.mood.set(40, 'thinking', 70)
+  const summary = JSON.stringify(captureRigStateSummary(runtime))
+  for (const driver of ['mouthOpen', 'angleX', 'angleY', 'eyeOpenL', 'bodyLift']) {
+    assert.ok(!summary.includes(`"${driver}"`), driver)
+  }
 })
 
-test('idle self-motion does not masquerade as a semantic directed plan', () => {
-  assert.doesNotMatch(source('./runtime.ts'), /AutonomyMotionSource/)
-  assert.doesNotMatch(source('./applyFrame.ts'), /autonomy/)
+test('idle self-motion never shows up as a semantic behavior', () => {
+  // Drift, small idle moves and breathing run on the figure's own clock: an
+  // undirected runtime schedules nothing and reports nothing to the director.
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const release = runtime.retain()
+  try {
+    runtime.mood.set(70, 'idle', 48)
+    const frame = runtime.frame()
+    assert.ok(!('autonomy' in frame))
+    assert.deepEqual(frame.behaviors, [])
+    assert.deepEqual(captureRigStateSummary(runtime).activeBehaviors, [])
+  } finally {
+    release()
+  }
 })
 
 test('the behavior vocabulary is exactly what a producer can emit', () => {
@@ -201,16 +239,7 @@ test('the behavior vocabulary is exactly what a producer can emit', () => {
       accents: [{ offsetMs: 300, intensity: 0.8 }],
     }),
   )
-  for (const [, name] of source('./musicSource.ts').matchAll(
-    /\bfunction: '([A-Za-z]+)'/g,
-  )) {
-    functions.add(name!)
-  }
-  for (const [, name] of source('./musicSource.ts').matchAll(
-    /\bsource: '([A-Za-z]+)'/g,
-  )) {
-    sources.add(name!)
-  }
+  for (const mode of MUSIC_MODES) record(compileMusicBehaviorPlan(1, 0, mode))
 
   assert.deepEqual(
     Iterator.from(functions).toArray().toSorted(),
