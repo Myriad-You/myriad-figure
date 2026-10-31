@@ -20,6 +20,7 @@ import type {
   Anime25DFrameWork,
 } from './performanceTelemetry'
 import type { Anime25DDebugSnapshot } from './playerDebug'
+import type { Anime25DInspection } from './playerInspection'
 import type { PoseCorrection } from './poseCorrections'
 import type { PoseCorrectionStageSource } from './poseCorrectionStage'
 import type { Anime25DRendererBindings, Anime25DRenderFrame } from './renderer'
@@ -69,6 +70,7 @@ import {
   createAnime25DFrameWork,
 } from './performanceTelemetry'
 import { describeAnime25DPlayback } from './playerDebug'
+import { inspectAnime25DFrame } from './playerInspection'
 import {
   prepareLivePackage,
   releaseCompiledGpu,
@@ -95,6 +97,7 @@ import { hitTestVisibleTouch } from './touchVisibility'
 import { compileProgram, loadImage } from './webglRuntime'
 
 export type { Anime25DDebugSnapshot } from './playerDebug'
+export type { Anime25DInspection, Anime25DLayerView, Anime25DPoint } from './playerInspection'
 
 export class Anime25DPlayer {
   private readonly thinkingSticker = new ThinkingSticker()
@@ -441,6 +444,12 @@ export class Anime25DPlayer {
       ...(bearing ? baselineDriverPatch(bearing) : restEnergyDriverPatch()),
       ...bearingDriverPatch(bearing),
     })
+  }
+
+  /** What was drawn this frame, copied out for tests and inspectors. */
+  inspect(): Anime25DInspection {
+    const { current, layers, collarClip, renderFrame } = this
+    return inspectAnime25DFrame({ current, layers, collarClip, renderFrame, torsoYaw: this.body.torsoTurn() })
   }
 
   debugSnapshot(): Anime25DDebugSnapshot {

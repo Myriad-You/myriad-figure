@@ -362,6 +362,9 @@ export class Anime25DBodyFrames {
     )), dt)
   }
 
+  /** The torso's own turn this frame. */
+  torsoTurn(): number { return this.torsoYaw.value }
+
   /** One physics substep: jaw, chest, hair roots and springs, arms, soft volumes. */
   updateSprings(dt: number, layers: readonly Anime25DGpuLayer[], time: number): void {
     const anchors = this.anchors
