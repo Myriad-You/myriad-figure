@@ -110,10 +110,6 @@ for (const pkg of packages) {
     })
 
     test('the same performance moves the same way at every frame rate', async ({ page }, testInfo) => {
-      // Known: poseInertia overwrites the pose poseResponse keeps following, so
-      // the pair advances by the square of the frame step; at 120 fps a head
-      // turn reaches 0.13 of its way in 0.1 s, at 30 fps 0.48.
-      test.fixme(true, 'Driver smoothing depends on the frame rate (poseInertia feeds back into poseResponse)')
       const result = await run(page, 'turns', await stage(page, pkg))
       await attach(testInfo, result)
       const finest = result.at(-1)!
@@ -231,7 +227,7 @@ for (const pkg of packages) {
         expect(metric.idleRange).toBeGreaterThan(0.1)
         expect(metric.idleHairTravel).toBeGreaterThan(5)
         // Against the music's own beats, so a full body's long lever does not count as a jump; a reset is
-        // hundreds of times the music. (At 30 fps the handover runs high with the frame-rate fixme above.)
+        // hundreds of times the music.
         expect(metric.peakAcceleration).toBeLessThan(metric.musicAcceleration * 6)
         expect(metric.error).toBe(0)
       }

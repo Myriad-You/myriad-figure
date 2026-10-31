@@ -70,8 +70,8 @@ What the probes hold, and what they do not:
 - Continuous turns at 30/60/120 fps: earrings stay on the ear's surface,
   sampled independently of the runtime's own attachment code (a clip on the
   back hair follows the head's turn rather than that mesh, so it is not held
-  to it); no non-finite vertex; head surfaces stay oriented. Moving the same
-  way at every frame rate is a `fixme`: the driver smoothing does not yet.
+  to it); no non-finite vertex; head surfaces stay oriented; and the face
+  moves the same way at every frame rate.
 - Corners of combined turns: visible face and hair triangles stay oriented.
   Real art only: the synthetic face is a flat block, and it folds at two
   corners; whether drawn art can fold the same way is not settled.

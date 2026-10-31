@@ -580,6 +580,7 @@ export class Anime25DPlayer {
     input.speechActive = this.speechActive
     input.musicSignal = this.musicSignal
     input.motionEnvelopeProfile = this.motionEnvelopeProfile
+    this.poseInertia.release(this.current)
     this.motion.step(dt, input)
     this.body.stepPosture(dt, this.time)
     this.poseInertia.step(this.current, dt)

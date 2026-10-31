@@ -35,3 +35,37 @@ test('a held pose passes through untouched, and only head and torso are carried'
   assert.equal(first!.eyeX, 1)
   assert.equal(first!.mouthOpen, 1)
 })
+
+test('every frame rate carries the same movement the same way', () => {
+  // A head turn arriving at once, then a slow sway: at 120 fps and at 30 the body follows alike.
+  const at = (fps: number) => {
+    const inertia = new Anime25DPoseInertia()
+    const samples: number[] = []
+    for (let frame = 0; frame < fps * 1.5; frame += 1) {
+      // The player advances its clock before it composes, so a frame's pose is its end's.
+      const time = (frame + 1) / fps
+      const pose = { ...IDENTITY_DRIVER, angleX: time <= 0.1 ? 0 : 0.9 + 0.3 * Math.sin(time * 4), body: time <= 0.1 ? 0 : 0.6 }
+      inertia.step(pose, 1 / fps)
+      if ((frame + 1) % (fps / 10) === 0) samples.push(pose.angleX, pose.body)
+    }
+    return samples
+  }
+  const finest = at(240)
+  for (const fps of [30, 60, 120]) {
+    const samples = at(fps)
+    const worst = Math.max(...samples.map((value, i) => Math.abs(value - finest[i]!)))
+    assert.ok(worst < 0.02, `${fps} fps strays ${worst} from 240 fps`)
+  }
+})
+
+test('the composition gets its own pose back, not the carried one', () => {
+  const inertia = new Anime25DPoseInertia()
+  follow(inertia, {}, 0.1)
+  const pose = { ...IDENTITY_DRIVER, angleX: 0.8, eyeX: 0.3 }
+  inertia.step(pose, 1 / FPS)
+  assert.ok(pose.angleX < 0.8, 'the body lags the jump')
+  pose.eyeX = 0.5
+  inertia.release(pose)
+  assert.equal(pose.angleX, 0.8)
+  assert.equal(pose.eyeX, 0.5, 'channels it does not carry are left alone')
+})
