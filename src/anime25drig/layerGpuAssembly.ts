@@ -494,6 +494,7 @@ export function bindLayerAttachments(
     }
   }
   shareEarringHosts(layers, playback, readBindingPixels)
+  shareHatAnchor(layers, playback)
   for (const child of layers) {
     const sources = new Set([
       child.attachment?.hostSource,
@@ -630,6 +631,41 @@ function shareEarringHosts(
       member.earwearPhysics = bindEarwearPhysics(member.source, member.attachment,
         readBindingPixels(member.source), playback.anchors.face.y1 - playback.anchors.face.y0)
       if (member.earwearPhysics) member.attachmentTurn = null
+    }
+  }
+}
+
+/**
+ * A hat drawn in more than one layer (its crown, its brim's front, its band) is
+ * one rigid thing: each piece anchored at its own point on the hair under it
+ * goes as the hair bends there, and the pieces part along their seam (a gap
+ * showing what is under the hat, an ornament cut across it out of register).
+ * Pieces that overlap ride the largest one's anchor. One that swings on its
+ * own (a ribbon) keeps its own.
+ */
+function shareHatAnchor(layers: Anime25DGpuLayer[], playback: Readonly<Anime25DPlayback>): void {
+  const pieces = layers.filter((layer) =>
+    layer.source.group === 'head' && layer.source.role === 'headwear' && layer.attachment && !layer.earwearPhysics)
+  const touches = (a: PlaybackLayer, b: PlaybackLayer) =>
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+  const placed = new Set<Anime25DGpuLayer>()
+  for (const piece of pieces) {
+    if (placed.has(piece)) continue
+    const group = [piece]
+    for (let i = 0; i < group.length; i++) {
+      for (const other of pieces) {
+        if (!group.includes(other) && touches(group[i].source, other.source)) group.push(other)
+      }
+    }
+    for (const member of group) placed.add(member)
+    if (group.length < 2) continue
+    const lead = group.toSorted((a, b) => b.source.w * b.source.h - a.source.w * a.source.h)[0]
+    for (const member of group) {
+      if (member === lead || member.attachment!.hostSource !== lead.attachment!.hostSource) continue
+      member.attachment = { ...lead.attachment! }
+      member.attachmentTurn = bindAttachmentTurn(playback.turnKeyforms, member.source, member.rest,
+        member.attachment.hostSource, member.attachment)
+      if (member.attachmentTurn) member.deformed = member.rest.slice()
     }
   }
 }
