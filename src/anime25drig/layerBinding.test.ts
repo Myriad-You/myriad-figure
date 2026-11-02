@@ -186,6 +186,43 @@ test('hair keeps upstream topology, progress, bang blocks, and spring phase', ()
   assert.deepEqual(enhanced.strandWeights, expectedWeights)
 })
 
+test('bangs cut into a side lock go with the head, not with its one long strand', () => {
+  const bind = (tipY: number) => {
+    const source = playbackLayer({
+      name: 'front-hair-1',
+      role: 'front-hair',
+      phys: 'hair',
+      x: 300,
+      y: 90,
+      w: 260,
+      h: 560,
+      z: 9,
+      strands: [{ x: 530, rootY: 92, tipY }],
+    })
+    const binding = buildAnime25DLayerBinding({ source, canvasWidth: CANVAS_WIDTH, face: ANCHORS.face, layerZ: 9 })
+    const weightAt = (x: number) => {
+      let best = -1
+      let weight = 0
+      for (let vertex = 0; vertex < binding.rest.length / 2; vertex += 1) {
+        const distance = Math.abs(binding.rest[vertex * 2] - x)
+        if (best < 0 || distance < best) {
+          best = distance
+          weight = binding.strandWeights![vertex]
+        }
+      }
+      return weight
+    }
+    return { near: weightAt(530), far: weightAt(310) }
+  }
+  // Longer than the face (309 px): the bangs 220 px from its strand barely swing.
+  const side = bind(640)
+  assert.ok(side.near > 0.9 * hairStrandDynamics(92, 640, 309).amplitudeScale)
+  assert.ok(side.far < 0.05)
+  // A lock of bangs alone keeps its one strand's swing across it.
+  const bangs = bind(300)
+  assert.equal(bangs.far, bangs.near)
+})
+
 test('intentional mesh replacements are explicit rather than parity failures', () => {
   const mouth = buildAnime25DLayerBinding({
     source: playbackLayer({

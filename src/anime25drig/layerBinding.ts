@@ -306,6 +306,11 @@ function bindHair(
   const frontHairParallaxScale = frontHair
     ? new Float32Array(vertexCount)
     : null
+  // A lock left with one strand longer than the face is a side lock; bangs
+  // cut into it with it hold no strand of their own (lockStrands drops the
+  // short ones). Hair further than about a strand's spacing from that strand
+  // goes with the head instead of swinging and hanging with the side lock.
+  const sideLock = frontHair && strandCount === 1 && dynamics[0].lengthRatio > 1
   const strandWeights = new Float32Array(vertexCount * strandCount)
   const alongStrand = new Float32Array(vertexCount)
   for (let vertex = 0; vertex < vertexCount; vertex += 1) {
@@ -326,6 +331,7 @@ function bindHair(
     }
     let rootY = 0
     let tipY = 0
+    const reach = sideLock ? Math.min(1, total) : 1
     if (total > 1e-6) {
       for (let strand = 0; strand < strandCount; strand += 1) {
         const weightIndex = vertex * strandCount + strand
@@ -334,10 +340,10 @@ function bindHair(
         rootY += normalizedWeight * strands[strand].rootY
         tipY += normalizedWeight * strands[strand].tipY
         strandWeights[weightIndex] =
-          normalizedWeight * dynamics[strand].amplitudeScale
+          normalizedWeight * reach * dynamics[strand].amplitudeScale
       }
     } else {
-      strandWeights[vertex * strandCount] = dynamics[0].amplitudeScale
+      strandWeights[vertex * strandCount] = sideLock ? 0 : dynamics[0].amplitudeScale
       rootY = strands[0].rootY
       tipY = strands[0].tipY
     }
