@@ -23,6 +23,7 @@ import { addAuthoredExpressionLayers } from './authoredExpression'
 import { compensateSyntheticClosedEyeAngles } from './closedEyeCompensation'
 import { keepClosedEyeLines } from './closedEyeLines'
 import { CHARACTER_ASSET_PROFILES, MAX_RIG_PARTS, RIG_IR_VERSION } from './contract'
+import { revealCrownUnderFace } from './crownUnderFace'
 import { raiseEarwearOverFrontHair } from './earwearOrder'
 import { synthesizeMissingExpressionAccents } from './expressionAccentLayers'
 import { underlapHairLocks } from './hairLockUnderlap'
@@ -160,6 +161,7 @@ export async function prepareAnime25DRigPsd(
   if (sourceReference) {
     layers = tuckGarmentOffLegsByReference(layers, sourceReference, visibleInAnalysisReference)
     layers = tuckGarmentOffNeckByReference(layers, sourceReference, visibleInAnalysisReference)
+    layers = revealCrownUnderFace(layers, visibleInAnalysisReference, sourceReference)
   }
   layers.forEach((layer, index) => {
     layer.order = index
