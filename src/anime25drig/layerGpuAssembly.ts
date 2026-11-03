@@ -484,6 +484,9 @@ export function bindLayerAttachments(
       const { hostSource } = layer.attachment
       layer.attachmentTurn = layer.earwearPhysics ? null : bindAttachmentTurn(playback.turnKeyforms, layer.source, layer.rest, hostSource, layer.attachment)
       if (layer.attachmentTurn) layer.deformed = layer.rest.slice()
+      // A head ornament whose chains swing still turns by its keys, as drawn; only its chains swing.
+      const pinned = layer.earwearPhysics?.from && bindAttachmentTurn(playback.turnKeyforms, layer.source, layer.rest, hostSource, layer.attachment)
+      if (pinned) layer.pinnedTurn = { turn: pinned, keyed: layer.rest.slice() }
     }
     for (const attachment of [layer.attachment, layer.neckwearBridge?.upper, layer.neckwearBridge?.lower]) {
       // Its host's body key, per vertex of the host, is taken at the anchor and a pixel across (vertices 0, 1).

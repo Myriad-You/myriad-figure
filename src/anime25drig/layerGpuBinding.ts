@@ -82,6 +82,8 @@ export interface Anime25DGpuLayer extends Anime25DRenderableLayer {
   attachment: Anime25DLayerAttachment | null
   /** A keyed accessory's own turn, less what its host's key already carries it at the anchor. */
   attachmentTurn?: AttachmentTurn | null
+  /** A pinned head ornament's own keys, vertex by vertex, under the swing of its chains; `keyed` is its rest so keyed. */
+  pinnedTurn?: { turn: AttachmentTurn; keyed: Float32Array } | null
   earwearPhysics?: EarwearPhysics | null
   /** An earring's side of the head, +1 on the right of the picture; it goes behind the face as the head turns that side away. */
   earSide?: number

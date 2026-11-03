@@ -1,7 +1,7 @@
 import type { Anime25DPlaybackLayer } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { bindEarwearPhysics, earSideOf, EarwearPhysics } from './earwearPhysics'
+import { bindEarwearPhysics, bindHangBend, bindHangingPhysics, earSideOf, EarwearPhysics, ornamentHangStart } from './earwearPhysics'
 import { earBehindFace } from './layerFrameDeformation'
 
 const anchor = { x: 30, y: 40 }
@@ -156,4 +156,45 @@ test('an earring goes behind the face as the head turns its side away, not towar
     assert.ok(share >= previous && share - previous < 0.1, `smooth at ${degrees}`)
     previous = share
   }
+})
+
+/** A hair ornament: a full piece pinned in the hair (rows 0-59) with three chains hanging below it (rows 60-119). */
+function ornament(chains = true) {
+  const width = 40
+  const height = 120
+  const pixels = new Uint8ClampedArray(width * height * 4)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const piece = y < 60 && x >= 4 && x < 36
+      const chain = chains && y >= 60 && (x === 8 || x === 20 || x === 32)
+      if (piece || chain) pixels[(y * width + x) * 4 + 3] = 255
+    }
+  }
+  return { width, height, pixels }
+}
+
+test('a head ornament hangs from the bottom of the piece pinned in the hair, not from its top', () => {
+  const source = { x: 100, y: 200, w: 40, h: 120 }
+  const from = ornamentHangStart(source, ornament())!
+  assert.equal(from.y, 260)
+  assert.ok(Math.abs(from.x - 120.5) < 1, `under the middle of the chains: ${from.x}`)
+  // Nothing hangs: the ornament never swings.
+  assert.equal(ornamentHangStart(source, ornament(false)), null)
+})
+
+test('the inventory\'s hanging hair ornament swings its chains only; the pinned piece stays on its host', () => {
+  const source = { name: 'headwear', role: 'headwear', group: 'head', x: 100, y: 200, w: 40, h: 120 } as Anime25DPlaybackLayer
+  const art = ornament()
+  const playback = {
+    anchors: { face: { x0: 0, x1: 200, y0: 100, y1: 400, cx: 100, cy: 250 } },
+    partProfile: { parts: [{ layer: 'headwear', motion: 'dangle', separate: true, stiffness: 0.35, weight: 0.4, box: [100, 200, 140, 320], anchor: [120, 205] }] },
+  } as never
+  const physics = bindHangingPhysics(source, { x: 120, y: 230 }, playback, () => art)!
+  assert.deepEqual(physics.from && Math.round(physics.from.y), 260)
+  const rest = Float32Array.from([120, 210, 120, 255, 120, 300, 120, 320])
+  const layer = { source, rest, attachment: { y: 230 }, earwearPhysics: physics } as Parameters<typeof bindHangBend>[0]
+  bindHangBend(layer, playback.partProfile)
+  const weights = Array.from(layer.hangBend!)
+  assert.deepEqual(weights.slice(0, 2), [0, 0], 'the pinned piece')
+  assert.deepEqual(weights.slice(2), [1, 1], 'the chains')
 })

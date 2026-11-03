@@ -23,8 +23,63 @@ export function bindHangingPhysics(
   // drawn with other things only marks where its host sways or is cut.
   const part = movingPartIn(playback.partProfile, source.name)
   const own = part && (part.separate || cutFrom(source) !== undefined)
+  if (part && own && attachment && source.role === 'headwear' && cutFrom(source) === undefined) {
+    // A head ornament is pinned in the hair: only what hangs from it swings.
+    const from = ornamentHangStart(source, readPixels(source))
+    return from ? bindPartPhysics(source, attachment, part, faceHeight, playback.anchors.face.cx, from) : null
+  }
   if (part && own && attachment) return bindPartPhysics(source, attachment, part, faceHeight, playback.anchors.face.cx)
   return source.role === 'earwear' ? bindEarwearPhysics(source, attachment, readPixels(source), faceHeight) : null
+}
+
+/** Rows of a head ornament filled less than this share of its fullest row hang from it: chains, tassels. */
+const HANG_COVER = 0.45
+/** Less than this share of a head ornament hanging below the piece pinned in the hair is nothing that swings. */
+const HANG_MIN = 0.15
+/** The share of what hangs that the swing takes to take over below the pinned piece. */
+const HANG_BLEND = 0.08
+
+/**
+ * Where a head ornament drawn whole in its layer starts to hang: below the
+ * last row it fills at least HANG_COVER as much as its fullest row, under the
+ * middle of what hangs there. Above is the piece pinned in the hair, which
+ * goes with the head and never swings. Null when too little hangs below it.
+ */
+export function ornamentHangStart(
+  source: Pick<Anime25DPlaybackLayer, 'x' | 'y' | 'w' | 'h'>,
+  art: Anime25DAttachmentPixels | null,
+): { x: number; y: number } | null {
+  if (!art || art.width <= 0 || art.height <= 0 || art.pixels.length !== art.width * art.height * 4) return null
+  const cover = new Float32Array(art.height)
+  let fullest = 0
+  let bottom = -1
+  for (let y = 0; y < art.height; y++) {
+    for (let x = 0; x < art.width; x++) { if (art.pixels[(y * art.width + x) * 4 + 3] >= 32) cover[y]++
+}
+    fullest = Math.max(fullest, cover[y])
+    if (cover[y] > 0) bottom = y
+  }
+  if (fullest <= 0) return null
+  let pinned = -1
+  for (let y = 0; y <= bottom; y++) { if (cover[y] >= fullest * HANG_COVER) pinned = y
+}
+  if (pinned < 0 || bottom - pinned < (bottom + 1) * HANG_MIN) return null
+  // Across, the middle of the top of what hangs.
+  const band = Math.min(bottom, pinned + Math.max(2, Math.round((bottom - pinned) * 0.1)))
+  let sum = 0
+  let count = 0
+  for (let y = pinned + 1; y <= band; y++) {
+    for (let x = 0; x < art.width; x++) {
+      if (art.pixels[(y * art.width + x) * 4 + 3] < 32) continue
+      sum += x + 0.5
+      count++
+    }
+  }
+  if (!count) return null
+  return {
+    x: source.x + (sum / count / art.width) * source.w,
+    y: source.y + ((pinned + 1) / art.height) * source.h,
+  }
 }
 
 /** How far down a cut piece the swing takes over from its host, as a share of its length. */
@@ -51,6 +106,19 @@ export function bindHangBend(layer: {
   // Ribbon and cloth bend over much of their length; a gem or a charm of metal
   // only at its link, and swings whole below it.
   const part = movingPartIn(profile, source.name)
+  const from = layer.earwearPhysics?.from
+  if (layer.earwearPhysics && from) {
+    // A head ornament: the pinned piece stays on its host, what hangs below swings.
+    const blend = HANG_BLEND * Math.max(1, source.y + source.h - from.y)
+    const weights = new Float32Array(rest.length / 2)
+    for (let i = 0; i < weights.length; i++) {
+      const t = clamp((rest[i * 2 + 1] - from.y) / blend, 0, 1)
+      weights[i] = t * t * (3 - 2 * t)
+    }
+    layer.hangBend = weights
+    layer.deformed = rest.slice()
+    return
+  }
   if (!layer.earwearPhysics || !attachment || cutFrom(source) === undefined || !part) return
   const share = part.stiffness >= BEND_STIFFNESS ? LINK_REACH : BEND_REACH
   const reach = share * Math.max(1, source.y + source.h - attachment.y)
@@ -160,11 +228,13 @@ export function bindPartPhysics(
   part: Readonly<Anime25DPart>,
   faceHeight: number,
   centerX: number,
+  from: Readonly<{ x: number; y: number }> | null = null,
 ): EarwearPhysics | null {
   if (!attachment || faceHeight <= 0) return null
-  const length = Math.max(source.y + source.h, part.box[3]) - attachment.y
+  const pivot = from ?? attachment
+  const length = Math.max(source.y + source.h, from ? 0 : part.box[3]) - pivot.y
   if (!(length > faceHeight * 0.05)) return null
-  return new EarwearPhysics(length, faceHeight, attachment.x < centerX ? -1 : 1, pendulumTuning(part))
+  return new EarwearPhysics(length, faceHeight, attachment.x < centerX ? -1 : 1, pendulumTuning(part), from)
 }
 
 /**
@@ -191,6 +261,8 @@ export class EarwearPhysics {
     private readonly faceHeight: number,
     private readonly side: number,
     private readonly tuning: Readonly<PendulumTuning> = PENDULUM_DEFAULT,
+    /** Where it hangs from when that is not its attachment: the bottom of a head ornament's pinned piece. */
+    readonly from: Readonly<{ x: number; y: number }> | null = null,
   ) {}
 
   /**
@@ -209,6 +281,7 @@ export class EarwearPhysics {
     enabled: boolean,
     keyRoll: number | null = null,
   ): void {
+    if (this.from) a = this.from
     const x = m[0] * a.x + m[3] * a.y + m[6]
     const y = m[1] * a.x + m[4] * a.y + m[7]
     // Depth is unavailable in the raster host mesh. This is an explicit bounded

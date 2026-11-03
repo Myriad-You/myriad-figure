@@ -324,12 +324,14 @@ export function settleDependentLayers(
         secondaryDeformationFrame,
         layer.layerTransform,
       )
+      // A pinned ornament takes its keys first; its chains then swing from that.
+      if (layer.pinnedTurn) deformAttachmentTurn(layer.pinnedTurn.turn, secondaryDeformationFrame.headTurn?.amount ?? 0, secondaryDeformationFrame.headTurn?.nodAmount ?? 0, layer.rest, layer.pinnedTurn.keyed)
       if (layer.hangBend) hostCarry.set(layer.layerTransform)
       layer.earwearPhysics?.apply(layer.attachment, layer.layerTransform, time, current.angleX, current.angleY, current.phys,
         layer.attachmentTurn ? hostKeyRoll(layer.attachmentTurn, secondaryDeformationFrame.headTurn?.amount ?? 0, secondaryDeformationFrame.headTurn?.nodAmount ?? 0) : null)
       if (layer.hangBend && layer.deformed) {
         // A cut piece stays on its host at its cut and bends by its swing below.
-        layer.geometryDirty = bendHanging(layer.hangBend, hostCarry, layer.layerTransform, layer.rest, layer.deformed) || layer.geometryDirty
+        layer.geometryDirty = bendHanging(layer.hangBend, hostCarry, layer.layerTransform, layer.pinnedTurn?.keyed ?? layer.rest, layer.deformed) || layer.geometryDirty
         layer.layerTransform.set(hostCarry)
       }
       if (layer.attachmentTurn && deformAttachmentTurn(layer.attachmentTurn, secondaryDeformationFrame.headTurn?.amount ?? 0, secondaryDeformationFrame.headTurn?.nodAmount ?? 0, layer.rest, layer.deformed))
