@@ -1,3 +1,4 @@
+import type { Anime25DArmVariant } from '../anime25drig/types'
 import type { Anime25DLayerRole } from './anime25d'
 import type { RigPoint, RigRect } from './types'
 
@@ -41,6 +42,8 @@ export interface RasterLayer {
     | 'maniac'
     | 'silly'
   documentStrands?: HairStrand[]
+  /** A gesture arm (armVariants), hidden until raised. */
+  armVariant?: Anime25DArmVariant
 }
 
 export interface PreparedLayer extends RasterLayer {

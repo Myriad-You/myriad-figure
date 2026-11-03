@@ -11,6 +11,8 @@ export const ANIME25D_LAYER_DESCRIPTORS = {
   'collar-front': { depth: 0.955, fade: null },
   topwear: { depth: 0.9, fade: null },
   handwear: { depth: 0.86, fade: null },
+  // A drawn gesture arm (armVariants): hidden until she raises it.
+  'arm-variant': { depth: 0.86, fade: 'armVariant' },
   earwear: { depth: 0.97, fade: null },
   neckwear: { depth: 1, fade: null },
   eyewear: { depth: 1.16, fade: null },

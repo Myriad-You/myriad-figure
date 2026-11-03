@@ -97,3 +97,30 @@ test('rejects a sprite that cannot fit the 8192 cap', () => {
     /huge/,
   )
 })
+
+test('sprites packed apart leave the rest exactly where it lies without them', () => {
+  const own = Array.from({ length: 9 }, (_, index) => ({
+    id: `l${index}`,
+    width: 300 + index * 37,
+    height: 500 - index * 23,
+  }))
+  const apart = [
+    { id: 'a0', width: 700, height: 900, apart: true },
+    { id: 'a1', width: 650, height: 880, apart: true },
+  ]
+  const without = layoutAnime25DAtlas(own)
+  const mixed = [own[0]!, apart[0]!, ...own.slice(1, 5), apart[1]!, ...own.slice(5)]
+  const packed = layoutAnime25DAtlas(mixed)
+  const ownPlaces = packed.places.filter((_, index) => !mixed[index]!.apart)
+  assert.deepEqual(ownPlaces, without.places)
+  // Past the rest on a 64-texel boundary, and not on top of each other.
+  const boxes = packed.places.map((place, index) => ({ ...place, w: mixed[index]!.width, h: mixed[index]!.height }))
+  for (const [index, box] of boxes.entries()) {
+    if (!mixed[index]!.apart) continue
+    assert.ok(box.x >= without.width || box.y >= without.height, `${box.x},${box.y}`)
+    for (const [other, next] of boxes.entries()) {
+      if (other !== index) assert.ok(!rectsOverlap(box, next, 0), `${mixed[index]!.id} on ${mixed[other]!.id}`)
+    }
+  }
+  assert.ok(packed.width <= 8192 && packed.height <= 8192)
+})

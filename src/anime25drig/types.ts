@@ -38,6 +38,7 @@ export type Anime25DFade =
   | 'mouthCry'
   | 'mouthManiac'
   | 'mouthSilly'
+  | 'armVariant'
 
 export type Anime25DGroup = 'head' | 'body'
 
@@ -64,6 +65,21 @@ export interface Anime25DPlaybackLayer {
   strands: Anime25DStrand[]
   /** Drawn by the importer rather than the artist; the runtime may redraw it. */
   synthetic?: true
+  /** An arm-variant layer: the gesture it draws and how it rises in. */
+  armVariant?: Anime25DArmVariant
+}
+
+/**
+ * How a drawn gesture arm comes in from below the picture: `whole` moves the
+ * layer as one (a hand raised clear of the body), `shoulder` holds it at the
+ * shoulder and lifts the hand the most (an arm folded across the body, which
+ * moved whole would show a second shoulder).
+ */
+export type Anime25DArmLift = 'whole' | 'shoulder'
+
+export interface Anime25DArmVariant {
+  gesture: string
+  lift: Anime25DArmLift
 }
 
 export interface Anime25DEyeAnchor {
@@ -307,6 +323,8 @@ export interface Anime25DEnhancement {
   expressions: boolean
   /** A standing figure's body turn keys, fitted to generated drawings. */
   body?: boolean
+  /** Gesture arms drawn by the image model (armVariants). */
+  arms?: boolean
 }
 
 export function anime25DPlaybackSource(): Pick<

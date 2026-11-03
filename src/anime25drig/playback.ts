@@ -1,5 +1,6 @@
 import type { Anime25DLayerRole } from '../rig/anime25d'
 import type {
+  Anime25DArmVariant,
   Anime25DEyeAnchor,
   Anime25DFade,
   Anime25DMouthProfile,
@@ -22,6 +23,7 @@ export interface Anime25DPlaybackBuildLayer {
   textureBounds: { x: number; y: number; width: number; height: number }
   strands: Array<{ x: number; rootY: number; tipY: number }>
   synthetic?: boolean
+  armVariant?: Anime25DArmVariant
 }
 
 export interface Anime25DRiggerAnchors {
@@ -175,10 +177,13 @@ function toPlaybackLayer(
       tipY: strand.tipY * frameWidth,
     })),
     ...(layer.synthetic ? { synthetic: true as const } : {}),
+    ...(layer.armVariant ? { armVariant: { ...layer.armVariant } } : {}),
   }
 }
 
 function playbackName(layer: Anime25DPlaybackBuildLayer): string {
+  // One side has several gesture arms.
+  if (layer.armVariant) return layer.id
   if (/-\d+(?:-|$)/.test(layer.id)) return layer.id
   if (layer.side === 'left') return `${layer.role}-L`
   if (layer.side === 'right') return `${layer.role}-R`

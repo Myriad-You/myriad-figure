@@ -1,6 +1,7 @@
 import type { PreparedAnime25DRigImport } from './anime25dImporter'
 import type { AuthoredExpressionKind } from './authoredExpression'
 import type { CharacterAssetProfile } from './contract'
+import type { ArmVariantSource } from './psdImportClient'
 import type { DetectedSkeleton } from './skeleton'
 import { FigureError } from '../errors'
 import { importRigPsdInWorker } from './psdImportClient'
@@ -23,6 +24,8 @@ export interface RigPsdImportOptions {
   sourceGenerationFingerprint?: string
   signal?: AbortSignal
   expressions?: ReadonlyArray<{ kind: AuthoredExpressionKind; url: string }>
+  /** Gesture arms drawn on the portrait; only a bust takes them. */
+  armVariants?: ReadonlyArray<ArmVariantSource>
   /** The bust by default. */
   profile?: CharacterAssetProfile
   skeleton?: DetectedSkeleton
@@ -39,6 +42,7 @@ export async function prepareRigPsdImport(
     sourceGenerationFingerprint,
     signal,
     expressions = [],
+    armVariants = [],
     profile = 'bust',
     skeleton,
     referenceUrl,
@@ -62,6 +66,10 @@ export async function prepareRigPsdImport(
         kind,
         url: sourceMasterFetchUrl(url, document.baseURI, apiUrl),
       })),
+      armVariants: armVariants.map((variant) => ({
+        ...variant,
+        url: sourceMasterFetchUrl(variant.url, document.baseURI, apiUrl),
+      })),
       profile,
       ...(skeleton ? { skeleton } : {}),
     },
@@ -83,6 +91,7 @@ export async function prepareRigPsdImport(
       turn: Boolean(turnKeyforms),
       expressions: expressions.length > 0,
       ...(bodyTurnKeyforms ? { body: true } : {}),
+      ...(playback.layers.some((layer) => layer.armVariant) ? { arms: true } : {}),
     }
   }
   return prepared

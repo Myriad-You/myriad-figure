@@ -121,6 +121,19 @@ test('body control capabilities reflect real torso volume and each drawn arm', (
   assert.deepEqual(sanitized.capabilities, ['head-body', 'torso-volume', 'left-arm', 'right-arm'])
 })
 
+test('each drawn gesture arm is a capability of its side, kept through the summary', () => {
+  const playback = { layers: [
+    { role: 'handwear', side: 'L' },
+    { role: 'arm-variant', side: 'L', armVariant: { gesture: 'wave', lift: 'whole' } },
+    { role: 'arm-variant', side: 'R', armVariant: { gesture: 'chin', lift: 'shoulder' } },
+    { role: 'arm-variant', side: 'R', armVariant: { gesture: 'juggle', lift: 'whole' } },
+  ] }
+  const capabilities = playbackBodyCapabilities(playback as Parameters<typeof playbackBodyCapabilities>[0])
+  assert.deepEqual(capabilities, ['head-body', 'left-arm', 'left-hand-wave', 'right-hand-chin'])
+  const sanitized = sanitizeRigStateSummary({ capabilities: [...capabilities, 'left-hand-juggle'] })!
+  assert.deepEqual(sanitized.capabilities, capabilities)
+})
+
 test('bound body capabilities replace optimistic layer names and preserve the face across outfit changes', () => {
   const manifest = { parts: [
     { id: 'eye-left', slot: 'eye-left', variant: 'open' },

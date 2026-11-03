@@ -15,6 +15,15 @@ export interface Anime25DDriver {
   accentSleep: number
   accentSparkle: number
   accentBlush: number
+  /** Drawn gesture arms, one per side of the picture (armVariants): above 0.5 raises it. */
+  handWaveL: number
+  handPointL: number
+  handChestL: number
+  handChinL: number
+  handWaveR: number
+  handPointR: number
+  handChestR: number
+  handChinR: number
   maniac: number
   silly: number
   lovestruck: number
@@ -96,6 +105,14 @@ export const IDENTITY_DRIVER: Anime25DDriver = {
   accentSleep: 0,
   accentSparkle: 0,
   accentBlush: 0,
+  handWaveL: 0,
+  handPointL: 0,
+  handChestL: 0,
+  handChinL: 0,
+  handWaveR: 0,
+  handPointR: 0,
+  handChestR: 0,
+  handChinR: 0,
   maniac: 0,
   silly: 0,
   lovestruck: 0,
@@ -181,6 +198,14 @@ const DRIVER_LIMITS: Partial<
   accentSleep: [0, 1],
   accentSparkle: [0, 1],
   accentBlush: [0, 1],
+  handWaveL: [0, 1],
+  handPointL: [0, 1],
+  handChestL: [0, 1],
+  handChinL: [0, 1],
+  handWaveR: [0, 1],
+  handPointR: [0, 1],
+  handChestR: [0, 1],
+  handChinR: [0, 1],
   maniac: [0, 1],
   silly: [0, 1],
   lovestruck: [0, 1],

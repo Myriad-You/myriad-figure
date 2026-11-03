@@ -1,4 +1,5 @@
 import type { Anime25DSourceReference } from './anime25dImportTypes'
+import type { ArmVariantReference } from './armVariants'
 import type { AuthoredExpressionReference } from './authoredExpression'
 import type { RigPsdImportReply, RigPsdImportRequest } from './psdImportClient'
 import { FigureError } from '../errors'
@@ -16,6 +17,7 @@ globalThis.onmessage = async (event: MessageEvent<RigPsdImportRequest>) => {
     sourceMasterUrl,
     sourceGenerationFingerprint,
     expressions,
+    armVariants,
     profile,
     skeleton,
   } = event.data
@@ -32,12 +34,16 @@ globalThis.onmessage = async (event: MessageEvent<RigPsdImportRequest>) => {
     const expressionReferences = master
       ? await alignExpressions(expressions ?? [], psd.width, psd.height, master.size)
       : []
+    const armVariantReferences = master
+      ? await alignArmVariants(armVariants ?? [], psd.width, psd.height, master.size)
+      : []
     const prepared = await prepareAnime25DRigPsd(psd, {
       sourceMasterAssetId,
       onStage: (stage) => reply({ stage }),
       sourceGenerationFingerprint,
       sourceReference: master?.reference,
       expressionReferences,
+      armVariantReferences,
       profile,
       skeleton: skeleton && skeleton.sourceMasterAssetId === sourceMasterAssetId
         ? (alignSkeletonToPsd(skeleton, psd.width, psd.height) ?? undefined)
@@ -103,6 +109,43 @@ async function alignExpressions(
         }
       } catch {
         // An unreadable redraw only loses its authored parts.
+        return null
+      }
+    }),
+  )
+  return aligned.filter((reference) => reference !== null)
+}
+
+/** Gesture arms, placed like the expression redraws; their hand points go with them. */
+async function alignArmVariants(
+  variants: NonNullable<RigPsdImportRequest['armVariants']>,
+  width: number,
+  height: number,
+  master: ImageSize,
+): Promise<ArmVariantReference[]> {
+  const placement = psdPlacement(master, width, height)
+  const aligned = await Promise.all(
+    variants.map(async ({ gesture, side, url, hand }) => {
+      try {
+        const response = await fetch(url)
+        if (!response.ok) return null
+        const bitmap = await createImageBitmap(await response.blob())
+        try {
+          const reference = drawIntoPsd(bitmap, master, width, height)
+          return reference
+            ? {
+                gesture,
+                side,
+                ...reference,
+                placement: { x: placement.x, y: placement.y, width: placement.width, height: placement.height },
+                ...(hand?.length ? { hand: hand.map(([x, y]) => placement.map(x, y)) } : {}),
+              }
+            : null
+        } finally {
+          bitmap.close()
+        }
+      } catch {
+        // An unreadable variant only loses that gesture.
         return null
       }
     }),

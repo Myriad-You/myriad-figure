@@ -238,6 +238,8 @@ export function fadeOpacity(
   sillyMouthShare = 1,
 ): number {
   if (!layer.fade) return 1
+  // Shown by the arm variant presenter alone.
+  if (layer.fade === 'armVariant') return 0
   const dizzy = smoothstep(driver.eyeDizzy)
   const cry = smoothstep(driver.eyeCry)
   const mouthCry = cry * (1 - dizzy)
@@ -423,6 +425,8 @@ export function fadeOpacityFromFrame(
 ): number {
   const fade = layer.fade
   if (!fade) return 1
+  // Shown by the arm variant presenter alone.
+  if (fade === 'armVariant') return 0
   if (fade === 'eyeDizzy') return frame.dizzy
   if (fade === 'eyeCry') return frame.cry * (1 - frame.dizzy)
   if (fade === 'eyeSilly') return frame.silly
