@@ -19,6 +19,7 @@ import {
   PERFORMANCE_POSTURES,
 } from '../events/performanceContract'
 import { hasAnime25DCapability } from '../rig/anime25dCapabilities'
+import { ARM_VARIANT_GESTURES } from '../rig/armVariants'
 import { MOTION_SOURCES } from './channels'
 
 const EXPRESSIONS: readonly PerformanceBaseline['expression'][] =
@@ -77,9 +78,16 @@ const ACCENT_CAPABILITIES = [
   ['accent-blush', 'blush'],
 ] as const
 const BODY_CAPABILITIES = ['head-body', 'torso-volume', 'left-arm', 'right-arm'] as const
+/** A drawn gesture arm, by the side of the picture it raises (`left-hand-wave`). */
+export function armVariantCapability(side: 'L' | 'R', gesture: string): string {
+  return `${side === 'L' ? 'left' : 'right'}-hand-${gesture}`
+}
+const ARM_VARIANT_CAPABILITIES = ARM_VARIANT_GESTURES.flatMap((gesture) =>
+  (['L', 'R'] as const).map((side) => armVariantCapability(side, gesture)))
 export const RIG_STATE_CAPABILITY_LIMIT = new Set<string>([
   ...BODY_CAPABILITIES, ...CAPABILITY_MAP.map(([, semantic]) => semantic),
   ...ACCENT_CAPABILITIES.map(([, semantic]) => semantic),
+  ...ARM_VARIANT_CAPABILITIES,
 ]).size
 
 export function playbackBodyCapabilities(playback: Pick<Anime25DPlayback, 'layers' | 'shellProfile'>): string[] {
@@ -88,6 +96,11 @@ export function playbackBodyCapabilities(playback: Pick<Anime25DPlayback, 'layer
   for (const side of ['L', 'R'] as const) {
     if (playback.layers.some(layer => layer.role === 'handwear' && layer.side === side))
       result.push(side === 'L' ? 'left-arm' : 'right-arm')
+  }
+  for (const layer of playback.layers) {
+    const capability = layer.armVariant && (layer.side === 'L' || layer.side === 'R')
+      ? armVariantCapability(layer.side, layer.armVariant.gesture) : null
+    if (capability && ARM_VARIANT_CAPABILITIES.includes(capability) && !result.includes(capability)) result.push(capability)
   }
   return result
 }
@@ -225,7 +238,8 @@ export function sanitizeRigStateSummary(
         .filter((item) =>
           BODY_CAPABILITIES.includes(item as typeof BODY_CAPABILITIES[number])
           || CAPABILITY_MAP.some(([, semantic]) => semantic === item)
-          || ACCENT_CAPABILITIES.some(([, semantic]) => semantic === item),
+          || ACCENT_CAPABILITIES.some(([, semantic]) => semantic === item)
+          || ARM_VARIANT_CAPABILITIES.includes(item),
         )
         .slice(0, RIG_STATE_CAPABILITY_LIMIT)
     : []

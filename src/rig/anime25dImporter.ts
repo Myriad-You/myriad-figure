@@ -1,5 +1,6 @@
 import type { Psd } from 'ag-psd'
 import type { Anime25DSourceReference } from './anime25dImportTypes'
+import type { ArmVariantReference } from './armVariants'
 import type { AuthoredExpressionReference } from './authoredExpression'
 import type { CharacterAssetProfile } from './contract'
 import type { MotionExposureFinding } from './motionExposure'
@@ -19,6 +20,7 @@ import { compileAnime25DExpressionLayers } from './anime25dExpressionCompiler'
 import { anime25DImportProfile } from './anime25dImportProfile'
 import { anime25DBaseRole, normalizeAnime25DLayerName } from './anime25dLayerSemantics'
 import { buildAnime25DBonesAndHandles, buildAnime25DLayerSources } from './anime25dSkeletonCompiler'
+import { cutArmVariantLayers } from './armVariants'
 import { addAuthoredExpressionLayers } from './authoredExpression'
 import { compensateSyntheticClosedEyeAngles } from './closedEyeCompensation'
 import { keepClosedEyeLines } from './closedEyeLines'
@@ -75,6 +77,8 @@ export interface Anime25DRigPsdOptions {
   /** The portrait drawn onto the PSD's frame, to reconcile the layers with. */
   sourceReference?: Anime25DSourceReference
   expressionReferences?: readonly AuthoredExpressionReference[]
+  /** Gesture arms drawn on the portrait, raised in at run time (armVariants). */
+  armVariantReferences?: readonly ArmVariantReference[]
   /** The bust by default. */
   profile?: CharacterAssetProfile
   skeleton?: PsdSkeleton
@@ -88,6 +92,7 @@ export async function prepareAnime25DRigPsd(
     sourceGenerationFingerprint,
     sourceReference,
     expressionReferences = [],
+    armVariantReferences = [],
     profile = 'bust',
     skeleton,
   }: Anime25DRigPsdOptions,
@@ -129,6 +134,9 @@ export async function prepareAnime25DRigPsd(
     if (profile === 'fullBody') layers = stackArmsByReference(layers, sourceReference)
   }
   layers = addHiddenArmFragments(layers, anime25DShoulderSeeds(layers), new Set(layers.map((layer) => layer.id)))
+  // Cut against the arms as split, kept out of everything that reconciles the
+  // resting figure with the portrait, and drawn last, over the front hair.
+  const armVariants = profile === 'bust' ? cutArmVariantLayers(layers, sourceReference, armVariantReferences) : []
   layers = splitVariantEyesIfNeeded(layers, rig.anchors.face.cx, 'eye-dizzy')
   layers = splitVariantEyesIfNeeded(layers, rig.anchors.face.cx, 'eye-squeeze')
   layers = splitVariantEyesIfNeeded(layers, rig.anchors.face.cx, 'eye-cry')
@@ -174,7 +182,7 @@ export async function prepareAnime25DRigPsd(
       layers,
       visibleInAnalysisReference,
       sourceReference,
-      Math.max(0, MAX_RIG_PARTS - layers.length),
+      Math.max(0, MAX_RIG_PARTS - layers.length - armVariants.length),
     )
     layers = paintAccessoriesFromReference(
       raiseEarwearOverFrontHair(repair.layers),
@@ -206,13 +214,14 @@ export async function prepareAnime25DRigPsd(
       layer.order = index
     })
   }
-  // Drawn accents last, with what the part budget leaves after repair.
+  // Drawn accents next, with what the part budget leaves after repair.
   layers = synthesizeMissingExpressionAccents(
     layers,
     rig.anchors,
     resolveAnime25DFaceFrame(rig.anchors),
-    MAX_RIG_PARTS - layers.length,
+    MAX_RIG_PARTS - layers.length - armVariants.length,
   )
+  layers = [...layers, ...armVariants]
   layers.forEach((layer, index) => {
     layer.order = index
   })

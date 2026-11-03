@@ -35,6 +35,7 @@ const BODY_ROLES = new Set([
   'legwear',
   'footwear',
   'handwear',
+  'arm-variant',
   'collar-front',
   'collar-back',
   'wings',
@@ -48,6 +49,7 @@ const RIGID_ROLES = new Set([
   'wings',
   'tail',
   'objects',
+  'arm-variant',
 ])
 const EXTRA_FRAMING_ROLES = new Set(['unknown', 'objects', 'wings', 'tail'])
 /** A bust's crop cuts these; only a full figure is framed by them. */
@@ -71,7 +73,9 @@ export function anime25DLayerAffectsFraming(
   documentArea: number,
   lowerBodyFrames = false,
 ): boolean {
+  // A gesture arm never moves the frame the resting figure is placed in.
   return (
+    layer.role !== 'arm-variant' &&
     (lowerBodyFrames || !LOWER_BODY_ROLES.has(layer.role)) &&
     (!EXTRA_FRAMING_ROLES.has(layer.role) ||
       layer.width * layer.height < documentArea * 0.5)
@@ -156,8 +160,9 @@ export function isAnime25DRigidAttachment(source: {
   fade?: string | null
   phys?: string | null
 }): boolean {
+  // An arm variant fades in and out whole, and rides the top like a pin.
   return (
-    !source.fade &&
+    (!source.fade || source.fade === 'armVariant') &&
     !source.phys &&
     (RIGID_ROLES.has(source.role) || source.role === 'unknown')
   )

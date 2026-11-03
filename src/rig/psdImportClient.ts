@@ -1,5 +1,6 @@
 import type { FigureErrorCode, FigureErrorParams } from '../errors'
 import type { PreparedAnime25DRigImport } from './anime25dImporter'
+import type { ArmVariantGesture } from './armVariants'
 import type { AuthoredExpressionKind } from './authoredExpression'
 import type { CharacterAssetProfile } from './contract'
 import type { DetectedSkeleton } from './skeleton'
@@ -12,10 +13,23 @@ export interface RigPsdImportRequest {
   sourceGenerationFingerprint?: string
   /** Image-model redraws of the portrait, cut into authored expression parts. */
   expressions?: ReadonlyArray<{ kind: AuthoredExpressionKind; url: string }>
+  /** Gesture arms drawn on the portrait (armVariants). */
+  armVariants?: ReadonlyArray<ArmVariantSource>
   /** The bust by default. */
   profile?: CharacterAssetProfile
   /** Joints found on the portrait, to bind the rig to. */
   skeleton?: DetectedSkeleton
+}
+
+/**
+ * A gesture arm the image model drew on the portrait: `side` is the arm it
+ * changed on the picture, `hand` points on that hand in the portrait's pixels.
+ */
+export interface ArmVariantSource {
+  gesture: ArmVariantGesture
+  side: 'left' | 'right'
+  url: string
+  hand?: ReadonlyArray<readonly [number, number]>
 }
 
 export type RigPsdImportStage = 'validated' | 'packing'

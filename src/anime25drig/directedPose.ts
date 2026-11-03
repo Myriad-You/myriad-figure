@@ -23,6 +23,8 @@ export const BODY_CONTROL_DRIVERS = {
   cry: 'eyeCry', dizzy: 'eyeDizzy', hairSway: 'fhAmp', chestSway: 'bust',
   musicNotes: 'accentNotes', questionMark: 'accentQuestion', sleepZ: 'accentSleep',
   sparkles: 'accentSparkle', blush: 'accentBlush',
+  leftHandWave: 'handWaveL', leftHandPoint: 'handPointL', leftHandChest: 'handChestL', leftHandChin: 'handChinL',
+  rightHandWave: 'handWaveR', rightHandPoint: 'handPointR', rightHandChest: 'handChestR', rightHandChin: 'handChinR',
 } as const satisfies Record<BodyControl, keyof Anime25DDriver>
 
 /** These drivers are directed contributions to geometry's automatic posture. */
@@ -380,7 +382,7 @@ function poseKey(pose: BodyPose): string {
 function controlChannel(key: BodyControl): keyof MotionChannelPolicy {
   if (key.startsWith('gaze')) return 'gaze'
   if (['mouthOpen', 'mouthWide', 'mouthRound', 'mouthNarrow', 'mouthSeal'].includes(key)) return 'mouth'
-  if (key.startsWith('head') || key.startsWith('torso') || key.includes('Arm') || key.endsWith('Sway')) return 'headBody'
+  if (key.startsWith('head') || key.startsWith('torso') || key.includes('Arm') || key.includes('Hand') || key.endsWith('Sway')) return 'headBody'
   return 'expression'
 }
 

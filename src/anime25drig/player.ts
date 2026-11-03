@@ -5,17 +5,18 @@ import type { MeropeRigManifest } from '../rig/types'
 import type { MusicMotionSignal } from '../singing/musicSignal'
 import type { SpeechProsodyPlan } from '../speech/prosody'
 import type { FigureTrace } from '../trace'
+import type { Anime25DArmSide } from './armVariantPresenter'
+
 import type { Anime25DMotionUnit } from './behaviorMotion'
 
 import type { CollarClipMesh } from './collarRuntime'
-
 import type { Anime25DDriver } from './driver'
 import type { FaceFrameInput } from './faceFrames'
 import type { LayerDeformationContext } from './layerFrameDeformation'
 import type { Anime25DGpuLayer } from './layerGpuBinding'
 import type { MotionComposerInput } from './motionComposer'
-import type { Anime25DHandPose, Anime25DMotionEnvelopeProfile } from './motionEnvelope'
 
+import type { Anime25DHandPose, Anime25DMotionEnvelopeProfile } from './motionEnvelope'
 import type {
   Anime25DFrameWork,
 } from './performanceTelemetry'
@@ -23,8 +24,8 @@ import type { Anime25DDebugSnapshot } from './playerDebug'
 import type { Anime25DInspection } from './playerInspection'
 import type { PoseCorrection } from './poseCorrections'
 import type { PoseCorrectionStageSource } from './poseCorrectionStage'
-import type { Anime25DRendererBindings, Anime25DRenderFrame } from './renderer'
 
+import type { Anime25DRendererBindings, Anime25DRenderFrame } from './renderer'
 import type {
   TouchAtlas,
   TouchPaintLayer,
@@ -36,6 +37,7 @@ import { IDLE_MOTION_POLICY } from '../motion/policy'
 import { boundRigCapabilities } from '../motion/rigStateSummary'
 import { resolveAnime25DLayerSemantics } from '../rig/anime25dLayerSemantics'
 import { NO_TRACE } from '../trace'
+import { Anime25DArmVariants } from './armVariantPresenter'
 import { Anime25DBodyFrames } from './bodyFrames'
 
 import { ClosedEyePresentation } from './closedEyePresentation'
@@ -143,6 +145,8 @@ export class Anime25DPlayer {
     this.renderFrame,
     this.motion,
   )
+
+  private readonly armVariants = new Anime25DArmVariants()
 
   private readonly face = new Anime25DFaceFrames(
     this.current,
@@ -255,6 +259,7 @@ export class Anime25DPlayer {
     releaseCompiledGpu(this.gl, this.layers, this.collarClip, this.atlasTexture)
     this.atlasTexture = prepared.texture
     this.layers = compiled.layers
+    this.armVariants.bind(this.layers, resolved.pixelCanvas.height)
     this.collarClip = compiled.collarClip
     this.face.bindAtlas(this.gl, resolved, image, this.layers)
     this.body.bindLayers(this.layers, compiled.headSilhouette ?? null, Boolean(playback.turnKeyforms))
@@ -446,6 +451,16 @@ export class Anime25DPlayer {
     })
   }
 
+  /** The gesture arms each side of the picture was drawn with. */
+  armVariantGestures(): Record<Anime25DArmSide, string[]> {
+    return this.armVariants.gestures()
+  }
+
+  /** The gesture each side is raising or holding now. */
+  raisedArmVariants(): Record<Anime25DArmSide, string | null> {
+    return this.armVariants.raised()
+  }
+
   /** What was drawn this frame, copied out for tests and inspectors. */
   inspect(): Anime25DInspection {
     const { current, layers, collarClip, renderFrame } = this
@@ -601,6 +616,8 @@ export class Anime25DPlayer {
     faceInput.stylizedMotion = this.motion.stylizedMotion
     faceInput.sillyMouthShare = this.motion.sillyMouthShare
     const deformationChanges = this.face.prepare(faceInput, this.layers)
+    this.armVariants.follow(this.current)
+    this.armVariants.applyOpacity(this.time)
     const collarMotion = body.prepareCollarMotion()
     if (this.collarClip) {
       deformCollarClipMesh(this.collarClip, collarMotion, body.neckDepth)
@@ -640,6 +657,7 @@ export class Anime25DPlayer {
       t,
       e,
     )
+    this.armVariants.applyLift(t)
     if (work) work.savedUploadBytes += settledBytes
   }
 

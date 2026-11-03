@@ -16,9 +16,58 @@ export interface AtlasSpriteSize {
   id: string
   width: number
   height: number
+  /**
+   * Packed apart from the rest, beside or below it: the rest then lies where
+   * it would without these, texel for texel, and samples the same.
+   */
+  apart?: boolean
+}
+
+// Where the sprites packed apart begin: past any mip level's 2×2 blocks.
+const APART_ALIGN = 64
+
+/**
+ * An edge every generated mip level halves exactly (levels 1 and 2), so each
+ * texel there averages its own 2×2 block: an odd edge makes the GPU stretch
+ * the filter across the atlas, and a sprite's look depends on the atlas size.
+ */
+function mipAligned(edge: number): number {
+  return Math.ceil(edge / 4) * 4
 }
 
 export function layoutAnime25DAtlas(
+  layers: AtlasSpriteSize[],
+): { places: Array<{ x: number; y: number }>; width: number; height: number } {
+  if (!layers.some((layer) => layer.apart)) return layoutPacked(layers)
+  const own = layers.filter((layer) => !layer.apart)
+  const apart = layers.filter((layer) => layer.apart)
+  const base = layoutPacked(own)
+  const added = layoutPacked(apart)
+  const align = (edge: number) => Math.ceil(edge / APART_ALIGN) * APART_ALIGN
+  // Beside or below, whichever keeps the atlas's longer edge shorter.
+  const right = { x: align(base.width), y: 0 }
+  const below = { x: 0, y: align(base.height) }
+  const size = (at: { x: number; y: number }) => ({
+    width: Math.max(base.width, at.x + added.width),
+    height: Math.max(base.height, at.y + added.height),
+  })
+  const longer = (at: { x: number; y: number }) => Math.max(size(at).width, size(at).height)
+  const at = longer(right) <= longer(below) ? right : below
+  const { width, height } = size(at)
+  if (width > MAX_ATLAS_EDGE || height > MAX_ATLAS_EDGE) {
+    throw new FigureError('anime25dAtlasOverflow', { max: MAX_ATLAS_EDGE })
+  }
+  let ownIndex = 0
+  let apartIndex = 0
+  const places = layers.map((layer) => {
+    if (!layer.apart) return base.places[ownIndex++]!
+    const place = added.places[apartIndex++]!
+    return { x: place.x + at.x, y: place.y + at.y }
+  })
+  return { places, width, height }
+}
+
+function layoutPacked(
   layers: AtlasSpriteSize[],
 ): { places: Array<{ x: number; y: number }>; width: number; height: number } {
   if (layers.length === 0) {
@@ -62,8 +111,8 @@ export function layoutAnime25DAtlas(
     if (packed) {
       return {
         places: packed.places,
-        width: Math.max(MIN_ATLAS_EDGE, packed.width),
-        height: Math.max(MIN_ATLAS_EDGE, packed.height),
+        width: Math.max(MIN_ATLAS_EDGE, mipAligned(packed.width)),
+        height: Math.max(MIN_ATLAS_EDGE, mipAligned(packed.height)),
       }
     }
     if (edge >= MAX_ATLAS_EDGE) {
@@ -227,7 +276,12 @@ export async function packAnime25DAtlas(
 }> {
   const trimmed = layers.map(trimRaster)
   const { places, width: packedWidth, height: packedHeight } =
-    layoutAnime25DAtlas(trimmed)
+    layoutAnime25DAtlas(trimmed.map((layer) => ({
+      id: layer.id,
+      width: layer.width,
+      height: layer.height,
+      apart: layer.armVariant !== undefined,
+    })))
   const createCanvas = () =>
     typeof document === 'undefined'
       ? new OffscreenCanvas(1, 1)
@@ -321,7 +375,8 @@ export function visibleInAnalysisReference(layer: RasterLayer): boolean {
     layer.role === 'lovestruck-drool' ||
     layer.role === 'anger-mark' ||
     layer.role === 'speechless-sweat' ||
-    layer.role.startsWith('accent-')
+    layer.role.startsWith('accent-') ||
+    layer.role === 'arm-variant'
   ) {
     return false
   }
