@@ -17,7 +17,7 @@ import { figureAffineAt, multiplyAffine } from './figureSkeleton'
 import { constrainHairSurface } from './hairSurface'
 import { jellyDisplacement } from './jellyVolume'
 import { keyedGazeShift } from './keyedGaze'
-import { deformNeckwearBridge, writeAnime25DAttachmentTransform } from './layerAttachment'
+import { carryWithCoiffure, deformNeckwearBridge, writeAnime25DAttachmentTransform } from './layerAttachment'
 import { deformAnime25DUpstreamFeaturePoint } from './layerDeformation'
 import { writeAnime25DLayerGlobalTransform } from './layerTransform'
 import {
@@ -324,6 +324,8 @@ export function settleDependentLayers(
         secondaryDeformationFrame,
         layer.layerTransform,
       )
+      // An ornament on the head's side turns with it; a keyed head's takes its keys.
+      if (!secondaryDeformationFrame.keyedHead) carryWithCoiffure(layer.attachment, secondaryDeformationFrame.headTurn, layer.layerTransform)
       // A pinned ornament takes its keys first; its chains then swing from that.
       if (layer.pinnedTurn) deformAttachmentTurn(layer.pinnedTurn.turn, secondaryDeformationFrame.headTurn?.amount ?? 0, secondaryDeformationFrame.headTurn?.nodAmount ?? 0, layer.rest, layer.pinnedTurn.keyed)
       if (layer.hangBend) hostCarry.set(layer.layerTransform)

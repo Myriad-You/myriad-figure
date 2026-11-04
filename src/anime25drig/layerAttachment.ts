@@ -1,5 +1,6 @@
 import type { AttachmentMeshSample } from './attachmentMesh'
 import type { ChestWeightField } from './chestPhysics'
+import type { HeadTurn, HeadTurnOffset } from './headTurn'
 import type {
   Anime25DSecondaryDeformationBinding,
   Anime25DSecondaryDeformationFrame,
@@ -9,6 +10,7 @@ import type { Anime25DPlaybackAnchors, Anime25DPlaybackLayer } from './types'
 import { isAnime25DRigidAttachment } from '../rig/anime25dLayerSemantics'
 import { bindAttachmentMesh, offsetAttachmentMeshSample, sampleAttachmentMesh } from './attachmentMesh'
 import { sampleChestWeight } from './chestPhysics'
+import { headTurnOffset } from './headTurn'
 import { cutFrom } from './partSplit'
 import { deformAnime25DSecondaryPoint } from './secondaryDeformation'
 import { hostKeyMove, turnKeyformOffset, undoHostKey } from './turnKeyforms'
@@ -109,6 +111,8 @@ export interface Anime25DLayerAttachment {
   binding: Anime25DSecondaryDeformationBinding
   origin: { x: number; y: number }
   tangent: { x: number; y: number }
+  /** A head ornament on the back hair drawn over the front hair: it sits on the head's side (carryWithCoiffure). */
+  coiffure?: boolean
 }
 
 export interface Anime25DNeckwearBridge {
@@ -376,7 +380,59 @@ export function bindAnime25DLayerAttachment(
     binding,
     origin: { x, y },
     tangent: { x: x + 1, y },
+    ...(source.role === 'headwear' && host.source.role === 'back-hair' && overFrontHair(source, samples, hosts, readPixels)
+      ? { coiffure: true }
+      : {}),
   }
+}
+
+/** Least share of a head ornament lying on the front hair for it to be pinned on the head's side. */
+const COIFFURE_OVER = 0.05
+
+/**
+ * A head ornament drawn over the front hair is pinned on the side of the head,
+ * on hair that turns with it. One drawn behind the front hair sits in the back
+ * hair, on a braid, a bun or a lock, and goes as that hair does.
+ */
+function overFrontHair(
+  source: Anime25DPlaybackLayer,
+  samples: readonly AttachmentSample[],
+  hosts: readonly AttachmentHost[],
+  readPixels: ReadAttachmentPixels | undefined,
+): boolean {
+  if (!readPixels || !samples.length) return false
+  const drawn = (index: number) => hosts[index].source.z ?? index
+  const own = hosts.findIndex((candidate) => candidate.source === source)
+  if (own < 0) return false
+  return hosts.some((candidate, index) => {
+    if (candidate.source.role !== 'front-hair' || drawn(index) >= drawn(own)) return false
+    const pixels = readPixels(candidate.source)
+    return !!pixels && attachmentCoverage(samples, candidate.source, pixels) >= COIFFURE_OVER
+  })
+}
+
+const coiffureMove: HeadTurnOffset = { x: 0, y: 0 }
+const rearMove: HeadTurnOffset = { x: 0, y: 0 }
+
+/**
+ * A computed turn for an ornament pinned on the side of the head (coiffure).
+ * Its host is the back hair, which below the skull's widest row is the back
+ * of the ball and stays behind the outline as the head turns, so the
+ * ornament would be left where it was while the head turned under it. It
+ * goes across as the coiffure's surface does instead; the back hair still
+ * carries its sway and its nod. A keyed ornament takes its own keys.
+ */
+export function carryWithCoiffure(
+  attachment: Readonly<Anime25DLayerAttachment>,
+  turn: Readonly<HeadTurn> | null | undefined,
+  output: Float32Array,
+): void {
+  if (!attachment.coiffure || !turn?.active || turn.sine === 0) return
+  // Both on the full crown, so their nods match and only the turn across differs.
+  headTurnOffset(turn, attachment.x, attachment.y, 'front-hair', 0, 1, coiffureMove)
+  headTurnOffset(turn, attachment.x, attachment.y, 'back-hair', 0, 1, rearMove)
+  output[6] += coiffureMove.x - rearMove.x
+  output[7] += coiffureMove.y - rearMove.y
 }
 
 /** The tangent carries rotation, but never scale/shear. */

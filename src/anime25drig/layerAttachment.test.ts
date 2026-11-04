@@ -13,9 +13,11 @@ import {
   resolveChestSpatialField,
 } from './chestPhysics'
 import { IDENTITY_DRIVER } from './driver'
+import { createHeadTurn, headSilhouetteFromFace, headTurnOffset, PLAIN_HEAD_TURN_RADIANS, updateHeadTurn } from './headTurn'
 import {
   bindAnime25DLayerAttachment,
   bindNeckwearBridge,
+  carryWithCoiffure,
   deformNeckwearBridge,
   writeAnime25DAttachmentTransform,
 } from './layerAttachment'
@@ -150,6 +152,54 @@ test('headwear chooses supported back hair over unsupported front hair', () => {
     (l) => pixels(30, 30, () => l !== front),
   )
   assert.equal(attachment?.hostName, back.name)
+})
+
+test('a head ornament on the back hair sits on the head side only when drawn over the front hair', () => {
+  const art = layer('headwear', 'head', 10, 10, 10, 10)
+  const front = layer('front-hair', 'head', 0, 0, 30, 30)
+  const back = layer('back-hair', 'head', 0, 0, 30, 30)
+  // The front hair covers the left half of the ornament; the back hair all of it.
+  const read = (l: Anime25DPlaybackLayer) => pixels(30, 30, (x) => l !== front || x < 15)
+  const over = bindAnime25DLayerAttachment(art, [host(back), host(front), host(art)], anchors, null, 1024, read)
+  assert.equal(over?.hostName, back.name)
+  assert.equal(over?.coiffure, true)
+  // Drawn behind the front hair it is in the back hair, on a braid or a bun.
+  const behind = bindAnime25DLayerAttachment(art, [host(back), host(art), host(front)], anchors, null, 1024, read)
+  assert.equal(behind?.hostName, back.name)
+  assert.equal(behind?.coiffure, undefined)
+})
+
+test('an ornament on the head side turns with the coiffure, not left behind with the back hair', () => {
+  const width = 100
+  const height = 120
+  const art = new Uint8ClampedArray(width * height * 4)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const nx = (x + 0.5 - width / 2) / (width / 2)
+      const ny = (y + 0.5 - height / 3) / (y < height / 3 ? height / 3 : (height * 2) / 3)
+      if (nx * nx + ny * ny <= 1) art[(y * width + x) * 4 + 3] = 255
+    }
+  }
+  const silhouette = headSilhouetteFromFace({ x: 100, y: 200, w: 200, h: 240 }, { pixels: art, width, height })!
+  const turn = createHeadTurn(silhouette, PLAIN_HEAD_TURN_RADIANS)
+  updateHeadTurn(turn, -1, 0)
+  // Beside the head, below the skull's widest row.
+  const x = silhouette.centerAtWidest + silhouette.radius * 0.85
+  const y = silhouette.widestY + 40
+  const rear = headTurnOffset(turn, x, y, 'back-hair', 0, 1, { x: 0, y: 0 })
+  assert.ok(Math.abs(rear.x) < 1e-9, 'the back hair there stays behind the head')
+  const carry = () => Float32Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1])
+  const attachment = { hostName: 'back-hair', x, y, binding: {} as never, origin: { x, y }, tangent: { x: x + 1, y } }
+  const pinned = carry()
+  carryWithCoiffure({ ...attachment, coiffure: true }, turn, pinned)
+  assert.ok(pinned[6] < -1, `ornament goes with the turn: ${pinned[6]}`)
+  const loose = carry()
+  carryWithCoiffure(attachment, turn, loose)
+  assert.equal(loose[6], 0, 'anything else rides its host as it is')
+  updateHeadTurn(turn, 0, 0)
+  const still = carry()
+  carryWithCoiffure({ ...attachment, coiffure: true }, turn, still)
+  assert.equal(still[6], 0)
 })
 
 test('cross-surface neckwear follows both ends without mutating rest geometry', () => {
