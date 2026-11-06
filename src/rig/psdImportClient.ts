@@ -23,13 +23,16 @@ export interface RigPsdImportRequest {
 
 /**
  * A gesture arm the image model drew on the portrait: `side` is the arm it
- * changed on the picture, `hand` points on that hand in the portrait's pixels.
+ * changed on the picture, `hand` points on that hand and `keypoints` the pose
+ * model's joints on the whole picture (COCO-WholeBody `[x, y, score]`), in
+ * the portrait's pixels.
  */
 export interface ArmVariantSource {
   gesture: ArmVariantGesture
   side: 'left' | 'right'
   url: string
   hand?: ReadonlyArray<readonly [number, number]>
+  keypoints?: ReadonlyArray<readonly [number, number, number]>
 }
 
 export type RigPsdImportStage = 'validated' | 'packing'

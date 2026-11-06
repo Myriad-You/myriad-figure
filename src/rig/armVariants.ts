@@ -1,13 +1,18 @@
 import type { Anime25DArmLift } from '../anime25drig/types'
 import type { Anime25DSourceReference, EyeSide, RasterLayer } from './anime25dImportTypes'
+import type { PsdSkeleton } from './skeleton'
 import { trimRaster, uniquePartId } from './anime25dRaster'
+import { measureArmModel, placeArmModel } from './armModel'
+import { components } from './armRaster'
 
 /**
  * Gesture arms drawn by an image model: the portrait with one arm changed
  * (waving, a finger raised, a hand on the chest, a chin in the hand). Each
  * one becomes a single hidden layer holding the changed arm and what the
  * portrait's own arm leaves bare once hidden, drawn above everything; the
- * runtime raises it in from below the picture over that arm.
+ * runtime raises it in from below the picture over that arm. With the pose
+ * model's joints on both pictures the arm is also measured as a 3D arm
+ * (armModel), which the layer then only textures.
  */
 export const ARM_VARIANT_GESTURES = ['wave', 'point', 'chest', 'chin'] as const
 export type ArmVariantGesture = (typeof ARM_VARIANT_GESTURES)[number]
@@ -32,6 +37,8 @@ export interface ArmVariantReference extends Anime25DSourceReference {
   placement: { x: number; y: number; width: number; height: number }
   /** Points on the changed hand, in document pixels; without them the largest change is the arm. */
   hand?: ReadonlyArray<readonly [number, number]>
+  /** The pose model's joints on the variant (COCO-WholeBody `[x, y, score]`), in document pixels. */
+  keypoints?: ReadonlyArray<readonly [number, number, number]>
 }
 
 // The cut works on the portrait resampled to this width, the size it was
@@ -52,11 +59,14 @@ const VACATED_REACH = 3
 const VACATED_FEATHER = 0.8
 // The generated pictures stand on an even light ground.
 const BACKGROUND_TOLERANCE = 17
+// Where the portrait's arm layer is drawn, as the 3D arm measures it.
+const BASE_ALPHA = 128
 
 export function cutArmVariantLayers(
   layers: readonly RasterLayer[],
   neutral: Anime25DSourceReference | undefined,
   references: readonly ArmVariantReference[],
+  skeleton?: PsdSkeleton,
 ): RasterLayer[] {
   if (!neutral || references.length === 0) return []
   const usedIds = new Set(layers.map((layer) => layer.id))
@@ -67,7 +77,7 @@ export function cutArmVariantLayers(
     if (done.has(key)) continue
     if (reference.width !== neutral.width || reference.height !== neutral.height) continue
     const base = layers.filter((layer) => layer.role === 'handwear' && layer.side === reference.side)
-    const layer = cutArmVariant(neutral, reference, base)
+    const layer = cutArmVariant(neutral, reference, base, skeleton)
     if (!layer) continue
     done.add(key)
     const id = uniquePartId(`arm-variant-${key}`, usedIds)
@@ -80,6 +90,7 @@ function cutArmVariant(
   neutral: Anime25DSourceReference,
   reference: ArmVariantReference,
   base: readonly RasterLayer[],
+  skeleton: PsdSkeleton | undefined,
 ): RasterLayer | null {
   const { placement } = reference
   if (placement.width <= 0 || placement.height <= 0) return null
@@ -90,18 +101,20 @@ function cutArmVariant(
   const portrait = resample(neutral, placement, w, h)
 
   const changed = new Uint8Array(w * h)
+  const difference = new Float32Array(w * h)
   {
     const a = blurChannels(variant, w, h, DIFF_BLUR)
     const b = blurChannels(portrait, w, h, DIFF_BLUR)
-    const limit = DIFF_LIMIT * DIFF_LIMIT
     for (let p = 0; p < w * h; p += 1) {
       const dr = a[p * 3] - b[p * 3]
       const dg = a[p * 3 + 1] - b[p * 3 + 1]
       const db = a[p * 3 + 2] - b[p * 3 + 2]
-      changed[p] = dr * dr + dg * dg + db * db > limit ? 1 : 0
+      difference[p] = Math.sqrt(dr * dr + dg * dg + db * db)
+      changed[p] = difference[p] > DIFF_LIMIT ? 1 : 0
     }
   }
-  const mask = close(open(changed, w, h, OPEN_SIZE), w, h, CLOSE_SIZE)
+  const opened = open(changed, w, h, OPEN_SIZE)
+  const mask = close(opened, w, h, CLOSE_SIZE)
   const { labels, sizes } = components(mask, w, h)
   const keep = new Set<number>()
   for (const [x, y] of reference.hand ?? []) {
@@ -131,7 +144,7 @@ function cutArmVariant(
 
   // What the portrait's arm covered, less the ground, and not already in the cut.
   const covered = new Uint8Array(w * h)
-  for (const layer of base) stampAlpha(covered, layer, placement, scale, w, h)
+  for (const layer of base) stampAlpha(covered, layer, placement, scale, w, h, VACATED_ALPHA)
   const vacated = dilate(covered, w, h, VACATED_REACH * 2 + 1)
   for (let p = 0; p < w * h; p += 1) { if (background[p]) vacated[p] = 0
 }
@@ -168,7 +181,26 @@ function cutArmVariant(
     }
   }
   if (!any) return null
-  return trimRaster({
+  const model = skeleton && reference.keypoints?.length
+    ? measureArmModel({
+        width: w,
+        height: h,
+        side: reference.side,
+        portrait,
+        variant,
+        changed: Uint8Array.from(opened, (moved, p) => (moved && !background[p] ? 1 : 0)),
+        difference,
+        ground: background,
+        base: (() => {
+          const drawn = new Uint8Array(w * h)
+          for (const layer of base) stampAlpha(drawn, layer, placement, scale, w, h, BASE_ALPHA)
+          return drawn
+        })(),
+        portraitPose: onGrid(skeleton.keypoints, placement, scale),
+        variantPose: onGrid(reference.keypoints, placement, scale),
+      })
+    : null
+  const layer = trimRaster({
     id: '',
     role: 'arm-variant',
     sourceName: '',
@@ -182,6 +214,19 @@ function cutArmVariant(
     data,
     armVariant: { gesture: reference.gesture, lift: ARM_VARIANT_LIFT[reference.gesture] },
   })
+  if (model && layer.armVariant) {
+    layer.armVariant.model = placeArmModel(model, scale, placement.x - layer.left, placement.y - layer.top)
+  }
+  return layer
+}
+
+/** Document keypoints on the working grid. */
+function onGrid(
+  keypoints: ReadonlyArray<readonly [number, number, number]>,
+  placement: ArmVariantReference['placement'],
+  scale: number,
+): Array<[number, number, number]> {
+  return keypoints.map(([x, y, score]) => [(x - placement.x) / scale, (y - placement.y) / scale, score])
 }
 
 /** The portrait's rectangle of a document picture, resampled to w × h (RGB). */
@@ -214,7 +259,7 @@ function resample(
   return out
 }
 
-/** Marks where a document layer is drawn (alpha above VACATED_ALPHA) on the working grid. */
+/** Marks where a document layer is drawn (alpha above `least`) on the working grid. */
 function stampAlpha(
   out: Uint8Array,
   layer: RasterLayer,
@@ -222,6 +267,7 @@ function stampAlpha(
   scale: number,
   w: number,
   h: number,
+  least: number,
 ): void {
   for (let y = 0; y < h; y += 1) {
     const ly = Math.floor(placement.y + (y + 0.5) * scale) - layer.top
@@ -229,7 +275,7 @@ function stampAlpha(
     for (let x = 0; x < w; x += 1) {
       const lx = Math.floor(placement.x + (x + 0.5) * scale) - layer.left
       if (lx < 0 || lx >= layer.width) continue
-      if (layer.data[(ly * layer.width + lx) * 4 + 3] > VACATED_ALPHA) out[y * w + x] = 1
+      if (layer.data[(ly * layer.width + lx) * 4 + 3] > least) out[y * w + x] = 1
     }
   }
 }
@@ -269,42 +315,6 @@ function groundOf(variant: Float32Array, portrait: Float32Array, w: number, h: n
   const out = new Uint8Array(w * h)
   for (let p = 0; p < w * h; p += 1) out[p] = touching.has(labels[p]) ? 1 : 0
   return out
-}
-
-/** 8-connected components of a mask; label 0 is unset. */
-function components(mask: Uint8Array, w: number, h: number): { labels: Int32Array; sizes: number[] } {
-  const labels = new Int32Array(w * h)
-  const stack = new Int32Array(w * h)
-  const sizes = [0]
-  for (let start = 0; start < w * h; start += 1) {
-    if (!mask[start] || labels[start]) continue
-    const label = sizes.length
-    let size = 0
-    let top = 0
-    stack[top++] = start
-    labels[start] = label
-    while (top > 0) {
-      const p = stack[--top]
-      size += 1
-      const x = p % w
-      const y = (p - x) / w
-      for (let dy = -1; dy <= 1; dy += 1) {
-        const ny = y + dy
-        if (ny < 0 || ny >= h) continue
-        for (let dx = -1; dx <= 1; dx += 1) {
-          const nx = x + dx
-          if (nx < 0 || nx >= w) continue
-          const n = ny * w + nx
-          if (mask[n] && !labels[n]) {
-            labels[n] = label
-            stack[top++] = n
-          }
-        }
-      }
-    }
-    sizes.push(size)
-  }
-  return { labels, sizes }
 }
 
 /** Closes what the mask encloses: everything the top corners cannot reach (4-connected) is arm. */

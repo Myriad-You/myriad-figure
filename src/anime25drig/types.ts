@@ -80,6 +80,65 @@ export type Anime25DArmLift = 'whole' | 'shoulder'
 export interface Anime25DArmVariant {
   gesture: string
   lift: Anime25DArmLift
+  /** The arm as a 3D model, the drawing only its texture; without one it is raised in flat. */
+  model?: Anime25DArmModel
+}
+
+export type Anime25DVec3 = [number, number, number]
+
+/** An arm's three joints: x right, y down, z toward the viewer. */
+export interface Anime25DArmJoints {
+  shoulder: Anime25DVec3
+  elbow: Anime25DVec3
+  wrist: Anime25DVec3
+}
+
+/**
+ * A gesture arm measured at import (rig/armModel.ts), in the layer's own
+ * pixels: from its top-left corner, lengths in the same pixels.
+ */
+export interface Anime25DArmModel {
+  /** The bones' lengths, as long as either picture draws them. */
+  upper: number
+  fore: number
+  /** The sleeve's radius at evenly spaced places, shoulder to elbow then elbow to cuff. */
+  radius: number[]
+  /** Where the drawn sleeve ends along the forearm (0 elbow, 1 wrist); bare skin past it. */
+  cuff: number
+  /** Half the drawn bare forearm's width past the cuff; absent when none shows. */
+  bare?: number
+  /** How far the drawn bare forearm's middle lies off the elbow–wrist line, across it on screen. */
+  bareShift: number
+  /** Raised, how far down the upper arm (shoulder 0, elbow 0.5) the portrait's own sleeve is worn. */
+  restEnd: number
+  /** Hanging, how far the drawn arm reaches either side of the bone (+ along (−dy, dx)) at the radius's places; null off it. */
+  restReach: Array<[number, number] | null>
+  /** The portrait's arm, hanging. */
+  rest: Anime25DArmJoints
+  /** The gesture's arm. */
+  raised: Anime25DArmJoints
+  /** The gesture's hand: COCO-WholeBody's 21 points, on the fingers drawn there. */
+  hand: Array<[number, number]>
+  /** Half each finger's drawn width, thumb first; 0 when not drawn. */
+  fingers: number[]
+  /** Each finger's drawn half-width at nine places knuckle to tip (inside its lines); empty when not measured. */
+  fingerProfile: number[][]
+  /** The same with fingers measured past believing (a thumb across the palm) left empty. */
+  keyProfile: number[][]
+  /**
+   * The drawn palm's outline in the palm's own frame: [a, b] for wrist + a·(middle knuckle − wrist) + b·(the
+   * same length across the palm, toward the little finger).
+   */
+  palmOutline: Array<[number, number]> | null
+  /** Fingers the drawn hand hides behind itself, thumb 0. */
+  hiddenFingers: number[]
+  skin: Anime25DVec3
+  shade: Anime25DVec3
+  line: Anime25DVec3
+  /** The hand's own cut (its skin and lines, no sleeve or body), as rings filled even-odd; the wrist fades by geometry. */
+  handOutline: Array<Array<[number, number]>>
+  /** The gesture's arm within the layer, as rings filled even-odd; the rest of the layer is body the portrait's arm left bare. */
+  armOutline: Array<Array<[number, number]>>
 }
 
 export interface Anime25DEyeAnchor {
