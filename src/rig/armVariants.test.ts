@@ -114,3 +114,38 @@ test('the same gesture on the same side is cut once; shoulder gestures stay on t
   ])
   assert.notEqual(cut[0].id, cut[1].id)
 })
+
+test('with the pose model\'s joints on both pictures the arm is measured in 3D too, in the layer\'s own pixels', () => {
+  // COCO-WholeBody in document pixels: the person's right arm (6, 8, 10, hand 112–132) on the picture's left.
+  const pose = (arm: ReadonlyArray<readonly [number, number]>, hand: ReadonlyArray<readonly [number, number]> = []) => {
+    const k: Array<[number, number, number]> = Array.from({ length: 133 }, () => [0, 0, 0])
+    k[5] = [800 * SCALE, 760 * SCALE, 0.9]
+    ;[6, 8, 10].forEach((index, i) => {
+      k[index] = [arm[i][0] * SCALE, arm[i][1] * SCALE, 0.9]
+    })
+    hand.forEach(([x, y], i) => {
+      k[112 + i] = [x * SCALE, y * SCALE, 0.9]
+    })
+    return k
+  }
+  const hand = [
+    [330, 415], [305, 405], [295, 390], [288, 375], [284, 360],
+    [300, 382], [299, 368], [298, 356], [297, 346],
+    [320, 380], [320, 366], [320, 354], [320, 344],
+    [340, 380], [341, 366], [342, 354], [343, 346],
+    [360, 384], [362, 372], [363, 362], [364, 354],
+  ] as const
+  const skeleton = { model: 'test', keypoints: pose([[375, 760], [375, 1100], [375, 1400]]) }
+  const measured = { ...reference, keypoints: pose([[400, 780], [330, 760], [330, 420]], hand) }
+  const [arm] = cutArmVariantLayers(layers, portrait, [measured], skeleton)
+  const model = arm?.armVariant?.model
+  assert.ok(model)
+  // Joints from the layer's own top-left corner, lengths in document pixels.
+  assert.ok(Math.abs(model.raised.wrist[0] + arm.left - 330 * SCALE) < 1e-6)
+  assert.ok(Math.abs(model.raised.wrist[1] + arm.top - 420 * SCALE) < 1e-6)
+  assert.ok(Math.abs(model.rest.shoulder[0] + arm.left - 375 * SCALE) < 1e-6)
+  assert.ok(Math.abs(model.fore - 340 * SCALE) < 1e-6)
+  assert.ok(model.armOutline.flat().every(([x, y]) => x >= -1 && y >= -1 && x <= arm.width + 1 && y <= arm.height + 1))
+  // Without the portrait's joints it is raised in flat, as before.
+  assert.equal(cutArmVariantLayers(layers, portrait, [measured])[0]?.armVariant?.model, undefined)
+})

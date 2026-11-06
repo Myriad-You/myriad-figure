@@ -116,7 +116,7 @@ async function alignExpressions(
   return aligned.filter((reference) => reference !== null)
 }
 
-/** Gesture arms, placed like the expression redraws; their hand points go with them. */
+/** Gesture arms, placed like the expression redraws; their hand points and joints go with them. */
 async function alignArmVariants(
   variants: NonNullable<RigPsdImportRequest['armVariants']>,
   width: number,
@@ -125,7 +125,7 @@ async function alignArmVariants(
 ): Promise<ArmVariantReference[]> {
   const placement = psdPlacement(master, width, height)
   const aligned = await Promise.all(
-    variants.map(async ({ gesture, side, url, hand }) => {
+    variants.map(async ({ gesture, side, url, hand, keypoints }) => {
       try {
         const response = await fetch(url)
         if (!response.ok) return null
@@ -139,6 +139,9 @@ async function alignArmVariants(
                 ...reference,
                 placement: { x: placement.x, y: placement.y, width: placement.width, height: placement.height },
                 ...(hand?.length ? { hand: hand.map(([x, y]) => placement.map(x, y)) } : {}),
+                ...(keypoints?.length
+                  ? { keypoints: keypoints.map(([x, y, score]) => [...placement.map(x, y), score] as const) }
+                  : {}),
               }
             : null
         } finally {
