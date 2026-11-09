@@ -3,7 +3,7 @@ import type { Anime25DArmModel } from './types'
 import { add, bspline, carry, HAND_CHAINS, len, lerp, mul, norm, slerp, smoothstep, spin, sub } from './arm3dMath'
 
 /** A gesture arm's model on the playback canvas: the archive's, moved from its layer's corner. */
-export interface Arm3DShape extends Omit<Anime25DArmModel, 'rest' | 'raised' | 'hand' | 'restHand' | 'handOutline' | 'armOutline'> {
+export interface Arm3DShape extends Omit<Anime25DArmModel, 'rest' | 'raised' | 'hand' | 'restHand' | 'handOutline' | 'armOutline' | 'ground'> {
   rest: { s: V3; e: V3; w: V3 }
   raised: { s: V3; e: V3; w: V3 }
   /** The gesture's drawn hand, 21 points. */
@@ -27,19 +27,23 @@ export interface Arm3DFrame {
   hanging: number
   /** 1 with the arm where it hangs (its wrist), 0 once well away from it. */
   restNear: number
+  /** How far the sleeve's own line is held off yet, as the hand first leaves hanging (1 hanging). */
+  unlined: number
   view: { width: number; height: number }
   /** The picture's foot on the playback canvas, left to right: nothing of the arm below it. */
   foot: Array<[number, number]>
   /** The picture's left and right edges where they cut it (±Infinity where not): nothing of the arm past them. */
   sides: [number, number]
   /** The gesture layer's mesh as drawn this frame (canvas), its texture places, and how near the arm is held to the drawing. */
-  held?: { pos: Float32Array; uv: Float32Array; idx: ArrayLike<number>; near: number }
+  held?: { pos: Float32Array; uv: Float32Array; idx: ArrayLike<number>; near: number; exact: number; toDrawn: [number, number, number, number, number, number] | null }
+  /** Near its rest, the portrait's arm (`restArm`, laid under the tube, which falls short of it) carried to where the arm is now (its rect's corners), and how much of it; null away from it. */
+  rest: { corners: number[]; alpha: number } | null
 }
 
 export function arm3DShape(model: Anime25DArmModel, x: number, y: number): Arm3DShape {
   const at = (p: V3): V3 => [p[0] + x, p[1] + y, p[2]]
   const joints = (j: Anime25DArmModel['rest']) => ({ s: at(j.shoulder), e: at(j.elbow), w: at(j.wrist) })
-  const { handOutline: _hand, armOutline: _arm, ...rest } = model
+  const { handOutline: _hand, armOutline: _arm, ground: _ground, ...rest } = model
   return {
     ...rest,
     rest: joints(model.rest),

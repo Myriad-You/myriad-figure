@@ -9,20 +9,23 @@ vec4 project(vec3 p) {
 export const SLEEVE_VS = `#version 300 es
 in vec3 aPos; in vec3 aNrm; in vec2 aUv; in vec2 aPic;
 uniform vec2 uSize; uniform float uPush; uniform float uDepth; uniform float uBack; uniform float uFold;
-out vec2 vUv; out vec3 vNrm; out float vV; out vec2 vPic;
+out vec2 vUv; out vec3 vNrm; out float vV; out vec2 vPic; out vec2 vAt;
 ${PROJECT}
 void main() {
   // The upper arm set back (in depth only) under a forearm folded over it, into the elbow.
   gl_Position = project(aPos + aNrm * uPush - vec3(0.0, 0.0, uFold * (1.0 - smoothstep(0.42, 0.5, aUv.y))));
-  vUv = aUv; vNrm = aNrm; vV = aUv.y; vPic = aPic;
+  vUv = aUv; vNrm = aNrm; vV = aUv.y; vPic = aPic; vAt = (aPos + aNrm * uPush).xy;
 }`
 
 export const SLEEVE_FS = `#version 300 es
 precision highp float;
-in vec2 vUv; in vec3 vNrm; in float vV; in vec2 vPic;
+in vec2 vUv; in vec3 vNrm; in float vV; in vec2 vPic; in vec2 vAt;
 uniform sampler2D uTex; uniform sampler2D uArmMask; uniform vec4 uMaskRect;
-uniform float uRest; uniform vec4 uSolid; uniform float uFadeTop; uniform float uTopSoft; uniform float uRestEnd; uniform vec3 uLine;
-uniform float uOpen; uniform vec3 uBand; uniform sampler2D uLifted;
+uniform float uRest; uniform vec4 uSolid; uniform float uFadeTop; uniform float uRestEnd; uniform vec3 uLine;
+uniform float uUnlined; uniform float uOpen; uniform vec3 uBand; uniform sampler2D uLifted;
+// Held, cut away over the drawing's own ground (uGround, on uGroundRect of the canvas as drawn; uToDrawn0/1 carry
+// this frame's canvas back to it), by how near it is held (uGroundOn).
+uniform sampler2D uGround; uniform vec4 uGroundRect; uniform vec3 uToDrawn0; uniform vec3 uToDrawn1; uniform float uGroundOn;
 out vec4 o;
 // A band the portrait wears by the elbow that every gesture draws at the wrist (uBand: its place, and whether
 // there is one) is worn while the arm hangs; lifted, that stretch is the sleeve as the gestures draw it there
@@ -38,18 +41,31 @@ void main() {
   // The one sleeve texture, worn the same all the way. Its outline off while it hangs (the portrait's lines
   // are the arm's there), nor its top a hard edge (the body's fill under it showed as a pale arc).
   float unlined = smoothstep(0.9, 0.995, uRest);
+  // Nor for a moment as the hand first lifts (uUnlined): the round sleeve, short of a flared cuff's drawn mouth,
+  // showed a step there whose line came out as a stroke across the body.
+  unlined = max(unlined, uUnlined);
   // Solid on the upper sleeve's face toward the viewer, raised too: faded in at the shoulder, the body's fill
   // under the arm showed through as a grey band.
   float upperFace = smoothstep(0.2, 0.5, nz) * (1.0 - smoothstep(uRestEnd, uRestEnd + 0.02, vV));
   float inPicture = step(0.0, vPic.x) * step(vPic.x, 1.0) * step(0.0, vPic.y) * step(vPic.y, 1.0);
   float hang = smoothstep(0.985, 1.0, uRest);
-  float a = max(smoothstep(0.0, uFadeTop, vV), max(smoothstep(0.2, 0.8, uRest), upperFace) * smoothstep(0.0, uTopSoft, vV))
+  float a = max(smoothstep(0.0, uFadeTop, vV), max(smoothstep(0.2, 0.8, uRest), upperFace) * smoothstep(0.0, 0.03, vV))
     * mix(1.0, inPicture, hang);
   // Hanging, below the portrait's upper sleeve only where its arm layer has the arm: the round forearm ran on
   // past the drawn one.
   vec2 m = (vPic - uMaskRect.xy) / uMaskRect.zw;
   float inMask = step(0.0, m.x) * step(m.x, 1.0) * step(0.0, m.y) * step(m.y, 1.0);
   a *= mix(1.0, texture(uArmMask, m).a * inMask, hang * smoothstep(uRestEnd - 0.02, uRestEnd + 0.02, vV));
+  float edge = 0.0;
+  if (uGroundOn > 0.0) {
+    vec2 g = (vec2(dot(uToDrawn0, vec3(vAt, 1.0)), dot(uToDrawn1, vec3(vAt, 1.0))) - uGroundRect.xy) / uGroundRect.zw;
+    // A little past its box too, its edge carried on: the picture's foot can lie a little below the ground found.
+    vec2 m = 24.0 / uGroundRect.zw;
+    float inG = step(-m.x, g.x) * step(g.x, 1.0 + m.x) * step(-m.y, g.y) * step(g.y, 1.0 + m.y);
+    vec2 cut = texture(uGround, g).rg * inG * uGroundOn;
+    a *= 1.0 - cut.r;
+    edge = cut.g;
+  }
   // The outline takes the fabric's own colour, darkened, as the drawings line a white cuff in grey-brown.
   if (uSolid.a > 1.5) { float la = a * (1.0 - unlined); o = vec4(mix(uSolid.rgb, cloth(vUv) * 0.4, 0.75) * la, la); return; }
   // A mark (the upper arm's stencil): only where it is all but solid.
@@ -75,6 +91,8 @@ void main() {
     vec3 cloth = textureLod(uTex, vec2(vUv.x, 0.93), 3.0).rgb;
     c = vV < 1.02 ? mix(uLine, cloth * 0.4, 0.75) : cloth * mix(1.0, 0.62, smoothstep(1.025, 1.05, vV));
   }
+  // Cut, it is outlined there as its own outline is.
+  c = mix(c, mix(uLine, c * 0.4, 0.75), edge);
   o = vec4(c * a, a);
 }`
 

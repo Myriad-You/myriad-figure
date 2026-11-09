@@ -9,7 +9,7 @@ import type { Anime25DArmModel } from './types'
 import { smoothstep } from './arm3dMath'
 import { arm3DHandMesh, arm3DPalmAsModelled, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
-import { arm3DProject, arm3DWristTone, composeArm3DPicture, splitArm3DLayer } from './arm3dPrepare'
+import { arm3DGroundClip, arm3DProject, arm3DWristTone, composeArm3DPicture, splitArm3DLayer } from './arm3dPrepare'
 import { armDrapeWeight } from './armRig'
 import { applyBodyLift } from './bodyLift'
 import { readLayerPixels } from './webglRuntime'
@@ -75,7 +75,12 @@ export class Arm3DSide {
   front: Anime25DGpuLayer[] = []
   private pose: Arm3DPose | null = null
   private restNear = 1
+  /** How far the sleeve's own line is still held off as the hand first lifts (1 hanging, gone over a moment). */
+  private unlined = 1
+  private time: number | null = null
+  private dt = 0
   private heldNear = 0
+  private heldExact = 0
   private body: Arm3DBodyFrame | undefined
   /**
    * How far the modelled arm is shown over the drawn one: a bust's always (its portrait's hand is off the picture,
@@ -158,6 +163,17 @@ export class Arm3DSide {
       rect.h = Math.max(1, Math.min(canvas.height, Math.ceil(y1 + pad)) - rect.y)
       const whole = composeArm3DPicture(atlas, still.map(asSource), rect)
       const armOnly = composeArm3DPicture(atlas, [...bases, ...this.pieces].map(asSource), rect)
+      // The portrait's arm as it hangs, laid under the modelled one at rest: the tube falls short of a sleeve drawn
+      // wider (its mouth flaring off the picture's foot), and the arm layer itself is hidden.
+      // Below the elbow only, come in across it: above, the tube is the arm, its top fading into the body under it.
+      const restPixels = new Uint8ClampedArray(armOnly.pixels)
+      const elbowY = hanging.e[1] - rect.y
+      const across = 0.2 * shape.upper
+      for (let ry = 0; ry < armOnly.height; ry += 1) {
+        const k = smoothstep(elbowY - across, elbowY, (ry + 0.5) * rect.h / armOnly.height)
+        for (let rx = 0; rx < armOnly.width; rx += 1) restPixels[(ry * armOnly.width + rx) * 4 + 3] *= k
+      }
+      const restArm = view.picture({ pixels: restPixels, width: armOnly.width, height: armOnly.height })
       for (let i = 0; i < whole.pixels.length; i += 4) armOnly.pixels.set([whole.pixels[i], whole.pixels[i + 1], whole.pixels[i + 2], armOnly.pixels[i + 3] < 128 ? 0 : 255], i)
       const size = { width: pixels.width, height: pixels.height }
       const atLayer = (from: readonly Anime25DGpuLayer[], blur = 0) => composeArm3DPicture(atlas, from.map(asSource), layer.source, size, blur).pixels
@@ -189,6 +205,19 @@ export class Arm3DSide {
       const held = view.picture({ pixels: alone.over, width: pixels.width, height: pixels.height })
       const heldBeside = view.picture({ pixels: alone.beside, width: pixels.width, height: pixels.height })
       const heldFore = alone.fore ? view.picture({ pixels: alone.fore, width: pixels.width, height: pixels.height }) : null
+      const heldForeFront = alone.foreFront ? view.picture({ pixels: alone.foreFront, width: pixels.width, height: pixels.height }) : null
+      const R = model.radius
+      const half = R.length >> 1
+      const ground = model.ground && arm3DGroundClip(
+        model.ground.map((ring) => ring.map(([x, y]) => [x + layer.source.x, y + layer.source.y] as [number, number])),
+        shape.raised.s, shape.raised.e, shape.raised.w,
+        1.25 * Math.max(...R.slice(0, half + 1)),
+        1.1 * R.slice(half).reduce((a, b) => a + b, 0) / (R.length - half),
+        (r) => composeArm3DPicture(atlas, still.map(asSource), r, undefined, 3).pixels,
+      )
+      const groundClip = ground
+        ? { texture: view.picture({ pixels: ground.pixels, width: ground.rect.w, height: ground.rect.h }, false), rect: [ground.rect.x, ground.rect.y, ground.rect.w, ground.rect.h] as [number, number, number, number] }
+        : null
       const hangMesh = arm3DSleeveMesh(shape, hanging, 1, px)
       const hangPic = new Float32Array(hangMesh.pos.length / 3 * 2)
       for (let i = 0; i < hangPic.length / 2; i += 1) {
@@ -233,6 +262,9 @@ export class Arm3DSide {
         held,
         heldBeside,
         heldFore,
+        heldForeFront,
+        groundClip,
+        restArm: { texture: restArm, rect: [rect.x, rect.y, rect.w, rect.h], at: armPoints(hanging) },
       }
       // The body the portrait's arm leaves bare: drawn in the arm's place.
       this.gestures.push({ layer, gesture: layer.source.armVariant!.gesture, bound, motion, touch: this.touchOf(layers, shape) })
@@ -287,6 +319,8 @@ export class Arm3DSide {
   applyOpacity(time: number): void {
     const shown = this.shown
     if (!shown) return
+    this.dt = this.time === null ? 0 : Math.min(0.1, Math.max(0, time - this.time))
+    this.time = time
     shown.motion.wanted = shown.gesture === this.wanted
     if (!shown.motion.wanted && this.wanted && shown.motion.resting) {
       this.shown = this.gestures.find((g) => g.gesture === this.wanted) ?? shown
@@ -332,11 +366,16 @@ export class Arm3DSide {
     const hang = g.motion.keyPose(0, anchor)
     const fore = g.bound.shape.fore
     this.restNear = 1 - smoothstep(0.03 * fore, 0.25 * fore, Math.hypot(pose.w[0] - hang.w[0], pose.w[1] - hang.w[1], pose.w[2] - hang.w[2]))
+    // The sleeve's own line held off a moment as the hand first lifts, however fast: round, the sleeve is short of a
+    // flared cuff's drawn mouth, and the step that leaves (a light seam) came out lined, a stroke across the body.
+    // The portrait's arm kept under it that long instead stood beside a bending arm as a dark wedge.
+    this.unlined = sleeveLineHeldOff(this.unlined, this.restNear, this.dt)
     // Held as drawn: its elbow where the gesture has it, its hand near (a wave swings the hand, not the elbow).
     const drawn = g.motion.restPose(anchor)
     const upper = g.bound.shape.upper
     this.heldNear = (1 - smoothstep(0.01 * upper, 0.05 * upper, Math.hypot(pose.e[0] - drawn.e[0], pose.e[1] - drawn.e[1], pose.e[2] - drawn.e[2])))
       * (1 - smoothstep(0.35 * fore, 0.6 * fore, Math.hypot(pose.w[0] - drawn.w[0], pose.w[1] - drawn.w[1], pose.w[2] - drawn.w[2])))
+    this.heldExact = this.heldNear * (1 - smoothstep(0.06 * fore, 0.2 * fore, Math.hypot(pose.w[0] - drawn.w[0], pose.w[1] - drawn.w[1], pose.w[2] - drawn.w[2])))
     this.body = body
     const binding = this.bases.find((b) => b.secondaryDeformation?.arm)?.secondaryDeformation
     const rig = binding?.arm
@@ -393,7 +432,11 @@ export class Arm3DSide {
     const foot = pts.length <= 16 ? pts : Array.from({ length: 16 }, (_, k) => pts[Math.round(k * (pts.length - 1) / 15)])
     const side = (on: Followed[], sign: number) => (on.length ? sign * Math.max(...on.map((f) => sign * f.layer.deformed[f.i * 2])) : sign * Infinity)
     const sides: [number, number] = [side(this.sides[0], -1), side(this.sides[1], 1)]
-    return { bound: g.bound, frame: { pose: this.pose, presence: this.presence, handRest: g.motion.handRest, hanging: g.motion.hanging, restNear: this.restNear, view: this.canvas, foot, sides, held: this.heldMesh(g) } }
+    // Gone soon as it lifts: a still copy of the hanging arm beside the moving one.
+    const to = this.restNear > 0.85 ? affineFit(g.bound.restArm.at, armPoints(this.pose)) : null
+    const [x, y, w, h] = g.bound.restArm.rect
+    const rest = to && { corners: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]].flatMap(([cx, cy]) => [to[0] * cx + to[1] * cy + to[2], to[3] * cx + to[4] * cy + to[5]]), alpha: smoothstep(0.85, 1, this.restNear) }
+    return { bound: g.bound, frame: { pose: this.pose, presence: this.presence, handRest: g.motion.handRest, hanging: g.motion.hanging, restNear: this.restNear, unlined: this.unlined, view: this.canvas, foot, sides, held: this.heldMesh(g), rest } }
   }
 
   /** The gesture layer's mesh where the figure draws it this frame, for its drawn upper arm under the arm held there. */
@@ -410,7 +453,7 @@ export class Arm3DSide {
       uv[i * 2] = (rest[i * 2] - source.x) / source.w
       uv[i * 2 + 1] = (rest[i * 2 + 1] - source.y) / source.h
     }
-    return { pos, uv, idx: indices, near: this.heldNear }
+    return { pos, uv, idx: indices, near: this.heldNear, exact: this.heldExact, toDrawn: affineFit(pos, rest) }
   }
 
   dispose(): void {
@@ -436,16 +479,20 @@ export class Arm3DSide {
  * in bits about the raised elbow. `fore`, for a gesture whose forearm is held still (`still`), that forearm as
  * drawn on into the heel of its hand, laid over the arm after its hand wherever the modelled hand is not: the
  * modelled forearm and its sleeve's end are a tube's, the drawing's a cloth's (a kimono's slanting sleeve mouth).
+ * `foreFront`, the same where the portrait draws in front of its arm, laid on only as the arm is all but held.
  */
-export function arm3DUpperArmAlone(gesture: Uint8ClampedArray, portrait: Uint8ClampedArray, front: Uint8ClampedArray, w: number, h: number, model: Anime25DArmModel, scale: number, portraitArm: Float32Array, still = false): { over: Uint8ClampedArray; beside: Uint8ClampedArray; fore: Uint8ClampedArray | null } {
+export function arm3DUpperArmAlone(gesture: Uint8ClampedArray, portrait: Uint8ClampedArray, front: Uint8ClampedArray, w: number, h: number, model: Anime25DArmModel, scale: number, portraitArm: Float32Array, still = false): { over: Uint8ClampedArray; beside: Uint8ClampedArray; fore: Uint8ClampedArray | null; foreFront: Uint8ClampedArray | null } {
   const out = new Uint8ClampedArray(gesture.length)
   const beside = new Uint8ClampedArray(gesture.length)
   const fore = still ? new Uint8ClampedArray(gesture.length) : null
+  const foreFront = still ? new Uint8ClampedArray(gesture.length) : null
   const { shoulder: s, elbow: e, wrist: wr } = model.raised
   const R = model.radius
   const half = R.length >> 1
   const upperR = 1.25 * Math.max(...R.slice(0, half + 1))
   const foreR = 1.1 * R.slice(half).reduce((a, b) => a + b, 0) / (R.length - half)
+  // Out to its widest (a sleeve's mouth), not only its mean: the modelled one is as wide there.
+  const foreWide = Math.max(foreR, 1.1 * Math.max(...R.slice(half)))
   const along = (x: number, y: number, a: readonly number[], b: readonly number[]) => {
     const dx = b[0] - a[0]
     const dy = b[1] - a[1]
@@ -471,11 +518,20 @@ export function arm3DUpperArmAlone(gesture: Uint8ClampedArray, portrait: Uint8Cl
     beside[i + 3] = portraitArm[p] * (1 - pastElbow) * (1 - front[i + 3] / 255) * 255
     if (fore) {
       for (let c = 0; c < 3; c += 1) fore[i + c] = out[i + c]
-      const sleeve = 1 - smoothstep(foreR * 1.15, foreR * 1.35, forearm.d)
-      fore[i + 3] = k * pastElbow * sleeve * (1 - front[i + 3] / 255) * 255
+      const sleeve = 1 - smoothstep(foreWide * 1.15, foreWide * 1.35, forearm.d)
+      const drawn = k * pastElbow * sleeve
+      const before = drawn * (1 - front[i + 3] / 255)
+      fore[i + 3] = before * 255
+      // Where the portrait draws in front of its arm, apart: the modelled forearm is in front of that too (only the
+      // upper arm has it drawn again over it), and left out, the tube showed across a chest drawn after the arm;
+      // but laid on as soon as the arm comes near, the drawn forearm showed there faintly before the arm was in it.
+      // Laid over `fore`, not added to it: as much of what `fore` left as makes the two the drawing's own (the soft
+      // edges of what lies in front were short of it, a faint fringe).
+      foreFront![i + 3] = before < 1 ? Math.min(1, (drawn - before) / (1 - before)) * 255 : 0
+      for (let c = 0; c < 3; c += 1) foreFront![i + c] = out[i + c]
     }
   }
-  return { over: out, beside, fore }
+  return { over: out, beside, fore, foreFront }
 }
 
 /**
@@ -572,4 +628,48 @@ function createBodyTexture(gl: WebGL2RenderingContext, pixels: Uint8ClampedArray
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, data)
   gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1)
   return { texture, uv: [0, 0, 1, 1] as const }
+}
+
+/**
+ * How far the sleeve's own line is still held off (1 hanging): let go over a fifth of a second from when the hand
+ * starts to leave hanging, however fast it goes; back only as the hand comes back to hanging.
+ */
+export function sleeveLineHeldOff(previous: number, restNear: number, dt: number): number {
+  return Math.max(smoothstep(0.85, 1, restNear), previous - dt / 0.2)
+}
+
+/** The arm's points (shoulder, elbow, wrist, hand) as x, y pairs on the canvas. */
+function armPoints(pose: Arm3DPose): number[] {
+  return [pose.s, pose.e, pose.w, ...pose.hand].flatMap((q) => [q[0], q[1]])
+}
+
+/**
+ * The affine map taking each `from` point (x, y pairs) nearest its `to` point, least squares, as the rows
+ * [a, b, c, d, e, f] of x' = a·x + b·y + c, y' = d·x + e·y + f; null when the points are all on one line.
+ */
+export function affineFit(from: ArrayLike<number>, to: ArrayLike<number>): [number, number, number, number, number, number] | null {
+  const n = Math.min(from.length, to.length) >> 1
+  let sxx = 0; let sxy = 0; let syy = 0; let sx = 0; let sy = 0
+  let ux = 0; let uy = 0; let u1 = 0; let vx = 0; let vy = 0; let v1 = 0
+  for (let i = 0; i < n; i += 1) {
+    const x = from[i * 2]
+    const y = from[i * 2 + 1]
+    const u = to[i * 2]
+    const v = to[i * 2 + 1]
+    sxx += x * x; sxy += x * y; syy += y * y; sx += x; sy += y
+    ux += u * x; uy += u * y; u1 += u; vx += v * x; vy += v * y; v1 += v
+  }
+  // Normal equations, [sxx sxy sx; sxy syy sy; sx sy n] · coefficients = right.
+  const m = [sxx, sxy, sx, sxy, syy, sy, sx, sy, n]
+  const det = m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6]) + m[2] * (m[3] * m[7] - m[4] * m[6])
+  if (Math.abs(det) < 1e-9) return null
+  const solve = (r0: number, r1: number, r2: number): [number, number, number] => {
+    const at = (c: number[]) => c[0] * (c[4] * c[8] - c[5] * c[7]) - c[1] * (c[3] * c[8] - c[5] * c[6]) + c[2] * (c[3] * c[7] - c[4] * c[6])
+    return [
+      at([r0, m[1], m[2], r1, m[4], m[5], r2, m[7], m[8]]) / det,
+      at([m[0], r0, m[2], m[3], r1, m[5], m[6], r2, m[8]]) / det,
+      at([m[0], m[1], r0, m[3], m[4], r1, m[6], m[7], r2]) / det,
+    ]
+  }
+  return [...solve(ux, uy, u1), ...solve(vx, vy, v1)]
 }

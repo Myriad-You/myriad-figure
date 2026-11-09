@@ -63,3 +63,25 @@ export function dropArm3DTarget(gl: WebGL2RenderingContext, t: Arm3DTarget): voi
   for (const rb of [t.color, t.depth]) gl.deleteRenderbuffer(rb)
   for (const tx of [t.resolvedTexture, t.maskTexture, t.coverTexture]) gl.deleteTexture(tx)
 }
+
+/**
+ * The sleeve's cut over the drawing's ground (`clip`), held as near as `held` says, carried from this frame's
+ * canvas back to the drawing; off without either (`blank` stands bound in its place).
+ */
+export function setArm3DGround(
+  gl: WebGL2RenderingContext,
+  at: (name: string) => WebGLUniformLocation | null,
+  clip: { texture: WebGLTexture; rect: [number, number, number, number] } | null,
+  held: { near: number; toDrawn: [number, number, number, number, number, number] | null } | undefined,
+  blank: WebGLTexture,
+): void {
+  const toDrawn = clip && held?.toDrawn
+  gl.uniform1f(at('uGroundOn'), toDrawn ? held!.near : 0)
+  gl.activeTexture(gl.TEXTURE3)
+  gl.bindTexture(gl.TEXTURE_2D, clip?.texture ?? blank)
+  gl.uniform1i(at('uGround'), 3)
+  gl.activeTexture(gl.TEXTURE0)
+  gl.uniform4fv(at('uGroundRect'), clip?.rect ?? [0, 0, 1, 1])
+  gl.uniform3f(at('uToDrawn0'), toDrawn ? toDrawn[0] : 1, toDrawn ? toDrawn[1] : 0, toDrawn ? toDrawn[2] : 0)
+  gl.uniform3f(at('uToDrawn1'), toDrawn ? toDrawn[3] : 0, toDrawn ? toDrawn[4] : 1, toDrawn ? toDrawn[5] : 0)
+}

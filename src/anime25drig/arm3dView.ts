@@ -8,7 +8,7 @@ import { ARM3D_AROUND, ARM3D_RINGS, arm3DBareFromElbow, arm3DHandMesh, arm3DSlee
 import { liftForearm, wristOverUpper } from './arm3dMotion'
 import { ringFill } from './arm3dPrepare'
 import { BAKE_FS, BAKE_VS, COMPOSITE_FS, FULL_VS, GAP2_FS, GAP_FS, HAND_FS, HAND_VS, HELD_FS, HELD_VS, SLEEVE_FS, SLEEVE_VS, WHOLE_FS } from './arm3dShaders'
-import { arm3DTexture, createArm3DTarget, dropArm3DTarget } from './arm3dTarget'
+import { arm3DTexture, createArm3DTarget, dropArm3DTarget, setArm3DGround } from './arm3dTarget'
 
 export type { Arm3DFrame } from './arm3dMotion'
 
@@ -59,6 +59,12 @@ export interface Arm3DBound {
   heldBeside: WebGLTexture
   /** The drawn forearm of a gesture holding it still, laid over the arm after its hand; null for a wave. */
   heldFore: WebGLTexture | null
+  /** Its share where the portrait draws in front of its arm, laid on only as the arm is all but held where drawn. */
+  heldForeFront: WebGLTexture | null
+  /** Where the arm held is cut away (the drawing's own ground about its upper arm), on `rect` of the canvas; null when nowhere. */
+  groundClip: { texture: WebGLTexture; rect: [number, number, number, number] } | null
+  /** The portrait's arm as it hangs (its arm layers, on `rect` of the canvas), and the hanging arm's points there. */
+  restArm: { texture: WebGLTexture; rect: [number, number, number, number]; at: number[] }
 }
 
 interface Program {
@@ -122,7 +128,7 @@ export class Arm3DView {
   }
 
   release(bound: Arm3DBound): void {
-    for (const t of [bound.sleeve, bound.lifted, bound.hand, bound.drawn, bound.full, bound.armMask, bound.held, bound.heldBeside, bound.heldFore]) {
+    for (const t of [bound.sleeve, bound.lifted, bound.hand, bound.drawn, bound.full, bound.armMask, bound.held, bound.heldBeside, bound.heldFore, bound.heldForeFront, bound.groundClip?.texture, bound.restArm.texture]) {
       if (t) this.gl.deleteTexture(t)
     }
   }
@@ -267,6 +273,7 @@ export class Arm3DView {
     gl.enable(gl.BLEND)
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
     const line = bound.shape.line.map((c) => c / 255 * 0.85)
+    if (frame.rest) this.drawHeld(bound, frame, bound.restArm.texture, frame.rest.alpha, { pos: frame.rest.corners, uv: [0, 0, 1, 0, 1, 1, 0, 1], idx: [0, 1, 2, 0, 2, 3] })
     this.drawSleeve(bound, pose, frame, px, line)
     if (frame.held && frame.held.near > 0.004) this.drawHeld(bound, frame)
     const hand = this.drawHand(bound, pose, frame, px, line)
@@ -277,6 +284,7 @@ export class Arm3DView {
       gl.stencilFunc(gl.NOTEQUAL, 1, 255)
       gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP)
       this.drawHeld(bound, frame, bound.heldFore)
+      if (bound.heldForeFront && frame.held.exact > 0.004) this.drawHeld(bound, frame, bound.heldForeFront, frame.held.exact)
       gl.disable(gl.STENCIL_TEST)
     }
     // Held as drawn, the whole drawn hand wherever the modelled one is not.
@@ -344,6 +352,7 @@ export class Arm3DView {
     gl.activeTexture(gl.TEXTURE0)
     gl.uniform4fv(this.uniform(p, 'uMaskRect'), bound.maskRect)
     gl.uniform1f(this.uniform(p, 'uRest'), frame.hanging)
+    gl.uniform1f(this.uniform(p, 'uUnlined'), frame.unlined)
     // Lifting only the wrist, the forearm came out in front of the upper sleeve only near the hand: the sleeve
     // cut it off half way (b00 pointing with the left hand), where the drawing has it across the sleeve.
     const fold = wristOverUpper(bound.shape, pose)
@@ -352,8 +361,8 @@ export class Arm3DView {
     gl.uniform1f(this.uniform(p, 'uOpen'), arm3DBareFromElbow(bound.shape) ? 0.5 : 1)
     const band = bound.lifted && bound.shape.restBand
     gl.uniform3f(this.uniform(p, 'uBand'), band ? band[0] : 0, band ? band[1] : 0, band ? 1 : 0)
+    setArm3DGround(gl, (name) => this.uniform(p, name), bound.groundClip, frame.held, bound.armMask)
     gl.uniform1f(this.uniform(p, 'uFadeTop'), 0.26)
-    gl.uniform1f(this.uniform(p, 'uTopSoft'), 0.03)
     gl.uniform3fv(this.uniform(p, 'uLine'), line)
     // Its outline first (back faces pushed out), then itself.
     gl.enable(gl.CULL_FACE)
@@ -368,16 +377,15 @@ export class Arm3DView {
   }
 
   /** The drawing laid on as held: over the sleeve and beside it, or (`only`) that one picture plainly over all. */
-  private drawHeld(bound: Arm3DBound, frame: Arm3DFrame, only?: WebGLTexture): void {
-    const gl = this.gl
-    const p = this.heldProgram
-    const held = frame.held!
+  private drawHeld(bound: Arm3DBound, frame: Arm3DFrame, only?: WebGLTexture, alpha = frame.held!.near, mesh?: { pos: ArrayLike<number>; uv: ArrayLike<number>; idx: ArrayLike<number> }): void {
+    const { gl, heldProgram: p } = this
+    const held = mesh ?? frame.held!
     gl.useProgram(p.program)
     const count = this.upload(p, { aPos: [held.pos, 2], aUv: [held.uv, 2] }, Array.from(held.idx))
     gl.uniform2f(this.uniform(p, 'uSize'), frame.view.width, frame.view.height)
     gl.activeTexture(gl.TEXTURE0)
     gl.uniform1i(this.uniform(p, 'uHeld'), 0)
-    gl.uniform1f(this.uniform(p, 'uAlpha'), held.near)
+    gl.uniform1f(this.uniform(p, 'uAlpha'), alpha)
     gl.disable(gl.DEPTH_TEST)
     if (only) {
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
@@ -644,8 +652,9 @@ export class Arm3DView {
     this.common(s, frame, px)
     gl.uniform1f(this.uniform(s, 'uRest'), 0)
     gl.uniform1f(this.uniform(s, 'uFadeTop'), 0.0001)
-    gl.uniform1f(this.uniform(s, 'uTopSoft'), 0.03)
     gl.uniform4f(this.uniform(s, 'uSolid'), 1, 1, 1, 1)
+    // Cut as the sleeve is (the program's last cut and textures would stand otherwise, the hand's picture bound there).
+    setArm3DGround(gl, (name) => this.uniform(s, name), bound.groundClip, frame.held, bound.armMask)
     const sleeve = arm3DSleeveMesh(bound.shape, pose, frame.hanging, px)
     const along = (lo: number, hi: number) => {
       const keep: number[] = []

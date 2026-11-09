@@ -2,7 +2,7 @@ import type { V3 } from './arm3dMath'
 import type { Anime25DArmModel } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { arm3DCutSides, arm3DOnBody, arm3DUpperArmAlone } from './arm3dArm'
+import { affineFit, arm3DCutSides, arm3DOnBody, arm3DUpperArmAlone, sleeveLineHeldOff } from './arm3dArm'
 import { similarity2D } from './arm3dMath'
 import { arm3DHandMesh, arm3DPalmAsModelled, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
@@ -195,6 +195,29 @@ test('held, the drawing laid over the arm is its upper arm and elbow: not the fo
   assert.equal(b(100, 10), 0)
 })
 
+test('held still, the forearm laid on beside and over what lies in front comes to the drawing\'s own cover', () => {
+  // As above, the forearm out to the side; in front of it, a soft-edged layer (half there, a quarter there) and a
+  // gesture drawn half there over one of them.
+  const small = { ...model, radius: Array.from({ length: 24 }, () => 20), raised: { shoulder: [100, 50, 0], elbow: [100, 250, 0], wrist: [300, 250, 0] } } as Anime25DArmModel
+  const W = 400
+  const H = 400
+  const gesture = new Uint8ClampedArray(W * H * 4).fill(255)
+  const front = new Uint8ClampedArray(W * H * 4)
+  for (let y = 240; y < 260; y += 1) {
+    for (let x = 0; x < W; x += 1) front[(y * W + x) * 4 + 3] = x < 220 ? 128 : x < 260 ? 64 : 0
+  }
+  for (let x = 240; x < 260; x += 1) gesture[(250 * W + x) * 4 + 3] = 128
+  const { fore, foreFront } = arm3DUpperArmAlone(gesture, new Uint8ClampedArray(W * H * 4), front, W, H, small, 1, new Float32Array(W * H), true)
+  // Laid one over the other (as drawn, all but held): together, the gesture's own alpha there, wherever the front is.
+  const together = (x: number, y: number) => {
+    const a = fore![(y * W + x) * 4 + 3] / 255
+    return a + foreFront![(y * W + x) * 4 + 3] / 255 * (1 - a)
+  }
+  for (const [x, k] of [[200, 1], [230, 1], [250, 128 / 255], [280, 1]] as const) assert.ok(Math.abs(together(x, 250) - k) < 0.01, `${x}: ${together(x, 250)}`)
+  // Clear of the front, `fore` alone.
+  assert.equal(foreFront![(250 * W + 280) * 4 + 3], 0)
+})
+
 test('the picture\'s sides count as cut where the figure runs straight down them, not where it ends at a point', () => {
   // A bust cut off at the left (x 0, y 300–1000); on the right its shoulder rounds off to a single point at x 900.
   const body = { rest: [0, 300, 0, 1000, 500, 300, 500, 1000] }
@@ -254,4 +277,32 @@ test('the hand as it is now is carried back onto the drawn one by one turn, scal
     assert.ok(Math.abs(r1[0] * x + r1[1] * y + r1[2] - drawn[i][1]) < 1e-9)
   })
   assert.equal(similarity2D([[1, 1, 0], [1, 1, 0]], drawn), null)
+})
+
+test('an affine fit carries a mesh as the figure draws it back to where it was drawn', () => {
+  // Drawn at these points; this frame scaled, sheared a little and moved, as a breathing, leaning body does.
+  const drawn = [100, 200, 300, 220, 140, 500, 320, 480, 210, 350]
+  const now = drawn.map((v, i) => (i % 2 === 0 ? 1.02 * v + 0.03 * drawn[i + 1] + 7 : 0.98 * v - 0.01 * drawn[i - 1] - 4))
+  const fit = affineFit(now, drawn)
+  assert.ok(fit)
+  for (let i = 0; i < drawn.length; i += 2) {
+    assert.ok(Math.abs(fit[0] * now[i] + fit[1] * now[i + 1] + fit[2] - drawn[i]) < 1e-6)
+    assert.ok(Math.abs(fit[3] * now[i] + fit[4] * now[i + 1] + fit[5] - drawn[i + 1]) < 1e-6)
+  }
+  // All on one line: no fit.
+  assert.equal(affineFit([0, 0, 1, 1, 2, 2], [0, 0, 1, 1, 2, 2]), null)
+})
+
+test('the sleeve\'s line is let go over a moment as the hand lifts, however fast, and back only at hanging', () => {
+  // Hanging: held off.
+  assert.equal(sleeveLineHeldOff(1, 1, 1 / 60), 1)
+  // The hand gone at once: still mostly held off a frame later, gone within a fifth of a second.
+  let held = 1
+  held = sleeveLineHeldOff(held, 0, 1 / 60)
+  assert.ok(held > 0.9)
+  for (let i = 0; i < 12; i += 1) held = sleeveLineHeldOff(held, 0, 1 / 60)
+  assert.equal(held, 0)
+  // Coming back down: none until the hand is all but at hanging.
+  assert.equal(sleeveLineHeldOff(0, 0.6, 1 / 60), 0)
+  assert.ok(sleeveLineHeldOff(0, 0.95, 1 / 60) > 0.5)
 })

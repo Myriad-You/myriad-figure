@@ -158,6 +158,8 @@ export interface Anime25DArmModel {
   handOutline: Array<Array<[number, number]>>
   /** The gesture's arm within the layer, as rings filled even-odd; the rest of the layer is body the portrait's arm left bare. */
   armOutline: Array<Array<[number, number]>>
+  /** The drawing's empty ground about its upper arm and elbow, as rings filled even-odd; absent on older imports. */
+  ground?: Array<Array<[number, number]>>
 }
 
 export interface Anime25DEyeAnchor {
