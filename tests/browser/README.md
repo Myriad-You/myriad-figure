@@ -103,3 +103,26 @@ switched off inside the player): with no switch on the public surface, those
 comparisons are covered by unit tests of the mechanism instead, for example
 the shared facial surface in `secondaryDeformation.test.ts` and the crown band
 in `renderer.test.ts`.
+
+## Gesture arms
+
+`armVariants.spec.ts` imports real busts with their gesture arms and plays them
+on the production player. No artwork is kept here: it runs only where
+`FIGURE_ARM_VARIANTS` names a directory of `variants/<tag>.png` and
+`<tag>-pose.json` beside `../psd/<bust>.psd` and `.png`, and skips elsewhere.
+With `portrait-pose/<bust>.json` there too, the arms are measured and played as
+3D arms; without it they are raised flat.
+
+- Imported flat, a bust with gesture arms draws what it draws without them until
+  one is raised (one rounding step at most).
+- Measured in 3D, the modelled arm hangs in the drawn one's place: under 0.8% of
+  the picture off by more than a rounding while the figure stands upright,
+  under 3% as it leans and turns.
+- Every frame of each rise and fall covers the arm's box at least as well as
+  resting or raised does, and no frame stands outside its neighbours in the
+  box's drawn share or lightness by 0.03 or more (a frame that shows or drops
+  something for itself alone; a moving arm, however fast, stays between them).
+
+Both bounds were checked against a broken player: one frame in 37 left without
+its 3D arm failed the flicker scan (0.29), and the hanging arm moved 6 document
+pixels sideways failed the upright bound.

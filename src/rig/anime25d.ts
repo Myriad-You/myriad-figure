@@ -13,6 +13,8 @@ export const ANIME25D_LAYER_DESCRIPTORS = {
   handwear: { depth: 0.86, fade: null },
   // A drawn gesture arm (armVariants): hidden until she raises it.
   'arm-variant': { depth: 0.86, fade: 'armVariant' },
+  // The drawn hand whole, for the modelled hand held as drawn: never shown itself.
+  'arm-variant-hand': { depth: 0.86, fade: 'armVariant' },
   earwear: { depth: 0.97, fade: null },
   neckwear: { depth: 1, fade: null },
   eyewear: { depth: 1.16, fade: null },

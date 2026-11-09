@@ -1,7 +1,11 @@
 import type { ArmVariantGesture } from '../rig/armVariants'
+import type { Arm3DBodyFrame } from './arm3dArm'
 import type { Anime25DDriver } from './driver'
 import type { Anime25DGpuLayer } from './layerGpuBinding'
+import type { Anime25DSecondaryDeformationFrame } from './secondaryDeformation'
 import type { Anime25DArmLift } from './types'
+import { Arm3DSide } from './arm3dArm'
+import { Arm3DView } from './arm3dView'
 
 export type Anime25DArmSide = 'L' | 'R'
 
@@ -57,13 +61,30 @@ interface SideState {
   written: number
 }
 
+/** What a gesture arm with a 3D model needs to be drawn: the figure's context and its atlas. */
+export interface Anime25DArmGpu {
+  gl: WebGL2RenderingContext
+  atlas: HTMLImageElement
+  canvasWidth: number
+}
+
 export class Anime25DArmVariants {
   private sides: Record<Anime25DArmSide, SideState> = { L: emptySide(), R: emptySide() }
+  /** Sides whose gesture arms carry a 3D model: that side's arm is the modelled one, hanging too. */
+  private modelled: Partial<Record<Anime25DArmSide, Arm3DSide>> = {}
+  private view: Arm3DView | null = null
 
   /** Takes the new layers' gesture arms and their portrait arms; drops whatever was raised. */
-  bind(layers: readonly Anime25DGpuLayer[], canvasHeight: number): void {
+  bind(layers: readonly Anime25DGpuLayer[], canvasHeight: number, gpu?: Anime25DArmGpu): void {
+    this.dropModelled()
     for (const side of ['L', 'R'] as const) {
       const bases = layers.filter((layer) => layer.source.role === 'handwear' && layer.source.side === side)
+      const modelled = gpu ? this.bindModelled(side, bases, layers, canvasHeight, gpu) : null
+      if (modelled) {
+        this.modelled[side] = modelled
+        this.sides[side] = emptySide()
+        continue
+      }
       const variants = layers.flatMap((layer) => {
         const variant = layer.source.armVariant
         if (layer.source.role !== 'arm-variant' || !variant || layer.source.side !== side) return []
@@ -79,18 +100,49 @@ export class Anime25DArmVariants {
     }
   }
 
+  /** A side's arm as a 3D model, if its gesture arms have one and it can be drawn here; null raises them flat. */
+  private bindModelled(side: Anime25DArmSide, bases: Anime25DGpuLayer[], layers: readonly Anime25DGpuLayer[], canvasHeight: number, gpu: Anime25DArmGpu): Arm3DSide | null {
+    const has = layers.some((layer) => layer.source.role === 'arm-variant' && layer.source.side === side && layer.source.armVariant?.model)
+    if (!has || bases.length === 0) return null
+    let modelled: Arm3DSide | null = null
+    try {
+      this.view ??= new Arm3DView(gpu.gl)
+      modelled = new Arm3DSide(this.view, bases, { width: gpu.canvasWidth, height: canvasHeight })
+      modelled.bind(layers, gpu.gl, gpu.atlas)
+      if (modelled.gestures.length > 0) return modelled
+    } catch (error) {
+      console.warn('[figure] gesture arm drawn flat: its 3D model could not be bound', error)
+    }
+    modelled?.dispose()
+    return null
+  }
+
+  private dropModelled(): void {
+    for (const side of ['L', 'R'] as const) this.modelled[side]?.dispose()
+    this.modelled = {}
+  }
+
+  /** Releases the modelled arms' GPU resources. */
+  dispose(): void {
+    this.dropModelled()
+    this.view?.dispose()
+    this.view = null
+  }
+
   /** The gestures each side has. */
   gestures(): Record<Anime25DArmSide, string[]> {
-    return {
-      L: this.sides.L.variants.map((variant) => variant.gesture),
-      R: this.sides.R.variants.map((variant) => variant.gesture),
-    }
+    const of = (side: Anime25DArmSide) => this.modelled[side]?.gestures.map((g) => g.gesture) ?? this.sides[side].variants.map((variant) => variant.gesture)
+    return { L: of('L'), R: of('R') }
   }
 
   /** What each side shows or is raising now; null while down or going down. */
   raised(): Record<Anime25DArmSide, string | null> {
     const shown = (side: SideState) => side.phase === 'rising' || side.phase === 'held' ? side.shown?.gesture ?? null : null
-    return { L: shown(this.sides.L), R: shown(this.sides.R) }
+    const of = (side: Anime25DArmSide) => {
+      const modelled = this.modelled[side]
+      return modelled ? modelled.raised() : shown(this.sides[side])
+    }
+    return { L: of('L'), R: of('R') }
   }
 
   /** Raises on each side the gesture whose driver is strongest past RAISED_AT, or puts it down. */
@@ -98,12 +150,12 @@ export class Anime25DArmVariants {
     for (const side of ['L', 'R'] as const) {
       let best: string | null = null
       let strongest = RAISED_AT
-      for (const variant of this.sides[side].variants) {
-        const key = (ARM_VARIANT_DRIVERS[side] as Record<string, keyof Anime25DDriver>)[variant.gesture]
+      for (const gesture of this.gestures()[side]) {
+        const key = (ARM_VARIANT_DRIVERS[side] as Record<string, keyof Anime25DDriver>)[gesture]
         const value = key ? Number(driver[key]) : 0
         if (value >= strongest) {
           strongest = value
-          best = variant.gesture
+          best = gesture
         }
       }
       this.request(side, best)
@@ -112,6 +164,11 @@ export class Anime25DArmVariants {
 
   /** Raise `gesture` on `side`, or put that side down with null. Unknown gestures put it down. */
   request(side: Anime25DArmSide, gesture: string | null): void {
+    const modelled = this.modelled[side]
+    if (modelled) {
+      modelled.request(gesture)
+      return
+    }
     const state = this.sides[side]
     state.wanted = gesture && state.variants.some((variant) => variant.gesture === gesture) ? gesture : null
   }
@@ -123,6 +180,7 @@ export class Anime25DArmVariants {
    */
   applyOpacity(time: number): void {
     for (const side of ['L', 'R'] as const) {
+      this.modelled[side]?.applyOpacity(time)
       const state = this.sides[side]
       if (state.variants.length === 0) continue
       step(state, time)
@@ -146,8 +204,9 @@ export class Anime25DArmVariants {
    * Moves the shown gesture arm's vertices by this frame's shift. Runs once
    * the layers are deformed; the layer itself only rides its host.
    */
-  applyLift(time: number): void {
+  applyLift(time: number, sway?: Anime25DSecondaryDeformationFrame, body?: Arm3DBodyFrame): void {
     for (const side of ['L', 'R'] as const) {
+      this.modelled[side]?.applyLift(sway, body)
       const state = this.sides[side]
       const variant = state.shown
       if (!variant || !state.phase) continue
@@ -160,6 +219,25 @@ export class Anime25DArmVariants {
       if (shift === state.written) continue
       writeShift(variant, shift)
       state.written = shift
+    }
+  }
+
+  /**
+   * The modelled arms over the drawn frame (the figure's buffer bound, `width` × `height`), then
+   * `redraw` of what the portrait draws in front of each upper arm, within the stencil marked for it.
+   */
+  drawModelled(width: number, height: number, redraw: (layers: readonly Anime25DGpuLayer[]) => void): void {
+    const view = this.view
+    if (!view) return
+    for (const side of ['L', 'R'] as const) {
+      const modelled = this.modelled[side]
+      const now = modelled?.frame()
+      if (!modelled || !now) continue
+      view.draw(now.bound, now.frame, width, height)
+      if (modelled.front.length === 0) continue
+      view.markUpperArm(now.bound, now.frame)
+      redraw(modelled.front)
+      view.endUpperArm()
     }
   }
 }

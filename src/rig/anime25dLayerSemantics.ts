@@ -76,6 +76,7 @@ export function anime25DLayerAffectsFraming(
   // A gesture arm never moves the frame the resting figure is placed in.
   return (
     layer.role !== 'arm-variant' &&
+    layer.role !== 'arm-variant-hand' &&
     (lowerBodyFrames || !LOWER_BODY_ROLES.has(layer.role)) &&
     (!EXTRA_FRAMING_ROLES.has(layer.role) ||
       layer.width * layer.height < documentArea * 0.5)
