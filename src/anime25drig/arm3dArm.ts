@@ -72,6 +72,10 @@ export class Arm3DSide {
   front: Anime25DGpuLayer[] = []
   private pose: Arm3DPose | null = null
   private restNear = 1
+  /** How far the sleeve's own line is still held off as the hand first lifts (1 hanging, gone over a moment). */
+  private unlined = 1
+  private time: number | null = null
+  private dt = 0
   private heldNear = 0
   private heldExact = 0
   private body: Arm3DBodyFrame | undefined
@@ -291,6 +295,8 @@ export class Arm3DSide {
   applyOpacity(time: number): void {
     const shown = this.shown
     if (!shown) return
+    this.dt = this.time === null ? 0 : Math.min(0.1, Math.max(0, time - this.time))
+    this.time = time
     shown.motion.wanted = shown.gesture === this.wanted
     if (!shown.motion.wanted && this.wanted && shown.motion.resting) {
       this.shown = this.gestures.find((g) => g.gesture === this.wanted) ?? shown
@@ -315,6 +321,10 @@ export class Arm3DSide {
     const hang = g.motion.keyPose(0, anchor)
     const fore = g.bound.shape.fore
     this.restNear = 1 - smoothstep(0.03 * fore, 0.25 * fore, Math.hypot(pose.w[0] - hang.w[0], pose.w[1] - hang.w[1], pose.w[2] - hang.w[2]))
+    // The sleeve's own line held off a moment as the hand first lifts, however fast: round, the sleeve is short of a
+    // flared cuff's drawn mouth, and the step that leaves (a light seam) came out lined, a stroke across the body.
+    // The portrait's arm kept under it that long instead stood beside a bending arm as a dark wedge.
+    this.unlined = sleeveLineHeldOff(this.unlined, this.restNear, this.dt)
     // Held as drawn: its elbow where the gesture has it, its hand near (a wave swings the hand, not the elbow).
     const drawn = g.motion.restPose(anchor)
     const upper = g.bound.shape.upper
@@ -369,7 +379,7 @@ export class Arm3DSide {
     const to = this.restNear > 0.85 ? affineFit(g.bound.restArm.at, armPoints(this.pose)) : null
     const [x, y, w, h] = g.bound.restArm.rect
     const rest = to && { corners: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]].flatMap(([cx, cy]) => [to[0] * cx + to[1] * cy + to[2], to[3] * cx + to[4] * cy + to[5]]), alpha: smoothstep(0.85, 1, this.restNear) }
-    return { bound: g.bound, frame: { pose: this.pose, hanging: g.motion.hanging, restNear: this.restNear, view: this.canvas, foot, sides, held: this.heldMesh(g), rest } }
+    return { bound: g.bound, frame: { pose: this.pose, hanging: g.motion.hanging, restNear: this.restNear, unlined: this.unlined, view: this.canvas, foot, sides, held: this.heldMesh(g), rest } }
   }
 
   /** The gesture layer's mesh where the figure draws it this frame, for its drawn upper arm under the arm held there. */
@@ -561,6 +571,14 @@ function createBodyTexture(gl: WebGL2RenderingContext, pixels: Uint8ClampedArray
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, data)
   gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1)
   return { texture, uv: [0, 0, 1, 1] as const }
+}
+
+/**
+ * How far the sleeve's own line is still held off (1 hanging): let go over a fifth of a second from when the hand
+ * starts to leave hanging, however fast it goes; back only as the hand comes back to hanging.
+ */
+export function sleeveLineHeldOff(previous: number, restNear: number, dt: number): number {
+  return Math.max(smoothstep(0.85, 1, restNear), previous - dt / 0.2)
 }
 
 /** The arm's points (shoulder, elbow, wrist, hand) as x, y pairs on the canvas. */

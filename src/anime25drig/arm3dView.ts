@@ -73,6 +73,8 @@ export interface Arm3DFrame {
   hanging: number
   /** 1 with the arm where it hangs (its wrist), 0 once well away from it. */
   restNear: number
+  /** How far the sleeve's own line is held off yet, as the hand first leaves hanging (1 hanging). */
+  unlined: number
   view: { width: number; height: number }
   /** The picture's foot on the playback canvas, left to right: nothing of the arm below it. */
   foot: Array<[number, number]>
@@ -363,6 +365,7 @@ export class Arm3DView {
     gl.activeTexture(gl.TEXTURE0)
     gl.uniform4fv(this.uniform(p, 'uMaskRect'), bound.maskRect)
     gl.uniform1f(this.uniform(p, 'uRest'), frame.hanging)
+    gl.uniform1f(this.uniform(p, 'uUnlined'), frame.unlined)
     // Lifting only the wrist, the forearm came out in front of the upper sleeve only near the hand: the sleeve
     // cut it off half way (b00 pointing with the left hand), where the drawing has it across the sleeve.
     const fold = wristOverUpper(bound.shape, pose)
@@ -373,7 +376,6 @@ export class Arm3DView {
     gl.uniform3f(this.uniform(p, 'uBand'), band ? band[0] : 0, band ? band[1] : 0, band ? 1 : 0)
     setArm3DGround(gl, (name) => this.uniform(p, name), bound.groundClip, frame.held, bound.armMask)
     gl.uniform1f(this.uniform(p, 'uFadeTop'), 0.26)
-    gl.uniform1f(this.uniform(p, 'uTopSoft'), 0.03)
     gl.uniform3fv(this.uniform(p, 'uLine'), line)
     // Its outline first (back faces pushed out), then itself.
     gl.enable(gl.CULL_FACE)
@@ -660,7 +662,6 @@ export class Arm3DView {
     this.common(s, frame, px)
     gl.uniform1f(this.uniform(s, 'uRest'), 0)
     gl.uniform1f(this.uniform(s, 'uFadeTop'), 0.0001)
-    gl.uniform1f(this.uniform(s, 'uTopSoft'), 0.03)
     gl.uniform4f(this.uniform(s, 'uSolid'), 1, 1, 1, 1)
     // Cut as the sleeve is (the program's last cut and textures would stand otherwise, the hand's picture bound there).
     setArm3DGround(gl, (name) => this.uniform(s, name), bound.groundClip, frame.held, bound.armMask)
