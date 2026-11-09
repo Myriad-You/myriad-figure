@@ -1,6 +1,7 @@
 import type { Anime25DDriver } from '../../../src/anime25drig/driver'
 import type { ArmVariantSource } from '../../../src/rig/psdImportClient'
 import type { PreparedRigPsdImport } from '../../../src/rig/psdImporter'
+import type { DetectedSkeleton } from '../../../src/rig/skeleton'
 import { ARM_VARIANT_DRIVERS } from '../../../src/anime25drig/armVariantPresenter'
 import { IDENTITY_DRIVER } from '../../../src/anime25drig/driver'
 import { Anime25DPlayer } from '../../../src/anime25drig/player'
@@ -18,15 +19,18 @@ export interface BustRequest {
   psdUrl: string
   portraitUrl: string
   variants: ArmVariantSource[]
+  /** The pose model's joints on the portrait: with them (and each variant's own), the arms are measured in 3D. */
+  skeleton?: DetectedSkeleton
 }
 
-async function importBust({ psdUrl, portraitUrl, variants }: BustRequest): Promise<PreparedRigPsdImport> {
+async function importBust({ psdUrl, portraitUrl, variants, skeleton }: BustRequest): Promise<PreparedRigPsdImport> {
   const blob = await fetch(psdUrl).then((response) => response.blob())
   return prepareRigPsdImport(new File([blob], 'bust.psd'), {
     sourceMasterAssetId: portraitUrl,
     apiUrl: '',
     referenceUrl: portraitUrl,
     armVariants: variants,
+    ...(skeleton ? { skeleton } : {}),
   })
 }
 
@@ -117,29 +121,43 @@ async function scripted(prepared: PreparedRigPsdImport): Promise<Uint8Array[]> {
  * The script played on the figure imported with gesture arms and without:
  * with none raised it must draw what it draws without them. The atlas holds
  * the arms beside the rest, so a texel's place in it is a fraction of another
- * size; that rounding is all that may differ.
+ * size; that rounding is all that may differ. A side whose arms are measured in
+ * 3D hangs its modelled arm in the drawn one's place, which is near the drawn
+ * arm, not it: `apart` is each frame's share of pixels off by more than a
+ * rounding (a channel by more than 48).
  */
-async function golden(request: BustRequest): Promise<{ frames: number; worst: number; differing: number; roles: string[] }> {
+async function golden(request: BustRequest): Promise<{ frames: number; worst: number; differing: number; apart: number[]; roles: string[] }> {
   const withArms = await importBust(request)
   const without = await importBust({ ...request, variants: [] })
   const [a, b] = [await scripted(withArms), await scripted(without)]
   let worst = 0
   let differing = 0
+  const apart: number[] = []
   for (const [index, frame] of a.entries()) {
     const other = b[index]!
-    for (let i = 0; i < frame.length; i += 1) {
-      const delta = Math.abs(frame[i]! - other[i]!)
-      if (delta > 0) differing += 1
-      worst = Math.max(worst, delta)
+    let off = 0
+    for (let i = 0; i < frame.length; i += 4) {
+      let most = 0
+      for (let c = 0; c < 4; c += 1) {
+        const delta = Math.abs(frame[i + c]! - other[i + c]!)
+        if (delta > 0) differing += 1
+        most = Math.max(most, delta)
+      }
+      worst = Math.max(worst, most)
+      if (most > 48) off += 1
     }
+    apart.push(off / (frame.length / 4))
   }
   const roles = withArms.source.anime25dPlayback!.layers.map((layer) => layer.role)
   if (without.source.anime25dPlayback!.layers.some((layer) => layer.role === 'arm-variant')) roles.push('arm-variant without')
-  return { frames: a.length, worst, differing, roles }
+  return { frames: a.length, worst, differing, apart, roles }
 }
 
-/** Share of the box's pixels drawn (alpha past half), the box in playback pixels. */
-function coverage(stage: Stage, pixels: Uint8Array, box: { x: number; y: number; w: number; h: number }): number {
+/**
+ * The box's pixels (playback pixels) as two numbers: the share drawn (alpha past half) and how light what is drawn
+ * is, on average (0–1).
+ */
+function measure(stage: Stage, pixels: Uint8Array, box: { x: number; y: number; w: number; h: number }): { drawn: number; light: number } {
   const x0 = Math.max(0, Math.floor(box.x * stage.scale))
   const x1 = Math.min(stage.width, Math.ceil((box.x + box.w) * stage.scale))
   // readPixels rows run bottom up.
@@ -147,14 +165,34 @@ function coverage(stage: Stage, pixels: Uint8Array, box: { x: number; y: number;
   const y1 = Math.min(stage.height, Math.ceil((box.y + box.h) * stage.scale))
   let drawn = 0
   let total = 0
+  let light = 0
   for (let y = y0; y < y1; y += 1) {
     const row = stage.height - 1 - y
     for (let x = x0; x < x1; x += 1) {
+      const i = (row * stage.width + x) * 4
       total += 1
-      if (pixels[(row * stage.width + x) * 4 + 3]! > 128) drawn += 1
+      if (pixels[i + 3]! > 128) {
+        drawn += 1
+        light += (0.3 * pixels[i]! + 0.59 * pixels[i + 1]! + 0.11 * pixels[i + 2]!) / 255
+      }
     }
   }
-  return total ? drawn / total : 1
+  return { drawn: total ? drawn / total : 1, light: drawn ? light / drawn : 0 }
+}
+
+/**
+ * How far each frame stands outside the range of the frames either side of it (the larger of the drawn share's and
+ * the lightness's): an arm moving, however fast, has each frame between its neighbours; a frame that shows or drops
+ * something for itself alone (a hole, a flash of another picture) stands out of them. One per frame but the first
+ * and last.
+ */
+function flicker(series: ReadonlyArray<{ drawn: number; light: number }>): number[] {
+  const out = (a: number, b: number, c: number) => Math.max(0, b - Math.max(a, c), Math.min(a, c) - b)
+  return series.slice(1, -1).map((b, i) => {
+    const a = series[i]!
+    const c = series[i + 2]!
+    return Math.max(out(a.drawn, b.drawn, c.drawn), out(a.light, b.light, c.light))
+  })
 }
 
 export interface RiseResult {
@@ -166,6 +204,10 @@ export interface RiseResult {
   covered: number[]
   rest: number
   held: number
+  /** Each frame of the rise and of the fall, how far it stands outside its neighbours (`flicker`). */
+  flicker: number[]
+  /** Whether the gesture was measured as a 3D arm. */
+  modelled: boolean
   shots: { name: string; image: string }[]
 }
 
@@ -192,14 +234,22 @@ async function rise(request: BustRequest, side: 'L' | 'R', gesture: string): Pro
     const covered: number[] = []
     const shots: { name: string; image: string }[] = []
     let last = 0
+    let series: Array<{ drawn: number; light: number }> = []
+    const flickers: number[] = []
     const run = (pose: Partial<Anime25DDriver>, frames: number, shotAt: number[] = [], label = '', measured = false) => {
       stage.player.replaceTarget({ ...IDENTITY_DRIVER, ...QUIET, ...pose })
+      series = []
       for (let i = 0; i < frames; i += 1) {
         stage.player.tick(1 / FPS)
-        last = coverage(stage, readPixels(stage), box)
-        if (measured) covered.push(last)
+        const seen = measure(stage, readPixels(stage), box)
+        last = seen.drawn
+        if (measured) {
+          covered.push(last)
+          series.push(seen)
+        }
         if (shotAt.includes(i)) shots.push({ name: `${label}-${String(i).padStart(2, '0')}`, image: png(stage) })
       }
+      flickers.push(...flicker(series))
     }
     run({}, 30, [29], 'rest')
     const rest = last
@@ -209,7 +259,8 @@ async function rise(request: BustRequest, side: 'L' | 'R', gesture: string): Pro
     // Back upright before it goes down: the body settles slowly after a sway.
     run({ [key]: 1 }, 120)
     run({}, 40, [2, 6, 10, 14, 18, 39], 'lower', true)
-    return { gestures: stage.player.armVariantGestures(), covered, rest, held, shots }
+    const modelled = Boolean(variant.armVariant?.model)
+    return { gestures: stage.player.armVariantGestures(), covered, rest, held, flicker: flickers, modelled, shots }
   } finally {
     stage.close()
   }

@@ -11,6 +11,8 @@ import { expect, test } from '@playwright/test'
 // runs where FIGURE_ARM_VARIANTS names a directory of variants/<tag>.png and
 // <tag>-pose.json beside ../psd/<bust>.psd and ../psd/<bust>.png (a tag is
 // <bust>-<gesture>-<L|R>, the bust its short name), and is skipped elsewhere.
+// With portrait-pose/<bust>.json there too (the pose model's joints on the
+// portrait), the arms are measured and played as 3D arms; without, raised flat.
 // FIGURE_ARM_VARIANTS_ALL=1 raises every variant there, not just a sample.
 const root = process.env.FIGURE_ARM_VARIANTS ?? ''
 const BUSTS: Record<string, string> = {
@@ -32,16 +34,29 @@ function tagsOf(bust: string): string[] {
     .filter((tag) => existsSync(join(root, 'variants', `${tag}.png`)))
 }
 
+interface Pose { keypoints: number[][]; width?: number; height?: number }
+
+const triples = (points: number[][]) => points.map(([x, y, score]) => [x ?? 0, y ?? 0, score ?? 0] as const)
+
+async function poseOf(file: string): Promise<Pose> {
+  return JSON.parse(await readFile(file, 'utf8')) as Pose
+}
+
 /** The points of the hand the variant raised: the one of the two the pose model is surer of. */
-async function handOf(tag: string): Promise<Array<[number, number]>> {
-  const { keypoints } = JSON.parse(await readFile(join(root, 'variants', `${tag}-pose.json`), 'utf8')) as { keypoints: number[][] }
+function handOf({ keypoints }: Pose): Array<[number, number]> {
   const hands = [keypoints.slice(91, 112), keypoints.slice(112, 133)]
   const sure = (hand: number[][]) => hand.reduce((sum, point) => sum + (point[2] ?? 0), 0)
   const best = sure(hands[0]!) >= sure(hands[1]!) ? hands[0]! : hands[1]!
   return best.filter((point) => (point[2] ?? 0) >= 0.3).map((point) => [point[0]!, point[1]!])
 }
 
-async function serve(page: Page, bust: string, tags: string[]): Promise<BustRequest> {
+/** Whether the bust's portrait has its joints here: then its arms are measured in 3D. */
+function measured(bust: string): boolean {
+  return existsSync(join(root, 'portrait-pose', `${BUSTS[bust]}.json`))
+}
+
+/** The bust and its variants for the page; measured in 3D where its portrait's joints are here, unless `flat`. */
+async function serve(page: Page, bust: string, tags: string[], flat = false): Promise<BustRequest> {
   const name = BUSTS[bust]!
   await page.route('**/arm/**', async (route) => {
     const path = new URL(route.request().url()).pathname.replace(/^\/arm\//, '')
@@ -50,19 +65,34 @@ async function serve(page: Page, bust: string, tags: string[]): Promise<BustRequ
   })
   await page.goto('/armVariants.html')
   await page.waitForFunction(() => 'armVariantProbe' in window)
+  const portraitUrl = `/arm/psd/${name}.png`
+  const portrait = measured(bust) && !flat ? await poseOf(join(root, 'portrait-pose', `${name}.json`)) : null
+  const variants = await Promise.all(tags.map(async (tag) => {
+    const [, gesture, side] = tag.split('-') as [string, 'wave', 'L' | 'R']
+    const pose = await poseOf(join(root, 'variants', `${tag}-pose.json`))
+    return {
+      gesture,
+      side: side === 'L' ? 'left' as const : 'right' as const,
+      url: `/arm/variants/${tag}.png`,
+      hand: handOf(pose),
+      ...(portrait ? { keypoints: triples(pose.keypoints) } : {}),
+      size: [pose.width, pose.height] as const,
+    }
+  }))
+  const [width, height] = variants[0]?.size ?? []
   return {
     psdUrl: `/arm/psd/${name}.psd`,
-    portraitUrl: `/arm/psd/${name}.png`,
-    variants: await Promise.all(tags.map(async (tag) => {
-      const [, gesture, side] = tag.split('-') as [string, 'wave', 'L' | 'R']
-      return { gesture, side: side === 'L' ? 'left' as const : 'right' as const, url: `/arm/variants/${tag}.png`, hand: await handOf(tag) }
-    })),
+    portraitUrl,
+    variants: variants.map(({ size: _size, ...variant }) => variant),
+    ...(portrait
+      ? { skeleton: { sourceMasterAssetId: portraitUrl, model: 'dwpose', width: portrait.width ?? width ?? 0, height: portrait.height ?? height ?? 0, keypoints: triples(portrait.keypoints) } }
+      : {}),
   }
 }
 
 test('gesture arms drawn on a bust change nothing it draws until one is raised', async ({ page }) => {
   for (const bust of ['b00', 'h06']) {
-    const request = await serve(page, bust, tagsOf(bust))
+    const request = await serve(page, bust, tagsOf(bust), true)
     const result = await page.evaluate((request) => window.armVariantProbe.golden(request), request)
     expect(result.roles.filter((role) => role === 'arm-variant')).toHaveLength(request.variants.length)
     expect(result.roles).not.toContain('arm-variant without')
@@ -70,6 +100,24 @@ test('gesture arms drawn on a bust change nothing it draws until one is raised',
     // A rounding step at most, on a sliver of the pixels.
     expect(result.worst, bust).toBeLessThanOrEqual(1)
     expect(result.differing / (result.frames * 384 * 512 * 4), bust).toBeLessThan(0.001)
+  }
+})
+
+test('a side measured in 3D hangs its modelled arm where the drawn one hangs', async ({ page }) => {
+  const busts = ['b00', 'h13'].filter(measured)
+  test.skip(busts.length === 0, 'no portrait joints here')
+  test.setTimeout(400_000)
+  for (const bust of busts) {
+    const request = await serve(page, bust, tagsOf(bust))
+    const result = await page.evaluate((request) => window.armVariantProbe.golden(request), request)
+    expect(result.roles.filter((role) => role === 'arm-variant')).toHaveLength(request.variants.length)
+    expect(result.frames).toBeGreaterThan(10)
+    // Its edge a pixel or so off the drawn arm's while the figure stands upright (about 0.4% of the picture measured
+    // here), a little more as the body leans and turns under the scripted poses (about 1.8%); misplaced or missing,
+    // the arm is many times that.
+    const upright = [...result.apart.slice(0, 3), ...result.apart.slice(-2)]
+    expect(Math.max(...upright), `${bust} upright ${upright.map((v) => v.toFixed(4)).join(' ')}`).toBeLessThan(0.008)
+    expect(Math.max(...result.apart), `${bust} ${result.apart.map((v) => v.toFixed(4)).join(' ')}`).toBeLessThan(0.03)
   }
 })
 
@@ -83,13 +131,18 @@ for (const tag of raised) {
     const request = await serve(page, bust, [tag])
     const result: RiseResult = await page.evaluate(([request, side, gesture]) =>
       window.armVariantProbe.rise(request, side, gesture), [request, side, gesture] as const)
-    await testInfo.attach('coverage', { body: JSON.stringify({ rest: result.rest, held: result.held, covered: result.covered }), contentType: 'application/json' })
+    await testInfo.attach('coverage', { body: JSON.stringify({ rest: result.rest, held: result.held, covered: result.covered, flicker: result.flicker }), contentType: 'application/json' })
     for (const shot of result.shots) await testInfo.attach(shot.name, { body: Buffer.from(shot.image, 'base64'), contentType: 'image/png' })
     expect(result.gestures[side]).toEqual([gesture])
+    expect(result.modelled).toBe(measured(bust))
     // Every frame of the rise and the fall covers the arm's box at least as
     // well as resting or raised does (a gap shows as bare canvas there).
     const floor = Math.min(result.rest, result.held) - 0.005
     const worst = Math.min(...result.covered)
     expect(worst, `worst ${worst.toFixed(4)} against rest ${result.rest.toFixed(4)} and raised ${result.held.toFixed(4)}`).toBeGreaterThanOrEqual(floor)
+    // No frame shows or drops something for itself alone: a moving arm keeps each frame's drawn share and lightness
+    // between its neighbours' (measured at most about 0.011 on the busts here, a fast wave's fingers).
+    const jump = Math.max(...result.flicker)
+    expect(jump, `frame ${result.flicker.indexOf(jump) + 1} stands ${jump.toFixed(4)} outside its neighbours`).toBeLessThan(0.03)
   })
 }
