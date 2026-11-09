@@ -105,7 +105,8 @@ export function cutArmVariantLayers(
       hands.push({ ...got.hand, id: handId, sourceName: handId })
     }
   }
-  dropMovedCuffs(cut)
+  // A full body's portrait draws its own wrist cuff: a gesture keeping it there moved nothing.
+  if (!figure) dropMovedCuffs(cut)
   // A hand whose arm lost its model is never modelled: its picture goes with it.
   const modelled = new Set(cut.filter((c) => c.layer.armVariant?.model).map((c) => c.layer.id.slice('arm-variant-'.length)))
   return [...cut.map((c) => c.layer), ...hands.filter((h) => modelled.has(h.id.slice('arm-variant-hand-'.length)))]
@@ -244,7 +245,8 @@ function cutArmVariant(
     data,
     armVariant: { gesture: reference.gesture, lift: ARM_VARIANT_LIFT[reference.gesture] },
   })
-  if (!model || !layer.armVariant) return { layer, cuffAtWrist: null }
+  // A full body's arm is only ever played modelled: drawn flat it slid up from below across the legs.
+  if (!model || !layer.armVariant) return figure ? null : { layer, cuffAtWrist: null }
   const { cuffAtWrist, ...measured } = model
   layer.armVariant.model = placeArmModel(measured, scale, placement.x - layer.left, placement.y - layer.top)
   if (window) layer.armVariant.model.trialPixel = scale * WORK_WIDTH / TRIAL_WIDTH
