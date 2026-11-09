@@ -655,6 +655,8 @@ export class Arm3DView {
     gl.uniform1f(this.uniform(s, 'uFadeTop'), 0.0001)
     gl.uniform1f(this.uniform(s, 'uTopSoft'), 0.03)
     gl.uniform4f(this.uniform(s, 'uSolid'), 1, 1, 1, 1)
+    // Cut as the sleeve is (the program's last cut and textures would stand otherwise, the hand's picture bound there).
+    setArm3DGround(gl, (name) => this.uniform(s, name), bound.groundClip, frame.held, bound.armMask)
     const sleeve = arm3DSleeveMesh(bound.shape, pose, frame.hanging, px)
     const along = (lo: number, hi: number) => {
       const keep: number[] = []
