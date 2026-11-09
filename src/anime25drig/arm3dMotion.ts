@@ -286,3 +286,25 @@ function blendHands(a: V3[], b: V3[], t: number): V3[] {
   }
   return hand
 }
+
+/** How far the wrist lies over the upper arm on screen (0–1), and the upper arm's radius there. */
+export function wristOverUpper(d: Arm3DShape, pose: Arm3DPose) {
+  const se = sub(pose.e, pose.s)
+  const l2 = se[0] * se[0] + se[1] * se[1]
+  const t = Math.max(0, Math.min(1, ((pose.w[0] - pose.s[0]) * se[0] + (pose.w[1] - pose.s[1]) * se[1]) / Math.max(1e-6, l2)))
+  const ru = d.radius[Math.round(t * (d.radius.length / 2 - 1))]
+  const off = Math.hypot(pose.w[0] - (pose.s[0] + se[0] * t), pose.w[1] - (pose.s[1] + se[1] * t))
+  return { se, t, ru, over: 1 - smoothstep(ru, ru * 1.5, off) }
+}
+
+/**
+ * Folded back up over the upper arm, the forearm lies in front of it, as a bent arm's does: the pictures say
+ * nothing of their depths there, and the upper sleeve came through the forearm and hand. Only where the
+ * wrist is over the upper arm on screen, and only toward the viewer, so nothing moves on screen.
+ */
+export function liftForearm(d: Arm3DShape, pose: Arm3DPose): Arm3DPose {
+  const { se, t, ru, over } = wristOverUpper(d, pose)
+  const lift = over * Math.max(0, ru * 1.1 - (pose.w[2] - (pose.s[2] + se[2] * t)))
+  if (lift <= 0) return pose
+  return { s: pose.s, e: pose.e, w: [pose.w[0], pose.w[1], pose.w[2] + lift], hand: pose.hand.map((q) => [q[0], q[1], q[2] + lift] as V3) }
+}

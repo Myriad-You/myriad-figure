@@ -3,8 +3,9 @@ import type { Arm3DMesh } from './arm3dMesh'
 import type { Arm3DPose, Arm3DShape } from './arm3dMotion'
 import type { Arm3DPicture } from './arm3dPrepare'
 import type { Arm3DTarget } from './arm3dTarget'
-import { handExactness, len, similarity2D, smoothstep, sub } from './arm3dMath'
+import { handExactness, len, similarity2D, sub } from './arm3dMath'
 import { ARM3D_AROUND, ARM3D_RINGS, arm3DBareFromElbow, arm3DHandMesh, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
+import { liftForearm, wristOverUpper } from './arm3dMotion'
 import { ringFill } from './arm3dPrepare'
 import { BAKE_FS, BAKE_VS, COMPOSITE_FS, FULL_VS, GAP2_FS, GAP_FS, HAND_FS, HAND_VS, HELD_FS, HELD_VS, SLEEVE_FS, SLEEVE_VS, WHOLE_FS } from './arm3dShaders'
 import { arm3DTexture, createArm3DTarget, dropArm3DTarget } from './arm3dTarget'
@@ -20,6 +21,8 @@ export const ARM3D_STENCIL = 16
 export interface Arm3DBound {
   shape: Arm3DShape
   sleeve: WebGLTexture
+  /** The sleeve with the gesture's own drawing where the portrait wears a band only while hanging (`restBand`). */
+  lifted?: WebGLTexture
   hand: WebGLTexture
   /** The gesture's layer itself: seen through where it drew what the portrait has, so opaque where it drew the hand. */
   drawn: WebGLTexture
@@ -128,7 +131,7 @@ export class Arm3DView {
   }
 
   release(bound: Arm3DBound): void {
-    for (const t of [bound.sleeve, bound.hand, bound.drawn, bound.full, bound.armMask, bound.held, bound.heldBeside, bound.heldFore]) {
+    for (const t of [bound.sleeve, bound.lifted, bound.hand, bound.drawn, bound.full, bound.armMask, bound.held, bound.heldBeside, bound.heldFore]) {
       if (t) this.gl.deleteTexture(t)
     }
   }
@@ -343,6 +346,9 @@ export class Arm3DView {
     gl.activeTexture(gl.TEXTURE1)
     gl.bindTexture(gl.TEXTURE_2D, bound.armMask)
     gl.uniform1i(this.uniform(p, 'uArmMask'), 1)
+    gl.activeTexture(gl.TEXTURE2)
+    gl.bindTexture(gl.TEXTURE_2D, bound.lifted ?? bound.sleeve)
+    gl.uniform1i(this.uniform(p, 'uLifted'), 2)
     gl.activeTexture(gl.TEXTURE0)
     gl.uniform4fv(this.uniform(p, 'uMaskRect'), bound.maskRect)
     gl.uniform1f(this.uniform(p, 'uRest'), frame.hanging)
@@ -352,6 +358,8 @@ export class Arm3DView {
     gl.uniform1f(this.uniform(p, 'uFold'), fold.over * fold.ru * 2.5)
     gl.uniform1f(this.uniform(p, 'uRestEnd'), bound.shape.restEnd)
     gl.uniform1f(this.uniform(p, 'uOpen'), arm3DBareFromElbow(bound.shape) ? 0.5 : 1)
+    const band = bound.lifted && bound.shape.restBand
+    gl.uniform3f(this.uniform(p, 'uBand'), band ? band[0] : 0, band ? band[1] : 0, band ? 1 : 0)
     gl.uniform1f(this.uniform(p, 'uFadeTop'), 0.26)
     gl.uniform1f(this.uniform(p, 'uTopSoft'), 0.03)
     gl.uniform3fv(this.uniform(p, 'uLine'), line)
@@ -680,26 +688,4 @@ export class Arm3DView {
     this.gl.disable(this.gl.STENCIL_TEST)
     this.gl.stencilMask(255)
   }
-}
-
-/** How far the wrist lies over the upper arm on screen (0–1), and the upper arm's radius there. */
-function wristOverUpper(d: Arm3DShape, pose: Arm3DPose) {
-  const se = sub(pose.e, pose.s)
-  const l2 = se[0] * se[0] + se[1] * se[1]
-  const t = Math.max(0, Math.min(1, ((pose.w[0] - pose.s[0]) * se[0] + (pose.w[1] - pose.s[1]) * se[1]) / Math.max(1e-6, l2)))
-  const ru = d.radius[Math.round(t * (d.radius.length / 2 - 1))]
-  const off = Math.hypot(pose.w[0] - (pose.s[0] + se[0] * t), pose.w[1] - (pose.s[1] + se[1] * t))
-  return { se, t, ru, over: 1 - smoothstep(ru, ru * 1.5, off) }
-}
-
-/**
- * Folded back up over the upper arm, the forearm lies in front of it, as a bent arm's does: the pictures say
- * nothing of their depths there, and the upper sleeve came through the forearm and hand. Only where the
- * wrist is over the upper arm on screen, and only toward the viewer, so nothing moves on screen.
- */
-function liftForearm(d: Arm3DShape, pose: Arm3DPose): Arm3DPose {
-  const { se, t, ru, over } = wristOverUpper(d, pose)
-  const lift = over * Math.max(0, ru * 1.1 - (pose.w[2] - (pose.s[2] + se[2] * t)))
-  if (lift <= 0) return pose
-  return { s: pose.s, e: pose.e, w: [pose.w[0], pose.w[1], pose.w[2] + lift], hand: pose.hand.map((q) => [q[0], q[1], q[2] + lift] as V3) }
 }

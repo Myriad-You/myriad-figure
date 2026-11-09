@@ -1,5 +1,6 @@
 import type { Anime25DArmModel, Anime25DVec3 } from '../anime25drig/types'
 import type { EyeSide } from './anime25dImportTypes'
+import type { ArmCuffReading } from './armCuff'
 import type { P2 } from './armRaster'
 import { cuffDrawnAtWrist } from './armCuff'
 import { extendFinger, FINGER_CHAINS, measureDrawnHand } from './armHand'
@@ -64,8 +65,8 @@ const SLEEVE_AROUND = 256
 const HAND_SURE = 0.3
 const HAND_POINTS = 15
 
-/** The model, and (for the import to weigh, not kept) whether the picture drew the portrait's cuff at the wrist. */
-export type MeasuredArmModel = Anime25DArmModel & { cuffAtWrist: boolean | null }
+/** The model, and (for the import to weigh) where the portrait's cuff lies and whether the picture drew it at the wrist. */
+export type MeasuredArmModel = Anime25DArmModel & { cuffAtWrist: ArmCuffReading | null }
 
 export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | null {
   const { width: W, height: H, side } = pictures

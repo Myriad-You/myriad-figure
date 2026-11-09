@@ -1,5 +1,6 @@
 import type { Anime25DArmLift } from '../anime25drig/types'
 import type { Anime25DSourceReference, EyeSide, RasterLayer } from './anime25dImportTypes'
+import type { ArmCuffReading } from './armCuff'
 import type { PsdSkeleton } from './skeleton'
 import { trimRaster, uniquePartId } from './anime25dRaster'
 import { measureArmModel, placeArmModel } from './armModel'
@@ -70,7 +71,7 @@ export function cutArmVariantLayers(
 ): RasterLayer[] {
   if (!neutral || references.length === 0) return []
   const usedIds = new Set(layers.map((layer) => layer.id))
-  const cut: Array<{ layer: RasterLayer; cuffAtWrist: boolean | null }> = []
+  const cut: Array<{ layer: RasterLayer; cuffAtWrist: ArmCuffReading | null }> = []
   const hands: RasterLayer[] = []
   const done = new Set<string>()
   for (const reference of references) {
@@ -100,7 +101,7 @@ function cutArmVariant(
   reference: ArmVariantReference,
   base: readonly RasterLayer[],
   skeleton: PsdSkeleton | undefined,
-): { layer: RasterLayer; cuffAtWrist: boolean | null; hand?: RasterLayer } | null {
+): { layer: RasterLayer; cuffAtWrist: ArmCuffReading | null; hand?: RasterLayer } | null {
   const { placement } = reference
   if (placement.width <= 0 || placement.height <= 0) return null
   const scale = placement.width / WORK_WIDTH
@@ -266,16 +267,29 @@ function handPicture(
   return { id: '', role: 'arm-variant-hand', sourceName: '', order: 0, side: reference.side, group: 'body', left, top, width, height, data }
 }
 
+/** The band given up while the arm is lifted runs on past the elbow: the gestures draw the sleeve plain from it to their own cuff. */
+const BAND_PAST_ELBOW = 0.62
+/** And starts this far above where it was seen: a band across the arm on the slant is seen in only its middle rows. */
+const BAND_ABOVE = 0.04
+
 /**
  * A picture that moved the portrait's cuff to the wrist where most of the same arm's pictures keep it by the
  * elbow is the generator's mistake: modelled, its sleeve wore the band twice. It keeps no model and is raised
- * flat as drawn. All of them drawing it at the wrist is how they read a portrait that does not show the forearm.
+ * flat as drawn. Most of them drawing it at the wrist is how they read a portrait that does not show the
+ * forearm: all of that arm's models keep the band only while it hangs (`restBand`; h13: the band stayed by the
+ * elbow while the rising hand brought the drawn cuff up at the wrist, two cuffs at once). One picture's band
+ * stands for the arm's: it is the one portrait, seen past a hand now and then (h13 pointing saw none).
  */
-export function dropMovedCuffs(cut: ReadonlyArray<{ layer: RasterLayer; cuffAtWrist: boolean | null }>): void {
+export function dropMovedCuffs(cut: ReadonlyArray<{ layer: RasterLayer; cuffAtWrist: ArmCuffReading | null }>): void {
   for (const side of new Set(cut.map((c) => c.layer.side))) {
     const mine = cut.filter((c) => c.layer.side === side && c.layer.armVariant?.model)
-    const moved = mine.filter((c) => c.cuffAtWrist === true)
-    if (moved.length >= mine.filter((c) => c.cuffAtWrist === false).length) continue
+    const moved = mine.filter((c) => c.cuffAtWrist?.atWrist === true)
+    if (moved.length === 0) continue
+    if (moved.length >= mine.filter((c) => c.cuffAtWrist?.atWrist === false).length) {
+      const from = Math.max(0, Math.min(...moved.map((c) => c.cuffAtWrist!.band[0])) - BAND_ABOVE)
+      for (const { layer } of mine) layer.armVariant!.model!.restBand = [from, BAND_PAST_ELBOW]
+      continue
+    }
     for (const { layer } of moved) delete layer.armVariant!.model
   }
 }

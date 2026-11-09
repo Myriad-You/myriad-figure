@@ -156,11 +156,14 @@ export class Arm3DSide {
       const wholeTexture = view.picture(whole, false)
       const armMask = view.picture(armOnly, true)
       const keyTexture = view.picture({ pixels: split.arm, width: pixels.width, height: pixels.height }, false)
-      const sleeveTexture = view.bakeSleeve(shape, px, canvas, [
-        { src: wholeTexture, rect: share(rect), pose: hanging, rest: 1, minFace: -0.05, maskFrom: 2, vmax: shape.restEnd },
-        { src: armMask, rect: share(rect), pose: hanging, rest: 1, minFace: -0.05, maskFrom: 0, vmax: 2 },
+      const sleeveFrom = (upTo: number) => view.bakeSleeve(shape, px, canvas, [
+        { src: wholeTexture, rect: share(rect), pose: hanging, rest: 1, minFace: -0.05, maskFrom: 2, vmax: Math.min(shape.restEnd, upTo) },
+        { src: armMask, rect: share(rect), pose: hanging, rest: 1, minFace: -0.05, maskFrom: 0, vmax: upTo },
         { src: keyTexture, rect: layerRect, pose: raised, rest: 0, minFace: 0.15, maskFrom: 0, vmax: 2 },
       ])
+      const sleeveTexture = sleeveFrom(2)
+      // Lifted, the portrait's sleeve stops short of a band the gestures all draw at the wrist instead.
+      const lifted = shape.restBand ? sleeveFrom(shape.restBand[0]) : undefined
       gl.deleteTexture(wholeTexture)
       gl.deleteTexture(keyTexture)
       // A wave's forearm swings off the drawing; the others' is held where drawn.
@@ -189,6 +192,7 @@ export class Arm3DSide {
       const bound: Arm3DBound = {
         shape,
         sleeve: sleeveTexture,
+        lifted,
         hand: view.picture({ pixels: split.hand, width: pixels.width, height: pixels.height }),
         drawn: view.picture(pixels),
         ...this.wholeHand(layers, layer, atlas),

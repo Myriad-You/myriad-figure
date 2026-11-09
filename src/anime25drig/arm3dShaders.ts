@@ -22,8 +22,17 @@ precision highp float;
 in vec2 vUv; in vec3 vNrm; in float vV; in vec2 vPic;
 uniform sampler2D uTex; uniform sampler2D uArmMask; uniform vec4 uMaskRect;
 uniform float uRest; uniform vec4 uSolid; uniform float uFadeTop; uniform float uTopSoft; uniform float uRestEnd; uniform vec3 uLine;
-uniform float uOpen;
+uniform float uOpen; uniform vec3 uBand; uniform sampler2D uLifted;
 out vec4 o;
+// A band the portrait wears by the elbow that every gesture draws at the wrist (uBand: its place, and whether
+// there is one) is worn while the arm hangs; lifted, that stretch is the sleeve as the gestures draw it there
+// (uLifted), and the drawn cuff comes up at the wrist alone. The plain sleeve above the band stretched down over
+// it came out in streaks.
+vec3 cloth(vec2 uv) {
+  float off = uBand.z * (1.0 - smoothstep(0.55, 0.995, uRest))
+    * smoothstep(uBand.x - 0.015, uBand.x, uv.y) * (1.0 - smoothstep(uBand.y, uBand.y + 0.015, uv.y));
+  return mix(texture(uTex, uv).rgb, texture(uLifted, uv).rgb, off);
+}
 void main() {
   float nz = normalize(vNrm).z;
   // The one sleeve texture, worn the same all the way. Its outline off while it hangs (the portrait's lines
@@ -42,10 +51,10 @@ void main() {
   float inMask = step(0.0, m.x) * step(m.x, 1.0) * step(0.0, m.y) * step(m.y, 1.0);
   a *= mix(1.0, texture(uArmMask, m).a * inMask, hang * smoothstep(uRestEnd - 0.02, uRestEnd + 0.02, vV));
   // The outline takes the fabric's own colour, darkened, as the drawings line a white cuff in grey-brown.
-  if (uSolid.a > 1.5) { float la = a * (1.0 - unlined); o = vec4(mix(uSolid.rgb, texture(uTex, vUv).rgb * 0.4, 0.75) * la, la); return; }
+  if (uSolid.a > 1.5) { float la = a * (1.0 - unlined); o = vec4(mix(uSolid.rgb, cloth(vUv) * 0.4, 0.75) * la, la); return; }
   // A mark (the upper arm's stencil): only where it is all but solid.
   if (uSolid.a > 0.0) { if (a < 0.5) discard; o = vec4(uSolid.rgb * a, a); return; }
-  vec3 c = texture(uTex, vUv).rgb;
+  vec3 c = cloth(vUv);
   // Turned away from the viewer it darkens a little, as the drawings shade a round sleeve; not while it hangs
   // (the portrait's own shading is drawn in there).
   c *= mix(mix(0.82, 1.0, smoothstep(-0.2, 0.6, nz)), 1.0, smoothstep(0.9, 0.995, uRest));
