@@ -573,7 +573,6 @@ function createBodyTexture(gl: WebGL2RenderingContext, pixels: Uint8ClampedArray
   return { texture, uv: [0, 0, 1, 1] as const }
 }
 
-/** The arm's points (shoulder, elbow, wrist, hand) as x, y pairs on the canvas. */
 /**
  * How far the sleeve's own line is still held off (1 hanging): let go over a fifth of a second from when the hand
  * starts to leave hanging, however fast it goes; back only as the hand comes back to hanging.
@@ -582,6 +581,7 @@ export function sleeveLineHeldOff(previous: number, restNear: number, dt: number
   return Math.max(smoothstep(0.85, 1, restNear), previous - dt / 0.2)
 }
 
+/** The arm's points (shoulder, elbow, wrist, hand) as x, y pairs on the canvas. */
 function armPoints(pose: Arm3DPose): number[] {
   return [pose.s, pose.e, pose.w, ...pose.hand].flatMap((q) => [q[0], q[1]])
 }
