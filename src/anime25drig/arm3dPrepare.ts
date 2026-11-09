@@ -1,6 +1,7 @@
 import type { Arm3DMesh } from './arm3dMesh'
 import type { Arm3DShape } from './arm3dMotion'
 import type { Anime25DArmModel } from './types'
+import { smoothstep } from './arm3dMath'
 
 /** A picture cut out of the playback canvas: its pixels (straight RGBA) and where it lies. */
 export interface Arm3DPicture {
@@ -82,6 +83,65 @@ function coverage(rings: Anime25DArmModel['armOutline'], w: number, h: number, s
   const out = new Float32Array(w * h)
   for (let i = 0; i < out.length; i += 1) out[i] = data[i * 4 + 3] / 255
   return out
+}
+
+/** How far in from its box the ground is read, where the box cuts it. */
+const BORDER = 8
+
+/**
+ * Where a held arm is cut away (on `rect` of the canvas, a pixel each; red, and its edge green): the drawing's own ground (`ground`
+ * rings, canvas units) well inside it, about the upper arm and elbow as raised (`s` to `e`, out to `reach`), not
+ * along the forearm (which a wave swings off the drawing). Null when there is nothing to cut.
+ */
+export function arm3DGroundClip(
+  ground: Anime25DArmModel['armOutline'],
+  s: readonly number[],
+  e: readonly number[],
+  w: readonly number[],
+  reach: number,
+  foreReach: number,
+  /** The portrait's own picture on a rect of the canvas (RGBA, a pixel each), softened: where it has anything, the cut would show its stale arm, not the ground. */
+  portraitOn: (rect: { x: number; y: number; w: number; h: number }) => Uint8ClampedArray,
+): { pixels: Uint8ClampedArray; rect: { x: number; y: number; w: number; h: number } } | null {
+  const points = ground.flat()
+  if (!points.length) return null
+  const x0 = Math.floor(Math.min(...points.map((q) => q[0])))
+  const y0 = Math.floor(Math.min(...points.map((q) => q[1])))
+  const rect = { x: x0, y: y0, w: Math.max(1, Math.ceil(Math.max(...points.map((q) => q[0]))) - x0), h: Math.max(1, Math.ceil(Math.max(...points.map((q) => q[1]))) - y0) }
+  // Softened and taken well inside: the held arm still sways a few pixels off where it was drawn.
+  const field = coverage(ground.map((ring) => ring.map(([x, y]) => [x - rect.x, y - rect.y] as [number, number])), rect.w, rect.h, 1, 3)
+  const portrait = portraitOn(rect)
+  // Red: how far it is cut away; green: its edge. Opaque, so neither is lost to premultiplying.
+  const pixels = new Uint8ClampedArray(rect.w * rect.h * 4)
+  for (let p = 3; p < pixels.length; p += 4) pixels[p] = 255
+  const along = (x: number, y: number, a: readonly number[], b: readonly number[]) => {
+    const dx = b[0] - a[0]
+    const dy = b[1] - a[1]
+    const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / Math.max(1e-6, dx * dx + dy * dy)))
+    return { t, d: Math.hypot(x - a[0] - dx * t, y - a[1] - dy * t) }
+  }
+  let any = false
+  for (let p = 0; p < rect.w * rect.h; p += 1) {
+    const x = rect.x + (p % rect.w) + 0.5
+    const y = rect.y + Math.floor(p / rect.w) + 0.5
+    // Cut well inside the ground; just short of the cut, its edge (outlined there as the drawing outlines it).
+    // Near its own border the ground runs on past it (to the drawing's edge, or the box it was found in): taken from
+    // a little inside, or the softening there read as the ground's edge, outlined along the picture's foot.
+    const f = field[Math.min(rect.h - 1 - BORDER, Math.max(BORDER, Math.floor(p / rect.w))) * rect.w + Math.min(rect.w - 1 - BORDER, Math.max(BORDER, p % rect.w))] ?? field[p]
+    const cut = smoothstep(0.85, 1, f)
+    const edge = smoothstep(0.35, 0.6, f) * (1 - cut)
+    if (edge + cut <= 0) continue
+    const up = along(x, y, s, e)
+    const fore = along(x, y, e, w)
+    const notFore = 1 - smoothstep(0.12, 0.25, fore.t) * (1 - smoothstep(foreReach * 0.9, foreReach * 1.1, fore.d))
+    // Only where the portrait has nothing either: cut there, what lies under the arm held is the ground too. Elsewhere
+    // the figure there still shows the portrait's arm beside the drawn one (a wave's cuff stood out in its band).
+    const zone = (1 - smoothstep(reach * 0.9, reach * 1.1, up.d)) * notFore * (1 - smoothstep(0.02, 0.2, portrait[p * 4 + 3] / 255))
+    pixels[p * 4] = Math.round(cut * zone * 255)
+    pixels[p * 4 + 1] = Math.round(edge * zone * 255)
+    if (cut * zone > 0.004) any = true
+  }
+  return any ? { pixels, rect } : null
 }
 
 /**
