@@ -224,7 +224,8 @@ export class Arm3DView {
     gl.readPixels(0, 0, BAKE_W, BAKE_H, gl.RGBA, gl.UNSIGNED_BYTE, px8)
     gl.bindFramebuffer(gl.FRAMEBUFFER, null)
     gl.deleteFramebuffer(fb)
-    ringFill(px8, BAKE_W, BAKE_H)
+    // About 11° round the ring in from where a picture saw the sleeve last: past the outline it draws there.
+    ringFill(px8, BAKE_W, BAKE_H, BAKE_W >> 5)
     gl.bindTexture(gl.TEXTURE_2D, out)
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, BAKE_W, BAKE_H, 0, gl.RGBA, gl.UNSIGNED_BYTE, px8)
