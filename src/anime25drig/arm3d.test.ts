@@ -2,7 +2,7 @@ import type { V3 } from './arm3dMath'
 import type { Anime25DArmModel } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { arm3DCutSides, arm3DOnBody, arm3DUpperArmAlone } from './arm3dArm'
+import { affineFit, arm3DCutSides, arm3DOnBody, arm3DUpperArmAlone } from './arm3dArm'
 import { similarity2D } from './arm3dMath'
 import { arm3DHandMesh, arm3DPalmAsModelled, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
@@ -254,4 +254,18 @@ test('the hand as it is now is carried back onto the drawn one by one turn, scal
     assert.ok(Math.abs(r1[0] * x + r1[1] * y + r1[2] - drawn[i][1]) < 1e-9)
   })
   assert.equal(similarity2D([[1, 1, 0], [1, 1, 0]], drawn), null)
+})
+
+test('an affine fit carries a mesh as the figure draws it back to where it was drawn', () => {
+  // Drawn at these points; this frame scaled, sheared a little and moved, as a breathing, leaning body does.
+  const drawn = [100, 200, 300, 220, 140, 500, 320, 480, 210, 350]
+  const now = drawn.map((v, i) => (i % 2 === 0 ? 1.02 * v + 0.03 * drawn[i + 1] + 7 : 0.98 * v - 0.01 * drawn[i - 1] - 4))
+  const fit = affineFit(now, drawn)
+  assert.ok(fit)
+  for (let i = 0; i < drawn.length; i += 2) {
+    assert.ok(Math.abs(fit[0] * now[i] + fit[1] * now[i + 1] + fit[2] - drawn[i]) < 1e-6)
+    assert.ok(Math.abs(fit[3] * now[i] + fit[4] * now[i + 1] + fit[5] - drawn[i + 1]) < 1e-6)
+  }
+  // All on one line: no fit.
+  assert.equal(affineFit([0, 0, 1, 1, 2, 2], [0, 0, 1, 1, 2, 2]), null)
 })

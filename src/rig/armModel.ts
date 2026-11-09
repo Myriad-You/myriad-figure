@@ -266,6 +266,13 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
   for (let k = 0; k < armField.length; k += 1) armField[k] = mask[(armBox.y + ((k / armBox.w) | 0)) * W + armBox.x + (k % armBox.w)]
   const armRings = rings(armField, armBox.w, armBox.h, 0.5).map((ring) => simplify(ring, 0.6).map(([x, y]) => [x + armBox.x, y + armBox.y] as P2))
 
+  // The drawing's own ground about its upper arm and elbow: held, the modelled arm, rounder or lower than the drawn
+  // one, stood out past it there in the portrait's hanging sleeve (a wide coat sleeve, the hand on the chest).
+  const groundBox = cropAround([drawn.s, drawn.e], Math.ceil(1.5 * Math.max(...radius)), W, H)
+  const groundField = new Float32Array(groundBox.w * groundBox.h)
+  for (let k = 0; k < groundField.length; k += 1) groundField[k] = pictures.ground[(groundBox.y + ((k / groundBox.w) | 0)) * W + groundBox.x + (k % groundBox.w)]
+  const groundRings = rings(groundField, groundBox.w, groundBox.h, 0.5).map((ring) => simplify(ring, 0.6).map(([x, y]) => [x + groundBox.x, y + groundBox.y] as P2))
+
   const skin = pick((l) => l > p40)
   return {
     upper: U,
@@ -283,6 +290,7 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
     shade: pick((l) => l > p12 && l < p35),
     line: pick((l) => l < p3),
     armOutline: armRings,
+    ground: groundRings,
     cuffAtWrist: cuffDrawnAtWrist({
       width: W, height: H, portrait: pictures.portrait, variant: img, base: pictures.base, mask,
       rest: [ps, pe, hangWrist], raised: [drawn.s, drawn.e, drawn.w], radius, skin,
@@ -311,6 +319,7 @@ export function placeArmModel(model: Anime25DArmModel, scale: number, dx: number
     keyProfile: model.keyProfile.map((f) => f.map((r) => r * scale)),
     handOutline: model.handOutline.map((ring) => ring.map(p2)),
     armOutline: model.armOutline.map((ring) => ring.map(p2)),
+    ...(model.ground ? { ground: model.ground.map((ring) => ring.map(p2)) } : {}),
   }
 }
 

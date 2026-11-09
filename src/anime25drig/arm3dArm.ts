@@ -9,7 +9,7 @@ import type { Anime25DArmModel } from './types'
 import { smoothstep } from './arm3dMath'
 import { arm3DHandMesh, arm3DPalmAsModelled, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
-import { arm3DProject, arm3DWristTone, composeArm3DPicture, splitArm3DLayer } from './arm3dPrepare'
+import { arm3DGroundClip, arm3DProject, arm3DWristTone, composeArm3DPicture, splitArm3DLayer } from './arm3dPrepare'
 import { armDrapeWeight } from './armRig'
 import { applyBodyLift } from './bodyLift'
 import { readLayerPixels } from './webglRuntime'
@@ -171,6 +171,18 @@ export class Arm3DSide {
       const held = view.picture({ pixels: alone.over, width: pixels.width, height: pixels.height })
       const heldBeside = view.picture({ pixels: alone.beside, width: pixels.width, height: pixels.height })
       const heldFore = alone.fore ? view.picture({ pixels: alone.fore, width: pixels.width, height: pixels.height }) : null
+      const R = model.radius
+      const half = R.length >> 1
+      const ground = model.ground && arm3DGroundClip(
+        model.ground.map((ring) => ring.map(([x, y]) => [x + layer.source.x, y + layer.source.y] as [number, number])),
+        shape.raised.s, shape.raised.e, shape.raised.w,
+        1.25 * Math.max(...R.slice(0, half + 1)),
+        1.1 * R.slice(half).reduce((a, b) => a + b, 0) / (R.length - half),
+        (r) => composeArm3DPicture(atlas, still.map(asSource), r, undefined, 3).pixels,
+      )
+      const groundClip = ground
+        ? { texture: view.picture({ pixels: ground.pixels, width: ground.rect.w, height: ground.rect.h }, false), rect: [ground.rect.x, ground.rect.y, ground.rect.w, ground.rect.h] as [number, number, number, number] }
+        : null
       const hangMesh = arm3DSleeveMesh(shape, hanging, 1, px)
       const hangPic = new Float32Array(hangMesh.pos.length / 3 * 2)
       for (let i = 0; i < hangPic.length / 2; i += 1) {
@@ -212,6 +224,7 @@ export class Arm3DSide {
         held,
         heldBeside,
         heldFore,
+        groundClip,
       }
       // The body the portrait's arm leaves bare: drawn in the arm's place.
       this.gestures.push({ layer, gesture: layer.source.armVariant!.gesture, bound, motion, touch: this.touchOf(layers, shape) })
@@ -353,7 +366,7 @@ export class Arm3DSide {
       uv[i * 2] = (rest[i * 2] - source.x) / source.w
       uv[i * 2 + 1] = (rest[i * 2 + 1] - source.y) / source.h
     }
-    return { pos, uv, idx: indices, near: this.heldNear }
+    return { pos, uv, idx: indices, near: this.heldNear, toDrawn: affineFit(pos, rest) }
   }
 
   dispose(): void {
@@ -515,4 +528,35 @@ function createBodyTexture(gl: WebGL2RenderingContext, pixels: Uint8ClampedArray
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, data)
   gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1)
   return { texture, uv: [0, 0, 1, 1] as const }
+}
+
+/**
+ * The affine map taking each `from` point (x, y pairs) nearest its `to` point, least squares, as the rows
+ * [a, b, c, d, e, f] of x' = a·x + b·y + c, y' = d·x + e·y + f; null when the points are all on one line.
+ */
+export function affineFit(from: ArrayLike<number>, to: ArrayLike<number>): [number, number, number, number, number, number] | null {
+  const n = Math.min(from.length, to.length) >> 1
+  let sxx = 0; let sxy = 0; let syy = 0; let sx = 0; let sy = 0
+  let ux = 0; let uy = 0; let u1 = 0; let vx = 0; let vy = 0; let v1 = 0
+  for (let i = 0; i < n; i += 1) {
+    const x = from[i * 2]
+    const y = from[i * 2 + 1]
+    const u = to[i * 2]
+    const v = to[i * 2 + 1]
+    sxx += x * x; sxy += x * y; syy += y * y; sx += x; sy += y
+    ux += u * x; uy += u * y; u1 += u; vx += v * x; vy += v * y; v1 += v
+  }
+  // Normal equations, [sxx sxy sx; sxy syy sy; sx sy n] · coefficients = right.
+  const m = [sxx, sxy, sx, sxy, syy, sy, sx, sy, n]
+  const det = m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6]) + m[2] * (m[3] * m[7] - m[4] * m[6])
+  if (Math.abs(det) < 1e-9) return null
+  const solve = (r0: number, r1: number, r2: number): [number, number, number] => {
+    const at = (c: number[]) => c[0] * (c[4] * c[8] - c[5] * c[7]) - c[1] * (c[3] * c[8] - c[5] * c[6]) + c[2] * (c[3] * c[7] - c[4] * c[6])
+    return [
+      at([r0, m[1], m[2], r1, m[4], m[5], r2, m[7], m[8]]) / det,
+      at([m[0], r0, m[2], m[3], r1, m[5], m[6], r2, m[8]]) / det,
+      at([m[0], m[1], r0, m[3], m[4], r1, m[6], m[7], r2]) / det,
+    ]
+  }
+  return [...solve(ux, uy, u1), ...solve(vx, vy, v1)]
 }

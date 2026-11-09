@@ -3,7 +3,7 @@ import type { Anime25DArmModel } from './types'
 import { add, bspline, carry, HAND_CHAINS, len, lerp, mul, norm, slerp, smoothstep, spin, sub } from './arm3dMath'
 
 /** A gesture arm's model on the playback canvas: the archive's, moved from its layer's corner. */
-export interface Arm3DShape extends Omit<Anime25DArmModel, 'rest' | 'raised' | 'hand' | 'handOutline' | 'armOutline'> {
+export interface Arm3DShape extends Omit<Anime25DArmModel, 'rest' | 'raised' | 'hand' | 'handOutline' | 'armOutline' | 'ground'> {
   rest: { s: V3; e: V3; w: V3 }
   raised: { s: V3; e: V3; w: V3 }
   /** The gesture's drawn hand, 21 points. */
@@ -15,7 +15,7 @@ export interface Arm3DPose { s: V3; e: V3; w: V3; hand: V3[] }
 export function arm3DShape(model: Anime25DArmModel, x: number, y: number): Arm3DShape {
   const at = (p: V3): V3 => [p[0] + x, p[1] + y, p[2]]
   const joints = (j: Anime25DArmModel['rest']) => ({ s: at(j.shoulder), e: at(j.elbow), w: at(j.wrist) })
-  const { handOutline: _hand, armOutline: _arm, ...rest } = model
+  const { handOutline: _hand, armOutline: _arm, ground: _ground, ...rest } = model
   return {
     ...rest,
     rest: joints(model.rest),

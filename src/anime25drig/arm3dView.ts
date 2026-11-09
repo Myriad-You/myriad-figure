@@ -8,7 +8,7 @@ import { ARM3D_AROUND, ARM3D_RINGS, arm3DBareFromElbow, arm3DHandMesh, arm3DSlee
 import { liftForearm, wristOverUpper } from './arm3dMotion'
 import { ringFill } from './arm3dPrepare'
 import { BAKE_FS, BAKE_VS, COMPOSITE_FS, FULL_VS, GAP2_FS, GAP_FS, HAND_FS, HAND_VS, HELD_FS, HELD_VS, SLEEVE_FS, SLEEVE_VS, WHOLE_FS } from './arm3dShaders'
-import { arm3DTexture, createArm3DTarget, dropArm3DTarget } from './arm3dTarget'
+import { arm3DTexture, createArm3DTarget, dropArm3DTarget, setArm3DGround } from './arm3dTarget'
 
 /** The trial drew the figure 540 pixels wide; its pixel-sized measures (outlines, the gap's reach) scale from there. */
 const TRIAL_WIDTH = 540
@@ -54,6 +54,8 @@ export interface Arm3DBound {
   heldBeside: WebGLTexture
   /** The drawn forearm of a gesture holding it still, laid over the arm after its hand; null for a wave. */
   heldFore: WebGLTexture | null
+  /** Where the arm held is cut away (the drawing's own ground about its upper arm), on `rect` of the canvas; null when nowhere. */
+  groundClip: { texture: WebGLTexture; rect: [number, number, number, number] } | null
 }
 
 interface Program {
@@ -73,7 +75,7 @@ export interface Arm3DFrame {
   /** The picture's left and right edges where they cut it (±Infinity where not): nothing of the arm past them. */
   sides: [number, number]
   /** The gesture layer's mesh as drawn this frame (canvas), its texture places, and how near the arm is held to the drawing. */
-  held?: { pos: Float32Array; uv: Float32Array; idx: ArrayLike<number>; near: number }
+  held?: { pos: Float32Array; uv: Float32Array; idx: ArrayLike<number>; near: number; toDrawn: [number, number, number, number, number, number] | null }
 }
 
 function compile(gl: WebGL2RenderingContext, vs: string, fs: string): Program {
@@ -131,7 +133,7 @@ export class Arm3DView {
   }
 
   release(bound: Arm3DBound): void {
-    for (const t of [bound.sleeve, bound.lifted, bound.hand, bound.drawn, bound.full, bound.armMask, bound.held, bound.heldBeside, bound.heldFore]) {
+    for (const t of [bound.sleeve, bound.lifted, bound.hand, bound.drawn, bound.full, bound.armMask, bound.held, bound.heldBeside, bound.heldFore, bound.groundClip?.texture]) {
       if (t) this.gl.deleteTexture(t)
     }
   }
@@ -361,6 +363,7 @@ export class Arm3DView {
     gl.uniform1f(this.uniform(p, 'uOpen'), arm3DBareFromElbow(bound.shape) ? 0.5 : 1)
     const band = bound.lifted && bound.shape.restBand
     gl.uniform3f(this.uniform(p, 'uBand'), band ? band[0] : 0, band ? band[1] : 0, band ? 1 : 0)
+    setArm3DGround(gl, (name) => this.uniform(p, name), bound.groundClip, frame.held, bound.armMask)
     gl.uniform1f(this.uniform(p, 'uFadeTop'), 0.26)
     gl.uniform1f(this.uniform(p, 'uTopSoft'), 0.03)
     gl.uniform3fv(this.uniform(p, 'uLine'), line)
@@ -652,6 +655,8 @@ export class Arm3DView {
     gl.uniform1f(this.uniform(s, 'uFadeTop'), 0.0001)
     gl.uniform1f(this.uniform(s, 'uTopSoft'), 0.03)
     gl.uniform4f(this.uniform(s, 'uSolid'), 1, 1, 1, 1)
+    // Cut as the sleeve is (the program's last cut and textures would stand otherwise, the hand's picture bound there).
+    setArm3DGround(gl, (name) => this.uniform(s, name), bound.groundClip, frame.held, bound.armMask)
     const sleeve = arm3DSleeveMesh(bound.shape, pose, frame.hanging, px)
     const along = (lo: number, hi: number) => {
       const keep: number[] = []
