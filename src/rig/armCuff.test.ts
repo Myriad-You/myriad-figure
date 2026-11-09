@@ -60,22 +60,25 @@ function pictures(variant: ReturnType<typeof arm>, portraitBand = true): ArmCuff
   }
 }
 
-test('the portrait\'s band drawn at the wrist is found', () => {
-  assert.equal(cuffDrawnAtWrist(pictures(arm(RAISED, false, [0.55, 0.75]))), true)
+test('the portrait\'s band drawn at the wrist is found, and where it lies on the portrait', () => {
+  const got = cuffDrawnAtWrist(pictures(arm(RAISED, false, [0.55, 0.75])))
+  assert.equal(got?.atWrist, true)
+  // Drawn 0.76–0.92 down the upper arm: 0.38–0.46 with the elbow at 0.5.
+  assert.ok(Math.abs(got!.band[0] - 0.38) < 0.025 && Math.abs(got!.band[1] - 0.46) < 0.025, `${got!.band}`)
 })
 
 test('the band kept by the elbow, the forearm bare, is not', () => {
-  assert.equal(cuffDrawnAtWrist(pictures(arm(RAISED, true, null))), false)
+  assert.equal(cuffDrawnAtWrist(pictures(arm(RAISED, true, null)))?.atWrist, false)
 })
 
 test('a portrait with no band says nothing', () => {
   assert.equal(cuffDrawnAtWrist(pictures(arm(RAISED, false, [0.55, 0.75]), false)), null)
 })
 
-function cut(side: RasterLayer['side'], cuffAtWrist: boolean | null) {
+function cut(side: RasterLayer['side'], atWrist: boolean | null) {
   return {
     layer: { side, armVariant: { gesture: 'wave', lift: 0, model: {} } } as unknown as RasterLayer,
-    cuffAtWrist,
+    cuffAtWrist: atWrist === null ? null : { atWrist, band: [0.4, 0.46] as [number, number] },
   }
 }
 const modelled = (c: ReturnType<typeof cut>) => c.layer.armVariant?.model !== undefined
@@ -84,10 +87,13 @@ test('one picture of an arm moving the cuff, where the others keep it, keeps no 
   const pictures = [cut('L', false), cut('L', true), cut('L', false), cut('R', true)]
   dropMovedCuffs(pictures)
   assert.deepEqual(pictures.map(modelled), [true, false, true, true])
+  // The right arm's one picture is all of it: its band hangs only.
+  assert.deepEqual(pictures.map((c) => c.layer.armVariant?.model?.restBand !== undefined), [false, false, false, true])
 })
 
-test('all of an arm\'s pictures moving it alike keep theirs', () => {
+test('most of an arm\'s pictures moving it alike keep theirs, and every one wears the band hanging only', () => {
   const pictures = [cut('L', true), cut('L', true), cut('L', null), cut('L', false)]
   dropMovedCuffs(pictures)
   assert.deepEqual(pictures.map(modelled), [true, true, true, true])
+  assert.deepEqual(pictures.map((c) => c.layer.armVariant?.model?.restBand), Array.from({ length: 4 }, () => [0.4 - 0.04, 0.62]))
 })

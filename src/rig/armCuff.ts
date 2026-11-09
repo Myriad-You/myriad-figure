@@ -28,8 +28,14 @@ export interface ArmCuffPictures {
 
 const ROWS = 50
 
-/** True when the picture draws the portrait's band at the wrist, false when not; null with no band to look for. */
-export function cuffDrawnAtWrist(p: ArmCuffPictures): boolean | null {
+/** The portrait's band (where it lies along the arm, shoulder 0, elbow 0.5) and whether the picture draws it at the wrist. */
+export interface ArmCuffReading {
+  atWrist: boolean
+  band: [number, number]
+}
+
+/** Where the portrait's band lies and whether the picture draws it at the wrist; null with no band to look for. */
+export function cuffDrawnAtWrist(p: ArmCuffPictures): ArmCuffReading | null {
   const { width: W, height: H } = p
   const half = 0.4 * median([...p.radius])
   const foreR = 1.1 * median(p.radius.slice(p.radius.length >> 1))
@@ -67,12 +73,16 @@ export function cuffDrawnAtWrist(p: ArmCuffPictures): boolean | null {
   // Neither the plain sleeve nor skin.
   const far = (q: Anime25DVec3) => off(q, plain) > 60 && off(q, p.skin) > 40
   const share = (row: Anime25DVec3[], keep: (q: Anime25DVec3) => boolean) => row.filter(keep).length / row.length
-  const band = rest.flatMap((row, i) => (row && vs[i] > 0.3 && share(row, far) > 0.3 ? [row.filter(far)] : []))
-  if (band.length === 0) return null
-  const colours = twoMeans(band.flat())
+  const rows = rest.flatMap((row, i) => (row && vs[i] > 0.3 && share(row, far) > 0.3 ? [i] : []))
+  if (rows.length === 0) return null
+  const colours = twoMeans(rows.flatMap((i) => rest[i]!.filter(far)))
   const drawn = profile(p.variant, p.mask, p.raised, true)
   const banded = (row: Anime25DVec3[]) => share(row, (q) => far(q) && Math.min(...colours.map((c) => off(q, c))) < 35) > 0.25
-  return drawn.some((row, i) => row !== null && vs[i] >= 0.6 && banded(row))
+  const step = vs[1] - vs[0]
+  return {
+    atWrist: drawn.some((row, i) => row !== null && vs[i] >= 0.6 && banded(row)),
+    band: [vs[rows[0]] - step / 2, vs[rows[rows.length - 1]] + step / 2],
+  }
 }
 
 /** Two colours the pixels gather about (Lloyd's, from the first pixel and the one farthest from it). */

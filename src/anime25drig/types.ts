@@ -111,6 +111,11 @@ export interface Anime25DArmModel {
   bareShift: number
   /** Raised, how far down the upper arm (shoulder 0, elbow 0.5) the portrait's own sleeve is worn. */
   restEnd: number
+  /**
+   * Where along the portrait's sleeve (shoulder 0, elbow 0.5) a band lies that every gesture of this arm draws
+   * at the wrist instead: worn only while the arm hangs. Absent when there is none.
+   */
+  restBand?: [number, number]
   /** Hanging, how far the drawn arm reaches either side of the bone (+ along (−dy, dx)) at the radius's places; null off it. */
   restReach: Array<[number, number] | null>
   /** The portrait's arm, hanging. */
