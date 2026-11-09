@@ -221,6 +221,20 @@ test('ring fill gives each unwritten texel the nearest written one round its row
   assert.ok([0, 1, 2, 3, 4, 5].every((x) => at(x, 2) === 50 && px[(2 * w + x) * 4 + 3] === 255))
 })
 
+test('ring fill with an inset takes its colour from inside the written run, past the outline at its edge', () => {
+  const w = 12
+  const px = new Uint8Array(w * 4)
+  const put = (x: number, v: number) => px.set([v, v, v, 255], x * 4)
+  // A run 2..7, outlined (20) at both ends with cloth (200) between, and a lone texel (10) with nothing further in.
+  for (const [i, v] of [20, 200, 200, 200, 200, 20].entries()) put(2 + i, v)
+  put(10, 10)
+  ringFill(px, w, 1, 2)
+  const at = (x: number) => px[x * 4]
+  assert.deepEqual([1, 8, 9, 11].map(at), [200, 200, 10, 10])
+  // Written texels stay as they were.
+  assert.deepEqual([2, 3, 7, 10].map(at), [20, 200, 20, 10])
+})
+
 test('the hand as it is now is carried back onto the drawn one by one turn, scale and shift', () => {
   const drawn: V3[] = [[100, 200, 0], [130, 190, 3], [120, 160, -2], [90, 170, 1]]
   // Turned 30°, half again as large, moved: as a swaying body carries the held hand.

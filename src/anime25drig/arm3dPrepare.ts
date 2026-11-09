@@ -196,8 +196,12 @@ export function arm3DWristTone(hand: Uint8ClampedArray, w: number, h: number, sh
   return [0, 1, 2].map((c) => top.reduce((s, q) => s + q[c], 0) / top.length / 255) as [number, number, number]
 }
 
-/** Each row's unwritten texels (alpha 0) take the nearest written one round the ring; a row with none, the nearest row. */
-export function ringFill(px: Uint8Array, w: number, h: number): void {
+/**
+ * Each row's unwritten texels (alpha 0) take the nearest written one round the ring; a row with none, the nearest row.
+ * With `inset`, taken that many texels further into the written run (never past its middle): a run's edge is where
+ * the picture saw the sleeve's side, its outline, and carried round the unseen side it stood as a dark wedge.
+ */
+export function ringFill(px: Uint8Array, w: number, h: number, inset = 0): void {
   const rowHas = Array.from({ length: h }, () => false)
   const near = new Int32Array(w)
   const dist = new Int32Array(w)
@@ -236,7 +240,10 @@ export function ringFill(px: Uint8Array, w: number, h: number): void {
     }
     for (let x = 0; x < w; x += 1) {
       if (dist[x] === 0) continue
-      const s = row + near[x] * 4
+      const toward = (near[x] - x + w) % w <= w / 2 ? 1 : -1
+      let run = 1
+      while (run < 2 * inset && run < w && dist[(near[x] + toward * run + w) % w] === 0) run += 1
+      const s = row + ((near[x] + toward * Math.min(inset, (run - 1) >> 1) + w) % w) * 4
       const d = row + x * 4
       px[d] = px[s]
       px[d + 1] = px[s + 1]
