@@ -436,11 +436,15 @@ export function arm3DUpperArmAlone(gesture: Uint8ClampedArray, portrait: Uint8Cl
     if (fore) {
       for (let c = 0; c < 3; c += 1) fore[i + c] = out[i + c]
       const sleeve = 1 - smoothstep(foreWide * 1.15, foreWide * 1.35, forearm.d)
-      fore[i + 3] = k * pastElbow * sleeve * (1 - front[i + 3] / 255) * 255
+      const drawn = k * pastElbow * sleeve
+      const before = drawn * (1 - front[i + 3] / 255)
+      fore[i + 3] = before * 255
       // Where the portrait draws in front of its arm, apart: the modelled forearm is in front of that too (only the
       // upper arm has it drawn again over it), and left out, the tube showed across a chest drawn after the arm;
       // but laid on as soon as the arm comes near, the drawn forearm showed there faintly before the arm was in it.
-      foreFront![i + 3] = k * pastElbow * sleeve * (front[i + 3] / 255) * 255
+      // Laid over `fore`, not added to it: as much of what `fore` left as makes the two the drawing's own (the soft
+      // edges of what lies in front were short of it, a faint fringe).
+      foreFront![i + 3] = before < 1 ? Math.min(1, (drawn - before) / (1 - before)) * 255 : 0
       for (let c = 0; c < 3; c += 1) foreFront![i + c] = out[i + c]
     }
   }

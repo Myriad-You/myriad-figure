@@ -195,6 +195,29 @@ test('held, the drawing laid over the arm is its upper arm and elbow: not the fo
   assert.equal(b(100, 10), 0)
 })
 
+test('held still, the forearm laid on beside and over what lies in front comes to the drawing\'s own cover', () => {
+  // As above, the forearm out to the side; in front of it, a soft-edged layer (half there, a quarter there) and a
+  // gesture drawn half there over one of them.
+  const small = { ...model, radius: Array.from({ length: 24 }, () => 20), raised: { shoulder: [100, 50, 0], elbow: [100, 250, 0], wrist: [300, 250, 0] } } as Anime25DArmModel
+  const W = 400
+  const H = 400
+  const gesture = new Uint8ClampedArray(W * H * 4).fill(255)
+  const front = new Uint8ClampedArray(W * H * 4)
+  for (let y = 240; y < 260; y += 1) {
+    for (let x = 0; x < W; x += 1) front[(y * W + x) * 4 + 3] = x < 220 ? 128 : x < 260 ? 64 : 0
+  }
+  for (let x = 240; x < 260; x += 1) gesture[(250 * W + x) * 4 + 3] = 128
+  const { fore, foreFront } = arm3DUpperArmAlone(gesture, new Uint8ClampedArray(W * H * 4), front, W, H, small, 1, new Float32Array(W * H), true)
+  // Laid one over the other (as drawn, all but held): together, the gesture's own alpha there, wherever the front is.
+  const together = (x: number, y: number) => {
+    const a = fore![(y * W + x) * 4 + 3] / 255
+    return a + foreFront![(y * W + x) * 4 + 3] / 255 * (1 - a)
+  }
+  for (const [x, k] of [[200, 1], [230, 1], [250, 128 / 255], [280, 1]] as const) assert.ok(Math.abs(together(x, 250) - k) < 0.01, `${x}: ${together(x, 250)}`)
+  // Clear of the front, `fore` alone.
+  assert.equal(foreFront![(250 * W + 280) * 4 + 3], 0)
+})
+
 test('the picture\'s sides count as cut where the figure runs straight down them, not where it ends at a point', () => {
   // A bust cut off at the left (x 0, y 300–1000); on the right its shoulder rounds off to a single point at x 900.
   const body = { rest: [0, 300, 0, 1000, 500, 300, 500, 1000] }
