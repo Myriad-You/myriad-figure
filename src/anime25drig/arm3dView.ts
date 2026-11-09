@@ -590,7 +590,9 @@ export class Arm3DView {
    * keeps it off the modelled hand), or (`solid`) only where it lies, for the gap pass's cover.
    */
   private drawWhole(bound: Arm3DBound, pose: Arm3DPose, frame: Arm3DFrame, t: Arm3DTarget, px: number, solid: boolean): void {
-    const exact = bound.full ? handExactness(bound.drawnHand, pose.hand, px, 1, 4) : 0
+    // In the drawn shape and where it was drawn (the elbow there, the hand near): the shape alone held the hanging
+    // hand too, and the picture showed by it at rest where the figure's edge cuts the modelled hand off.
+    const exact = bound.full ? handExactness(bound.drawnHand, pose.hand, px, 1, 4) * (frame.held?.near ?? 0) : 0
     if (exact <= 0) return
     const gl = this.gl
     // This frame's hand to the drawn one, as one turn, scale and shift.
