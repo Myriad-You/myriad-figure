@@ -58,6 +58,8 @@ export interface Arm3DBound {
   heldForeFront: WebGLTexture | null
   /** Where the arm held is cut away (the drawing's own ground about its upper arm), on `rect` of the canvas; null when nowhere. */
   groundClip: { texture: WebGLTexture; rect: [number, number, number, number] } | null
+  /** The portrait's arm as it hangs (its arm layers, on `rect` of the canvas), and the hanging arm's points there. */
+  restArm: { texture: WebGLTexture; rect: [number, number, number, number]; at: number[] }
 }
 
 interface Program {
@@ -78,6 +80,8 @@ export interface Arm3DFrame {
   sides: [number, number]
   /** The gesture layer's mesh as drawn this frame (canvas), its texture places, and how near the arm is held to the drawing. */
   held?: { pos: Float32Array; uv: Float32Array; idx: ArrayLike<number>; near: number; exact: number; toDrawn: [number, number, number, number, number, number] | null }
+  /** Near its rest, the portrait's arm (`restArm`, laid under the tube, which falls short of it) carried to where the arm is now (its rect's corners), and how much of it; null away from it. */
+  rest: { corners: number[]; alpha: number } | null
 }
 
 function compile(gl: WebGL2RenderingContext, vs: string, fs: string): Program {
@@ -135,7 +139,7 @@ export class Arm3DView {
   }
 
   release(bound: Arm3DBound): void {
-    for (const t of [bound.sleeve, bound.lifted, bound.hand, bound.drawn, bound.full, bound.armMask, bound.held, bound.heldBeside, bound.heldFore, bound.heldForeFront, bound.groundClip?.texture]) {
+    for (const t of [bound.sleeve, bound.lifted, bound.hand, bound.drawn, bound.full, bound.armMask, bound.held, bound.heldBeside, bound.heldFore, bound.heldForeFront, bound.groundClip?.texture, bound.restArm.texture]) {
       if (t) this.gl.deleteTexture(t)
     }
   }
@@ -280,6 +284,7 @@ export class Arm3DView {
     gl.enable(gl.BLEND)
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
     const line = bound.shape.line.map((c) => c / 255 * 0.85)
+    if (frame.rest) this.drawHeld(bound, frame, bound.restArm.texture, frame.rest.alpha, { pos: frame.rest.corners, uv: [0, 0, 1, 0, 1, 1, 0, 1], idx: [0, 1, 2, 0, 2, 3] })
     this.drawSleeve(bound, pose, frame, px, line)
     if (frame.held && frame.held.near > 0.004) this.drawHeld(bound, frame)
     const hand = this.drawHand(bound, pose, frame, px, line)
@@ -383,10 +388,9 @@ export class Arm3DView {
   }
 
   /** The drawing laid on as held: over the sleeve and beside it, or (`only`) that one picture plainly over all. */
-  private drawHeld(bound: Arm3DBound, frame: Arm3DFrame, only?: WebGLTexture, alpha = frame.held!.near): void {
-    const gl = this.gl
-    const p = this.heldProgram
-    const held = frame.held!
+  private drawHeld(bound: Arm3DBound, frame: Arm3DFrame, only?: WebGLTexture, alpha = frame.held!.near, mesh?: { pos: ArrayLike<number>; uv: ArrayLike<number>; idx: ArrayLike<number> }): void {
+    const { gl, heldProgram: p } = this
+    const held = mesh ?? frame.held!
     gl.useProgram(p.program)
     const count = this.upload(p, { aPos: [held.pos, 2], aUv: [held.uv, 2] }, Array.from(held.idx))
     gl.uniform2f(this.uniform(p, 'uSize'), frame.view.width, frame.view.height)

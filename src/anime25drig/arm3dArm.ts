@@ -141,6 +141,17 @@ export class Arm3DSide {
       rect.h = Math.max(1, Math.min(canvas.height, Math.ceil(y1 + pad)) - rect.y)
       const whole = composeArm3DPicture(atlas, still.map(asSource), rect)
       const armOnly = composeArm3DPicture(atlas, bases.map(asSource), rect)
+      // The portrait's arm as it hangs, laid under the modelled one at rest: the tube falls short of a sleeve drawn
+      // wider (its mouth flaring off the picture's foot), and the arm layer itself is hidden.
+      // Below the elbow only, come in across it: above, the tube is the arm, its top fading into the body under it.
+      const restPixels = new Uint8ClampedArray(armOnly.pixels)
+      const elbowY = hanging.e[1] - rect.y
+      const across = 0.2 * shape.upper
+      for (let ry = 0; ry < armOnly.height; ry += 1) {
+        const k = smoothstep(elbowY - across, elbowY, (ry + 0.5) * rect.h / armOnly.height)
+        for (let rx = 0; rx < armOnly.width; rx += 1) restPixels[(ry * armOnly.width + rx) * 4 + 3] *= k
+      }
+      const restArm = view.picture({ pixels: restPixels, width: armOnly.width, height: armOnly.height })
       for (let i = 0; i < whole.pixels.length; i += 4) armOnly.pixels.set([whole.pixels[i], whole.pixels[i + 1], whole.pixels[i + 2], armOnly.pixels[i + 3] < 128 ? 0 : 255], i)
       const size = { width: pixels.width, height: pixels.height }
       const atLayer = (from: readonly Anime25DGpuLayer[], blur = 0) => composeArm3DPicture(atlas, from.map(asSource), layer.source, size, blur).pixels
@@ -228,6 +239,7 @@ export class Arm3DSide {
         heldFore,
         heldForeFront,
         groundClip,
+        restArm: { texture: restArm, rect: [rect.x, rect.y, rect.w, rect.h], at: armPoints(hanging) },
       }
       // The body the portrait's arm leaves bare: drawn in the arm's place.
       this.gestures.push({ layer, gesture: layer.source.armVariant!.gesture, bound, motion, touch: this.touchOf(layers, shape) })
@@ -353,7 +365,11 @@ export class Arm3DSide {
     const foot = pts.length <= 16 ? pts : Array.from({ length: 16 }, (_, k) => pts[Math.round(k * (pts.length - 1) / 15)])
     const side = (on: Followed[], sign: number) => (on.length ? sign * Math.max(...on.map((f) => sign * f.layer.deformed[f.i * 2])) : sign * Infinity)
     const sides: [number, number] = [side(this.sides[0], -1), side(this.sides[1], 1)]
-    return { bound: g.bound, frame: { pose: this.pose, hanging: g.motion.hanging, restNear: this.restNear, view: this.canvas, foot, sides, held: this.heldMesh(g) } }
+    // Gone soon as it lifts: a still copy of the hanging arm beside the moving one.
+    const to = this.restNear > 0.85 ? affineFit(g.bound.restArm.at, armPoints(this.pose)) : null
+    const [x, y, w, h] = g.bound.restArm.rect
+    const rest = to && { corners: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]].flatMap(([cx, cy]) => [to[0] * cx + to[1] * cy + to[2], to[3] * cx + to[4] * cy + to[5]]), alpha: smoothstep(0.85, 1, this.restNear) }
+    return { bound: g.bound, frame: { pose: this.pose, hanging: g.motion.hanging, restNear: this.restNear, view: this.canvas, foot, sides, held: this.heldMesh(g), rest } }
   }
 
   /** The gesture layer's mesh where the figure draws it this frame, for its drawn upper arm under the arm held there. */
@@ -545,6 +561,11 @@ function createBodyTexture(gl: WebGL2RenderingContext, pixels: Uint8ClampedArray
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, data)
   gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1)
   return { texture, uv: [0, 0, 1, 1] as const }
+}
+
+/** The arm's points (shoulder, elbow, wrist, hand) as x, y pairs on the canvas. */
+function armPoints(pose: Arm3DPose): number[] {
+  return [pose.s, pose.e, pose.w, ...pose.hand].flatMap((q) => [q[0], q[1]])
 }
 
 /**
