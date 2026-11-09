@@ -21,9 +21,11 @@ export interface BustRequest {
   variants: ArmVariantSource[]
   /** The pose model's joints on the portrait: with them (and each variant's own), the arms are measured in 3D. */
   skeleton?: DetectedSkeleton
+  /** A standing figure (its picture the enlarged one its decomposition was cut from), not a bust. */
+  fullBody?: boolean
 }
 
-async function importBust({ psdUrl, portraitUrl, variants, skeleton }: BustRequest): Promise<PreparedRigPsdImport> {
+async function importBust({ psdUrl, portraitUrl, variants, skeleton, fullBody }: BustRequest): Promise<PreparedRigPsdImport> {
   const blob = await fetch(psdUrl).then((response) => response.blob())
   return prepareRigPsdImport(new File([blob], 'bust.psd'), {
     sourceMasterAssetId: portraitUrl,
@@ -31,6 +33,7 @@ async function importBust({ psdUrl, portraitUrl, variants, skeleton }: BustReque
     referenceUrl: portraitUrl,
     armVariants: variants,
     ...(skeleton ? { skeleton } : {}),
+    ...(fullBody ? { profile: 'fullBody' as const } : {}),
   })
 }
 
