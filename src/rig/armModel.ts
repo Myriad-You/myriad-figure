@@ -56,6 +56,11 @@ export interface ArmModelPictures {
   variantPose: Pose
   /** The changed arm's side of the picture. */
   side: EyeSide
+  /**
+   * A standing figure's: its portrait draws the whole arm hanging, forearm and hand, bent as it is at the elbow. A
+   * bust's runs off the picture below the elbow and is taken to hang straight on.
+   */
+  whole?: boolean
 }
 
 // Tuned on a 1152-wide grid (the 2026-11-03 trial): the cut's working grid.
@@ -92,17 +97,21 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
     pe = add2(ps, mul2(unit2(sub2(pe, ps)), dist2(drawn.e, drawn.s)))
   }
   const U = Math.max(dist2(drawn.e, drawn.s), dist2(pe, ps))
+  const pw = portraitJoints.w
   const F = dist2(drawn.w, drawn.e)
-  const lift = (s: P2, e: P2, w: P2): [Anime25DVec3, Anime25DVec3, Anime25DVec3] => {
+  // A figure's forearm as long as each picture draws it: the gesture's a fifth shorter than the portrait's hanging
+  // one was read as pointing at the viewer, and its cuff showed as a dark ring.
+  const restFore = pictures.whole ? dist2(pw, pe) : F
+  const lift = (s: P2, e: P2, w: P2, f = F): [Anime25DVec3, Anime25DVec3, Anime25DVec3] => {
     const e3: Anime25DVec3 = [e[0], e[1], Math.sqrt(Math.max(0, U * U - dist2(e, s) ** 2))]
-    const w3: Anime25DVec3 = [e3[0] + w[0] - e[0], e3[1] + w[1] - e[1], e3[2] + Math.sqrt(Math.max(0, F * F - dist2(w, e) ** 2))]
+    const w3: Anime25DVec3 = [e3[0] + w[0] - e[0], e3[1] + w[1] - e[1], e3[2] + Math.sqrt(Math.max(0, f * f - dist2(w, e) ** 2))]
     return [[s[0], s[1], 0], e3, w3]
   }
   const raised = lift(drawn.s, drawn.e, drawn.w)
-  // The portrait's arm hangs: its forearm goes on the way its upper arm does.
+  // The portrait's arm hangs: a bust's forearm goes on the way its upper arm does; a figure's is drawn.
   const hang = unit2(sub2(pe, ps))
-  const hangWrist = add2(pe, mul2(hang, F))
-  const rest = lift(ps, pe, hangWrist)
+  const hangWrist = pictures.whole ? pw : add2(pe, mul2(hang, F))
+  const rest = lift(ps, pe, hangWrist, restFore)
 
   const hand0 = drawn.hand
   const handZone = convexPatch(hand0, 15, W, H)
@@ -279,6 +288,8 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
     rest: { shoulder: rest[0], elbow: rest[1], wrist: rest[2] },
     raised: { shoulder: raised[0], elbow: raised[1], wrist: raised[2] },
     ...drawnHand,
+    ...(pictures.whole ? { restFore } : {}),
+    ...(pictures.whole && portraitJoints.hand ? { restHand: portraitJoints.hand.map(([x, y]) => [x, y] as [number, number]) } : {}),
     skin,
     shade: pick((l) => l > p12 && l < p35),
     line: pick((l) => l < p3),
@@ -299,6 +310,7 @@ export function placeArmModel(model: Anime25DArmModel, scale: number, dx: number
     ...model,
     upper: model.upper * scale,
     fore: model.fore * scale,
+    ...(model.restFore === undefined ? {} : { restFore: model.restFore * scale }),
     radius: model.radius.map((r) => r * scale),
     ...(model.bare === undefined ? {} : { bare: model.bare * scale }),
     bareShift: model.bareShift * scale,
@@ -306,6 +318,7 @@ export function placeArmModel(model: Anime25DArmModel, scale: number, dx: number
     rest: joints3(model.rest),
     raised: joints3(model.raised),
     hand: model.hand.map(p2),
+    ...(model.restHand ? { restHand: model.restHand.map(p2) } : {}),
     fingers: model.fingers.map((r) => r * scale),
     fingerProfile: model.fingerProfile.map((f) => f.map((r) => r * scale)),
     keyProfile: model.keyProfile.map((f) => f.map((r) => r * scale)),
