@@ -73,6 +73,7 @@ export class Arm3DSide {
   private pose: Arm3DPose | null = null
   private restNear = 1
   private heldNear = 0
+  private heldExact = 0
   private body: Arm3DBodyFrame | undefined
 
   constructor(
@@ -171,6 +172,7 @@ export class Arm3DSide {
       const held = view.picture({ pixels: alone.over, width: pixels.width, height: pixels.height })
       const heldBeside = view.picture({ pixels: alone.beside, width: pixels.width, height: pixels.height })
       const heldFore = alone.fore ? view.picture({ pixels: alone.fore, width: pixels.width, height: pixels.height }) : null
+      const heldForeFront = alone.foreFront ? view.picture({ pixels: alone.foreFront, width: pixels.width, height: pixels.height }) : null
       const R = model.radius
       const half = R.length >> 1
       const ground = model.ground && arm3DGroundClip(
@@ -224,6 +226,7 @@ export class Arm3DSide {
         held,
         heldBeside,
         heldFore,
+        heldForeFront,
         groundClip,
       }
       // The body the portrait's arm leaves bare: drawn in the arm's place.
@@ -305,6 +308,7 @@ export class Arm3DSide {
     const upper = g.bound.shape.upper
     this.heldNear = (1 - smoothstep(0.01 * upper, 0.05 * upper, Math.hypot(pose.e[0] - drawn.e[0], pose.e[1] - drawn.e[1], pose.e[2] - drawn.e[2])))
       * (1 - smoothstep(0.35 * fore, 0.6 * fore, Math.hypot(pose.w[0] - drawn.w[0], pose.w[1] - drawn.w[1], pose.w[2] - drawn.w[2])))
+    this.heldExact = this.heldNear * (1 - smoothstep(0.06 * fore, 0.2 * fore, Math.hypot(pose.w[0] - drawn.w[0], pose.w[1] - drawn.w[1], pose.w[2] - drawn.w[2])))
     this.body = body
     const binding = this.bases.find((b) => b.secondaryDeformation?.arm)?.secondaryDeformation
     const rig = binding?.arm
@@ -366,7 +370,7 @@ export class Arm3DSide {
       uv[i * 2] = (rest[i * 2] - source.x) / source.w
       uv[i * 2 + 1] = (rest[i * 2 + 1] - source.y) / source.h
     }
-    return { pos, uv, idx: indices, near: this.heldNear, toDrawn: affineFit(pos, rest) }
+    return { pos, uv, idx: indices, near: this.heldNear, exact: this.heldExact, toDrawn: affineFit(pos, rest) }
   }
 
   dispose(): void {
@@ -392,16 +396,20 @@ export class Arm3DSide {
  * in bits about the raised elbow. `fore`, for a gesture whose forearm is held still (`still`), that forearm as
  * drawn on into the heel of its hand, laid over the arm after its hand wherever the modelled hand is not: the
  * modelled forearm and its sleeve's end are a tube's, the drawing's a cloth's (a kimono's slanting sleeve mouth).
+ * `foreFront`, the same where the portrait draws in front of its arm, laid on only as the arm is all but held.
  */
-export function arm3DUpperArmAlone(gesture: Uint8ClampedArray, portrait: Uint8ClampedArray, front: Uint8ClampedArray, w: number, h: number, model: Anime25DArmModel, scale: number, portraitArm: Float32Array, still = false): { over: Uint8ClampedArray; beside: Uint8ClampedArray; fore: Uint8ClampedArray | null } {
+export function arm3DUpperArmAlone(gesture: Uint8ClampedArray, portrait: Uint8ClampedArray, front: Uint8ClampedArray, w: number, h: number, model: Anime25DArmModel, scale: number, portraitArm: Float32Array, still = false): { over: Uint8ClampedArray; beside: Uint8ClampedArray; fore: Uint8ClampedArray | null; foreFront: Uint8ClampedArray | null } {
   const out = new Uint8ClampedArray(gesture.length)
   const beside = new Uint8ClampedArray(gesture.length)
   const fore = still ? new Uint8ClampedArray(gesture.length) : null
+  const foreFront = still ? new Uint8ClampedArray(gesture.length) : null
   const { shoulder: s, elbow: e, wrist: wr } = model.raised
   const R = model.radius
   const half = R.length >> 1
   const upperR = 1.25 * Math.max(...R.slice(0, half + 1))
   const foreR = 1.1 * R.slice(half).reduce((a, b) => a + b, 0) / (R.length - half)
+  // Out to its widest (a sleeve's mouth), not only its mean: the modelled one is as wide there.
+  const foreWide = Math.max(foreR, 1.1 * Math.max(...R.slice(half)))
   const along = (x: number, y: number, a: readonly number[], b: readonly number[]) => {
     const dx = b[0] - a[0]
     const dy = b[1] - a[1]
@@ -427,11 +435,16 @@ export function arm3DUpperArmAlone(gesture: Uint8ClampedArray, portrait: Uint8Cl
     beside[i + 3] = portraitArm[p] * (1 - pastElbow) * (1 - front[i + 3] / 255) * 255
     if (fore) {
       for (let c = 0; c < 3; c += 1) fore[i + c] = out[i + c]
-      const sleeve = 1 - smoothstep(foreR * 1.15, foreR * 1.35, forearm.d)
+      const sleeve = 1 - smoothstep(foreWide * 1.15, foreWide * 1.35, forearm.d)
       fore[i + 3] = k * pastElbow * sleeve * (1 - front[i + 3] / 255) * 255
+      // Where the portrait draws in front of its arm, apart: the modelled forearm is in front of that too (only the
+      // upper arm has it drawn again over it), and left out, the tube showed across a chest drawn after the arm;
+      // but laid on as soon as the arm comes near, the drawn forearm showed there faintly before the arm was in it.
+      foreFront![i + 3] = k * pastElbow * sleeve * (front[i + 3] / 255) * 255
+      for (let c = 0; c < 3; c += 1) foreFront![i + c] = out[i + c]
     }
   }
-  return { over: out, beside, fore }
+  return { over: out, beside, fore, foreFront }
 }
 
 /**

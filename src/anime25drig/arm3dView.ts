@@ -54,6 +54,8 @@ export interface Arm3DBound {
   heldBeside: WebGLTexture
   /** The drawn forearm of a gesture holding it still, laid over the arm after its hand; null for a wave. */
   heldFore: WebGLTexture | null
+  /** Its share where the portrait draws in front of its arm, laid on only as the arm is all but held where drawn. */
+  heldForeFront: WebGLTexture | null
   /** Where the arm held is cut away (the drawing's own ground about its upper arm), on `rect` of the canvas; null when nowhere. */
   groundClip: { texture: WebGLTexture; rect: [number, number, number, number] } | null
 }
@@ -75,7 +77,7 @@ export interface Arm3DFrame {
   /** The picture's left and right edges where they cut it (±Infinity where not): nothing of the arm past them. */
   sides: [number, number]
   /** The gesture layer's mesh as drawn this frame (canvas), its texture places, and how near the arm is held to the drawing. */
-  held?: { pos: Float32Array; uv: Float32Array; idx: ArrayLike<number>; near: number; toDrawn: [number, number, number, number, number, number] | null }
+  held?: { pos: Float32Array; uv: Float32Array; idx: ArrayLike<number>; near: number; exact: number; toDrawn: [number, number, number, number, number, number] | null }
 }
 
 function compile(gl: WebGL2RenderingContext, vs: string, fs: string): Program {
@@ -133,7 +135,7 @@ export class Arm3DView {
   }
 
   release(bound: Arm3DBound): void {
-    for (const t of [bound.sleeve, bound.lifted, bound.hand, bound.drawn, bound.full, bound.armMask, bound.held, bound.heldBeside, bound.heldFore, bound.groundClip?.texture]) {
+    for (const t of [bound.sleeve, bound.lifted, bound.hand, bound.drawn, bound.full, bound.armMask, bound.held, bound.heldBeside, bound.heldFore, bound.heldForeFront, bound.groundClip?.texture]) {
       if (t) this.gl.deleteTexture(t)
     }
   }
@@ -288,6 +290,7 @@ export class Arm3DView {
       gl.stencilFunc(gl.NOTEQUAL, 1, 255)
       gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP)
       this.drawHeld(bound, frame, bound.heldFore)
+      if (bound.heldForeFront && frame.held.exact > 0.004) this.drawHeld(bound, frame, bound.heldForeFront, frame.held.exact)
       gl.disable(gl.STENCIL_TEST)
     }
     // Held as drawn, the whole drawn hand wherever the modelled one is not.
@@ -380,7 +383,7 @@ export class Arm3DView {
   }
 
   /** The drawing laid on as held: over the sleeve and beside it, or (`only`) that one picture plainly over all. */
-  private drawHeld(bound: Arm3DBound, frame: Arm3DFrame, only?: WebGLTexture): void {
+  private drawHeld(bound: Arm3DBound, frame: Arm3DFrame, only?: WebGLTexture, alpha = frame.held!.near): void {
     const gl = this.gl
     const p = this.heldProgram
     const held = frame.held!
@@ -389,7 +392,7 @@ export class Arm3DView {
     gl.uniform2f(this.uniform(p, 'uSize'), frame.view.width, frame.view.height)
     gl.activeTexture(gl.TEXTURE0)
     gl.uniform1i(this.uniform(p, 'uHeld'), 0)
-    gl.uniform1f(this.uniform(p, 'uAlpha'), held.near)
+    gl.uniform1f(this.uniform(p, 'uAlpha'), alpha)
     gl.disable(gl.DEPTH_TEST)
     if (only) {
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
