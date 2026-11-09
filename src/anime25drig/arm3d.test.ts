@@ -3,6 +3,7 @@ import type { Anime25DArmModel } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { arm3DCutSides, arm3DOnBody, arm3DUpperArmAlone } from './arm3dArm'
+import { similarity2D } from './arm3dMath'
 import { arm3DHandMesh, arm3DPalmAsModelled, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
 import { ringFill } from './arm3dPrepare'
@@ -218,4 +219,20 @@ test('ring fill gives each unwritten texel the nearest written one round its row
   // Row 1 has nothing: it takes the nearest row (0 before 2).
   assert.deepEqual([0, 1, 2, 3, 4, 5].map((x) => at(x, 1)), [10, 10, 200, 200, 200, 10])
   assert.ok([0, 1, 2, 3, 4, 5].every((x) => at(x, 2) === 50 && px[(2 * w + x) * 4 + 3] === 255))
+})
+
+test('the hand as it is now is carried back onto the drawn one by one turn, scale and shift', () => {
+  const drawn: V3[] = [[100, 200, 0], [130, 190, 3], [120, 160, -2], [90, 170, 1]]
+  // Turned 30°, half again as large, moved: as a swaying body carries the held hand.
+  const c = Math.cos(Math.PI / 6)
+  const s = Math.sin(Math.PI / 6)
+  const now = drawn.map(([x, y, z]): V3 => [1.5 * (c * x - s * y) + 40, 1.5 * (s * x + c * y) - 25, z])
+  const fit = similarity2D(now, drawn)
+  assert.ok(fit)
+  const [r0, r1] = fit
+  now.forEach(([x, y], i) => {
+    assert.ok(Math.abs(r0[0] * x + r0[1] * y + r0[2] - drawn[i][0]) < 1e-9)
+    assert.ok(Math.abs(r1[0] * x + r1[1] * y + r1[2] - drawn[i][1]) < 1e-9)
+  })
+  assert.equal(similarity2D([[1, 1, 0], [1, 1, 0]], drawn), null)
 })

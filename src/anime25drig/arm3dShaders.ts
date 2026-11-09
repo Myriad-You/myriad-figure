@@ -124,6 +124,8 @@ void main() {
   vec4 full = texture(uFull, fp);
   float held = uExact * fin * full.a;
   if (vUv.y >= -1.5) al *= mix(1.0, drawnHere, uExact * (1.0 - fin));
+  // Except the drawing's empty ground: a finger modelled a little wider than drawn wore the canvas about its tip.
+  al *= mix(1.0, full.a, uExact * fin);
   if (uSolid.a > 0.0) {
     // Held in the drawn pose, a part's outline inside the drawn hand is not on the drawing (a hidden thumb's
     // stood as a pale stick by the wrist, a curled finger's doubled its drawn lines): the drawing there.
@@ -213,6 +215,37 @@ out vec4 o;
 void main() {
   vec4 c = texture(uHeld, vUv);
   float a = c.a * uAlpha;
+  o = vec4(c.rgb * a, a);
+}`
+
+/**
+ * The whole drawn hand where it was drawn, carried with the hand as it is now (uRow0/1: this frame's place to the
+ * drawn one), within the drawn hand's own outline (uHand) and only held as drawn (uExact): laid where the modelled
+ * hand is not, it fills what the model falls short of (a crack between a finger's root and the next knuckle, a
+ * palm's edge drawn wider). uSolid: only whether it lies there, for the cover the gap pass reads.
+ */
+export const WHOLE_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uHand; uniform sampler2D uFull; uniform vec4 uFullMap; uniform vec4 uPicMap;
+uniform vec2 uToView; uniform float uRows; uniform vec3 uRow0; uniform vec3 uRow1; uniform float uExact; uniform float uSolid;
+uniform vec4 uAxis;
+out vec4 o;
+void main() {
+  vec3 p = vec3(vec2(gl_FragCoord.x, uRows - gl_FragCoord.y) * uToView, 1.0);
+  vec2 q = vec2(dot(uRow0, p), dot(uRow1, p));
+  vec2 uv = (q - uPicMap.xy) * uPicMap.zw;
+  // The hand from its wrist on (uAxis: the drawn wrist, and on to the middle knuckle): the drawn forearm,
+  // carried with the hand, stood at the drawn angle off the modelled one while the hand rose.
+  float along = smoothstep(-0.12, 0.0, dot(q - uAxis.xy, uAxis.zw) / dot(uAxis.zw, uAxis.zw));
+  vec2 fp = uv * uFullMap.zw + uFullMap.xy;
+  vec2 edge = min(fp, 1.0 - fp);
+  vec4 c = texture(uFull, fp);
+  float a = uExact * along * smoothstep(0.0, 0.04, min(edge.x, edge.y)) * smoothstep(0.5, 0.9, texture(uHand, uv).a) * c.a;
+  if (uSolid > 0.0) {
+    if (a < 0.5) discard;
+    o = vec4(1.0);
+    return;
+  }
   o = vec4(c.rgb * a, a);
 }`
 

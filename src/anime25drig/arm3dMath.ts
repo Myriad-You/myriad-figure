@@ -81,4 +81,62 @@ export function catmull(p0: V3, p1: V3, p2: V3, p3: V3, t: number): V3 {
 }
 
 /** COCO-WholeBody's hand: the thumb and four fingers, each from the wrist (0) to its tip. */
+/**
+ * The turn, scale and shift taking points `from` nearest to `to` in x, y (least squares), as its two rows: x' = r0 · (x, y, 1),
+ * y' = r1 · (x, y, 1). Null for points all in one place.
+ */
+export function similarity2D(from: readonly V3[], to: readonly V3[]): [V3, V3] | null {
+  const n = Math.min(from.length, to.length)
+  if (n === 0) return null
+  let fx = 0
+  let fy = 0
+  let tx = 0
+  let ty = 0
+  for (let i = 0; i < n; i += 1) {
+    fx += from[i][0] / n
+    fy += from[i][1] / n
+    tx += to[i][0] / n
+    ty += to[i][1] / n
+  }
+  let along = 0
+  let across = 0
+  let spread = 0
+  for (let i = 0; i < n; i += 1) {
+    const ax = from[i][0] - fx
+    const ay = from[i][1] - fy
+    const bx = to[i][0] - tx
+    const by = to[i][1] - ty
+    along += ax * bx + ay * by
+    across += ax * by - ay * bx
+    spread += ax * ax + ay * ay
+  }
+  if (spread <= 0) return null
+  const a = along / spread
+  const b = across / spread
+  return [[a, -b, tx - a * fx + b * fy], [b, a, ty - b * fx - a * fy]]
+}
+
+/** How nearly the hand is in the drawn shape on screen, turned whole in the picture's plane (1 within `full` trial pixels, 0 from `none`). */
+export function handExactness(drawn: V3[], hand: V3[], px: number, full: number, none: number): number {
+  const rel = (h: V3[], i: number) => [h[i][0] - h[0][0], h[i][1] - h[0][1]]
+  let sx = 0
+  let sc = 0
+  for (let i = 1; i < drawn.length; i += 1) {
+    const [ax, ay] = rel(drawn, i)
+    const [bx, by] = rel(hand, i)
+    sc += ax * bx + ay * by
+    sx += ax * by - ay * bx
+  }
+  const th = Math.atan2(sx, sc)
+  const co = Math.cos(th)
+  const si = Math.sin(th)
+  let worst = 0
+  for (let i = 1; i < drawn.length; i += 1) {
+    const [ax, ay] = rel(drawn, i)
+    const [bx, by] = rel(hand, i)
+    worst = Math.max(worst, Math.hypot(bx - (co * ax - si * ay), by - (si * ax + co * ay)) / px)
+  }
+  return 1 - Math.min(1, Math.max(0, (worst - full) / (none - full)))
+}
+
 export const HAND_CHAINS = [[0, 1, 2, 3, 4], [0, 5, 6, 7, 8], [0, 9, 10, 11, 12], [0, 13, 14, 15, 16], [0, 17, 18, 19, 20]]

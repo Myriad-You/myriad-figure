@@ -9,8 +9,7 @@ import type { Anime25DArmModel } from './types'
 import { smoothstep } from './arm3dMath'
 import { arm3DHandMesh, arm3DPalmAsModelled, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
-import { arm3DWristTone, composeArm3DPicture, splitArm3DLayer } from './arm3dPrepare'
-import { arm3DProject } from './arm3dView'
+import { arm3DProject, arm3DWristTone, composeArm3DPicture, splitArm3DLayer } from './arm3dPrepare'
 import { armDrapeWeight } from './armRig'
 import { applyBodyLift } from './bodyLift'
 import { readLayerPixels } from './webglRuntime'
@@ -205,6 +204,7 @@ export class Arm3DSide {
         palm,
         wristTone: arm3DWristTone(split.hand, pixels.width, pixels.height, shape, toLayer),
         drawnHand: raised.hand.map((q) => [q[0], q[1], q[2]] as V3),
+        drawnPic: [dx + layer.source.x, dy + layer.source.y, 1 / layer.source.w, 1 / layer.source.h],
         held,
         heldBeside,
         heldFore,

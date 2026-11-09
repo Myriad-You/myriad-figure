@@ -3,10 +3,10 @@ import type { Arm3DMesh } from './arm3dMesh'
 import type { Arm3DPose, Arm3DShape } from './arm3dMotion'
 import type { Arm3DPicture } from './arm3dPrepare'
 import type { Arm3DTarget } from './arm3dTarget'
-import { len, smoothstep, sub } from './arm3dMath'
+import { handExactness, len, similarity2D, smoothstep, sub } from './arm3dMath'
 import { ARM3D_AROUND, ARM3D_RINGS, arm3DBareFromElbow, arm3DHandMesh, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { ringFill } from './arm3dPrepare'
-import { BAKE_FS, BAKE_VS, COMPOSITE_FS, FULL_VS, GAP2_FS, GAP_FS, HAND_FS, HAND_VS, HELD_FS, HELD_VS, SLEEVE_FS, SLEEVE_VS } from './arm3dShaders'
+import { BAKE_FS, BAKE_VS, COMPOSITE_FS, FULL_VS, GAP2_FS, GAP_FS, HAND_FS, HAND_VS, HELD_FS, HELD_VS, SLEEVE_FS, SLEEVE_VS, WHOLE_FS } from './arm3dShaders'
 import { arm3DTexture, createArm3DTarget, dropArm3DTarget } from './arm3dTarget'
 
 /** The trial drew the figure 540 pixels wide; its pixel-sized measures (outlines, the gap's reach) scale from there. */
@@ -26,6 +26,8 @@ export interface Arm3DBound {
   /** The gesture's whole drawn hand, if its import kept one, and where it lies (offset, scale) on the gesture's layer. */
   full: WebGLTexture | null
   fullMap: [number, number, number, number]
+  /** The drawn pose's place to the gesture layer's texture: u = (x - [0]) * [2], v = (y - [1]) * [3]. */
+  drawnPic: [number, number, number, number]
   armMask: WebGLTexture
   /** The arm mask's rectangle on the playback canvas, as a share of it. */
   maskRect: [number, number, number, number]
@@ -86,44 +88,6 @@ function compile(gl: WebGL2RenderingContext, vs: string, fs: string): Program {
   return { program, attributes: new Map(), uniforms: new Map() }
 }
 
-/** How nearly the hand is in the drawn shape on screen, turned whole in the picture's plane (1 within `full` trial pixels, 0 from `none`). */
-function exactness(drawn: V3[], hand: V3[], px: number, full: number, none: number): number {
-  const rel = (h: V3[], i: number) => [h[i][0] - h[0][0], h[i][1] - h[0][1]]
-  let sx = 0
-  let sc = 0
-  for (let i = 1; i < drawn.length; i += 1) {
-    const [ax, ay] = rel(drawn, i)
-    const [bx, by] = rel(hand, i)
-    sc += ax * bx + ay * by
-    sx += ax * by - ay * bx
-  }
-  const th = Math.atan2(sx, sc)
-  const co = Math.cos(th)
-  const si = Math.sin(th)
-  let worst = 0
-  for (let i = 1; i < drawn.length; i += 1) {
-    const [ax, ay] = rel(drawn, i)
-    const [bx, by] = rel(hand, i)
-    worst = Math.max(worst, Math.hypot(bx - (co * ax - si * ay), by - (si * ax + co * ay)) / px)
-  }
-  return 1 - Math.min(1, Math.max(0, (worst - full) / (none - full)))
-}
-
-/** Where each vertex of the hand lies in its picture, and how squarely the picture saw it (less over the tips). */
-export function arm3DProject(m: Arm3DMesh, toPicture: (x: number, y: number) => [number, number]): [Float32Array, Float32Array] {
-  const n = m.pos.length / 3
-  const uv = new Float32Array(n * 2)
-  const wt = new Float32Array(n)
-  for (let i = 0; i < n; i += 1) {
-    const [u, v] = toPicture(m.pos[i * 3], m.pos[i * 3 + 1])
-    uv[i * 2] = u
-    uv[i * 2 + 1] = v
-    const t = Math.min(1, Math.max(0, (m.nrm[i * 3 + 2] - 0.1) / 0.3))
-    wt[i] = t * t * (3 - 2 * t) * (1 - (m.tip?.[i] ?? 0))
-  }
-  return [uv, wt]
-}
-
 /**
  * Draws the modelled gesture arm into the figure's own WebGL context: into a
  * target of its own (antialiased, with depth), the gap shadow between the
@@ -137,6 +101,7 @@ export class Arm3DView {
   private gap2Program: Program
   private compositeProgram: Program
   private heldProgram: Program
+  private wholeProgram: Program
   private vao: WebGLVertexArrayObject
   private buffers = new Map<string, WebGLBuffer>()
   private target: Arm3DTarget | null = null
@@ -149,12 +114,13 @@ export class Arm3DView {
     this.gap2Program = compile(gl, FULL_VS, GAP2_FS)
     this.compositeProgram = compile(gl, FULL_VS, COMPOSITE_FS)
     this.heldProgram = compile(gl, HELD_VS, HELD_FS)
+    this.wholeProgram = compile(gl, FULL_VS, WHOLE_FS)
     this.vao = gl.createVertexArray()
   }
 
   dispose(): void {
     const gl = this.gl
-    for (const p of [this.sleeveProgram, this.handProgram, this.bakeProgram, this.gapProgram, this.gap2Program, this.compositeProgram, this.heldProgram]) gl.deleteProgram(p.program)
+    for (const p of [this.sleeveProgram, this.handProgram, this.bakeProgram, this.gapProgram, this.gap2Program, this.compositeProgram, this.heldProgram, this.wholeProgram]) gl.deleteProgram(p.program)
     for (const b of this.buffers.values()) gl.deleteBuffer(b)
     this.buffers.clear()
     gl.deleteVertexArray(this.vao)
@@ -318,13 +284,21 @@ export class Arm3DView {
       this.drawHeld(bound, frame, bound.heldFore)
       gl.disable(gl.STENCIL_TEST)
     }
+    // Held as drawn, the whole drawn hand wherever the modelled one is not.
+    gl.enable(gl.STENCIL_TEST)
+    gl.stencilFunc(gl.NOTEQUAL, 1, 255)
+    gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP)
+    gl.disable(gl.DEPTH_TEST)
+    this.drawWhole(bound, pose, frame, t, px, false)
+    gl.disable(gl.STENCIL_TEST)
+    gl.enable(gl.DEPTH_TEST)
     gl.disable(gl.DEPTH_TEST)
     gl.disable(gl.CULL_FACE)
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, t.msaa)
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, t.resolved)
     gl.blitFramebuffer(0, 0, width, height, 0, 0, width, height, gl.COLOR_BUFFER_BIT, gl.NEAREST)
     gl.bindFramebuffer(gl.FRAMEBUFFER, null)
-    this.drawGap(bound.shape, pose, hand, frame, t, px)
+    this.drawGap(bound, pose, hand, frame, t, px)
     // Onto the figure.
     gl.bindFramebuffer(gl.FRAMEBUFFER, null)
     gl.viewport(0, 0, width, height)
@@ -459,8 +433,8 @@ export class Arm3DView {
     gl.uniform1f(this.uniform(p, 'uHanging'), frame.hanging)
     gl.uniform1f(this.uniform(p, 'uRestNear'), frame.restNear)
     gl.activeTexture(gl.TEXTURE0)
-    gl.uniform1f(this.uniform(p, 'uExact'), exactness(bound.drawnHand, pose.hand, px, 1, 4))
-    gl.uniform1f(this.uniform(p, 'uNear'), exactness(bound.drawnHand, pose.hand, px, 2, 12))
+    gl.uniform1f(this.uniform(p, 'uExact'), handExactness(bound.drawnHand, pose.hand, px, 1, 4))
+    gl.uniform1f(this.uniform(p, 'uNear'), handExactness(bound.drawnHand, pose.hand, px, 2, 12))
     gl.uniform3fv(this.uniform(p, 'uLit'), d.skin.map((c) => c / 255))
     gl.uniform3fv(this.uniform(p, 'uShade'), d.shade.map((c) => c / 255 * 0.97))
     gl.uniform3fv(this.uniform(p, 'uWristTone'), bound.wristTone)
@@ -518,8 +492,9 @@ export class Arm3DView {
   }
 
   /** The gap shadow and small holes, from the arm just drawn, within the hand's box. */
-  private drawGap(d: Arm3DShape, pose: Arm3DPose, hand: Arm3DMesh, frame: Arm3DFrame, t: Arm3DTarget, px: number): void {
+  private drawGap(bound: Arm3DBound, pose: Arm3DPose, hand: Arm3DMesh, frame: Arm3DFrame, t: Arm3DTarget, px: number): void {
     const gl = this.gl
+    const d = bound.shape
     const toBuffer = t.width / frame.view.width
     const hs = len(sub(pose.hand[9], pose.hand[0]))
     let x0 = Infinity
@@ -567,6 +542,8 @@ export class Arm3DView {
       gl.drawElements(gl.TRIANGLES, this.upload(h, { aPos: [m.pos, 3], aNrm: [m.nrm, 3] }, m.idx), gl.UNSIGNED_INT, 0)
     }
     gl.uniform4f(this.uniform(h, 'uSolid'), 0, 0, 0, 0)
+    // What the drawn hand laid under it fills is no hole or gap.
+    this.drawWhole(bound, pose, frame, t, px, true)
     gl.bindVertexArray(this.vao)
     gl.bindFramebuffer(gl.FRAMEBUFFER, t.mask)
     gl.viewport(0, 0, t.width, t.height)
@@ -606,6 +583,39 @@ export class Arm3DView {
     gl.drawArrays(gl.TRIANGLES, 0, 3)
     gl.disable(gl.SCISSOR_TEST)
     gl.bindVertexArray(null)
+  }
+
+  /**
+   * The whole drawn hand, held as drawn, where it lies now: into the bound target over what is drawn (the caller
+   * keeps it off the modelled hand), or (`solid`) only where it lies, for the gap pass's cover.
+   */
+  private drawWhole(bound: Arm3DBound, pose: Arm3DPose, frame: Arm3DFrame, t: Arm3DTarget, px: number, solid: boolean): void {
+    const exact = bound.full ? handExactness(bound.drawnHand, pose.hand, px, 1, 4) : 0
+    if (exact <= 0) return
+    const gl = this.gl
+    // This frame's hand to the drawn one, as one turn, scale and shift.
+    const was = bound.drawnHand
+    const fit = similarity2D(pose.hand, was)
+    if (!fit) return
+    const p = this.wholeProgram
+    gl.useProgram(p.program)
+    gl.bindVertexArray(this.vao)
+    gl.activeTexture(gl.TEXTURE1)
+    gl.bindTexture(gl.TEXTURE_2D, bound.full)
+    gl.uniform1i(this.uniform(p, 'uFull'), 1)
+    gl.activeTexture(gl.TEXTURE0)
+    gl.bindTexture(gl.TEXTURE_2D, bound.hand)
+    gl.uniform1i(this.uniform(p, 'uHand'), 0)
+    gl.uniform4f(this.uniform(p, 'uFullMap'), ...bound.fullMap)
+    gl.uniform4f(this.uniform(p, 'uPicMap'), ...bound.drawnPic)
+    gl.uniform2f(this.uniform(p, 'uToView'), frame.view.width / t.width, frame.view.height / t.height)
+    gl.uniform1f(this.uniform(p, 'uRows'), t.height)
+    gl.uniform3fv(this.uniform(p, 'uRow0'), fit[0])
+    gl.uniform3fv(this.uniform(p, 'uRow1'), fit[1])
+    gl.uniform1f(this.uniform(p, 'uExact'), exact)
+    gl.uniform1f(this.uniform(p, 'uSolid'), solid ? 1 : 0)
+    gl.uniform4f(this.uniform(p, 'uAxis'), was[0][0], was[0][1], was[9][0] - was[0][0], was[9][1] - was[0][1])
+    gl.drawArrays(gl.TRIANGLES, 0, 3)
   }
 
   /**

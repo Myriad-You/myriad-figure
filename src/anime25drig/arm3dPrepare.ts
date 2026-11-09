@@ -1,3 +1,4 @@
+import type { Arm3DMesh } from './arm3dMesh'
 import type { Arm3DShape } from './arm3dMotion'
 import type { Anime25DArmModel } from './types'
 
@@ -252,4 +253,19 @@ export function ringFill(px: Uint8Array, w: number, h: number): void {
     }
     if (best >= 0) px.copyWithin(y * w * 4, best * w * 4, (best + 1) * w * 4)
   }
+}
+
+/** Where each vertex of the hand lies in its picture, and how squarely the picture saw it (less over the tips). */
+export function arm3DProject(m: Arm3DMesh, toPicture: (x: number, y: number) => [number, number]): [Float32Array, Float32Array] {
+  const n = m.pos.length / 3
+  const uv = new Float32Array(n * 2)
+  const wt = new Float32Array(n)
+  for (let i = 0; i < n; i += 1) {
+    const [u, v] = toPicture(m.pos[i * 3], m.pos[i * 3 + 1])
+    uv[i * 2] = u
+    uv[i * 2 + 1] = v
+    const t = Math.min(1, Math.max(0, (m.nrm[i * 3 + 2] - 0.1) / 0.3))
+    wt[i] = t * t * (3 - 2 * t) * (1 - (m.tip?.[i] ?? 0))
+  }
+  return [uv, wt]
 }

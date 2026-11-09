@@ -227,15 +227,22 @@ function cutArmVariant(
   const { cuffAtWrist, ...measured } = model
   layer.armVariant.model = placeArmModel(measured, scale, placement.x - layer.left, placement.y - layer.top)
   const placed = layer.armVariant.model.hand.map(([x, y]) => [x + layer.left, y + layer.top] as const)
-  return { layer, cuffAtWrist, hand: handPicture(reference, placed) ?? undefined }
+  // The drawing's own empty ground is no part of it: held, a modelled finger a little wider than the drawn one
+  // wore the canvas's white about its tip.
+  const drawnOn = (x: number, y: number) => sample(keepOff, w, h, (x + 0.5 - placement.x) / scale - 0.5, (y + 0.5 - placement.y) / scale - 0.5)
+  return { layer, cuffAtWrist, hand: handPicture(reference, placed, drawnOn) ?? undefined }
 }
 
 /**
  * The drawn hand (about its measured joints, `points`, on the document) and what lies about it, whole: the cut keeps
  * only what differs from the portrait, so a hand laid on bare skin lost its pale lines there. Never shown; the
- * modelled hand wears it held as drawn.
+ * modelled hand wears it held as drawn. See-through where the drawing has only its ground (`drawnOn`, 0–1).
  */
-function handPicture(reference: ArmVariantReference, points: ReadonlyArray<readonly [number, number]>): RasterLayer | null {
+function handPicture(
+  reference: ArmVariantReference,
+  points: ReadonlyArray<readonly [number, number]>,
+  drawnOn: (x: number, y: number) => number,
+): RasterLayer | null {
   if (points.length < 2) return null
   const xs = points.map((p) => p[0])
   const ys = points.map((p) => p[1])
@@ -251,6 +258,10 @@ function handPicture(reference: ArmVariantReference, points: ReadonlyArray<reado
   for (let y = 0; y < height; y += 1) {
     const from = ((top + y) * reference.width + left) * 4
     data.set(reference.data.subarray(from, from + width * 4), y * width * 4)
+    for (let x = 0; x < width; x += 1) {
+      const i = (y * width + x) * 4 + 3
+      data[i] = Math.round(data[i] * Math.min(1, Math.max(0, drawnOn(left + x, top + y))))
+    }
   }
   return { id: '', role: 'arm-variant-hand', sourceName: '', order: 0, side: reference.side, group: 'body', left, top, width, height, data }
 }

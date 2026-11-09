@@ -146,11 +146,14 @@ test('with the pose model\'s joints on both pictures the arm is measured in 3D t
   assert.ok(Math.abs(model.rest.shoulder[0] + arm.left - 375 * SCALE) < 1e-6)
   assert.ok(Math.abs(model.fore - 340 * SCALE) < 1e-6)
   assert.ok(model.armOutline.flat().every(([x, y]) => x >= -1 && y >= -1 && x <= arm.width + 1 && y <= arm.height + 1))
-  // The drawn hand whole beside it, opaque, about the hand's points: the modelled hand wears it held as drawn.
+  // The drawn hand whole beside it about the hand's points, opaque but for the drawing's empty ground: the modelled
+  // hand wears it held as drawn.
   assert.equal(whole?.role, 'arm-variant-hand')
   assert.equal(whole.id, `arm-variant-hand-${arm.id.slice('arm-variant-'.length)}`)
   assert.ok(hand.every(([x, y]) => x * SCALE >= whole.left && y * SCALE >= whole.top && x * SCALE < whole.left + whole.width && y * SCALE < whole.top + whole.height))
-  assert.ok(whole.data.every((v, i) => i % 4 !== 3 || v === 255))
+  assert.ok(hand.every(([x, y]) => alphaAt(whole, x, y) === 255))
+  assert.equal(alphaAt(whole, 330, 440), 255)
+  assert.equal(alphaAt(whole, 265, 380), 0)
   // Without the portrait's joints it is raised in flat, as before, and has no hand of its own.
   const flat = cutArmVariantLayers(layers, portrait, [measured])
   assert.equal(flat[0]?.armVariant?.model, undefined)
