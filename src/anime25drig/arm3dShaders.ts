@@ -21,8 +21,8 @@ export const SLEEVE_FS = `#version 300 es
 precision highp float;
 in vec2 vUv; in vec3 vNrm; in float vV; in vec2 vPic; in vec2 vAt;
 uniform sampler2D uTex; uniform sampler2D uArmMask; uniform vec4 uMaskRect;
-uniform float uRest; uniform vec4 uSolid; uniform float uFadeTop; uniform float uTopSoft; uniform float uRestEnd; uniform vec3 uLine;
-uniform float uOpen; uniform vec3 uBand; uniform sampler2D uLifted;
+uniform float uRest; uniform vec4 uSolid; uniform float uFadeTop; uniform float uRestEnd; uniform vec3 uLine;
+uniform float uUnlined; uniform float uOpen; uniform vec3 uBand; uniform sampler2D uLifted;
 // Held, cut away over the drawing's own ground (uGround, on uGroundRect of the canvas as drawn; uToDrawn0/1 carry
 // this frame's canvas back to it), by how near it is held (uGroundOn).
 uniform sampler2D uGround; uniform vec4 uGroundRect; uniform vec3 uToDrawn0; uniform vec3 uToDrawn1; uniform float uGroundOn;
@@ -41,12 +41,15 @@ void main() {
   // The one sleeve texture, worn the same all the way. Its outline off while it hangs (the portrait's lines
   // are the arm's there), nor its top a hard edge (the body's fill under it showed as a pale arc).
   float unlined = smoothstep(0.9, 0.995, uRest);
+  // Nor for a moment as the hand first lifts (uUnlined): the round sleeve, short of a flared cuff's drawn mouth,
+  // showed a step there whose line came out as a stroke across the body.
+  unlined = max(unlined, uUnlined);
   // Solid on the upper sleeve's face toward the viewer, raised too: faded in at the shoulder, the body's fill
   // under the arm showed through as a grey band.
   float upperFace = smoothstep(0.2, 0.5, nz) * (1.0 - smoothstep(uRestEnd, uRestEnd + 0.02, vV));
   float inPicture = step(0.0, vPic.x) * step(vPic.x, 1.0) * step(0.0, vPic.y) * step(vPic.y, 1.0);
   float hang = smoothstep(0.985, 1.0, uRest);
-  float a = max(smoothstep(0.0, uFadeTop, vV), max(smoothstep(0.2, 0.8, uRest), upperFace) * smoothstep(0.0, uTopSoft, vV))
+  float a = max(smoothstep(0.0, uFadeTop, vV), max(smoothstep(0.2, 0.8, uRest), upperFace) * smoothstep(0.0, 0.03, vV))
     * mix(1.0, inPicture, hang);
   // Hanging, below the portrait's upper sleeve only where its arm layer has the arm: the round forearm ran on
   // past the drawn one.

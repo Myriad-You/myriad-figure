@@ -2,7 +2,7 @@ import type { V3 } from './arm3dMath'
 import type { Anime25DArmModel } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { affineFit, arm3DCutSides, arm3DOnBody, arm3DUpperArmAlone } from './arm3dArm'
+import { affineFit, arm3DCutSides, arm3DOnBody, arm3DUpperArmAlone, sleeveLineHeldOff } from './arm3dArm'
 import { similarity2D } from './arm3dMath'
 import { arm3DHandMesh, arm3DPalmAsModelled, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
@@ -291,4 +291,18 @@ test('an affine fit carries a mesh as the figure draws it back to where it was d
   }
   // All on one line: no fit.
   assert.equal(affineFit([0, 0, 1, 1, 2, 2], [0, 0, 1, 1, 2, 2]), null)
+})
+
+test('the sleeve\'s line is let go over a moment as the hand lifts, however fast, and back only at hanging', () => {
+  // Hanging: held off.
+  assert.equal(sleeveLineHeldOff(1, 1, 1 / 60), 1)
+  // The hand gone at once: still mostly held off a frame later, gone within a fifth of a second.
+  let held = 1
+  held = sleeveLineHeldOff(held, 0, 1 / 60)
+  assert.ok(held > 0.9)
+  for (let i = 0; i < 12; i += 1) held = sleeveLineHeldOff(held, 0, 1 / 60)
+  assert.equal(held, 0)
+  // Coming back down: none until the hand is all but at hanging.
+  assert.equal(sleeveLineHeldOff(0, 0.6, 1 / 60), 0)
+  assert.ok(sleeveLineHeldOff(0, 0.95, 1 / 60) > 0.5)
 })
