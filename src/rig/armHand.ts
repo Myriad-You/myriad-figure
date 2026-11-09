@@ -1,9 +1,9 @@
 import type { Anime25DArmModel, Anime25DVec3 } from '../anime25drig/types'
 import type { P2 } from './armRaster'
 import {
-  add2, area, components, convexMask, cropAround, dilateEllipse, dilateSquare, dist2, dist3, dot2, erodeEllipse,
-  gaussian, interp, linspace, median, mul2, resample, rings, round, searchLeft, segmentDistance, simplify, sub2,
-  toFloat, unit2, widths,
+  add2, area, closeSquare, components, convexMask, cropAround, dilateEllipse, dilateSquare, dist2, dist3, dot2, erodeEllipse,
+  gaussian, interp, linspace, median, medianColor, mul2, percentile, resample, rings, round, searchLeft,
+  segmentDistance, simplify, sub2, toFloat, unit2, widths,
 } from './armRaster'
 
 /**
@@ -35,9 +35,11 @@ export interface DrawnHandPicture {
   wrist: P2
   /** The hand's own skin tone. */
   tone: Anime25DVec3
+  /** Fingers seen held out on the drawing, never taken as hidden. */
+  shown?: number[]
 }
 
-export function measureDrawnHand({ width: W, height: H, img, mask, found, elbow, wrist, tone }: DrawnHandPicture): DrawnHand {
+export function measureDrawnHand({ width: W, height: H, img, mask, found, elbow, wrist, tone, shown = [] }: DrawnHandPicture): DrawnHand {
   const drawn = { e: elbow, w: wrist }
   const color = (data: ArrayLike<number>, x: number, y: number): Anime25DVec3 =>
     [data[(y * W + x) * 3], data[(y * W + x) * 3 + 1], data[(y * W + x) * 3 + 2]]
@@ -56,15 +58,23 @@ export function measureDrawnHand({ width: W, height: H, img, mask, found, elbow,
   for (let k = 0; k < cw * ch; k += 1) al[k] = zone[k] && mask[(crop.y + ((k / cw) | 0)) * W + crop.x + (k % cw)] ? 1 : 0
   al = gaussian(al, cw, ch, 1)
   const pixels = Array.from({ length: cw * ch }, (_, k) => atCrop(img, k))
-  al = wholeHand(edgePale(pixels, skinOnly(pixels, al, cw, ch, tone), cw, ch), cw, ch)
+  const skin = skinOnly(pixels, al, cw, ch, tone)
   // Its outline rounded: what the cleaning took leaves ragged bites (a fingertip torn where the white between it
   // and the thumb went), and bent with the hand they show as torn paper.
-  const softened = gaussian(al, cw, ch, 2)
-  const outline = new Float32Array(cw * ch)
-  for (let k = 0; k < cw * ch; k += 1) {
-    const s = Math.min(1, Math.max(0, (softened[k] - 0.3) / 0.4))
-    outline[k] = s * s * (3 - 2 * s)
+  const rounded = (a: Float32Array) => {
+    const softened = gaussian(a, cw, ch, 2)
+    return softened.map((v) => {
+      const s = Math.min(1, Math.max(0, (v - 0.3) / 0.4))
+      return s * s * (3 - 2 * s)
+    })
   }
+  // Measured (the fingers' widths, the palm's outline) on the cut as it was settled; the picture the hand wears
+  // keeps all of the drawn hand: its pale edge inside its own line and the shadows between curled fingers (left
+  // out, the modelled fist showed a side and pockets of its own shading where the drawing has them). Measured on
+  // that, the fingers claimed a hidden thumb's skin from the palm, which then stopped short of the drawn thumb.
+  const outline = rounded(wholeHand(edgePale(pixels, skin, cw, ch, false), cw, ch))
+  const lit = highlightsFilled(pixels, wholeHand(edgePale(pixels, skin, cw, ch, true), cw, ch), cw, ch, 0.15 * size)
+  const worn = rounded(shadowsFilled(pixels, lit, cw, ch, 0.15 * size))
   // Whole by the wrist point, fading only below it, over the modelled wrist: faded across the heel of the palm,
   // wider there than the modelled wrist, the body showed through it as a smear.
   const fd = unit2(sub2(drawn.w, drawn.e))
@@ -140,11 +150,11 @@ export function measureDrawnHand({ width: W, height: H, img, mask, found, elbow,
     const cap = median(filled) * 1.1
     return filled.map((v) => round(Math.min(v, cap), 1))
   })
-  const hiddenFingers = hidden(hand)
+  const hiddenFingers = hiddenFingersOf(hand, shown)
   const keyProfile = believable(fingerProfile)
   const palmOutline = palm(hand, drawn, cutAt, W, H, hiddenFingers, keyProfile, fingerProfile, fingerWidths)
 
-  const handRings = rings(outline, cw, ch, 0.5).map((ring) => simplify(ring, 0.4).map(([x, y]) => [x + crop.x, y + crop.y] as P2))
+  const handRings = rings(worn, cw, ch, 0.5).map((ring) => simplify(ring, 0.4).map(([x, y]) => [x + crop.x, y + crop.y] as P2))
   return {
     hand,
     fingers: fingerWidths,
@@ -171,8 +181,15 @@ function skinOnly(pixels: Anime25DVec3[], al: Float32Array, w: number, h: number
   return al.map((a, k) => a * keep[k])
 }
 
-/** Without the pale, colourless patches open to the outside of the cut: white cloth caught between the fingers. */
-function edgePale(pixels: Anime25DVec3[], al: Float32Array, w: number, h: number): Float32Array {
+/**
+ * Without the pale, colourless patches open to the outside of the cut: white cloth caught between the fingers. With
+ * `inkCloses`, not open across the hand's own ink line (the skin test took it off the cut): a fist's near-white
+ * highlight inside its outline went as cloth, the side of the fist with it.
+ */
+function edgePale(pixels: Anime25DVec3[], al: Float32Array, w: number, h: number, inkCloses: boolean): Float32Array {
+  const lum = pixels.map((c) => (c[0] + c[1] + c[2]) / 3)
+  const inHand = lum.filter((_, k) => al[k] > 0.5)
+  const ink = inkCloses ? (inHand.length ? median(inHand) : 0) * 0.72 : -1
   const pale = new Uint8Array(w * h)
   for (let k = 0; k < w * h; k += 1) {
     const f = pixels[k]
@@ -182,8 +199,8 @@ function edgePale(pixels: Anime25DVec3[], al: Float32Array, w: number, h: number
   for (let k = 0; k < w * h; k += 1) grown[k] = grown[k] && al[k] > 0.05 ? 1 : 0
   // A highlight inside the hand is ringed by skin; only what reaches the cut's edge goes.
   const outside = new Uint8Array(w * h)
-  for (let k = 0; k < w * h; k += 1) outside[k] = al[k] < 0.05 ? 1 : 0
-  const out = dilateSquare(outside, w, h, 3)
+  for (let k = 0; k < w * h; k += 1) outside[k] = al[k] < 0.05 && lum[k] > ink ? 1 : 0
+  const out = dilateSquare(outside, w, h, inkCloses ? 1 : 3)
   const { labels } = components(grown, w, h)
   const open = new Set<number>()
   for (let k = 0; k < w * h; k += 1) {
@@ -208,6 +225,88 @@ function wholeHand(al: Float32Array, w: number, h: number): Float32Array {
   for (let k = 0; k < w * h; k += 1) keep[k] = labels[k] && sizes[labels[k]] >= 0.03 * big ? 1 : 0
   const take = gaussian(toFloat(dilateSquare(keep, w, h, 3)), w, h, 1)
   return al.map((a, k) => a * take[k])
+}
+
+/**
+ * A highlight the skin test left out (near white, so not warm as skin), where the hand's own skin runs on into it
+ * along much of its edge and its ink line closes the rest: the knuckle and finger edges of a hand drawn on white
+ * ground went with the ground, and held as drawn the modelled hand showed its pale rim where the drawing has its
+ * line. Not what the hand's line rings all round (body or ground seen through a ring of finger and thumb).
+ */
+function highlightsFilled(pixels: Anime25DVec3[], al: Float32Array, w: number, h: number, most: number): Float32Array {
+  const lum = pixels.map((c) => (c[0] + c[1] + c[2]) / 3)
+  const inHand = lum.filter((_, k) => al[k] > 0.5)
+  const ink = (inHand.length ? median(inHand) : 0) * 0.72
+  const open = new Uint8Array(w * h)
+  for (let k = 0; k < w * h; k += 1) open[k] = al[k] < 0.5 && lum[k] > ink ? 1 : 0
+  const { labels, sizes } = components(open, w, h)
+  const edge = new Set<number>()
+  for (let x = 0; x < w; x += 1) {
+    edge.add(labels[x])
+    edge.add(labels[(h - 1) * w + x])
+  }
+  for (let y = 0; y < h; y += 1) {
+    edge.add(labels[y * w])
+    edge.add(labels[y * w + w - 1])
+  }
+  // Of each patch's bordering pixels, how many are the hand's skin: warm, as white ground the cut took in at its
+  // edge is not.
+  const ring = new Float64Array(sizes.length)
+  const ringHand = new Float64Array(sizes.length)
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const l = labels[y * w + x]
+      if (!l) continue
+      for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]] as const) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h || labels[ny * w + nx] === l) continue
+        ring[l] += 1
+        const j = ny * w + nx
+        if (al[j] > 0.5 && pixels[j][0] - pixels[j][2] > 4) ringHand[l] += 1
+      }
+    }
+  }
+  const fill = new Uint8Array(w * h)
+  for (let k = 0; k < w * h; k += 1) {
+    const l = labels[k]
+    fill[k] = l && !edge.has(l) && sizes[l] < most * most && ringHand[l] >= 0.3 * ring[l] ? 1 : 0
+  }
+  const take = gaussian(toFloat(dilateSquare(fill, w, h, 1)), w, h, 1)
+  return al.map((a, k) => Math.max(a, take[k]))
+}
+
+/**
+ * Small holes the hand closes all round, filled where they are dark and warm as its shadow is: the pocket between
+ * curled fingers, which left out had the modelled fist show its own pale shading there. A slit between fingers
+ * laid flat goes in too (its drawn edges make it so): held as drawn, the hand then shows the slit the drawing has.
+ * Not skin of the body seen through a ring of finger and thumb (as light as the hand), nor any as wide as `most`.
+ */
+function shadowsFilled(pixels: Anime25DVec3[], al: Float32Array, w: number, h: number, most: number): Float32Array {
+  const open = new Uint8Array(w * h)
+  for (let k = 0; k < w * h; k += 1) open[k] = al[k] < 0.5 ? 1 : 0
+  const { labels, sizes } = components(open, w, h)
+  const lum = pixels.map((c) => (c[0] + c[1] + c[2]) / 3)
+  const inHand = lum.filter((_, k) => al[k] > 0.5)
+  const med = inHand.length ? median(inHand) : 0
+  const sumL = new Float64Array(sizes.length)
+  const sumW = new Float64Array(sizes.length)
+  for (let k = 0; k < w * h; k += 1) {
+    sumL[labels[k]] += lum[k]
+    sumW[labels[k]] += pixels[k][0] - pixels[k][2]
+  }
+  const shadow = (l: number) => sumL[l] / sizes[l] < 0.85 * med && sumW[l] / sizes[l] > 12
+  const edge = new Set<number>()
+  for (let x = 0; x < w; x += 1) {
+    edge.add(labels[x])
+    edge.add(labels[(h - 1) * w + x])
+  }
+  for (let y = 0; y < h; y += 1) {
+    edge.add(labels[y * w])
+    edge.add(labels[y * w + w - 1])
+  }
+  const fill = new Uint8Array(w * h)
+  for (let k = 0; k < w * h; k += 1) fill[k] = labels[k] && !edge.has(labels[k]) && sizes[labels[k]] < most * most && shadow(labels[k]) ? 1 : 0
+  const take = gaussian(toFloat(dilateSquare(fill, w, h, 1)), w, h, 1)
+  return al.map((a, k) => Math.max(a, take[k]))
 }
 
 /**
@@ -269,9 +368,14 @@ function believable(profiles: number[][]): number[][] {
 
 /**
  * Fingers a drawn hand hides behind itself: their points only guessed, they lie across the others'. The one
- * crossing the most is taken, until none cross.
+ * crossing the most is taken, until none cross. Of fingers crossing as many, the thumb, the one a hand most
+ * lays across the others; else the more bent (points guessed wrong kink: a ring finger's tip found on the middle
+ * finger's turned it 74°, and the straight middle finger was taken). Not bent over the thumb: curled fingers bend
+ * a lot by right.
+ * One seen held out is neither taken nor counted: rising from its knuckle it crosses the fist's folded fingers,
+ * which are drawn in front.
  */
-function hidden(h: P2[]): number[] {
+export function hiddenFingersOf(h: P2[], shown: readonly number[]): number[] {
   const chains = [[0, 1, 2, 3, 4], ...[5, 9, 13, 17].map((f) => [0, f, f + 1, f + 2, f + 3])]
   const bones = chains.map((chain, ci) => {
     const from = ci === 0 ? 0 : 1
@@ -280,13 +384,23 @@ function hidden(h: P2[]): number[] {
   const side = (a: P2, b: P2, c: P2) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
   const crosses = (f: number, g: number) =>
     bones[f].some(([p, q]) => bones[g].some(([r, t]) => side(p, q, r) * side(p, q, t) < 0 && side(r, t, p) * side(r, t, q) < 0))
+  const bent = chains.map((chain) => {
+    let sum = 0
+    for (let i = 2; i < chain.length; i += 1) {
+      const a = sub2(h[chain[i - 1]], h[chain[i - 2]])
+      const b = sub2(h[chain[i]], h[chain[i - 1]])
+      sum += Math.abs(Math.atan2(a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1]))
+    }
+    return sum
+  })
   const out: number[] = []
   for (;;) {
     const n = [0, 1, 2, 3, 4].map((f) =>
-      out.includes(f) ? -1 : [0, 1, 2, 3, 4].filter((g) => g !== f && !out.includes(g) && crosses(f, g)).length)
+      out.includes(f) || shown.includes(f) ? -1 : [0, 1, 2, 3, 4].filter((g) => g !== f && !out.includes(g) && !shown.includes(g) && crosses(f, g)).length)
     const most = Math.max(...n)
     if (most < 1) return out
-    out.push(n.indexOf(most))
+    const tied = [0, 1, 2, 3, 4].filter((f) => n[f] === most)
+    out.push(tied.includes(0) ? 0 : tied.reduce((a, b) => (bent[b] > bent[a] ? b : a)))
   }
 }
 
@@ -375,4 +489,69 @@ function palm(
     if (Math.abs(Math.atan2(q[1] - c[1], q[0] - c[0])) < Math.abs(Math.atan2(o[first][1] - c[1], o[first][0] - c[0]))) first = i
   })
   return [...o.slice(first), ...o.slice(0, first)].map((q) => [round(q[0], 4), round(q[1], 4)])
+}
+
+/**
+ * A finger the pose model found curled where the drawing holds it out (a pointing finger read as folded into the
+ * fist): the drawn skin runs on well past every point it found, as narrow as a finger. That finger is laid straight
+ * along it from its knuckle. Left as found, the cut and the modelled hand both stopped at the fist.
+ */
+export function extendFinger(found: P2[], changed: Uint8Array, img: ArrayLike<number>, W: number, H: number): { hand: P2[]; laid: number | null } {
+  const kept = { hand: found, laid: null }
+  const size = dist2(found[9], found[0])
+  if (size < 8) return kept
+  const dir = unit2(sub2(found[9], found[0]))
+  const nrm: P2 = [-dir[1], dir[0]]
+  const along = (q: P2) => dot2(sub2(q, found[0]), dir)
+  const across = (q: P2) => dot2(sub2(q, found[0]), nrm)
+  const knuckles = [5, 9, 13, 17]
+  const centre = mul2(knuckles.reduce<P2>((s, i) => add2(s, found[i]), found[0]), 1 / 5)
+  const box = cropAround(found, Math.ceil(1.4 * size), W, H)
+  const color = (x: number, y: number): Anime25DVec3 => [img[(y * W + x) * 3], img[(y * W + x) * 3 + 1], img[(y * W + x) * 3 + 2]]
+  // The hand's skin: what changed by its palm.
+  const near: Anime25DVec3[] = []
+  for (let y = Math.max(0, Math.floor(centre[1] - 0.25 * size)); y < Math.min(H, centre[1] + 0.25 * size); y += 1) {
+    for (let x = Math.max(0, Math.floor(centre[0] - 0.25 * size)); x < Math.min(W, centre[0] + 0.25 * size); x += 1) {
+      if (changed[y * W + x]) near.push(color(x, y))
+    }
+  }
+  if (near.length < 20) return kept
+  const tone = medianColor(near)
+  const skin = new Uint8Array(box.w * box.h)
+  for (let k = 0; k < skin.length; k += 1) {
+    const x = box.x + (k % box.w)
+    const y = box.y + ((k / box.w) | 0)
+    skin[k] = changed[y * W + x] && dist3(color(x, y), tone) < 45 ? 1 : 0
+  }
+  // Across the lines drawn where a finger leaves the fist.
+  const { labels } = components(closeSquare(skin, box.w, box.h, 7), box.w, box.h)
+  const at = (q: P2) => {
+    const x = Math.round(q[0]) - box.x
+    const y = Math.round(q[1]) - box.y
+    return x >= 0 && y >= 0 && x < box.w && y < box.h ? labels[y * box.w + x] : 0
+  }
+  const hand = new Set(knuckles.map((i) => at(found[i])).filter(Boolean))
+  if (at(centre)) hand.add(at(centre))
+  if (!hand.size) return kept
+  const reach = Math.max(...found.map(along))
+  const beyond: P2[] = []
+  for (let k = 0; k < labels.length; k += 1) {
+    if (!hand.has(labels[k]) || !skin[k]) continue
+    const q: P2 = [box.x + (k % box.w), box.y + ((k / box.w) | 0)]
+    if (along(q) > reach + 0.15 * size) beyond.push(q)
+  }
+  if (beyond.length < 20) return kept
+  const tipAlong = percentile(beyond.map(along), 99)
+  const side = beyond.map(across)
+  // Out well past the fist, and a finger's width across (not the back of a hand turned toward the viewer).
+  if (tipAlong < reach + 0.35 * size || percentile(side, 90) - percentile(side, 10) > 0.45 * size) return kept
+  const mid = median(side)
+  const knuckle = knuckles.reduce((best, i) => (Math.abs(across(found[i]) - mid) < Math.abs(across(found[best]) - mid) ? i : best))
+  const top = beyond.filter((q) => along(q) >= tipAlong - 3)
+  const tip = mul2(top.reduce<P2>((s, q) => add2(s, q), [0, 0]), 1 / top.length)
+  const out = found.map((q) => [q[0], q[1]] as P2)
+  const k = found[knuckle]
+  const end = add2(tip, mul2(unit2(sub2(k, tip)), LINE_HALF))
+  for (const [i, t] of [[1, 0.45], [2, 0.75], [3, 1]] as const) out[knuckle + i] = add2(k, mul2(sub2(end, k), t))
+  return { hand: out, laid: (knuckle - 1) / 4 }
 }

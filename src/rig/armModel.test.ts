@@ -173,7 +173,8 @@ test('a gesture arm is measured as a 3D arm off the portrait and the variant', (
   assert.ok(model.handOutline.length >= 1)
   const handTop = Math.min(...model.handOutline.flat().map((q) => q[1]))
   const handBottom = Math.max(...model.handOutline.flat().map((q) => q[1]))
-  assert.ok(handTop < 268 && handTop > 250, `hand top ${handTop}`)
+  // Up to the drawn fingertip (249): the hand's picture keeps its pale edge.
+  assert.ok(handTop < 268 && handTop > 246, `hand top ${handTop}`)
   // Down the bare forearm no further than its own cut reaches: the wrist fades out by geometry, not by outline.
   assert.ok(handBottom < CUFF_AT[1], `hand bottom ${handBottom}`)
 })

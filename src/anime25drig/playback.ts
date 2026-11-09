@@ -183,7 +183,7 @@ function toPlaybackLayer(
 
 function playbackName(layer: Anime25DPlaybackBuildLayer): string {
   // One side has several gesture arms.
-  if (layer.armVariant) return layer.id
+  if (layer.armVariant || layer.role === 'arm-variant-hand') return layer.id
   if (/-\d+(?:-|$)/.test(layer.id)) return layer.id
   if (layer.side === 'left') return `${layer.role}-L`
   if (layer.side === 'right') return `${layer.role}-R`

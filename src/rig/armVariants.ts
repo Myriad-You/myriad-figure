@@ -70,20 +70,29 @@ export function cutArmVariantLayers(
 ): RasterLayer[] {
   if (!neutral || references.length === 0) return []
   const usedIds = new Set(layers.map((layer) => layer.id))
-  const cut: RasterLayer[] = []
+  const cut: Array<{ layer: RasterLayer; cuffAtWrist: boolean | null }> = []
+  const hands: RasterLayer[] = []
   const done = new Set<string>()
   for (const reference of references) {
     const key = `${reference.gesture}-${reference.side}`
     if (done.has(key)) continue
     if (reference.width !== neutral.width || reference.height !== neutral.height) continue
     const base = layers.filter((layer) => layer.role === 'handwear' && layer.side === reference.side)
-    const layer = cutArmVariant(neutral, reference, base, skeleton)
-    if (!layer) continue
+    const got = cutArmVariant(neutral, reference, base, skeleton)
+    if (!got) continue
     done.add(key)
     const id = uniquePartId(`arm-variant-${key}`, usedIds)
-    cut.push({ ...layer, id, sourceName: id })
+    cut.push({ layer: { ...got.layer, id, sourceName: id }, cuffAtWrist: got.cuffAtWrist })
+    if (got.hand) {
+      const handId = `arm-variant-hand-${id.slice('arm-variant-'.length)}`
+      usedIds.add(handId)
+      hands.push({ ...got.hand, id: handId, sourceName: handId })
+    }
   }
-  return cut
+  dropMovedCuffs(cut)
+  // A hand whose arm lost its model is never modelled: its picture goes with it.
+  const modelled = new Set(cut.filter((c) => c.layer.armVariant?.model).map((c) => c.layer.id.slice('arm-variant-'.length)))
+  return [...cut.map((c) => c.layer), ...hands.filter((h) => modelled.has(h.id.slice('arm-variant-hand-'.length)))]
 }
 
 function cutArmVariant(
@@ -91,7 +100,7 @@ function cutArmVariant(
   reference: ArmVariantReference,
   base: readonly RasterLayer[],
   skeleton: PsdSkeleton | undefined,
-): RasterLayer | null {
+): { layer: RasterLayer; cuffAtWrist: boolean | null; hand?: RasterLayer } | null {
   const { placement } = reference
   if (placement.width <= 0 || placement.height <= 0) return null
   const scale = placement.width / WORK_WIDTH
@@ -214,10 +223,50 @@ function cutArmVariant(
     data,
     armVariant: { gesture: reference.gesture, lift: ARM_VARIANT_LIFT[reference.gesture] },
   })
-  if (model && layer.armVariant) {
-    layer.armVariant.model = placeArmModel(model, scale, placement.x - layer.left, placement.y - layer.top)
+  if (!model || !layer.armVariant) return { layer, cuffAtWrist: null }
+  const { cuffAtWrist, ...measured } = model
+  layer.armVariant.model = placeArmModel(measured, scale, placement.x - layer.left, placement.y - layer.top)
+  const placed = layer.armVariant.model.hand.map(([x, y]) => [x + layer.left, y + layer.top] as const)
+  return { layer, cuffAtWrist, hand: handPicture(reference, placed) ?? undefined }
+}
+
+/**
+ * The drawn hand (about its measured joints, `points`, on the document) and what lies about it, whole: the cut keeps
+ * only what differs from the portrait, so a hand laid on bare skin lost its pale lines there. Never shown; the
+ * modelled hand wears it held as drawn.
+ */
+function handPicture(reference: ArmVariantReference, points: ReadonlyArray<readonly [number, number]>): RasterLayer | null {
+  if (points.length < 2) return null
+  const xs = points.map((p) => p[0])
+  const ys = points.map((p) => p[1])
+  const pad = 0.4 * Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) + 8
+  const left = Math.max(0, Math.floor(Math.min(...xs) - pad))
+  const top = Math.max(0, Math.floor(Math.min(...ys) - pad))
+  const right = Math.min(reference.width, Math.ceil(Math.max(...xs) + pad))
+  const bottom = Math.min(reference.height, Math.ceil(Math.max(...ys) + pad))
+  const width = right - left
+  const height = bottom - top
+  if (width <= 0 || height <= 0) return null
+  const data = new Uint8ClampedArray(width * height * 4)
+  for (let y = 0; y < height; y += 1) {
+    const from = ((top + y) * reference.width + left) * 4
+    data.set(reference.data.subarray(from, from + width * 4), y * width * 4)
   }
-  return layer
+  return { id: '', role: 'arm-variant-hand', sourceName: '', order: 0, side: reference.side, group: 'body', left, top, width, height, data }
+}
+
+/**
+ * A picture that moved the portrait's cuff to the wrist where most of the same arm's pictures keep it by the
+ * elbow is the generator's mistake: modelled, its sleeve wore the band twice. It keeps no model and is raised
+ * flat as drawn. All of them drawing it at the wrist is how they read a portrait that does not show the forearm.
+ */
+export function dropMovedCuffs(cut: ReadonlyArray<{ layer: RasterLayer; cuffAtWrist: boolean | null }>): void {
+  for (const side of new Set(cut.map((c) => c.layer.side))) {
+    const mine = cut.filter((c) => c.layer.side === side && c.layer.armVariant?.model)
+    const moved = mine.filter((c) => c.cuffAtWrist === true)
+    if (moved.length >= mine.filter((c) => c.cuffAtWrist === false).length) continue
+    for (const { layer } of moved) delete layer.armVariant!.model
+  }
 }
 
 /** Document keypoints on the working grid. */

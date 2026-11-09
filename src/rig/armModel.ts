@@ -1,7 +1,8 @@
 import type { Anime25DArmModel, Anime25DVec3 } from '../anime25drig/types'
 import type { EyeSide } from './anime25dImportTypes'
 import type { P2 } from './armRaster'
-import { FINGER_CHAINS, measureDrawnHand } from './armHand'
+import { cuffDrawnAtWrist } from './armCuff'
+import { extendFinger, FINGER_CHAINS, measureDrawnHand } from './armHand'
 import {
   add2, add3, capsuleMask, closeSquare, components, convexMask, convexPatch, cropAround, cropOf, cross3, dilateSquare,
   dist2, dist3, fillHoles, gaussian, interp, linspace, median, medianColor, mul2, mul3, percentile, rings, round,
@@ -63,12 +64,17 @@ const SLEEVE_AROUND = 256
 const HAND_SURE = 0.3
 const HAND_POINTS = 15
 
-export function measureArmModel(pictures: ArmModelPictures): Anime25DArmModel | null {
+/** The model, and (for the import to weigh, not kept) whether the picture drew the portrait's cuff at the wrist. */
+export type MeasuredArmModel = Anime25DArmModel & { cuffAtWrist: boolean | null }
+
+export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | null {
   const { width: W, height: H, side } = pictures
   const portraitJoints = joints(pictures.portraitPose, side)
   const drawn = joints(pictures.variantPose, side)
   if (!portraitJoints || !drawn?.hand) return null
   const img = pictures.variant
+  const held = extendFinger(drawn.hand, pictures.changed, img, W, H)
+  drawn.hand = held.hand
   const mask = alongBones(pictures, drawn.s, drawn.e, drawn.w, drawn.hand)
   const on = (m: Uint8Array) => (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && m[y * W + x] > 0
   const base = on(pictures.base)
@@ -117,6 +123,11 @@ export function measureArmModel(pictures: ArmModelPictures): Anime25DArmModel | 
     return { c, nrm: [-d[1], d[0]] as P2 }
   }
   const toneOff = (x: number, y: number) => dist3(color(img, x, y), tone)
+  // The drawn forearm: what changed along it, and the portrait's own arm left as it was where the forearm, raised
+  // over it skin on skin, hardly changes the picture (the bare forearm then had a hole down its middle and read as
+  // sleeve).
+  const changedAt = on(pictures.changed)
+  const forearmAt = (x: number, y: number) => armAt(x, y) || (base(x, y) && !changedAt(x, y) && toneOff(x, y) < 25)
   // How much of the drawn forearm across it is skin: within a few levels of the hand's own tone (a white cuff is 13
   // or more off it). Its shaded side and lines are off it too, so a bare forearm is seldom more than two thirds skin.
   const skinShare = (t: number) => {
@@ -126,7 +137,7 @@ export function measureArmModel(pictures: ArmModelPictures): Anime25DArmModel | 
     for (const k of linspace(-60, 60, 41)) {
       const x = Math.trunc(c[0] + nrm[0] * k)
       const y = Math.trunc(c[1] + nrm[1] * k)
-      if (!armAt(x, y)) continue
+      if (!forearmAt(x, y)) continue
       drawnThere += 1
       if (toneOff(x, y) < 10) skin += 1
     }
@@ -152,26 +163,34 @@ export function measureArmModel(pictures: ArmModelPictures): Anime25DArmModel | 
   const cuffPoint = add2(drawn.e, mul2(sub2(drawn.w, drawn.e), cuff))
   // The drawn bare forearm's half-width and how far its middle lies off the elbow-wrist line (along the normal; the
   // detected wrist is seldom on the forearm's middle), between the cuff and the wrist: a modelled one wider or off
-  // to a side shows as a pale edge beside the drawn arm laid over it.
+  // to a side shows as a pale edge beside the drawn arm laid over it. Its skin lit and shaded, across the lines
+  // drawn inside it (a muscle's): stopped at the first, it came out about half as wide as drawn.
   const bareHalf = (t: number): P2 | null => {
     const { c, nrm } = across(t)
+    const R = 140
+    const GAP = 6
     const skin: boolean[] = []
-    for (let k = -90; k <= 90; k += 1) {
+    for (let k = -R; k <= R; k += 1) {
       const x = Math.trunc(c[0] + nrm[0] * k)
       const y = Math.trunc(c[1] + nrm[1] * k)
-      skin.push(armAt(x, y) && toneOff(x, y) < 18)
+      skin.push(forearmAt(x, y) && toneOff(x, y) < 30)
     }
-    if (!skin[90]) return null
-    let lo = 90
-    let hi = 90
-    while (lo > 0 && skin[lo - 1]) lo -= 1
-    while (hi < 180 && skin[hi + 1]) hi += 1
-    return [(hi - lo + 1) / 2, (hi + lo) / 2 - 90]
+    if (!skin.slice(R - GAP, R + GAP + 1).some(Boolean)) return null
+    const reach = (from: number, step: number) => {
+      let last = from
+      for (let k = from; k >= 0 && k <= 2 * R && Math.abs(k - last) <= GAP; k += step) {
+        if (skin[k]) last = k
+      }
+      return last
+    }
+    const lo = reach(R, -1)
+    const hi = reach(R, 1)
+    return [(hi - lo + 1) / 2, (hi + lo) / 2 - R]
   }
   const halves = cuff < 0.93 ? linspace(cuff + 0.02, 0.95, 12).map(bareHalf).filter((h): h is P2 => h !== null) : []
   const bareWidth = halves.length >= 3 ? median(halves.map((h) => h[0])) : undefined
   const bareShift = halves.length >= 3 ? median(halves.map((h) => h[1])) : 0
-  let fore = widths((x, y) => armAt(x, y) && !handAt(x, y), drawn.e, cuffPoint, RADII)
+  let fore = widths((x, y) => forearmAt(x, y) && !handAt(x, y), drawn.e, cuffPoint, RADII)
   const steady = (values: number[], least: number, fallback: number) => {
     const good = values.filter((v) => v >= least)
     const stand = good.length ? median(good) : fallback
@@ -228,7 +247,7 @@ export function measureArmModel(pictures: ArmModelPictures): Anime25DArmModel | 
     }
   }
 
-  const drawnHand = measureDrawnHand({ width: W, height: H, img, mask, found: hand0, elbow: drawn.e, wrist: drawn.w, tone })
+  const drawnHand = measureDrawnHand({ width: W, height: H, img, mask, found: hand0, elbow: drawn.e, wrist: drawn.w, tone, shown: held.laid === null ? [] : [held.laid] })
 
   const lum = handPixels.map((c) => (c[0] + c[1] + c[2]) / 3)
   // A hand of one flat colour has no lighter or darker part: all of it stands in.
@@ -246,6 +265,7 @@ export function measureArmModel(pictures: ArmModelPictures): Anime25DArmModel | 
   for (let k = 0; k < armField.length; k += 1) armField[k] = mask[(armBox.y + ((k / armBox.w) | 0)) * W + armBox.x + (k % armBox.w)]
   const armRings = rings(armField, armBox.w, armBox.h, 0.5).map((ring) => simplify(ring, 0.6).map(([x, y]) => [x + armBox.x, y + armBox.y] as P2))
 
+  const skin = pick((l) => l > p40)
   return {
     upper: U,
     fore: F,
@@ -258,10 +278,14 @@ export function measureArmModel(pictures: ArmModelPictures): Anime25DArmModel | 
     rest: { shoulder: rest[0], elbow: rest[1], wrist: rest[2] },
     raised: { shoulder: raised[0], elbow: raised[1], wrist: raised[2] },
     ...drawnHand,
-    skin: pick((l) => l > p40),
+    skin,
     shade: pick((l) => l > p12 && l < p35),
     line: pick((l) => l < p3),
     armOutline: armRings,
+    cuffAtWrist: cuffDrawnAtWrist({
+      width: W, height: H, portrait: pictures.portrait, variant: img, base: pictures.base, mask,
+      rest: [ps, pe, hangWrist], raised: [drawn.s, drawn.e, drawn.w], radius, skin,
+    }),
   }
 }
 

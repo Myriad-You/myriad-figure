@@ -280,7 +280,7 @@ export async function packAnime25DAtlas(
       id: layer.id,
       width: layer.width,
       height: layer.height,
-      apart: layer.armVariant !== undefined,
+      apart: layer.armVariant !== undefined || layer.role === 'arm-variant-hand',
     })))
   const createCanvas = () =>
     typeof document === 'undefined'
@@ -376,7 +376,8 @@ export function visibleInAnalysisReference(layer: RasterLayer): boolean {
     layer.role === 'anger-mark' ||
     layer.role === 'speechless-sweat' ||
     layer.role.startsWith('accent-') ||
-    layer.role === 'arm-variant'
+    layer.role === 'arm-variant' ||
+    layer.role === 'arm-variant-hand'
   ) {
     return false
   }
