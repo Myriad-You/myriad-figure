@@ -233,6 +233,11 @@ test('ring fill with an inset takes its colour from inside the written run, past
   assert.deepEqual([1, 8, 9, 11].map(at), [200, 200, 10, 10])
   // Written texels stay as they were.
   assert.deepEqual([2, 3, 7, 10].map(at), [20, 200, 20, 10])
+  // A run of three steps in by one at an inset of one.
+  const three = new Uint8Array(5 * 4)
+  for (const [i, v] of [20, 200, 200].entries()) three.set([v, v, v, 255], i * 4)
+  ringFill(three, 5, 1, 1)
+  assert.deepEqual([3, 4].map((x) => three[x * 4]), [200, 200])
 })
 
 test('the hand as it is now is carried back onto the drawn one by one turn, scale and shift', () => {

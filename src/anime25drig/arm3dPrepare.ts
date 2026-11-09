@@ -205,6 +205,8 @@ export function ringFill(px: Uint8Array, w: number, h: number, inset = 0): void 
   const rowHas = Array.from({ length: h }, () => false)
   const near = new Int32Array(w)
   const dist = new Int32Array(w)
+  const ahead = new Int32Array(w)
+  const behind = new Int32Array(w)
   for (let y = 0; y < h; y += 1) {
     const row = y * w * 4
     near.fill(-1)
@@ -238,11 +240,17 @@ export function ringFill(px: Uint8Array, w: number, h: number, inset = 0): void 
         }
       }
     }
+    // Each written texel's run on from it, each way (twice round, across the seam).
+    if (inset > 0) {
+      ahead.fill(0)
+      behind.fill(0)
+      for (let k = 2 * w - 1; k >= 0; k -= 1) ahead[k % w] = dist[k % w] === 0 ? Math.min(w, 1 + ahead[(k + 1) % w]) : 0
+      for (let k = 0; k < 2 * w; k += 1) behind[k % w] = dist[k % w] === 0 ? Math.min(w, 1 + behind[(k + w - 1) % w]) : 0
+    }
     for (let x = 0; x < w; x += 1) {
       if (dist[x] === 0) continue
       const toward = (near[x] - x + w) % w <= w / 2 ? 1 : -1
-      let run = 1
-      while (run < 2 * inset && run < w && dist[(near[x] + toward * run + w) % w] === 0) run += 1
+      const run = inset > 0 ? (toward > 0 ? ahead : behind)[near[x]] : 1
       const s = row + ((near[x] + toward * Math.min(inset, (run - 1) >> 1) + w) % w) * 4
       const d = row + x * 4
       px[d] = px[s]
