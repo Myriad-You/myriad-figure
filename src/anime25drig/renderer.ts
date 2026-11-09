@@ -36,6 +36,10 @@ export interface Anime25DRenderableLayer {
    * of in its own place: an earring on the side the head turns away.
    */
   behindFace?: number
+  /** Drawn right after this one, in its place, whatever this one's own opacity. */
+  followers?: Anime25DRenderableLayer[]
+  /** Drawn in another layer's place (its followers), not in its own. */
+  follows?: boolean
 }
 
 export interface Anime25DOwnTexture {
@@ -177,80 +181,132 @@ export function drawAnime25DFrame(
   drawEyeMask(gl, bindings, layers, frame, work)
   let behindDrawn = false
   for (const layer of layers) {
+    if (layer.follows) continue
     if (!behindDrawn && layer.source.role === 'face') {
       behindDrawn = true
       drawBehindFace(gl, bindings, layers, frame, atlasTexture, work)
     }
-    const opacity = layer.frameOpacity * (1 - (layer.behindFace ?? 0))
-    if (opacity < 0.004 && !layer.retainWhenHidden) continue
-    if (layer.renderKind === 'iris' && eyeMaskChannel(layer) === null) continue
-    const usesOwnGeometry = anime25DLayerUsesOwnGeometry(
-      layer.renderKind,
-      Boolean(collarClip),
-    )
-    if (usesOwnGeometry && !layer.vao) continue
-    if (work) {
-      work.drawnLayers += 1
-      work.drawCalls += usesOwnGeometry ? 1 : 2
-    }
-    bindLayerUniforms(gl, bindings, layer, frame)
-    if (!usesOwnGeometry && collarClip) {
-      drawCollarMaskedLayer(gl, bindings, collarClip, opacity)
-      continue
-    }
-    gl.bindVertexArray(layer.vao)
-    if (layer.renderKind === 'iris') {
-      const channel = eyeMaskChannel(layer)
-      gl.uniform2f(
-        bindings.eyeMaskChannel,
-        channel === 0 ? 1 : 0,
-        channel === 1 ? 1 : 0,
-      )
-      gl.uniform1f(bindings.cut, 0)
-      gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
-      gl.uniform2f(bindings.eyeMaskChannel, 0, 0)
-    } else if (layer.ownTexture) {
-      const own = layer.ownTexture
-      gl.bindTexture(gl.TEXTURE_2D, own.texture)
-      gl.uniform4f(bindings.ownUv, own.uv[0], own.uv[1], own.uv[2], own.uv[3])
-      gl.uniform1f(bindings.cut, 0)
-      gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
-      gl.uniform4f(bindings.ownUv, 0, 0, 0, 0)
-      gl.bindTexture(gl.TEXTURE_2D, atlasTexture)
-    } else {
-      gl.uniform1f(bindings.cut, 0)
-      gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
-    }
-    if (layer.crownOccluders?.length) {
-      // Restrict the upper hair replay to opaque face pixels. The original
-      // back-hair draw still owns everything outside the face, including its
-      // antialiased silhouette; drawing it twice there would darken the fringe.
-      gl.enable(gl.STENCIL_TEST)
-      gl.stencilMask(CROWN_STENCIL)
-      gl.clear(gl.STENCIL_BUFFER_BIT)
-      gl.stencilFunc(gl.ALWAYS, CROWN_STENCIL, CROWN_STENCIL)
-      gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
-      gl.colorMask(false, false, false, false)
-      gl.uniform1f(bindings.cut, 0.25)
-      gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
-      if (work) work.drawCalls += 1
-      gl.colorMask(true, true, true, true)
-      gl.stencilMask(0)
-      gl.stencilFunc(gl.EQUAL, CROWN_STENCIL, CROWN_STENCIL)
-      gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP)
-      for (const crown of layer.crownOccluders) {
-        if (!crown.layer.vao || crown.layer.frameOpacity < 0.004) continue
-        bindLayerUniforms(gl, bindings, crown.layer, frame)
-        gl.uniform2f(bindings.crownBand, crown.start, crown.end)
-        gl.uniform1f(bindings.cut, 0)
-        gl.bindVertexArray(crown.layer.vao)
-        gl.drawElements(gl.TRIANGLES, crown.layer.indexCount, gl.UNSIGNED_SHORT, 0)
-        if (work) work.drawCalls += 1
-      }
-      gl.disable(gl.STENCIL_TEST)
-    }
+    drawLayer(gl, bindings, layer, atlasTexture, collarClip, frame, work)
+    for (const follower of layer.followers ?? []) drawLayer(gl, bindings, follower, atlasTexture, collarClip, frame, work)
   }
   gl.stencilMask(255)
+  gl.bindVertexArray(null)
+}
+
+/** One layer in its place: its own geometry (or the collar's clip), its own texture if it has one. */
+function drawLayer(
+  gl: WebGL2RenderingContext,
+  bindings: Readonly<Anime25DRendererBindings>,
+  layer: Anime25DRenderableLayer,
+  atlasTexture: WebGLTexture,
+  collarClip: CollarClipMesh | null,
+  frame: Readonly<Anime25DRenderFrame>,
+  work?: Anime25DFrameWork,
+): void {
+  const opacity = layer.frameOpacity * (1 - (layer.behindFace ?? 0))
+  if (opacity < 0.004 && !layer.retainWhenHidden) return
+  if (layer.renderKind === 'iris' && eyeMaskChannel(layer) === null) return
+  const usesOwnGeometry = anime25DLayerUsesOwnGeometry(
+    layer.renderKind,
+    Boolean(collarClip),
+  )
+  if (usesOwnGeometry && !layer.vao) return
+  if (work) {
+    work.drawnLayers += 1
+    work.drawCalls += usesOwnGeometry ? 1 : 2
+  }
+  bindLayerUniforms(gl, bindings, layer, frame)
+  if (!usesOwnGeometry && collarClip) {
+    drawCollarMaskedLayer(gl, bindings, collarClip, opacity)
+    return
+  }
+  gl.bindVertexArray(layer.vao)
+  if (layer.renderKind === 'iris') {
+    const channel = eyeMaskChannel(layer)
+    gl.uniform2f(
+      bindings.eyeMaskChannel,
+      channel === 0 ? 1 : 0,
+      channel === 1 ? 1 : 0,
+    )
+    gl.uniform1f(bindings.cut, 0)
+    gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
+    gl.uniform2f(bindings.eyeMaskChannel, 0, 0)
+  } else if (layer.ownTexture) {
+    const own = layer.ownTexture
+    gl.bindTexture(gl.TEXTURE_2D, own.texture)
+    gl.uniform4f(bindings.ownUv, own.uv[0], own.uv[1], own.uv[2], own.uv[3])
+    gl.uniform1f(bindings.cut, 0)
+    gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
+    gl.uniform4f(bindings.ownUv, 0, 0, 0, 0)
+    gl.bindTexture(gl.TEXTURE_2D, atlasTexture)
+  } else {
+    gl.uniform1f(bindings.cut, 0)
+    gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
+  }
+  if (layer.crownOccluders?.length) {
+    // Restrict the upper hair replay to opaque face pixels. The original
+    // back-hair draw still owns everything outside the face, including its
+    // antialiased silhouette; drawing it twice there would darken the fringe.
+    gl.enable(gl.STENCIL_TEST)
+    gl.stencilMask(CROWN_STENCIL)
+    gl.clear(gl.STENCIL_BUFFER_BIT)
+    gl.stencilFunc(gl.ALWAYS, CROWN_STENCIL, CROWN_STENCIL)
+    gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
+    gl.colorMask(false, false, false, false)
+    gl.uniform1f(bindings.cut, 0.25)
+    gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
+    if (work) work.drawCalls += 1
+    gl.colorMask(true, true, true, true)
+    gl.stencilMask(0)
+    gl.stencilFunc(gl.EQUAL, CROWN_STENCIL, CROWN_STENCIL)
+    gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP)
+    for (const crown of layer.crownOccluders) {
+      if (!crown.layer.vao || crown.layer.frameOpacity < 0.004) continue
+      bindLayerUniforms(gl, bindings, crown.layer, frame)
+      gl.uniform2f(bindings.crownBand, crown.start, crown.end)
+      gl.uniform1f(bindings.cut, 0)
+      gl.bindVertexArray(crown.layer.vao)
+      gl.drawElements(gl.TRIANGLES, crown.layer.indexCount, gl.UNSIGNED_SHORT, 0)
+      if (work) work.drawCalls += 1
+    }
+    gl.disable(gl.STENCIL_TEST)
+  }
+}
+
+/**
+ * Ordinary `layers` drawn again over the frame, wherever the stencil the
+ * caller set up passes: what the portrait draws over a modelled arm's
+ * shoulder stays in front of it.
+ */
+export function redrawAnime25DLayers(
+  gl: WebGL2RenderingContext,
+  program: WebGLProgram,
+  bindings: Readonly<Anime25DRendererBindings>,
+  layers: readonly Anime25DRenderableLayer[],
+  atlasTexture: WebGLTexture,
+  frame: Readonly<Anime25DRenderFrame>,
+): void {
+  gl.useProgram(program)
+  gl.activeTexture(gl.TEXTURE0)
+  gl.bindTexture(gl.TEXTURE_2D, atlasTexture)
+  gl.uniform4f(bindings.ownUv, 0, 0, 0, 0)
+  for (const layer of layers) {
+    if (layer.renderKind !== 'ordinary' || !layer.vao) continue
+    if (layer.frameOpacity * (1 - (layer.behindFace ?? 0)) < 0.004) continue
+    bindLayerUniforms(gl, bindings, layer, frame)
+    gl.uniform1f(bindings.cut, 0)
+    gl.bindVertexArray(layer.vao)
+    const own = layer.ownTexture
+    if (own) {
+      gl.bindTexture(gl.TEXTURE_2D, own.texture)
+      gl.uniform4f(bindings.ownUv, own.uv[0], own.uv[1], own.uv[2], own.uv[3])
+    }
+    gl.drawElements(gl.TRIANGLES, layer.indexCount, gl.UNSIGNED_SHORT, 0)
+    if (own) {
+      gl.uniform4f(bindings.ownUv, 0, 0, 0, 0)
+      gl.bindTexture(gl.TEXTURE_2D, atlasTexture)
+    }
+  }
   gl.bindVertexArray(null)
 }
 

@@ -86,6 +86,7 @@ import {
   createAnime25DRendererBindings,
   disposeAnime25DRendererBindings,
   drawAnime25DFrame,
+  redrawAnime25DLayers,
 } from './renderer'
 import {
   resolveAnime25DRenderSurface,
@@ -259,7 +260,7 @@ export class Anime25DPlayer {
     releaseCompiledGpu(this.gl, this.layers, this.collarClip, this.atlasTexture)
     this.atlasTexture = prepared.texture
     this.layers = compiled.layers
-    this.armVariants.bind(this.layers, resolved.pixelCanvas.height)
+    this.armVariants.bind(this.layers, resolved.pixelCanvas.height, { gl: this.gl, atlas: image, canvasWidth: resolved.pixelCanvas.width })
     this.collarClip = compiled.collarClip
     this.face.bindAtlas(this.gl, resolved, image, this.layers)
     this.body.bindLayers(this.layers, compiled.headSilhouette ?? null, Boolean(playback.turnKeyforms))
@@ -566,6 +567,7 @@ export class Anime25DPlayer {
     this.disposed = true
     this.atlasAbort?.abort()
     this.atlasAbort = null
+    this.armVariants.dispose()
     releaseCompiledGpu(this.gl, this.layers, this.collarClip, this.atlasTexture)
     this.face.dispose()
     this.layers = []
@@ -657,7 +659,7 @@ export class Anime25DPlayer {
       t,
       e,
     )
-    this.armVariants.applyLift(t)
+    this.armVariants.applyLift(t, secondaryDeformationFrame, this.renderFrame)
     if (work) work.savedUploadBytes += settledBytes
   }
 
@@ -697,6 +699,12 @@ export class Anime25DPlayer {
       this.renderFrame,
       work,
     )
+    const atlas = this.atlasTexture
+    if (atlas) {
+      const { gl, program, rendererBindings, renderFrame } = this
+      this.armVariants.drawModelled(gl.drawingBufferWidth, gl.drawingBufferHeight,
+        (layers) => redrawAnime25DLayers(gl, program, rendererBindings, layers, atlas, renderFrame))
+    }
     const sampled = this.motion.performanceExpression.getSampledTouch()
     if (this.atlasTexture) {
       const a = this.playback.anchors
