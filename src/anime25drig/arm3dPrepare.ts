@@ -216,7 +216,9 @@ export function splitArm3DLayer(
     const fa = portraitOnly ? 0 : a / 255 * (1 - armHard[p]) * near
     const pa = armHard[p] * portrait.arm[i + 3] / 255
     portraitArm[p] = pa
-    const ba = fa + pa * (1 - fa)
+    // (A standing figure's arm is the modelled one wherever it is: the portrait's arm under a gesture's stood on
+    // where it had hung, a ring and a sleeve's top under the armpit of an arm raised away from them.)
+    const ba = portraitOnly ? 0 : fa + pa * (1 - fa)
     if (ba > 0) {
       for (let c = 0; c < 3; c += 1) body[i + c] = (pixels[i + c] * fa + portrait.whole[i + c] * pa * (1 - fa)) / ba
       body[i + 3] = ba * 255
@@ -260,7 +262,10 @@ export function arm3DWristTone(hand: Uint8ClampedArray, w: number, h: number, sh
   if (got.length < 20) return shape.skin.map((c) => c / 255) as [number, number, number]
   got.sort((a, b) => b[0] + b[1] + b[2] - (a[0] + a[1] + a[2]))
   const top = got.slice(Math.floor(got.length * 0.1), Math.floor(got.length * 0.5))
-  return [0, 1, 2].map((c) => top.reduce((s, q) => s + q[c], 0) / top.length / 255) as [number, number, number]
+  const tone = [0, 1, 2].map((c) => top.reduce((s, q) => s + q[c], 0) / top.length / 255) as [number, number, number]
+  // A standing figure's wrist may wear a band there: what is far off its skin is not its skin.
+  if (shape.restFore !== undefined && tone.some((v, c) => Math.abs(v - shape.skin[c] / 255) > 0.1)) return shape.skin.map((c) => c / 255) as [number, number, number]
+  return tone
 }
 
 /**
@@ -278,6 +283,32 @@ export function clothCuffMouth(px: Uint8Array, w: number, h: number): void {
     return hi > 0 ? (hi - Math.min(px[i], px[i + 1], px[i + 2])) / hi : 1
   }
   const plain = (i: number) => tint(i) < 0.24
+  // A dark band worn round the cuff's end (a wristband over the sleeve) is its trim, not its mouth: dark right round
+  // the ring, row after row, where a mouth is dark only within the cloth's rim.
+  const lights: number[] = []
+  for (let y = above; y < from; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const i = (y * w + x) * 4
+      if (px[i + 3] > 0 && plain(i)) lights.push(light(i))
+    }
+  }
+  if (lights.length) {
+    lights.sort((a, b) => a - b)
+    const dark = lights[lights.length >> 1] * 0.5
+    let banded = 0
+    for (let y = from; y < h; y += 1) {
+      let drawn = 0
+      let under = 0
+      for (let x = 0; x < w; x += 1) {
+        const i = (y * w + x) * 4
+        if (px[i + 3] === 0) continue
+        drawn += 1
+        if (light(i) < dark) under += 1
+      }
+      if (drawn > 0 && under >= 0.85 * drawn) banded += 1
+    }
+    if (banded >= 0.3 * (h - from)) return
+  }
   for (let x = 0; x < w; x += 1) {
     const cloth: number[] = []
     for (let y = above; y < from; y += 1) {

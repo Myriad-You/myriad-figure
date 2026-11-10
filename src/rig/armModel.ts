@@ -219,6 +219,15 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
   }
   upper = steady(upper, 0.08 * U, 0.18 * U)
   fore = steady(fore, 0.06 * U, 0.14 * U)
+  if (pictures.whole) {
+    // What a standing figure wears on its shoulder and upper arm (a pauldron, a short sleeve flaring at the elbow) is
+    // drawn in its arm's layer and was measured as the arm: twice the forearm's width, a ball at the elbow of the arm
+    // raised. No wider than an arm is to its own forearm near the wrist.
+    const half = fore.length >> 1
+    const most = 1.6 * median(fore.slice(half))
+    upper = upper.map((v) => Math.min(v, most))
+    fore = fore.map((v, i) => (i < half ? Math.min(v, most) : v))
+  }
   const joined = [...upper, ...fore]
   const radius = joined.map((_, i) => ((joined[i - 1] ?? 0) + joined[i] + (joined[i + 1] ?? 0)) / 3)
   radius[0] = upper[0]
@@ -358,11 +367,20 @@ function hangingSleeve(
       end = t
       short = 0
     }
-    else if (end !== null && ++short >= 3) break
+    else if (end !== null && ++short >= 3) {
+      break
+    }
   }
   if (end === null || end < 0.75 || end > from - 0.03) return null
+  // Skin again a little further back: what ended it by the hand was a band round the wrist, not a sleeve.
+  for (let t = end - 0.08; t >= Math.max(0.5, end - 0.45); t -= 0.02) {
+    const row = across(t)
+    if (row.length > 4 && row.filter((c) => dist3(c, tone) < 14).length >= 0.5 * row.length) return null
+  }
   const plain = linspace(0.15, 0.45, 16).flatMap(across)
   if (plain.length < 16) return null
+  // A forearm bare most of its way: what ended the skin back from the hand was a band at the wrist, not a sleeve.
+  if (plain.filter((c) => dist3(c, tone) < 14).length >= 0.5 * plain.length) return null
   const ref = medianColor(plain)
   let cuffFrom = Math.max(0.5 * end, end - 0.3)
   let off = 0
@@ -374,7 +392,9 @@ function hangingSleeve(
         break
       }
     }
-    else off = 0
+    else {
+      off = 0
+    }
   }
   return { end, from: cuffFrom }
 }

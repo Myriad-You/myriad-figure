@@ -91,12 +91,15 @@ function sleeveRadius(d: Arm3DShape, v: number): number {
   const x = Math.max(0, Math.min(1, v)) * (R.length - 1)
   const i = Math.min(R.length - 2, Math.floor(x))
   // A sleeve measured where it hangs has its end as drawn there (a turned-back cuff is widest at its end).
-  return (R[i] + (R[i + 1] - R[i]) * (x - i)) * (d.restCuff === undefined ? 1 - 0.32 * Math.max(0, (v - 0.94) / 0.06) : 1)
+  return (R[i] + (R[i + 1] - R[i]) * (x - i)) * (d.restCuff === undefined && d.restFore === undefined ? 1 - 0.32 * Math.max(0, (v - 0.94) / 0.06) : 1)
 }
 
 /** Where the sleeve ends along the forearm (elbow 0, wrist 1): hanging (`rest` 1), where the portrait draws it end. */
 function sleeveEnd(d: Arm3DShape, rest: number): number {
-  return d.restCuff === undefined ? d.cuff : d.cuff + (d.restCuff - d.cuff) * rest
+  // A standing figure's forearm drawn bare is its own skin to the wrist, and what it wears round the wrist with it
+  // (a wristband read as a cuff's end left the wrist past it a plain block).
+  if (d.restCuff === undefined) return d.restFore === undefined ? d.cuff : 1
+  return d.cuff + (d.restCuff - d.cuff) * rest
 }
 
 /**
@@ -311,7 +314,7 @@ function wristFit(d: Arm3DShape, p: Arm3DPose, rest: number) {
   const h = p.hand
   const size = len(sub(h[9], h[0]))
   const cuffAt = lerp(p.e, p.w, sleeveEnd(d, rest))
-  const cuff = d.radius[d.radius.length - 1] * (d.restCuff === undefined ? 1 - 0.32 : 1) * 0.92
+  const cuff = d.radius[d.radius.length - 1] * (d.restCuff === undefined && d.restFore === undefined ? 1 - 0.32 : 1) * 0.92
   // A cuff that hangs over the hand has no forearm bare past it, however far its end is from the wrist.
   const bare = d.restCuff === undefined
     ? len(sub(h[0], cuffAt)) > size * 0.15
@@ -394,9 +397,15 @@ export function arm3DWristMesh(d: Arm3DShape, p: Arm3DPose, rest = 0): Arm3DMesh
   const n = norm(cross(sub(h[5], h[0]), sub(h[17], h[0])))
   const across = norm(cross(n, dh))
   const palm = size * 0.075
+  // A standing figure's hand is not always on its forearm's line (one hand for every gesture, set as each was
+  // drawn): the wrist goes back into the sleeve along the sleeve, or it came out through the cloth's side.
+  const aside: V3 = d.restFore === undefined ? [0, 0, 0] : sub(sub(h[0], p.e), mul(fore, dot(sub(h[0], p.e), fore)))
+  // A standing figure's forearm drawn bare to the wrist wears its own skin all the way, and what is drawn round
+  // the wrist: the wrist goes only just into it, and in no cuff's shadow (it stood over a wristband as a block).
+  const skinTo = d.restFore !== undefined && d.restCuff === undefined
   const pts = bare
     ? [add(arm3DBareFromElbow(d) ? p.e : sub(cuffAt, mul(fore, size * 0.5)), off), add(cuffAt, off), add(lerp(cuffAt, h[0], 0.5), mul(off, 0.6)), h[0], add(h[0], mul(dh, size * 0.12)), add(h[0], mul(dh, size * 0.2))]
-    : [sub(h[0], mul(fore, size * 0.9)), sub(h[0], mul(fore, size * 0.3)), h[0], add(h[0], mul(dh, size * 0.12)), add(h[0], mul(dh, size * 0.2))]
+    : [sub(sub(h[0], mul(fore, size * (skinTo ? 0.15 : 0.9))), aside), sub(sub(h[0], mul(fore, size * (skinTo ? 0.06 : 0.3))), mul(aside, 0.7)), h[0], add(h[0], mul(dh, size * 0.12)), add(h[0], mul(dh, size * 0.2))]
   // Halfway to the hand a long bare forearm is still its full width; a short one narrows to the wrist there.
   const k = 0.5 + 0.5 * smoothstep(0.25, 0.7, len(sub(h[0], cuffAt)) / 2 / size)
   const wide = bare ? [arm, arm, rw + (full - rw) * k, rw, rw * 0.95, rw * 0.7] : [rin, rw * 1.04, rw, rw * 0.95, rw * 0.7]
@@ -405,7 +414,7 @@ export function arm3DWristMesh(d: Arm3DShape, p: Arm3DPose, rest = 0): Arm3DMesh
     : [rin, rw, rw * 0.7, palm * 1.3, palm * 0.8]
   const AR = 16
   // In the cuff's shadow where it leaves the sleeve; none with no cuff on the forearm.
-  const occ = arm3DBareFromElbow(d) ? [0, 0, 0, 0, 0, 0] : bare ? [1, 0.45, 0, 0, 0, 0] : [1, 0.4, 0, 0, 0]
+  const occ = arm3DBareFromElbow(d) ? [0, 0, 0, 0, 0, 0] : bare ? [1, 0.45, 0, 0, 0, 0] : skinTo ? [0, 0, 0, 0, 0] : [1, 0.4, 0, 0, 0]
   const rings = pts.map((at, i) => ({ at, wide: wide[i], thick: thick[i], occ: occ[i], v: -2 - i / (pts.length - 1), tilt: 0 }))
   // Bare from the elbow, it ends there round, as the drawn elbow is: cut flat, its end stood across the sleeve
   // below it as a straight edge, the body's dark showing past it.
