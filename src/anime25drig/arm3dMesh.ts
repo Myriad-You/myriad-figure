@@ -194,9 +194,9 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
   const c = p.e
   const ballFrom = m.pos.length / 3
   // The elbow itself: the sleeve's ring turned about the hinge from the upper arm's way to the forearm's, its u
-  // starting where the upper tube has it and ending where the forearm's does, turned evenly between. (As a ball with its poles along the two ways' middle, a forearm
-  // folded back up the upper arm had that middle toward the viewer: a pole in front, the elbow's rows drawn round
-  // it as a pale disc with stripes out from its centre.)
+  // starting where the upper tube has it and ending where the forearm's does, turned evenly between. (As a ball
+  // with its poles along the two ways' middle, a forearm folded back up the upper arm had that middle toward the
+  // viewer: a pole in front, the elbow's rows drawn round it as a pale disc with stripes out from its centre.)
   {
     const SWEEP = 12
     let hinge = cross(du, df)
@@ -213,7 +213,10 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
       add(add(mul(v, Math.cos(t)), mul(cross(k, v), Math.sin(t))), mul(k, dot(k, v) * (1 - Math.cos(t))))
     // The first ring's front carried round the hinge, the rest of the way to the forearm's own front spread over
     // the rings: each ring's front found afresh from the viewer's way, a sweep passing near that way had two rings
-    // next to each other half a turn apart, the strip between them twisted through the elbow.
+    // next to each other half a turn apart, the strip between them twisted through the elbow. (Folded past a right
+    // angle toward the viewer the two ends' fronts are near half a turn apart, and which way round the rings go
+    // changes as the forearm crosses the plane of the upper arm and the viewer's way: the outline stays, the
+    // elbow's rows change sides in that one step.)
     const front0 = tubeFront(du)
     const carried = turn(front0, hinge, angle)
     const wanted = tubeFront(df)
@@ -231,8 +234,8 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
         const th = (j / ARM3D_AROUND) * Math.PI * 2
         const round = add(mul(ringFront, Math.cos(th)), mul(ringSide, Math.sin(th)))
         // Inside the bend the rings cross (the tubes are there already): each ring's inner half drawn in to the
-        // hinge's end on its side (raised all the way none of it is drawn, see below); with it the strip beside it that lies
-        // along the tubes' own surface (drawn over them it flickered against them).
+        // hinge's end on its side (raised all the way none of it is drawn, see below); with it the strip beside
+        // it that lies along the tubes' own surface (drawn over them it flickered against them).
         const inner = dot(round, outer) < 0.2
         const swept = inner ? mul(hinge, dot(round, hinge) < 0 ? -1 : 1) : round
         // Hanging it is the ball it was, point for point (its outline is drawn out to the portrait's arm from there).

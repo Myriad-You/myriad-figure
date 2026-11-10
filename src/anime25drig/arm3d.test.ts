@@ -163,7 +163,7 @@ test('the elbow keeps its rings in step where the forearm folds toward the viewe
   const e: [number, number, number] = [s[0], s[1] + 230, s[2]]
   const elbowFrom = arm3DSleeveMesh(shape, motion.keyPose(0, shape.rest.s), 1, 2).pos.length / 3 - 13 * 37
   // Upper arm straight down, the forearm folded up toward the viewer: straight at them, and a little to one side.
-  for (const tilt of [0, 8]) {
+  for (const tilt of [-8, 8]) {
     const t = (tilt * Math.PI) / 180
     const fold = (150 * Math.PI) / 180
     const w: [number, number, number] = [e[0] + 280 * Math.sin(fold) * Math.sin(t), e[1] + 280 * Math.cos(fold), e[2] + 280 * Math.sin(fold) * Math.cos(t)]
