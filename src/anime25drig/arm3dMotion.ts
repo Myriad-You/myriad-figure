@@ -84,6 +84,9 @@ function handOffsets(shape: Arm3DShape): V3[] {
   return pts
 }
 
+/** Progress from which a rise slows into the gesture. */
+const ARRIVES = 0.8
+
 class Spring {
   v = 0
   constructor(public x: number, private omega: number, private zeta: number) {}
@@ -164,7 +167,10 @@ export class Arm3DMotion {
 
   /** Pose space (0 hanging, 1 the gesture) at progress x along the hand's way. */
   private keyAt(x: number): number {
-    const t = Math.max(0, Math.min(1, x))
+    // The progress still runs when it reaches 1 and is held there: the hand came in at speed and stopped
+    // dead in a frame. Over the last stretch it is slowed to a stop, by a curve that leaves the rest alone.
+    const u = Math.max(0, Math.min(1, (x - ARRIVES) / (1 - ARRIVES)))
+    const t = Math.max(0, Math.min(1, x < ARRIVES ? x : ARRIVES + (1 - ARRIVES) * (u + u * u - u * u * u)))
     const a = this.walkA
     let lo = 0
     let hi = a.length - 1

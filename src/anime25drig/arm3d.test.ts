@@ -439,3 +439,23 @@ test('a change between gestures of unlike upper arms takes the length across too
   }
   assert.equal(last, 340)
 })
+
+test('a rise slows into the gesture: the hand is nearly still as it arrives, not stopped from speed', () => {
+  const motion = new Arm3DMotion(shape, false)
+  const anchor = shape.rest.s
+  let t = run(motion, 0, 0.1)
+  motion.wanted = true
+  let before = motion.pose(anchor).w
+  let fastest = 0
+  let last = -1
+  for (let i = 0; i < 600 && motion.progress < 1; i += 1) {
+    motion.step((t += 1 / 60))
+    const w = motion.pose(anchor).w
+    const moved = Math.hypot(w[0] - before[0], w[1] - before[1])
+    fastest = Math.max(fastest, moved)
+    if (last < 0 && motion.progress > 0.98) last = moved
+    before = w
+  }
+  assert.ok(fastest > 5, `${fastest}`)
+  assert.ok(last >= 0 && last < 0.12 * fastest, `${last} of ${fastest}`)
+})
