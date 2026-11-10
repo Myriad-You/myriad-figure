@@ -222,8 +222,10 @@ export class Arm3DSide {
       // A figure's sleeve wears the arm layer's own drawing: the portrait's over it took in what hangs in front of
       // the arm (a cape's hem at the elbow), and the lifted arm carried that off with it, a piece of the cape on the sleeve.
       for (let i = 0; i < whole.pixels.length; i += 4) {
-        if (one) armOnly.pixels[i + 3] = armOnly.pixels[i + 3] < 128 ? 0 : 255
-        else armOnly.pixels.set([whole.pixels[i], whole.pixels[i + 1], whole.pixels[i + 2], armOnly.pixels[i + 3] < 128 ? 0 : 255], i)
+        const drawn = armOnly.pixels[i + 3] >= 128
+        // (Off the arm the portrait's colour still: a sample across the arm's edge is not drawn toward black.)
+        if (!one || !drawn) armOnly.pixels.set([whole.pixels[i], whole.pixels[i + 1], whole.pixels[i + 2]], i)
+        armOnly.pixels[i + 3] = drawn ? 255 : 0
       }
       const size = { width: pixels.width, height: pixels.height }
       const atLayer = (from: readonly Anime25DGpuLayer[], blur = 0) => composeArm3DPicture(atlas, from.map(asSource), layer.source, size, blur).pixels
@@ -587,21 +589,15 @@ export class Arm3DSide {
     // The portrait's arm kept under it that long instead stood beside a bending arm as a dark wedge.
     this.unlined = sleeveLineHeldOff(this.unlined, this.restNear, this.dt)
     // Held as drawn: its elbow where the gesture has it, its hand near (a wave swings the hand, not the elbow).
-    for (const it of new Set([g, ...(this.leaving ? [this.leaving.g] : []), ...(this.oneLook && this.worn ? [this.worn] : [])])) {
+    // (An arm of one look is the modelled one wherever it is: a gesture's drawn pieces, laid on as it came to rest
+    // where that gesture drew it, were another sleeve of another cut come up over this one, and gone as it left.)
+    for (const it of this.oneLook ? [] : new Set([g, ...(this.leaving ? [this.leaving.g] : [])])) {
       const drawn = it.motion.restPose(anchor)
       const upper = it.bound.shape.upper
       const reach = it.bound.shape.fore
       it.near = (1 - smoothstep(0.01 * upper, 0.05 * upper, Math.hypot(pose.e[0] - drawn.e[0], pose.e[1] - drawn.e[1], pose.e[2] - drawn.e[2])))
         * (1 - smoothstep(0.35 * reach, 0.6 * reach, Math.hypot(pose.w[0] - drawn.w[0], pose.w[1] - drawn.w[1], pose.w[2] - drawn.w[2])))
       it.exact = it.near * (1 - smoothstep(0.06 * reach, 0.2 * reach, Math.hypot(pose.w[0] - drawn.w[0], pose.w[1] - drawn.w[1], pose.w[2] - drawn.w[2])))
-    }
-    if (this.oneLook) {
-      // An arm of one look is the modelled one wherever it is: a gesture's drawn pieces, laid on as it came to rest
-      // where that gesture drew it, were another sleeve of another cut come up over this one, and gone as it left.
-      for (const it of this.gestures) {
-        it.near = 0
-        it.exact = 0
-      }
     }
     // The arm takes the hand's picture of the gesture it has turned to once its hand is no longer the last one's.
     const worn = this.worn

@@ -254,7 +254,7 @@ export class Arm3DTransit {
           upper: wanted.upper + (from.upper - wanted.upper) * m,
           fore: wanted.fore + (from.fore - wanted.fore) * m,
           hand: blendHands(this.handInTime ? wanted.hand.map((q) => carry(q, wanted.df, df)) : wanted.hand, from.hand.map((q) => carry(q, from.df, df)), h),
-          handRest: wanted.handRest + (from.handRest - wanted.handRest) * m,
+          handRest: wanted.handRest + (from.handRest - wanted.handRest) * h,
           hanging: wanted.hanging + (from.hanging - wanted.hanging) * m,
         }
       }
