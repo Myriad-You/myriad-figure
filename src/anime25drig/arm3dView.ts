@@ -3,7 +3,7 @@ import type { Arm3DMesh } from './arm3dMesh'
 import type { Arm3DFrame, Arm3DPose, Arm3DShape } from './arm3dMotion'
 import type { Arm3DPicture } from './arm3dPrepare'
 import type { Arm3DTarget } from './arm3dTarget'
-import { handExactness, len, similarity2D, sub } from './arm3dMath'
+import { handExactness, len, similarity2D, smoothstep, sub } from './arm3dMath'
 import { ARM3D_AROUND, ARM3D_RINGS, arm3DBareFromElbow, arm3DHandMesh, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { liftForearm, wristOverUpper } from './arm3dMotion'
 import { ringFill } from './arm3dPrepare'
@@ -667,9 +667,18 @@ export class Arm3DView {
       return keep
     }
     const attrs = { aPos: [sleeve.pos, 3], aNrm: [sleeve.nrm, 3], aUv: [sleeve.uv, 2], aPic: [new Float32Array(sleeve.pos.length / 3 * 2), 2] } as Record<string, [ArrayLike<number>, number]>
+    // While the upper arm lies where the portrait drew it hanging (as on the canvas: a body turning carries it off
+    // too) the portrait covers it down to the elbow as it did hanging; the stretch above the elbow comes out in
+    // front as the upper arm leaves. Early in the rise and late in the lowering only (by how far along it is):
+    // hanging, the stretch is the portrait's own picture either way, and further up the portrait there is the arm
+    // it drew hanging (its cuff, across the raised elbow).
+    const at = bound.restArm.at
+    const was = [at[2] - at[0], at[3] - at[1]]
+    const moved = Math.hypot(pose.e[0] - pose.s[0] - was[0], pose.e[1] - pose.s[1] - was[1]) / Math.max(1e-6, Math.hypot(was[0], was[1]))
+    const stays = (1 - smoothstep(0.08, 0.3, moved)) * smoothstep(0, 0.05, 1 - frame.hanging) * smoothstep(0.3, 0.6, frame.hanging)
     gl.stencilFunc(gl.ALWAYS, ARM3D_STENCIL, ARM3D_STENCIL)
     gl.uniform1f(this.uniform(s, 'uPush'), 2 * px)
-    gl.drawElements(gl.TRIANGLES, this.upload(s, attrs, along(-Infinity, 0.36)), gl.UNSIGNED_INT, 0)
+    gl.drawElements(gl.TRIANGLES, this.upload(s, attrs, along(-Infinity, 0.36 + 0.14 * stays)), gl.UNSIGNED_INT, 0)
     gl.stencilFunc(gl.ALWAYS, 0, ARM3D_STENCIL)
     gl.uniform1f(this.uniform(s, 'uPush'), 0)
     gl.drawElements(gl.TRIANGLES, this.upload(s, attrs, along(0.5, Infinity)), gl.UNSIGNED_INT, 0)
