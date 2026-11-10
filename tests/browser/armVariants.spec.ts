@@ -163,7 +163,7 @@ const hasFigures = Boolean(fullRoot) && existsSync(join(fullRoot, 'variants'))
 
 // h16's left arm (a long white glove) is modelled wider than drawn; fitting the sleeve to the drawing is the
 // next step. Passing, one of these says so.
-const KNOWN_FIGURE_FLICKERS = new Set(['h16-wave-L', 'h16-point-L', 'h16-chin-L', 'h16-chest-L'])
+const KNOWN_FIGURE_FLICKERS = new Set(['h16-wave-L', 'h16-point-L', 'h16-chest-L'])
 
 function figureTags(figure: string): string[] {
   return ['wave', 'point', 'chest', 'chin'].flatMap((gesture) => ['L', 'R'].map((side) => `${figure}-${gesture}-${side}`))

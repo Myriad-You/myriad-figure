@@ -89,6 +89,17 @@ export function arm3DAimHand(hand: readonly V3[], drawn: V3, df: V3, depth: numb
   return { hand: hand.map((q) => mul(spin(q, by), size)), turned: turn }
 }
 
+/**
+ * A modelled hand (from its wrist, as its gesture holds it, forearm along `drawn`) on a forearm along `df`:
+ * turned with the forearm as a hand on an arm is, by way of toward the viewer (straight over, a forearm turned
+ * right round had no one way to take its hand), and larger the nearer it comes.
+ */
+export function arm3DCarryHand(hand: readonly V3[], drawn: V3, df: V3, depth: number): V3[] {
+  const mid = norm(add(add(drawn, df), [0, 0, 0.6]))
+  const size = Math.min(1.6, Math.max(0.75, VIEWER / (VIEWER - depth)))
+  return hand.map((q) => mul(carry(carry(q, drawn, mid), mid, df), size))
+}
+
 function rotate(v: V3, r: V3): V3 {
   const a = len(r)
   if (a < 1e-12) return v
@@ -192,6 +203,11 @@ export class Arm3DTransit {
   private since = 0
   private now: Arm3DStance | null = null
   private turning: { u: V3; f: V3 } = { u: [0, 0, 0], f: [0, 0, 0] }
+  /**
+   * The hand turns into the next one in its own time, not the bones': an arm of one look for all its gestures
+   * kept the last one's hand through the whole of a long way, and changed it only once there.
+   */
+  handInTime = false
 
   /** Nothing of an earlier stance left in the arm. */
   get idle(): boolean {
@@ -229,14 +245,16 @@ export class Arm3DTransit {
       }
       else {
         const m = smoothstep(0, 1, this.left)
+        // In its own time the hand is the next one, carried on the forearm as it now lies (as the last one is).
+        const h = this.handInTime ? smoothstep(0, 1, Math.max(0, 1 - this.since / LEAST)) : m
         const df = this.fore.on(wanted.df)
         out = {
           du: this.upper.on(wanted.du),
           df,
           upper: wanted.upper + (from.upper - wanted.upper) * m,
           fore: wanted.fore + (from.fore - wanted.fore) * m,
-          hand: blendHands(wanted.hand, from.hand.map((q) => carry(q, from.df, df)), m),
-          handRest: wanted.handRest + (from.handRest - wanted.handRest) * m,
+          hand: blendHands(this.handInTime ? wanted.hand.map((q) => carry(q, wanted.df, df)) : wanted.hand, from.hand.map((q) => carry(q, from.df, df)), h),
+          handRest: wanted.handRest + (from.handRest - wanted.handRest) * h,
           hanging: wanted.hanging + (from.hanging - wanted.hanging) * m,
         }
       }
