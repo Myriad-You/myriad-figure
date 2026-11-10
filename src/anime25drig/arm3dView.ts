@@ -634,8 +634,9 @@ export class Arm3DView {
   /**
    * Marks ARM3D_STENCIL in the figure's buffer (bound) where the upper arm is, less where the forearm or
    * hand crosses it: what the portrait draws over the upper arm (hair over the shoulder) stays in front there.
+   * `whole`, down to the elbow (clothes that go with the arm cover it as they did hanging).
    */
-  markUpperArm(bound: Arm3DBound, frame: Arm3DFrame): void {
+  markUpperArm(bound: Arm3DBound, frame: Arm3DFrame, whole = false): void {
     const gl = this.gl
     const px = bound.px
     const pose = liftForearm(bound.shape, frame.pose)
@@ -678,7 +679,7 @@ export class Arm3DView {
     const stays = (1 - smoothstep(0.08, 0.3, moved)) * smoothstep(0, 0.05, 1 - frame.hanging) * smoothstep(0.3, 0.6, frame.hanging)
     gl.stencilFunc(gl.ALWAYS, ARM3D_STENCIL, ARM3D_STENCIL)
     gl.uniform1f(this.uniform(s, 'uPush'), 2 * px)
-    gl.drawElements(gl.TRIANGLES, this.upload(s, attrs, along(-Infinity, 0.36 + 0.14 * stays)), gl.UNSIGNED_INT, 0)
+    gl.drawElements(gl.TRIANGLES, this.upload(s, attrs, along(-Infinity, whole ? 0.5 : 0.36 + 0.14 * stays)), gl.UNSIGNED_INT, 0)
     gl.stencilFunc(gl.ALWAYS, 0, ARM3D_STENCIL)
     gl.uniform1f(this.uniform(s, 'uPush'), 0)
     gl.drawElements(gl.TRIANGLES, this.upload(s, attrs, along(0.5, Infinity)), gl.UNSIGNED_INT, 0)

@@ -255,9 +255,16 @@ export class Anime25DArmVariants {
       const now = modelled?.frame()
       if (!modelled || !now) continue
       view.draw(now.bound, now.frame, width, height)
-      if (modelled.front.length === 0) continue
+      const cloth = modelled.clothOnArm
+      if (cloth.length) {
+        view.markUpperArm(now.bound, now.frame, true)
+        redraw(cloth)
+        view.endUpperArm()
+      }
+      const front = cloth.length ? modelled.front.filter((layer) => !cloth.includes(layer)) : modelled.front
+      if (front.length === 0) continue
       view.markUpperArm(now.bound, now.frame)
-      redraw(modelled.front)
+      redraw(front)
       view.endUpperArm()
     }
   }

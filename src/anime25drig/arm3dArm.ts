@@ -1,3 +1,4 @@
+import type { Arm3DDraped } from './arm3dDrape'
 import type { V3 } from './arm3dMath'
 import type { Arm3DPose, Arm3DShape } from './arm3dMotion'
 import type { Arm3DSourceLayer } from './arm3dPrepare'
@@ -6,6 +7,7 @@ import type { Arm3DBound, Arm3DFrame, Arm3DView } from './arm3dView'
 import type { Anime25DGpuLayer } from './layerGpuBinding'
 import type { Anime25DRenderFrame } from './renderer'
 import type { Anime25DSecondaryDeformationFrame } from './secondaryDeformation'
+import { arm3DDraped, arm3DDrapeOf, Arm3DDrapeTurn, turnArm3DDrape } from './arm3dDrape'
 import { arm3DInLook, arm3DOneLook } from './arm3dLook'
 import { add, handExactness, mul, norm, smoothstep, sub } from './arm3dMath'
 import { arm3DHandMesh, arm3DPalmAsModelled, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
@@ -94,6 +96,12 @@ export class Arm3DSide {
   private sides: [Followed[], Followed[]] = [[], []]
   /** What the portrait draws in front of the upper arm (hair over the shoulder), drawn again there. */
   front: Anime25DGpuLayer[] = []
+  /**
+   * A figure's clothes that lie on its upper arm without being the arm's (a cape off the shoulder): turned with
+   * it. Left where the portrait drew them, the lifted arm came out from under a cape that stayed hanging in the air.
+   */
+  private cloth: Array<Arm3DDraped & { layer: Anime25DGpuLayer }> = []
+  private clothTurn = new Arm3DDrapeTurn()
   private pose: Arm3DPose | null = null
   private restNear = 1
   /** How far the sleeve's own line is still held off as the hand first lifts (1 hanging, gone over a moment). */
@@ -349,6 +357,17 @@ export class Arm3DSide {
     const first = this.gestures[0]?.bound.shape
     const host = bases.reduce<Anime25DGpuLayer | null>((last, layer) => (!last || layers.indexOf(layer) > layers.indexOf(last) ? layer : last), null)
     if (host) host.followers = this.gestures.map((g) => g.layer)
+    this.cloth = []
+    if (first && this.oneLook) {
+      const side = first.rest.s[0] < canvas.width / 2 ? -1 : 1
+      const radius = Math.max(...first.radius.slice(0, (first.radius.length >> 1) + 1))
+      for (const layer of this.front) {
+        // (A layer the shader alone moves shares its vertices with its rest.)
+        if (layer.source.role !== 'topwear' || layer.deformed === layer.rest) continue
+        const drape = arm3DDrapeOf(layer.rest, first.rest.s, first.rest.e, radius, side)
+        if (drape) this.cloth.push({ layer, ...arm3DDraped(drape) })
+      }
+    }
     if (first) {
       this.shoulder = nearest(layers, first.rest.s[0], first.rest.s[1], (l) => l.source.role !== 'arm-variant' && l.source.role !== 'arm-variant-hand' && l.source.role !== 'handwear' && !l.source.role.startsWith('hair') && !l.source.role.includes('hair')).at
     }
@@ -643,6 +662,12 @@ export class Arm3DSide {
       }
       pose = { s: carried(pose.s), e: carried(pose.e), w: carried(pose.w), hand: pose.hand.map(carried) }
     }
+    if (this.cloth.length) {
+      this.clothTurn.step(stance.du, sub(hang.e, hang.s), this.dt)
+      for (const it of this.cloth) {
+        if (turnArm3DDrape(it, it.layer.deformed, pose.s, this.clothTurn)) it.layer.geometryDirty = true
+      }
+    }
     // The body's lean and lift, which the figure's shader gives every layer after its own deformation: left out,
     // the arm stood upright beside a leaning body, its shoulder parting from the sleeve's.
     if (body) {
@@ -650,6 +675,11 @@ export class Arm3DSide {
       pose = { s: on(pose.s), e: on(pose.e), w: on(pose.w), hand: pose.hand.map(on) }
     }
     this.pose = pose
+  }
+
+  /** The clothes now turned with the upper arm: they lie over all of it, as they did hanging. */
+  get clothOnArm(): Anime25DGpuLayer[] {
+    return this.cloth.filter((it) => it.on).map((it) => it.layer)
   }
 
   /** This frame's arm, for the view; null before the first lift. */
