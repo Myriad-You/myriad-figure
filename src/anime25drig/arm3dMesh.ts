@@ -21,6 +21,8 @@ export interface Arm3DMesh {
   part?: number[]
   /** Hand only: how squarely its stretch of finger points at the viewer. */
   face?: number[]
+  /** Sleeve only: where in `idx` what it gains past a bent elbow starts. */
+  gained?: number
 }
 
 function emptyMesh(): Arm3DMesh {
@@ -164,7 +166,7 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
   const vUp = 0.04 + rest * (0.5 * r / Math.max(1e-6, len(sub(p.e, p.s))) - 0.04)
   const vDown = 0.04 + rest * (0.5 * r / Math.max(1e-6, len(sub(p.w, p.e)) * d.cuff) - 0.04)
   const vPast = 0.5 * r / Math.max(1e-6, len(sub(p.e, p.s)))
-  const ball = (c: V3, past = 0) => {
+  const ball = (c: V3, past = -1) => {
     const base = m.pos.length / 3
     const LAT = 12
     for (let i = 0; i <= LAT; i += 1) {
@@ -174,7 +176,10 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
         const n = add(mul(add(mul(front, Math.cos(th)), mul(side, Math.sin(th))), Math.cos(ph)), mul(axis, Math.sin(ph)))
         m.pos.push(...add(c, mul(n, r)))
         m.nrm.push(...n)
-        m.uv.push(j / ARM3D_AROUND, past > 0 ? 0.5 - past - Math.sin(ph) * vPast : 0.5 + Math.sin(ph) * (ph < 0 ? vUp : vDown))
+        const own = Math.sin(ph) * (ph < 0 ? vUp : vDown)
+        // The end past the elbow goes on from its tube, row for row along the upper arm (by its own poles, turned
+        // from the tube's, its rows stepped where the two meet); hanging, its own rows as before.
+        m.uv.push(j / ARM3D_AROUND, past < 0 ? 0.5 + own : 0.5 - past + rest * own - (1 - rest) * dot(n, du) * vPast)
       }
     }
     for (let i = 0; i < LAT; i += 1) {
@@ -200,6 +205,7 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
     // one row, a flower or a star lying on that row stood as stripes down it. Hanging it keeps that row, under the
     // portrait's own sleeve where a band off the upper arm would show past its edge.
     const past = vPast * 0.9 * bend * (1 - rest)
+    m.gained = m.idx.length
     tube(m, [c, lerp(c, end, 0.5), end], [r, r, r], [0.5, 0.5 - past / 2, 0.5 - past], ARM3D_AROUND)
     ball(end, past)
   }

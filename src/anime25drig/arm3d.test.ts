@@ -128,6 +128,22 @@ test('meshes keep their vertices pose to pose, so pictures laid on them once sta
   // What it gains wears the upper sleeve's rows back from the elbow, not the elbow's one row all along.
   const gained = b.uv.slice(a.uv.length).filter((_, i) => i % 2 === 1)
   assert.ok(gained.length > 0 && Math.max(...gained) < 0.52 && Math.min(...gained) < 0.4)
+  // Its round end goes on from its tube with no step in the rows where the two meet (the end's own equator is
+  // turned from the tube's last ring; the rows follow the upper arm on both).
+  const du = [raised.e[0] - raised.s[0], raised.e[1] - raised.s[1], raised.e[2] - raised.s[2]]
+  const dl = Math.hypot(du[0], du[1], du[2])
+  const alongUpper = (m: typeof b, i: number) => ((m.pos[i * 3] - raised.e[0]) * du[0] + (m.pos[i * 3 + 1] - raised.e[1]) * du[1] + (m.pos[i * 3 + 2] - raised.e[2]) * du[2]) / dl
+  const from = a.pos.length / 3
+  const rows = Array.from({ length: b.pos.length / 3 - from }, (_, k) => [alongUpper(b, from + k), b.uv[(from + k) * 2 + 1]])
+  const slope = 0.5 / dl
+  assert.ok(rows.every(([x, v]) => Math.abs(v - (0.5 - x * slope)) < 1e-6))
+  // The picture's upper arm is told from its elbow by the sleeve's rows: what it gains is marked as its own.
+  assert.equal(a.gained, undefined)
+  assert.ok(b.gained! > 0 && b.gained! < b.idx.length && b.idx.slice(b.gained).every((i) => i >= from))
+  // Hanging bent, what it gains keeps the rows it had: the elbow's one row along the tube, the end's own round it.
+  const bentHanging = arm3DSleeveMesh(shape, raised, 1, px)
+  const kept = bentHanging.uv.slice(a.uv.length).filter((_, i) => i % 2 === 1)
+  assert.ok(kept.slice(0, 3 * 37).every((v) => v === 0.5) && Math.max(...kept) > 0.5)
   const palm = arm3DPalmAsModelled(raised.hand, null)
   const h1 = arm3DHandMesh(shape, raised, palm)
   const h2 = arm3DHandMesh(shape, hanging, palm)
