@@ -163,7 +163,8 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
   // the elbow than its place); bent, back to the elbow's own rows (spread, it showed the elbow's band as she waved).
   const vUp = 0.04 + rest * (0.5 * r / Math.max(1e-6, len(sub(p.e, p.s))) - 0.04)
   const vDown = 0.04 + rest * (0.5 * r / Math.max(1e-6, len(sub(p.w, p.e)) * d.cuff) - 0.04)
-  const ball = (c: V3) => {
+  const vPast = 0.5 * r / Math.max(1e-6, len(sub(p.e, p.s)))
+  const ball = (c: V3, past = 0) => {
     const base = m.pos.length / 3
     const LAT = 12
     for (let i = 0; i <= LAT; i += 1) {
@@ -173,7 +174,7 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
         const n = add(mul(add(mul(front, Math.cos(th)), mul(side, Math.sin(th))), Math.cos(ph)), mul(axis, Math.sin(ph)))
         m.pos.push(...add(c, mul(n, r)))
         m.nrm.push(...n)
-        m.uv.push(j / ARM3D_AROUND, 0.5 + Math.sin(ph) * (ph < 0 ? vUp : vDown))
+        m.uv.push(j / ARM3D_AROUND, past > 0 ? 0.5 - past - Math.sin(ph) * vPast : 0.5 + Math.sin(ph) * (ph < 0 ? vUp : vDown))
       }
     }
     for (let i = 0; i < LAT; i += 1) {
@@ -195,8 +196,12 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
   const bend = Math.min(1, Math.max(0, (1 - dot(du, df)) / 2) / 0.5)
   if (bend > 0.05 && !arm3DBareFromElbow(d)) {
     const end = add(c, mul(du, r * 0.9 * bend))
-    tube(m, [c, lerp(c, end, 0.5), end], [r, r, r], [0.5, 0.5, 0.5], ARM3D_AROUND)
-    ball(end)
+    // Raised, it wears the upper sleeve's rows back from the elbow, as far as it runs on: all of it in the elbow's
+    // one row, a flower or a star lying on that row stood as stripes down it. Hanging it keeps that row, under the
+    // portrait's own sleeve where a band off the upper arm would show past its edge.
+    const past = vPast * 0.9 * bend * (1 - rest)
+    tube(m, [c, lerp(c, end, 0.5), end], [r, r, r], [0.5, 0.5 - past / 2, 0.5 - past], ARM3D_AROUND)
+    ball(end, past)
   }
   return m
 }

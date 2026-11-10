@@ -125,6 +125,9 @@ test('meshes keep their vertices pose to pose, so pictures laid on them once sta
   // Bent, the sleeve only gains vertices (past the elbow) after those it shares with hanging.
   assert.ok(b.pos.length >= a.pos.length)
   assert.ok(a.uv.every((v, i) => i % 2 === 0 || (v >= 0 && v <= 1.05)))
+  // What it gains wears the upper sleeve's rows back from the elbow, not the elbow's one row all along.
+  const gained = b.uv.slice(a.uv.length).filter((_, i) => i % 2 === 1)
+  assert.ok(gained.length > 0 && Math.max(...gained) < 0.52 && Math.min(...gained) < 0.4)
   const palm = arm3DPalmAsModelled(raised.hand, null)
   const h1 = arm3DHandMesh(shape, raised, palm)
   const h2 = arm3DHandMesh(shape, hanging, palm)
