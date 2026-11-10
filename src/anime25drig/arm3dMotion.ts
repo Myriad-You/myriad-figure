@@ -14,6 +14,12 @@ export interface Arm3DShape extends Omit<Anime25DArmModel, 'rest' | 'raised' | '
 
 /** Pose space over which a figure's drawn hand turns into the gesture's. */
 const HAND_TURNS = [0.25, 0.7] as const
+/** A figure's raise: how far the forearm runs ahead of the upper arm, and the upper arm behind. */
+const RISE_LEAD = 1.7
+const RISE_LAG = 1.5
+/** Held waving, how far a figure's elbow stands out from where the picture drew it (radians), and the forearm with it. */
+const WAVE_OPEN = 0.3
+const WAVE_LEAN = 0.12
 
 export interface Arm3DPose { s: V3; e: V3; w: V3; hand: V3[] }
 
@@ -123,7 +129,11 @@ export class Arm3DMotion {
 
   private readonly figure: boolean
 
-  constructor(private d: Arm3DShape, private wave: boolean) {
+  /**
+   * `out` is which way is away from the body for a standing figure's arm (1 the picture's right, -1 its left):
+   * given, the arm is raised elbow first, as a person's is; without it, as the pictures' poses run into each other.
+   */
+  constructor(private d: Arm3DShape, private wave: boolean, private out = 0) {
     this.figure = Boolean(d.restHand)
     const all = [d.rest, d.raised]
     // Every pose hangs from the portrait's shoulder, its elbow where the picture drew it and as deep as the
@@ -264,12 +274,16 @@ export class Arm3DMotion {
   private shape(f: number): { du: V3; df: V3; w: V3; hand: V3[] } {
     const u = Math.max(0, Math.min(1, f))
     // Near the poses, not through each; the ends exact.
-    const way = (get: (i: number) => V3): V3 => {
+    const way = (get: (i: number) => V3, at: number): V3 => {
       const P = (i: number): V3 => (i < 0 ? sub(mul(get(0), 2), get(1)) : i > 1 ? sub(mul(get(1), 2), get(0)) : get(i))
-      return norm(bspline(P(-1), P(0), P(1), P(2), u))
+      return norm(bspline(P(-1), P(0), P(1), P(2), at))
     }
-    const du = way((i) => this.dirsU[i])
-    const df = way((i) => this.dirsF[i])
+    // A standing figure bends its elbow first and lifts the upper arm after: both turned together, the arm
+    // swung out straight to the side before it folded. Its forearm comes up before the body and a little out,
+    // not level across the picture.
+    const elbowFirst = this.figure && this.out !== 0
+    const du = way((i) => this.dirsU[i], elbowFirst ? u ** RISE_LAG : u)
+    const df = elbowFirst ? this.before(this.dirsF[0], this.dirsF[1], 1 - (1 - u) ** RISE_LEAD) : way((i) => this.dirsF[i], u)
     // A figure's drawn hand first goes up as drawn, carried by the forearm (it wears the portrait's picture
     // there), and turns into the gesture's only on the way.
     const h = this.figure ? smoothstep(HAND_TURNS[0], HAND_TURNS[1], u) : u
@@ -300,6 +314,13 @@ export class Arm3DMotion {
    */
   private way(a: V3, b: V3, f: number): V3 {
     const m = norm(add(add(a, b), [0, 0, 1.2 * (1 - (a[0] * b[0] + a[1] * b[1] + a[2] * b[2])) / 2]))
+    return slerp(slerp(a, m, f), slerp(m, b, f), f)
+  }
+
+  /** A forearm's direction from hanging to raised by way of before the body and out from it. */
+  private before(a: V3, b: V3, f: number): V3 {
+    const far = (1 - (a[0] * b[0] + a[1] * b[1] + a[2] * b[2])) / 2
+    const m = norm(add(add(a, b), mul([this.out * 0.25, 0, 0.95], 1.2 * far)))
     return slerp(slerp(a, m, f), slerp(m, b, f), f)
   }
 
@@ -340,6 +361,12 @@ export class Arm3DMotion {
     if (this.wave) turn += ramp * 0.2 * Math.sin(this.held * 2 * Math.PI * 1.6)
     else turn += ramp * 0.025 * Math.sin(this.held * 2 * Math.PI * 0.4)
     df = spin(df, turn)
+    // The picture draws a wave with the elbow at the waist, the hand by the face: small on a whole figure seen
+    // from far. Held, a figure's elbow comes out from the body, the forearm leaning with it.
+    if (this.wave && this.figure && this.out !== 0) {
+      du = spin(du, this.out * ramp * -WAVE_OPEN)
+      df = spin(df, this.out * ramp * WAVE_LEAN)
+    }
     const s = anchor
     const e = add(s, mul(du, this.d.upper))
     const w = add(e, mul(df, this.foreAt(this.p.x)))

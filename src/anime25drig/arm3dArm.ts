@@ -151,7 +151,7 @@ export class Arm3DSide {
       const shape = arm3DShape(model, layer.source.x, layer.source.y)
       // A full body's arm gives its drawn sizes on its own scale; a bust's on its canvas's.
       const px = model.trialPixel ?? bustPixel
-      const motion = new Arm3DMotion(shape, layer.source.armVariant!.gesture === 'wave')
+      const motion = new Arm3DMotion(shape, layer.source.armVariant!.gesture === 'wave', shape.restFore === undefined ? 0 : shape.rest.s[0] < canvas.width / 2 ? -1 : 1)
       const hanging = motion.keyPose(0, shape.rest.s)
       const raised = motion.keyPose(1, shape.rest.s)
       // The portrait about its hanging arm, whole and its arm alone (the arm layers say where the arm is).
