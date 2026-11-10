@@ -179,7 +179,8 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
         const own = Math.sin(ph) * (ph < 0 ? vUp : vDown)
         // The end past the elbow goes on from its tube, row for row along the upper arm (by its own poles, turned
         // from the tube's, its rows stepped where the two meet); hanging, its own rows as before.
-        m.uv.push(j / ARM3D_AROUND, past < 0 ? 0.5 + own : 0.5 - past + rest * own - (1 - rest) * dot(n, du) * vPast)
+        // No further up than the shoulder's fade reaches down (a very wide sleeve's end ran into it, its outline thinned).
+        m.uv.push(j / ARM3D_AROUND, past < 0 ? 0.5 + own : Math.max(0.28, 0.5 - past + rest * own - (1 - rest) * dot(n, du) * vPast))
       }
     }
     for (let i = 0; i < LAT; i += 1) {
@@ -206,7 +207,7 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
     // portrait's own sleeve where a band off the upper arm would show past its edge.
     const past = vPast * 0.9 * bend * (1 - rest)
     m.gained = m.idx.length
-    tube(m, [c, lerp(c, end, 0.5), end], [r, r, r], [0.5, 0.5 - past / 2, 0.5 - past], ARM3D_AROUND)
+    tube(m, [c, lerp(c, end, 0.5), end], [r, r, r], [0.5, Math.max(0.28, 0.5 - past / 2), Math.max(0.28, 0.5 - past)], ARM3D_AROUND)
     ball(end, past)
   }
   return m
