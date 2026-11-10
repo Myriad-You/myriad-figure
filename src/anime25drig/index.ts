@@ -3,6 +3,8 @@
 // The public surface of this directory; everything else in it is internal.
 
 export type { Anime25DArmAim } from './arm3dReach'
+export type { Anime25DArmCue, Anime25DArmScore, Anime25DArmScoreFrame, Anime25DBodyCue } from './armScore'
+export { armScoreAt } from './armScore'
 export { realizeAnime25DBehaviorPlan } from './behaviorRealizer'
 export { activityExpressionDriverPatch } from './expressionPresets'
 export { idleSpeechDriverPatch } from './performanceMotion'
