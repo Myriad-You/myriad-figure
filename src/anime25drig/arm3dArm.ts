@@ -85,9 +85,6 @@ export class Arm3DSide {
   private worn: Gesture | null = null
   /** With one look, the gesture whose picture of the body (the arm off it) stands for them all. */
   private led: Gesture | null = null
-  /** With one look: the elbow from its shoulder last frame, and how long (seconds) it has been still. */
-  private elbowWas: V3 | null = null
-  private still = 0
   /** With one look: layers given the body's picture while binding, before their gesture was made. */
   private given: Anime25DGpuLayer[] = []
   private wanted: string | null = null
@@ -222,7 +219,12 @@ export class Arm3DSide {
         for (let rx = 0; rx < armOnly.width; rx += 1) restPixels[(ry * armOnly.width + rx) * 4 + 3] *= k
       }
       const restArm = view.picture({ pixels: restPixels, width: armOnly.width, height: armOnly.height })
-      for (let i = 0; i < whole.pixels.length; i += 4) armOnly.pixels.set([whole.pixels[i], whole.pixels[i + 1], whole.pixels[i + 2], armOnly.pixels[i + 3] < 128 ? 0 : 255], i)
+      // A figure's sleeve wears the arm layer's own drawing: the portrait's over it took in what hangs in front of
+      // the arm (a cape's hem at the elbow), and the lifted arm carried that off with it, a piece of the cape on the sleeve.
+      for (let i = 0; i < whole.pixels.length; i += 4) {
+        if (one) armOnly.pixels[i + 3] = armOnly.pixels[i + 3] < 128 ? 0 : 255
+        else armOnly.pixels.set([whole.pixels[i], whole.pixels[i + 1], whole.pixels[i + 2], armOnly.pixels[i + 3] < 128 ? 0 : 255], i)
+      }
       const size = { width: pixels.width, height: pixels.height }
       const atLayer = (from: readonly Anime25DGpuLayer[], blur = 0) => composeArm3DPicture(atlas, from.map(asSource), layer.source, size, blur).pixels
       const portraitHere = atLayer(still)
@@ -239,7 +241,7 @@ export class Arm3DSide {
       const armMask = view.picture(armOnly, true)
       const keyTexture = view.picture({ pixels: split.arm, width: pixels.width, height: pixels.height }, false)
       const passes = (upTo: number): Parameters<Arm3DView['bakeSleeve']>[3] => [
-        { src: wholeTexture, rect: share(rect), pose: hanging, rest: 1, minFace: -0.05, maskFrom: 2, vmax: Math.min(shape.restEnd, upTo) },
+        { src: one ? armMask : wholeTexture, rect: share(rect), pose: hanging, rest: 1, minFace: -0.05, maskFrom: one ? 0 : 2, vmax: Math.min(shape.restEnd, upTo) },
         { src: armMask, rect: share(rect), pose: hanging, rest: 1, minFace: -0.05, maskFrom: 0, vmax: upTo },
         { src: keyTexture, rect: layerRect, pose: raised, rest: 0, minFace: 0.15, maskFrom: 0, vmax: 2 },
       ]
@@ -594,18 +596,11 @@ export class Arm3DSide {
       it.exact = it.near * (1 - smoothstep(0.06 * reach, 0.2 * reach, Math.hypot(pose.w[0] - drawn.w[0], pose.w[1] - drawn.w[1], pose.w[2] - drawn.w[2])))
     }
     if (this.oneLook) {
-      // A gesture's drawn pieces only on an arm come to rest there: on one passing, or setting off, they stood
-      // still while it moved, a second arm left behind.
-      const upper = g.bound.shape.upper
-      const at = sub(pose.e, anchor)
-      const was = this.elbowWas
-      const moving = !was || this.dt <= 0 || Math.hypot(at[0] - was[0], at[1] - was[1], at[2] - was[2]) > 0.05 * upper * this.dt
-      this.still = moving ? 0 : this.still + this.dt
-      this.elbowWas = at
-      const settled = smoothstep(0.04, 0.14, this.still)
+      // An arm of one look is the modelled one wherever it is: a gesture's drawn pieces, laid on as it came to rest
+      // where that gesture drew it, were another sleeve of another cut come up over this one, and gone as it left.
       for (const it of this.gestures) {
-        it.near *= settled
-        it.exact *= settled
+        it.near = 0
+        it.exact = 0
       }
     }
     // The arm takes the hand's picture of the gesture it has turned to once its hand is no longer the last one's.
