@@ -116,9 +116,9 @@ function reachOut(d: Arm3DShape, m: Arm3DMesh, from: number, to: number, centre:
 }
 
 /**
- * The sleeve: upper arm and forearm each straight, the elbow a ball as wide
- * as the sleeve there (swept round a sharp bend, the rings cross on its inner
- * side), the cuff's end face. `rest` (1 hanging) draws its outline to where
+ * The sleeve: upper arm and forearm each straight, the elbow the sleeve's ring
+ * turned round the bend (hanging, a ball as wide as the sleeve there), the
+ * cuff's end face. `rest` (1 hanging) draws its outline to where
  * the portrait's arm reaches; `px` is a trial pixel on this canvas.
  */
 export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: number): Arm3DMesh {
@@ -193,7 +193,60 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
   }
   const c = p.e
   const ballFrom = m.pos.length / 3
-  ball(c)
+  // The elbow itself: the sleeve's ring turned about the hinge from the upper arm's way to the forearm's, each
+  // ring's u where the tubes either side have it. (As a ball with its poles along the two ways' middle, a forearm
+  // folded back up the upper arm had that middle toward the viewer: a pole in front, the elbow's rows drawn round
+  // it as a pale disc with stripes out from its centre.)
+  {
+    const SWEEP = 12
+    let hinge = cross(du, df)
+    if (len(hinge) < 1e-3) hinge = cross(du, Math.abs(du[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0])
+    hinge = norm(hinge)
+    const across = cross(hinge, du)
+    const angle = Math.acos(Math.min(1, Math.max(-1, dot(du, df))))
+    let prevSide: V3 | null = null
+    const innerAt: boolean[] = []
+    for (let i = 0; i <= SWEEP; i += 1) {
+      const a = angle * (i / SWEEP)
+      const way = norm(add(mul(du, Math.cos(a)), mul(across, Math.sin(a))))
+      let ringFront = sub([0, 0, 1], mul(way, way[2]))
+      if (len(ringFront) < 0.2) ringFront = prevSide ? cross(prevSide, way) : cross(way, [1, 0, 0])
+      ringFront = norm(ringFront)
+      const ringSide = norm(cross(way, ringFront))
+      prevSide = ringSide
+      const outer = cross(way, hinge)
+      const ph = -Math.PI / 2 + (i / SWEEP) * Math.PI
+      const v = 0.5 + Math.sin(ph) * (ph < 0 ? vUp : vDown)
+      for (let j = 0; j <= ARM3D_AROUND; j += 1) {
+        const th = (j / ARM3D_AROUND) * Math.PI * 2
+        const round = add(mul(ringFront, Math.cos(th)), mul(ringSide, Math.sin(th)))
+        // Inside the bend the rings cross (the tubes are there already): each ring's inner half drawn in to the
+        // hinge's end on its side, none of it turned to show its back; with it the strip beside it that lies
+        // along the tubes' own surface (drawn over them it flickered against them).
+        const inner = dot(round, outer) < 0.2
+        const swept = inner ? mul(hinge, dot(round, hinge) < 0 ? -1 : 1) : round
+        // Hanging it is the ball it was, point for point (its outline is drawn out to the portrait's arm from there).
+        const onBall = add(mul(add(mul(front, Math.cos(th)), mul(side, Math.sin(th))), Math.cos(ph)), mul(axis, Math.sin(ph)))
+        const mixed = lerp(swept, onBall, rest)
+        const n = len(mixed) < 1e-3 ? onBall : norm(mixed)
+        // Between the two, the inner half goes straight across inside the elbow, not round its surface in folds.
+        m.pos.push(...add(c, mul(inner ? mixed : n, r)))
+        m.nrm.push(...n)
+        m.uv.push(j / ARM3D_AROUND, v)
+        innerAt.push(inner)
+      }
+    }
+    for (let i = 0; i < SWEEP; i += 1) {
+      for (let j = 0; j < ARM3D_AROUND; j += 1) {
+        const a = i * (ARM3D_AROUND + 1) + j
+        const b = a + ARM3D_AROUND + 1
+        // Raised, nothing drawn of the half drawn in: the slivers from the ring's edge to the hinge's end showed
+        // their backs as dark strokes out from it.
+        if (rest < 1e-3 && (innerAt[a] || innerAt[a + 1] || innerAt[b] || innerAt[b + 1])) continue
+        m.idx.push(ballFrom + a, ballFrom + b, ballFrom + a + 1, ballFrom + a + 1, ballFrom + b, ballFrom + b + 1)
+      }
+    }
+  }
   // Hanging, the elbow's ball takes the tubes' outline either side of it (left round, it stood out of them).
   if (rest > 0) reachOut(d, m, ballFrom, m.pos.length / 3, () => c, () => r, () => 0.5, du, rest)
   // Bent, the sleeve goes on past the elbow's middle (its point, and the cloth hanging off it): rounded off at
