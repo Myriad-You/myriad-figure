@@ -254,14 +254,18 @@ export class Arm3DTransit {
         // In its own time the hand is the next one, carried on the forearm as it now lies (as the last one is).
         // But onto the portrait's own hand it turns with the bones: that one is drawn where the arm hangs, and worn
         // by an arm still raised it showed as a grey shape across the hand.
-        const h = this.handInTime && wanted.handRest <= from.handRest ? smoothstep(0, 1, Math.max(0, 1 - this.since / HAND)) : m
+        const own = smoothstep(0, 1, Math.max(0, 1 - this.since / HAND))
+        const h = this.handInTime && wanted.handRest <= from.handRest ? own : m
+        // Its fingers, though, in their own time either way: curled ones swung out on the arm's long way down
+        // were hooks against the background.
+        const g = this.handInTime ? own : h
         const df = this.fore.on(wanted.df)
         out = {
           du: this.upper.on(wanted.du),
           df,
           upper: wanted.upper + (from.upper - wanted.upper) * m,
           fore: wanted.fore + (from.fore - wanted.fore) * m,
-          hand: blendHands(this.handInTime ? wanted.hand.map((q) => carry(q, wanted.df, df)) : wanted.hand, from.hand.map((q) => carry(q, from.df, df)), h),
+          hand: blendHands(this.handInTime ? wanted.hand.map((q) => carry(q, wanted.df, df)) : wanted.hand, from.hand.map((q) => carry(q, from.df, df)), g),
           handRest: wanted.handRest + (from.handRest - wanted.handRest) * h,
           hanging: wanted.hanging + (from.hanging - wanted.hanging) * m,
         }

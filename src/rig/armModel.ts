@@ -201,6 +201,17 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
   const bareWidth = halves.length >= 3 ? median(halves.map((h) => h[0])) : undefined
   const bareShift = halves.length >= 3 ? median(halves.map((h) => h[1])) : 0
   let fore = widths((x, y) => forearmAt(x, y) && !handAt(x, y), drawn.e, cuffPoint, RADII)
+  // A figure's forearm is drawn whole where it hangs, with nothing beside it: the gesture's, raised by a cape or
+  // against the body, was measured with what moved next to it and came out half again as wide, a ball at the elbow.
+  // Its sleeve there is the one the arm wears (the modelled sleeve is laid from the hanging arm): read to where the
+  // gesture's cuff ends, one whose cuff hangs over the hand lost most of that cuff, a thin band left at the wrist.
+  const hangs = pictures.whole && portraitJoints.hand
+    ? hangingSleeve(base, (x, y) => color(pictures.portrait, x, y), tone, pe, pw, portraitJoints.hand)
+    : null
+  if (pictures.whole) {
+    const hung = widths(base, pe, add2(pe, mul2(sub2(pw, pe), hangs?.end ?? cuff)), RADII)
+    fore = fore.map((v, i) => (hung[i] >= 0.06 * U ? hung[i] : v))
+  }
   const steady = (values: number[], least: number, fallback: number) => {
     const good = values.filter((v) => v >= least)
     const stand = good.length ? median(good) : fallback
@@ -213,7 +224,7 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
   radius[0] = upper[0]
   radius[radius.length - 1] = fore[fore.length - 1]
 
-  const restReach = measureRestReach(base, W, H, radius, ps, pe, hangWrist, cuff)
+  const restReach = measureRestReach(base, W, H, radius, ps, pe, hangWrist, hangs?.end ?? cuff)
 
   // How far down the upper arm the portrait's own sleeve is worn, raised: with the elbow in the picture, a short
   // sleeve's cuff (a band and pendant) is drawn just above it, and kept on the upper arm it stayed there as the
@@ -296,6 +307,7 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
     raised: { shoulder: raised[0], elbow: raised[1], wrist: raised[2] },
     ...drawnHand,
     ...(pictures.whole ? { restFore } : {}),
+    ...(hangs ? { restCuff: round(hangs.end, 3), cuffFrom: round(hangs.from, 3) } : {}),
     ...(pictures.whole && portraitJoints.hand ? { restHand: portraitJoints.hand.map(([x, y]) => [x, y] as [number, number]) } : {}),
     skin,
     shade: pick((l) => l > p12 && l < p35),
@@ -307,6 +319,64 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
       rest: [ps, pe, hangWrist], raised: [drawn.s, drawn.e, drawn.w], radius, skin,
     }),
   }
+}
+
+/**
+ * A standing figure's sleeve as its portrait draws it hanging, along the forearm (elbow 0, the found wrist 1; a
+ * cuff worn over the hand ends past it): where it ends (back from the hand, as far as the arm is mostly skin) and
+ * where its cuff begins (the sleeve's plain colour left for another). Null with no skin at the hand to go back
+ * from (a glove), or a forearm bare most of its way.
+ */
+function hangingSleeve(
+  base: (x: number, y: number) => boolean,
+  color: (x: number, y: number) => Anime25DVec3,
+  tone: Anime25DVec3,
+  pe: P2,
+  pw: P2,
+  hand: ReadonlyArray<P2>,
+): { end: number; from: number } | null {
+  const L = dist2(pw, pe)
+  if (L < 8) return null
+  const d = unit2(sub2(pw, pe))
+  const across = (t: number) => {
+    const got: Anime25DVec3[] = []
+    for (let k = -200; k <= 200; k += 1) {
+      const x = Math.trunc(pe[0] + d[0] * t * L - d[1] * k)
+      const y = Math.trunc(pe[1] + d[1] * t * L + d[0] * k)
+      if (base(x, y)) got.push(color(x, y))
+    }
+    return got
+  }
+  const knuckle = sub2(hand[9], pe)
+  const from = Math.min(2, (knuckle[0] * d[0] + knuckle[1] * d[1]) / L)
+  let end: number | null = null
+  let short = 0
+  for (let t = from; t >= 0.5; t -= 0.02) {
+    const row = across(t)
+    const share = row.length > 4 ? row.filter((c) => dist3(c, tone) < 14).length / row.length : 0
+    if (share >= 0.5) {
+      end = t
+      short = 0
+    }
+    else if (end !== null && ++short >= 3) break
+  }
+  if (end === null || end < 0.75 || end > from - 0.03) return null
+  const plain = linspace(0.15, 0.45, 16).flatMap(across)
+  if (plain.length < 16) return null
+  const ref = medianColor(plain)
+  let cuffFrom = Math.max(0.5 * end, end - 0.3)
+  let off = 0
+  for (let t = 0.45; t < end - 0.08; t += 0.02) {
+    const row = across(t)
+    if (row.length > 4 && Math.max(...medianColor(row).map((x, k) => Math.abs(x - ref[k]))) > 60) {
+      if (++off >= 2) {
+        cuffFrom = t - 0.02
+        break
+      }
+    }
+    else off = 0
+  }
+  return { end, from: cuffFrom }
 }
 
 /** The model moved off the grid: `x · scale + dx`, lengths `· scale`. */

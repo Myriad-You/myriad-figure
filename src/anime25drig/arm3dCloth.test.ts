@@ -105,3 +105,22 @@ test('a raised arm carries the cloth: off the limb, as long as drawn, and back o
   for (let f = 0; f < 60; f += 1) sim.step(rest, down, 0, 1 / 30)
   assert.ok(sim.off(rest) < 0.5)
 })
+
+/** A cloth 60 wide over an arm from (80, 20) to (80, 140), drawn down to `end`. */
+function hung(end: number): Uint8Array {
+  const rgba = new Uint8Array(200 * 400 * 4)
+  for (let y = 10; y < end; y += 1) {
+    for (let x = 40; x < 100; x += 1) rgba[(y * 200 + x) * 4 + 3] = 255
+  }
+  return rgba
+}
+
+test('a cape that ends of itself is cut whole, its lowest corner with it; a coat that goes on down is cut across', () => {
+  const cape = cutArm3DCloth(hung(290), 200, 400, S, E, 30, -1)
+  assert.ok(cape)
+  assert.equal(cape.piece[280 * 200 + 60], 1)
+  const coat = cutArm3DCloth(hung(400), 200, 400, S, E, 30, -1)
+  assert.ok(coat)
+  assert.equal(coat.piece[190 * 200 + 60], 1)
+  assert.equal(coat.piece[280 * 200 + 60], 0)
+})

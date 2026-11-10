@@ -13,6 +13,12 @@ const DRAWN = 16
 /** The cut reaches this far above the shoulder and below the elbow (shares of the upper arm). */
 const ABOVE = -0.25
 const BELOW = 1.6
+/**
+ * A cloth that ends of itself before this far down is cut whole: cut straight across at `BELOW`, a cape's lowest
+ * corner stayed in its layer, hanging in the air under the lifted rest of it. One that goes on past here (a coat
+ * drawn in one with its shoulder) is cut at `BELOW` as before.
+ */
+const WHOLE = 2.6
 /** And this far toward the body from the arm's axis (shares of its radius): what lies further in is the body's. */
 const INWARD = 0.9
 /** The piece's picture goes on this many pixels past the cut, under what it was cut from. */
@@ -42,35 +48,7 @@ export function cutArm3DCloth(rgba: ArrayLike<number>, width: number, height: nu
   if (length < 4 || radius < 2) return null
   const ux = dx / length
   const uy = dy / length
-  const piece = new Uint8Array(width * height)
   const stack = new Int32Array(width * height)
-  let top = 0
-  let seeds = 0
-  // 1 may be the cloth's, 2 a place it is sure to be (over the outer half of the upper arm).
-  const may = (p: number): number => {
-    if (rgba[p * 4 + 3] < DRAWN) return 0
-    const x = p % width - s[0]
-    const y = Math.floor(p / width) - s[1]
-    const t = (x * ux + y * uy) / length
-    const out = side * (uy * x - ux * y)
-    if (t <= ABOVE || t >= BELOW || out <= -INWARD * radius) return 0
-    return t > 0.2 && t < 0.6 && out > 0 && out < radius ? 2 : 1
-  }
-  const x0 = Math.max(0, Math.floor(Math.min(s[0], e[0]) - radius))
-  const x1 = Math.min(width, Math.ceil(Math.max(s[0], e[0]) + radius) + 1)
-  const y0 = Math.max(0, Math.floor(Math.min(s[1], e[1]) - radius))
-  const y1 = Math.min(height, Math.ceil(Math.max(s[1], e[1]) + radius) + 1)
-  for (let y = y0; y < y1; y += 1) {
-    for (let x = x0; x < x1; x += 1) {
-      const p = y * width + x
-      if (may(p) !== 2) continue
-      piece[p] = 1
-      stack[top++] = p
-      seeds += 1
-    }
-  }
-  // Cloth on a good part of it, not the edge of a coat beside the arm.
-  if (seeds < 0.25 * 0.4 * length * radius) return null
   const next = (p: number, k: number): number => {
     const x = p % width
     if (k === 0) return x > 0 ? p - 1 : -1
@@ -78,15 +56,53 @@ export function cutArm3DCloth(rgba: ArrayLike<number>, width: number, height: nu
     if (k === 2) return p >= width ? p - width : -1
     return p < width * (height - 1) ? p + width : -1
   }
-  while (top > 0) {
-    const p = stack[--top]
-    for (let k = 0; k < 4; k += 1) {
-      const q = next(p, k)
-      if (q < 0 || piece[q] || !may(q)) continue
-      piece[q] = 1
-      stack[top++] = q
+  const x0 = Math.max(0, Math.floor(Math.min(s[0], e[0]) - radius))
+  const x1 = Math.min(width, Math.ceil(Math.max(s[0], e[0]) + radius) + 1)
+  const y0 = Math.max(0, Math.floor(Math.min(s[1], e[1]) - radius))
+  const y1 = Math.min(height, Math.ceil(Math.max(s[1], e[1]) + radius) + 1)
+  // All that is drawn joined to the cloth's sure place, down to `below`; `ended` where it stopped short of that.
+  const flood = (below: number): { piece: Uint8Array; seeds: number; ended: boolean } => {
+    const piece = new Uint8Array(width * height)
+    let top = 0
+    let seeds = 0
+    let ended = true
+    // 1 may be the cloth's, 2 a place it is sure to be (over the outer half of the upper arm).
+    const may = (p: number): number => {
+      if (rgba[p * 4 + 3] < DRAWN) return 0
+      const x = p % width - s[0]
+      const y = Math.floor(p / width) - s[1]
+      const t = (x * ux + y * uy) / length
+      const out = side * (uy * x - ux * y)
+      if (t >= below && out > -INWARD * radius) ended = false
+      if (t <= ABOVE || t >= below || out <= -INWARD * radius) return 0
+      return t > 0.2 && t < 0.6 && out > 0 && out < radius ? 2 : 1
     }
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = x0; x < x1; x += 1) {
+        const p = y * width + x
+        if (may(p) !== 2) continue
+        piece[p] = 1
+        stack[top++] = p
+        seeds += 1
+      }
+    }
+    ended = true
+    while (top > 0) {
+      const p = stack[--top]
+      for (let k = 0; k < 4; k += 1) {
+        const q = next(p, k)
+        if (q < 0 || piece[q] || !may(q)) continue
+        piece[q] = 1
+        stack[top++] = q
+      }
+    }
+    return { piece, seeds, ended }
   }
+  let cut = flood(WHOLE)
+  // Cloth on a good part of it, not the edge of a coat beside the arm.
+  if (cut.seeds < 0.25 * 0.4 * length * radius) return null
+  if (!cut.ended) cut = flood(BELOW)
+  const piece = cut.piece
   // Past the cut: what is drawn there is the layer's still (the piece's picture goes on under it, no gap between
   // the two as they part); what is not is the cloth's soft rim, and goes with it.
   const seam = new Uint8Array(width * height)

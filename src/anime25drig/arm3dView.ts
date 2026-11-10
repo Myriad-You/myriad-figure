@@ -6,7 +6,7 @@ import type { Arm3DTarget } from './arm3dTarget'
 import { handExactness, len, similarity2D, smoothstep, sub } from './arm3dMath'
 import { ARM3D_AROUND, ARM3D_RINGS, arm3DBareFromElbow, arm3DHandMesh, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { liftForearm, wristOverUpper } from './arm3dMotion'
-import { ringFill } from './arm3dPrepare'
+import { clothCuffMouth, ringFill } from './arm3dPrepare'
 import { BAKE_FS, BAKE_VS, COMPOSITE_FS, FULL_VS, GAP2_FS, GAP_FS, HAND_FS, HAND_VS, HELD_FS, HELD_VS, SLEEVE_FS, SLEEVE_VS, WHOLE_FS } from './arm3dShaders'
 import { arm3DTexture, createArm3DTarget, dropArm3DTarget, setArm3DGround } from './arm3dTarget'
 
@@ -223,6 +223,7 @@ export class Arm3DView {
     gl.deleteFramebuffer(fb)
     // About 11° round the ring in from where a picture saw the sleeve last: past the outline it draws there.
     ringFill(px8, BAKE_W, BAKE_H, BAKE_W >> 5)
+    if (shape.restCuff !== undefined) clothCuffMouth(px8, BAKE_W, BAKE_H)
     gl.bindTexture(gl.TEXTURE_2D, out)
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, BAKE_W, BAKE_H, 0, gl.RGBA, gl.UNSIGNED_BYTE, px8)
@@ -359,6 +360,7 @@ export class Arm3DView {
     gl.uniform1f(this.uniform(p, 'uFold'), fold.over * fold.ru * 2.5)
     gl.uniform1f(this.uniform(p, 'uRestEnd'), bound.shape.restEnd)
     gl.uniform1f(this.uniform(p, 'uOpen'), arm3DBareFromElbow(bound.shape) ? 0.5 : 1)
+    gl.uniform1f(this.uniform(p, 'uLined'), bound.shape.restCuff === undefined ? 0 : 1)
     const band = bound.lifted && bound.shape.restBand
     gl.uniform3f(this.uniform(p, 'uBand'), band ? band[0] : 0, band ? band[1] : 0, band ? 1 : 0)
     setArm3DGround(gl, (name) => this.uniform(p, name), bound.groundClip, frame.held, bound.armMask)
@@ -418,7 +420,7 @@ export class Arm3DView {
     const p = this.handProgram
     const d = bound.shape
     const hand = arm3DHandMesh(d, pose, bound.palm)
-    const wrist = arm3DWristMesh(d, pose)
+    const wrist = arm3DWristMesh(d, pose, frame.hanging)
     const n = hand.pos.length / 3
     const fits = bound.handPic.length === n * 2
     const wristFits = bound.wristPic.length === wrist.pos.length / 3 * 2 && bound.wristHangPic.length === bound.wristPic.length
@@ -450,6 +452,7 @@ export class Arm3DView {
     gl.uniform3fv(this.uniform(p, 'uLit'), d.skin.map((c) => c / 255))
     gl.uniform3fv(this.uniform(p, 'uShade'), d.shade.map((c) => c / 255 * 0.97))
     gl.uniform3fv(this.uniform(p, 'uWristTone'), bound.wristTone)
+    gl.uniform1f(this.uniform(p, 'uPlainWrist'), d.restCuff === undefined ? 0 : 1)
     // Only a forearm bare from the elbow: one in a sleeve stays inside its cuff.
     const fold = wristOverUpper(d, pose)
     gl.uniform1f(this.uniform(p, 'uFold'), arm3DBareFromElbow(d) ? fold.over * fold.ru * 2.5 : 0)
@@ -550,7 +553,7 @@ export class Arm3DView {
     gl.uniform1f(this.uniform(h, 'uAlpha'), 1)
     gl.uniform1f(this.uniform(h, 'uExact'), 0)
     gl.uniform4f(this.uniform(h, 'uSolid'), 1, 1, 1, 1)
-    for (const m of [arm3DWristMesh(d, pose), hand]) {
+    for (const m of [arm3DWristMesh(d, pose, frame.hanging), hand]) {
       gl.drawElements(gl.TRIANGLES, this.upload(h, { aPos: [m.pos, 3], aNrm: [m.nrm, 3] }, m.idx), gl.UNSIGNED_INT, 0)
     }
     gl.uniform4f(this.uniform(h, 'uSolid'), 0, 0, 0, 0)
@@ -695,7 +698,7 @@ export class Arm3DView {
     gl.uniform1f(this.uniform(h, 'uPush'), px)
     gl.uniform1f(this.uniform(h, 'uAlpha'), 1)
     gl.uniform4f(this.uniform(h, 'uSolid'), 1, 1, 1, 1)
-    for (const m of [arm3DWristMesh(bound.shape, pose), arm3DHandMesh(bound.shape, pose, bound.palm)]) {
+    for (const m of [arm3DWristMesh(bound.shape, pose, frame.hanging), arm3DHandMesh(bound.shape, pose, bound.palm)]) {
       gl.drawElements(gl.TRIANGLES, this.upload(h, { aPos: [m.pos, 3], aNrm: [m.nrm, 3] }, m.idx), gl.UNSIGNED_INT, 0)
     }
     if (over) {

@@ -90,7 +90,26 @@ function sleeveRadius(d: Arm3DShape, v: number): number {
   const R = d.radius
   const x = Math.max(0, Math.min(1, v)) * (R.length - 1)
   const i = Math.min(R.length - 2, Math.floor(x))
-  return (R[i] + (R[i + 1] - R[i]) * (x - i)) * (1 - 0.32 * Math.max(0, (v - 0.94) / 0.06))
+  // A sleeve measured where it hangs has its end as drawn there (a turned-back cuff is widest at its end).
+  return (R[i] + (R[i + 1] - R[i]) * (x - i)) * (d.restCuff === undefined ? 1 - 0.32 * Math.max(0, (v - 0.94) / 0.06) : 1)
+}
+
+/** Where the sleeve ends along the forearm (elbow 0, wrist 1): hanging (`rest` 1), where the portrait draws it end. */
+function sleeveEnd(d: Arm3DShape, rest: number): number {
+  return d.restCuff === undefined ? d.cuff : d.cuff + (d.restCuff - d.cuff) * rest
+}
+
+/**
+ * The sleeve's row (0 the elbow, 1 its end) a share `s` of the way down a forearm's sleeve `length` long: the
+ * cuff keeps the length it was drawn hanging (to half the sleeve), the plain sleeve above it takes the rest. A
+ * forearm shorter raised than hanging squeezed evenly had its cuff a thin band; hanging, even as drawn.
+ */
+function forearmRow(d: Arm3DShape, s: number, length: number): number {
+  if (d.restCuff === undefined || d.cuffFrom === undefined || d.restFore === undefined) return s
+  const vc = d.cuffFrom / d.restCuff
+  const plain = Math.max(length - (d.restCuff - d.cuffFrom) * d.restFore, 0.5 * length)
+  const x = s * length
+  return x <= plain ? x / Math.max(1e-6, plain) * vc : vc + (x - plain) / Math.max(1e-6, length - plain) * (1 - vc)
 }
 
 /** Hanging, each point out (or in) across the bone to where the drawn arm reaches on its side. */
@@ -124,14 +143,15 @@ function reachOut(d: Arm3DShape, m: Arm3DMesh, from: number, to: number, centre:
 export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: number): Arm3DMesh {
   const m = emptyMesh()
   const half = ARM3D_RINGS / 2
-  for (const [a, b, v0] of [[p.s, p.e, 0], [p.e, lerp(p.e, p.w, d.cuff), 0.5]] as const) {
+  const sleeved = len(sub(p.w, p.e)) * sleeveEnd(d, rest)
+  for (const [a, b, v0] of [[p.s, p.e, 0], [p.e, lerp(p.e, p.w, sleeveEnd(d, rest)), 0.5]] as const) {
     const pts: V3[] = []
     const radii: number[] = []
     const vs: number[] = []
     // A forearm bare from the elbow is the wrist's to draw from there: its stub of sleeve kept inside it.
     const tuck = v0 > 0 && arm3DBareFromElbow(d)
     for (let i = 0; i <= half; i += 1) {
-      const v = v0 + (i / half) * 0.5
+      const v = v0 + (v0 > 0 ? forearmRow(d, i / half, sleeved) : i / half) * 0.5
       pts.push(lerp(a, b, i / half))
       radii.push(sleeveRadius(d, v) * (tuck ? 1 - 0.45 * smoothstep(0.5, 0.56, v) : 1))
       vs.push(v)
@@ -148,7 +168,7 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
   }
   // A forearm drawn bare from the elbow has no cuff on it to show the end of: the sleeve's end there stood out as
   // a white lip across the skin.
-  if (!arm3DBareFromElbow(d)) cuffFace(d, m, p, sleeveRadius(d, 1), 1.6 * px)
+  if (!arm3DBareFromElbow(d)) cuffFace(d, m, p, rest, sleeveRadius(d, 1), 1.6 * px)
   const du = norm(sub(p.e, p.s))
   const df = norm(sub(p.w, p.e))
   const axis = len(add(du, df)) > 1e-3 ? norm(add(du, df)) : du
@@ -164,7 +184,9 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
   // Hanging, the ball's v as far along the arm as each point of it lies (squeezed, it wore rows from nearer
   // the elbow than its place); bent, back to the elbow's own rows (spread, it showed the elbow's band as she waved).
   const vUp = 0.04 + rest * (0.5 * r / Math.max(1e-6, len(sub(p.e, p.s))) - 0.04)
-  const vDown = 0.04 + rest * (0.5 * r / Math.max(1e-6, len(sub(p.w, p.e)) * d.cuff) - 0.04)
+  const vDown = d.restCuff === undefined
+    ? 0.04 + rest * (0.5 * r / Math.max(1e-6, len(sub(p.w, p.e)) * d.cuff) - 0.04)
+    : 0.04 + rest * (0.5 * forearmRow(d, Math.min(1, r / Math.max(1e-6, sleeved)), sleeved) - 0.04)
   const vPast = 0.5 * r / Math.max(1e-6, len(sub(p.e, p.s)))
   const ball = (c: V3, past = -1) => {
     const base = m.pos.length / 3
@@ -285,12 +307,15 @@ export function arm3DBareFromElbow(d: Arm3DShape): boolean {
 }
 
 /** The forearm's bare skin past the cuff, or the wrist in it: where it leaves the cuff, and how wide. */
-function wristFit(d: Arm3DShape, p: Arm3DPose) {
+function wristFit(d: Arm3DShape, p: Arm3DPose, rest: number) {
   const h = p.hand
   const size = len(sub(h[9], h[0]))
-  const cuffAt = lerp(p.e, p.w, d.cuff)
-  const cuff = d.radius[d.radius.length - 1] * (1 - 0.32) * 0.92
-  const bare = len(sub(h[0], cuffAt)) > size * 0.15
+  const cuffAt = lerp(p.e, p.w, sleeveEnd(d, rest))
+  const cuff = d.radius[d.radius.length - 1] * (d.restCuff === undefined ? 1 - 0.32 : 1) * 0.92
+  // A cuff that hangs over the hand has no forearm bare past it, however far its end is from the wrist.
+  const bare = d.restCuff === undefined
+    ? len(sub(h[0], cuffAt)) > size * 0.15
+    : dot(sub(h[0], cuffAt), norm(sub(p.w, p.e))) > size * 0.15
   // A bare forearm as wide as drawn (its lit and shaded skin), at the cuff inside the sleeve's outline: held to
   // the cuff's opening and a wrist's width all along, it came out about half as wide as drawn, the portrait's
   // arm showing beside it.
@@ -306,8 +331,8 @@ function wristFit(d: Arm3DShape, p: Arm3DPose) {
  * and show only a thin dark gap inside it. Its v runs on past the sleeve's 1 (1.01 at the rim to 1.05 at the
  * hole) for the shading to tell it.
  */
-function cuffFace(d: Arm3DShape, m: Arm3DMesh, p: Arm3DPose, rim: number, outline: number): void {
-  const { h, size, cuffAt, cuff, bare, arm, fore, off } = wristFit(d, p)
+function cuffFace(d: Arm3DShape, m: Arm3DMesh, p: Arm3DPose, rest: number, rim: number, outline: number): void {
+  const { h, size, cuffAt, cuff, bare, arm, fore, off } = wristFit(d, p, rest)
   const dir = norm(sub(cuffAt, p.e))
   const r = bare ? arm : Math.min(size * WRIST * 1.15, cuff)
   // Flat as the wrist there is: a round opening gaped above and below the flattened wrist.
@@ -325,14 +350,20 @@ function cuffFace(d: Arm3DShape, m: Arm3DMesh, p: Arm3DPose, rim: number, outlin
   // Its outer edge out as far as the sleeve's outline, in the outline's colour, only with the cuff turned
   // nearly to the viewer: at a slant its near side stood in front of the forearm as a white lip.
   const k = smoothstep(0.7, 0.9, dir[2])
+  // A cuff measured where it hangs (wide at its end, turned back) is closed in to the wrist from every side, its
+  // inside going back into the sleeve as it narrows (its own rows of v, 1.06 at the rim to 1.1 at the wrist):
+  // open at a slant, it was a wide dark hole with a thin wrist in it.
+  const lined = d.restCuff !== undefined
   const rings: [number, number, number, number][] = [[0, rim + outline * k, rim + outline * k, 1.01], [0, rim, rim, 1.02]]
+  if (lined) rings.push([0, rim, rim, 1.06])
   for (let i = 1; i <= 3; i += 1) {
-    const t = (i / 3) * k
-    rings.push([t, rim * (1 - t) + holeA * t, rim * (1 - t) + holeB * t, 1.02 + 0.03 * (i / 3)])
+    const t = (i / 3) * (lined ? 1 : k)
+    rings.push([t, rim * (1 - t) + holeA * t, rim * (1 - t) + holeB * t, lined ? 1.06 + 0.04 * (i / 3) : 1.02 + 0.03 * (i / 3)])
   }
+  const back = lined ? mul(dir, -0.45 * rim) : null
   const base = m.pos.length / 3
   for (const [t, ra, rb, v] of rings) {
-    const at = lerp(cuffAt, c, t)
+    const at = back ? add(lerp(cuffAt, c, t), mul(back, t)) : lerp(cuffAt, c, t)
     for (let j = 0; j <= ARM3D_AROUND; j += 1) {
       const th = (j / ARM3D_AROUND) * Math.PI * 2
       m.pos.push(...add(at, add(mul(front, Math.cos(th) * ra), mul(side, Math.sin(th) * rb))))
@@ -354,9 +385,9 @@ function cuffFace(d: Arm3DShape, m: Arm3DMesh, p: Arm3DPose, rim: number, outlin
  * palm, run on into the heel of the palm and closed there. Its v (-2 at the cuff to -3 at the closed end)
  * tells the shading it, its u how deep in the cuff's shadow it is.
  */
-export function arm3DWristMesh(d: Arm3DShape, p: Arm3DPose): Arm3DMesh {
+export function arm3DWristMesh(d: Arm3DShape, p: Arm3DPose, rest = 0): Arm3DMesh {
   const m = emptyMesh()
-  const { h, size, cuffAt, cuff, bare, arm, full, fore, off } = wristFit(d, p)
+  const { h, size, cuffAt, cuff, bare, arm, full, fore, off } = wristFit(d, p, rest)
   const rw = Math.min(size * WRIST, cuff)
   const rin = Math.min(size * WRIST * 1.15, cuff)
   const dh = norm(sub(h[9], h[0]))

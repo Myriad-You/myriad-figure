@@ -7,7 +7,7 @@ import { affineFit, arm3DOnBody, sleeveLineHeldOff } from './arm3dArm'
 import { similarity2D } from './arm3dMath'
 import { arm3DHandMesh, arm3DPalmAsModelled, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
-import { arm3DCutSides, arm3DUpperArmAlone, ringFill } from './arm3dPrepare'
+import { arm3DCutSides, arm3DUpperArmAlone, clothCuffMouth, ringFill } from './arm3dPrepare'
 import { arm3DAimBones, arm3DAimHand, arm3DAimOf, Arm3DTransit } from './arm3dReach'
 
 // A left arm hanging from (420, 620), raised with its hand up beside the head; in a layer at (100, 50).
@@ -489,4 +489,48 @@ test('a rise slows into the gesture: the hand is nearly still as it arrives, not
   }
   assert.ok(fastest > 5, `${fastest}`)
   assert.ok(last >= 0 && last < 0.12 * fastest, `${last} of ${fastest}`)
+})
+
+test('a cuff measured where it hangs is closed in to the wrist by rows of its own; another keeps its end as it was', () => {
+  const motion = new Arm3DMotion(shape, false)
+  const raised = motion.restPose(shape.rest.s)
+  const vs = (d: typeof shape) => arm3DSleeveMesh(d, raised, 0, 2).uv.filter((_, i) => i % 2 === 1)
+  const plain = vs(shape)
+  assert.ok(Math.max(...plain) <= 1.05 + 1e-6)
+  const lined = vs({ ...shape, restCuff: 1.1, cuffFrom: 0.8, restFore: 280 })
+  assert.ok(Math.abs(Math.max(...lined) - 1.1) < 1e-6)
+  assert.ok(lined.some((v) => Math.abs(v - 1.06) < 1e-6))
+})
+
+test('an arm of one look has the next gesture\'s hand soon after it leaves, long before its bones are there', () => {
+  const far = (s: Arm3DStance) => Math.hypot(...s.hand[1]!)
+  const at = (inTime: boolean) => {
+    const transit = new Arm3DTransit()
+    transit.handInTime = inTime
+    const a = stanceOf(unit([-0.1, 1, 0]), unit([-0.05, 1, 0]))
+    const b = { ...stanceOf(unit([-0.4, 0.6, 0.5]), unit([0.7, -0.5, 0.5])), hand: a.hand.map((q) => [q[0] * 2, q[1] * 2, 0] as V3) }
+    transit.pose(a, 1 / 60)
+    transit.retarget(b)
+    let now = a
+    for (let i = 0; i < 20; i += 1) now = transit.pose(b, 1 / 60)
+    assert.ok(!transit.idle)
+    return far(now) / far(a)
+  }
+  assert.ok(Math.abs(at(true) - 2) < 0.02, `${at(true)}`)
+  assert.ok(at(false) < 1.95, `${at(false)}`)
+})
+
+test('a cuff\'s last rows lose the drawn mouth and keep its trim', () => {
+  const w = 2
+  const h = 50
+  const px = new Uint8Array(w * h * 4)
+  for (let y = 0; y < h; y += 1) { for (let x = 0; x < w; x += 1) px.set([248, 231, 224, 255], (y * w + x) * 4)
+}
+  // The mouth's shadow and a gold trim in the last rows of column 0; column 1 all cloth.
+  px.set([214, 198, 199, 255], (46 * w) * 4)
+  px.set([200, 160, 90, 255], (48 * w) * 4)
+  clothCuffMouth(px, w, h)
+  assert.deepEqual([...px.slice(46 * w * 4, 46 * w * 4 + 3)], [248, 231, 224])
+  assert.deepEqual([...px.slice(48 * w * 4, 48 * w * 4 + 3)], [200, 160, 90])
+  assert.deepEqual([...px.slice((46 * w + 1) * 4, (46 * w + 1) * 4 + 3)], [248, 231, 224])
 })

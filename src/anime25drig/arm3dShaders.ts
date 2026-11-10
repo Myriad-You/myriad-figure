@@ -22,7 +22,7 @@ precision highp float;
 in vec2 vUv; in vec3 vNrm; in float vV; in vec2 vPic; in vec2 vAt;
 uniform sampler2D uTex; uniform sampler2D uArmMask; uniform vec4 uMaskRect;
 uniform float uRest; uniform vec4 uSolid; uniform float uFadeTop; uniform float uRestEnd; uniform vec3 uLine;
-uniform float uUnlined; uniform float uOpen; uniform vec3 uBand; uniform sampler2D uLifted;
+uniform float uUnlined; uniform float uOpen; uniform float uLined; uniform vec3 uBand; uniform sampler2D uLifted;
 // Held, cut away over the drawing's own ground (uGround, on uGroundRect of the canvas as drawn; uToDrawn0/1 carry
 // this frame's canvas back to it), by how near it is held (uGroundOn).
 uniform sampler2D uGround; uniform vec4 uGroundRect; uniform vec3 uToDrawn0; uniform vec3 uToDrawn1; uniform float uGroundOn;
@@ -35,6 +35,16 @@ vec3 cloth(vec2 uv) {
   float off = uBand.z * (1.0 - smoothstep(0.55, 0.995, uRest))
     * smoothstep(uBand.x - 0.015, uBand.x, uv.y) * (1.0 - smoothstep(uBand.y, uBand.y + 0.015, uv.y));
   return mix(texture(uTex, uv).rgb, texture(uLifted, uv).rgb, off);
+}
+// The cuff's cloth at its palest round the rim: what a standing figure's cuff is inside (the rim's average took in
+// its gold trim, and the inside came out tan).
+vec3 pale() {
+  vec3 hi = vec3(0.0);
+  for (int i = 0; i < 8; i++) {
+    vec3 t = textureLod(uTex, vec2(float(i) / 8.0, 0.93), 3.0).rgb;
+    if (dot(t, vec3(1.0)) > dot(hi, vec3(1.0))) hi = t;
+  }
+  return hi;
 }
 void main() {
   float nz = normalize(vNrm).z;
@@ -84,12 +94,14 @@ void main() {
       if (dot(t, vec3(1.0)) < dot(lo, vec3(1.0))) lo = t;
       avg += t / 8.0;
     }
-    c = mix(lo, avg, 0.45) * mix(0.3, 0.68, smoothstep(uOpen - 0.07, uOpen, vV));
+    // (A standing figure's cuff is seen into from every side: warm and light, where a grey inside read as a hole.)
+    c = uLined > 0.5 ? pale() * mix(vec3(0.8, 0.7, 0.66), vec3(0.93, 0.86, 0.81), smoothstep(uOpen - 0.07, uOpen, vV)) : mix(lo, avg, 0.45) * mix(0.3, 0.68, smoothstep(uOpen - 0.07, uOpen, vV));
     a *= smoothstep(0.15, 0.3, vV);
   } else if (vV > 1.005) {
     // The cuff's end face: its cloth a little in from the edge, blurred, going into the opening's shadow.
     vec3 cloth = textureLod(uTex, vec2(vUv.x, 0.93), 3.0).rgb;
-    c = vV < 1.02 ? mix(uLine, cloth * 0.4, 0.75) : cloth * mix(1.0, 0.62, smoothstep(1.025, 1.05, vV));
+    // (Past 1.055, a cuff closed in to the wrist from every side: its inside, in shadow from the rim on.)
+    c = vV < 1.02 ? mix(uLine, cloth * 0.4, 0.75) : uLined > 0.5 && vV > 1.055 ? pale() * mix(vec3(0.95, 0.88, 0.83), vec3(0.82, 0.72, 0.68), smoothstep(1.06, 1.1, vV)) : cloth * mix(vec3(1.0), uLined > 0.5 ? vec3(0.95, 0.88, 0.83) : vec3(0.62), smoothstep(1.025, 1.05, vV));
   }
   // Cut, it is outlined there as its own outline is.
   c = mix(c, mix(uLine, c * 0.4, 0.75), edge);
@@ -134,7 +146,7 @@ precision highp float;
 in vec3 vNrm; in vec2 vUv; in vec2 vPic; in float vWt; in vec2 vHangPic; in float vHangWt; in float vAlong; in float vFace;
 uniform sampler2D uHand; uniform sampler2D uHang; uniform float uHanging; uniform float uRestNear; uniform vec3 uLit; uniform vec3 uShade; uniform vec4 uSolid; uniform float uAlpha;
 uniform vec3 uWristTone; uniform float uExact; uniform float uNear; uniform sampler2D uDrawn;
-uniform sampler2D uFull; uniform vec4 uFullMap; uniform float uHasFull; uniform float uHandHang; uniform float uHandRest; uniform float uRestShown;
+uniform sampler2D uFull; uniform vec4 uFullMap; uniform float uHasFull; uniform float uHandHang; uniform float uHandRest; uniform float uRestShown; uniform float uPlainWrist;
 out vec4 o;
 void main() {
   float al = uAlpha;
@@ -145,8 +157,9 @@ void main() {
   // While it is still the portrait's hand (carried up as drawn), not once it turns into the gesture's.
   float hangHand = uHandHang * step(-1.5, vUv.y) * uHandRest;
   // Cut to the drawn hand only as the portrait's arm is there under it to be that hand: on its way, a hand half
-  // the portrait's was half see-through wherever the drawn one was not.
-  al *= mix(1.0, hung.a, hangHand * uRestShown);
+  // the portrait's was half see-through wherever the drawn one was not. Or as it is all but the portrait's hand
+  // already, the arm still coming down: the model past the drawn hand stood round it as a pale slab.
+  al *= mix(1.0, hung.a, hangHand * max(uRestShown, smoothstep(0.75, 0.98, uHandRest)));
   // Held as drawn, none of the hand where the gesture drew no hand (the wrist aside, which the picture fades out
   // below): fingers found running on over bare skin stood past the drawn tips as outlined ghosts. The drawn hand
   // is where the cut-out has it or the gesture differs from the portrait (the cut-out misses a palm's shadow).
@@ -161,15 +174,18 @@ void main() {
   vec2 edge = min(fp, 1.0 - fp);
   float fin = uHasFull * smoothstep(0.0, 0.04, min(edge.x, edge.y));
   vec4 full = texture(uFull, fp);
-  float held = uExact * fin * full.a;
+  // A standing figure's wrist is its own shaded skin, never the gesture's picture: its cuff ends where the model has
+  // it, short of the drawn one, and the wrist past it wore what the drawing has there (the cuff, the hair behind).
+  float worn = vUv.y < -1.5 ? 1.0 - uPlainWrist : 1.0;
+  float held = uExact * fin * full.a * worn;
   if (vUv.y >= -1.5) al *= mix(1.0, drawnHere, uExact * (1.0 - fin));
   // Except the drawing's empty ground: a finger modelled a little wider than drawn wore the canvas about its tip.
-  al *= mix(1.0, full.a, uExact * fin);
+  al *= mix(1.0, full.a, uExact * fin * worn);
   if (uSolid.a > 0.0) {
     // Held in the drawn pose, a part's outline inside the drawn hand is not on the drawing (a hidden thumb's
     // stood as a pale stick by the wrist, a curled finger's doubled its drawn lines): the drawing there.
     vec4 s = texture(uHand, vPic);
-    float under = uExact * smoothstep(0.85, 0.98, textureLod(uHand, vPic, 2.0).a) * s.a * inPic;
+    float under = uExact * smoothstep(0.85, 0.98, textureLod(uHand, vPic, 2.0).a) * s.a * inPic * worn;
     o = vec4(mix(mix(mix(uSolid.rgb, s.rgb, under), full.rgb, held), hung.rgb, hangHand * hung.a) * al, al);
     return;
   }
@@ -220,7 +236,7 @@ void main() {
     // which turned with the arm as white streaks on the forearm.
     float hw = h.a * smoothstep(0.4, 0.95, textureLod(uHang, vHangPic, 3.0).a) * vHangWt * uRestNear;
     hw *= step(0.0, vHangPic.x) * step(vHangPic.x, 1.0) * step(0.0, vHangPic.y) * step(vHangPic.y, 1.0);
-    float rw = w * (1.0 - uHanging);
+    float rw = w * (1.0 - uHanging) * worn;
     w = rw + hw * (1.0 - rw);
     t.rgb = w > 0.0 ? (t.rgb * rw + h.rgb * hw * (1.0 - rw)) / w : t.rgb;
   } else {

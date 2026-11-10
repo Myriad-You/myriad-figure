@@ -191,7 +191,7 @@ export class Arm3DSide {
       const hanging = motion.keyPose(0, shape.rest.s)
       const raised = motion.keyPose(1, shape.rest.s)
       // The portrait about its hanging arm, whole and its arm alone (the arm layers say where the arm is).
-      const hangWrist = arm3DWristMesh(shape, hanging)
+      const hangWrist = arm3DWristMesh(shape, hanging, 1)
       // The drawn hand lies where the gesture drew it; the modelled one hangs from the portrait's shoulder.
       const palm = one ? onePalm : arm3DPalmAsModelled(raised.hand, model.palmOutline)
       // A standing figure's hangs where the portrait draws it: the picture about the arm takes it in too.

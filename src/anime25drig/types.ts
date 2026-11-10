@@ -112,6 +112,13 @@ export interface Anime25DArmModel {
   restHand?: Array<[number, number]>
   /** A standing figure's forearm as the portrait draws it hanging: the model's runs between it and `fore`. */
   restFore?: number
+  /**
+   * A standing figure's sleeve as the portrait draws it hanging, along that forearm (elbow 0, wrist 1): where it
+   * ends (a cuff worn over the hand ends past the wrist; raised, the sleeve ends at `cuff`) and where its cuff
+   * begins, which stays as long as drawn whatever the forearm's length. Absent where the hanging arm does not show it.
+   */
+  restCuff?: number
+  cuffFrom?: number
   /** The bones' lengths, as long as either picture draws them (a figure's forearm, as the gesture draws it). */
   upper: number
   fore: number

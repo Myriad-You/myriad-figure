@@ -2,7 +2,7 @@ import type { Arm3DShape } from './arm3dMotion'
 import type { Anime25DArmModel } from './types'
 
 /** What an arm looks like whatever it does: its sleeve's widths, its fingers', its palm, its colours. */
-export type Arm3DLook = Pick<Anime25DArmModel, 'radius' | 'cuff' | 'bare' | 'bareShift' | 'restEnd' | 'restBand' | 'restReach' | 'fingers' | 'fingerProfile' | 'keyProfile' | 'palmOutline' | 'hiddenFingers' | 'skin' | 'shade' | 'line'>
+export type Arm3DLook = Pick<Anime25DArmModel, 'radius' | 'cuff' | 'restCuff' | 'cuffFrom' | 'bare' | 'bareShift' | 'restEnd' | 'restBand' | 'restReach' | 'fingers' | 'fingerProfile' | 'keyProfile' | 'palmOutline' | 'hiddenFingers' | 'skin' | 'shade' | 'line'>
 
 /**
  * One look for a standing figure's arm out of its gestures' pictures: each picture measured the same arm a
@@ -37,6 +37,7 @@ export function arm3DOneLook(gestures: ReadonlyArray<{ gesture: string; model: A
     look: {
       radius: first.radius,
       cuff: first.cuff,
+      ...(first.restCuff === undefined || first.cuffFrom === undefined ? {} : { restCuff: first.restCuff, cuffFrom: first.cuffFrom }),
       ...(first.bare === undefined ? {} : { bare: first.bare }),
       bareShift: first.bareShift,
       restEnd: first.restEnd,
@@ -56,6 +57,6 @@ export function arm3DOneLook(gestures: ReadonlyArray<{ gesture: string; model: A
 
 /** A gesture's arm (its own bones and poses) in the look all its side's gestures share. */
 export function arm3DInLook(shape: Arm3DShape, look: Arm3DLook): Arm3DShape {
-  const { bare: _bare, restBand: _band, ...own } = shape
+  const { bare: _bare, restBand: _band, restCuff: _end, cuffFrom: _from, ...own } = shape
   return { ...own, ...look }
 }
