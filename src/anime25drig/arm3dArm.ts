@@ -1,15 +1,16 @@
 import type { V3 } from './arm3dMath'
 import type { Arm3DPose, Arm3DShape } from './arm3dMotion'
 import type { Arm3DSourceLayer } from './arm3dPrepare'
+import type { Anime25DArmAim, Arm3DStance } from './arm3dReach'
 import type { Arm3DBound, Arm3DFrame, Arm3DView } from './arm3dView'
 import type { Anime25DGpuLayer } from './layerGpuBinding'
 import type { Anime25DRenderFrame } from './renderer'
 import type { Anime25DSecondaryDeformationFrame } from './secondaryDeformation'
-import type { Anime25DArmModel } from './types'
-import { smoothstep } from './arm3dMath'
+import { add, mul, norm, smoothstep, sub } from './arm3dMath'
 import { arm3DHandMesh, arm3DPalmAsModelled, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
-import { arm3DGroundClip, arm3DProject, arm3DWristTone, composeArm3DPicture, splitArm3DLayer } from './arm3dPrepare'
+import { arm3DCutSides, arm3DGroundClip, arm3DProject, arm3DUpperArmAlone, arm3DWristTone, composeArm3DPicture, splitArm3DLayer } from './arm3dPrepare'
+import { arm3DAimBones, arm3DAimHand, arm3DAimOf, Arm3DTransit } from './arm3dReach'
 import { armDrapeWeight } from './armRig'
 import { applyBodyLift } from './bodyLift'
 import { readLayerPixels } from './webglRuntime'
@@ -23,10 +24,17 @@ interface Gesture {
   bound: Arm3DBound
   motion: Arm3DMotion
   touch: Followed | null
+  /** Its place among the figure's layers (a higher one is drawn over a lower). */
+  order: number
+  /** How near the arm is held to this gesture as drawn (its elbow there, its hand near), and how exactly. */
+  near: number
+  exact: number
 }
 
 /** A standing figure's modelled arm comes in over its drawn one, and goes, in this long (seconds), where it hangs. */
 const HANDOVER = 0.12
+/** One gesture's picture of the arm gives way to another's in this long (seconds), the arm on its way between them. */
+const SWITCH = 0.14
 
 /** The trial drew the figure 540 pixels wide; a trial pixel on this canvas. */
 function trialPixel(view: { width: number }): number {
@@ -79,8 +87,6 @@ export class Arm3DSide {
   private unlined = 1
   private time: number | null = null
   private dt = 0
-  private heldNear = 0
-  private heldExact = 0
   private body: Arm3DBodyFrame | undefined
   /**
    * How far the modelled arm is shown over the drawn one: a bust's always (its portrait's hand is off the picture,
@@ -89,6 +95,18 @@ export class Arm3DSide {
    */
   private presence = 1
   private lastTime: number | null = null
+  /** Where the hand is asked to be, in place of a gesture; null, the gestures asked for are followed. */
+  private aim: Anime25DArmAim | null = null
+  private aiming = false
+  /** The drawn hand's turn on an aimed forearm, last frame. */
+  private aimTurn = 0
+  private transit = new Arm3DTransit()
+  /** The arm is wanted elsewhere than it was going: the transit takes it on from where it is, at the next pose. */
+  private turned = false
+  /** The gesture whose picture the arm wore until it turned to another's, and how long ago: it fades under the new one. */
+  private leaving: { g: Gesture; t: number } | null = null
+  /** This frame's arm before the body moves it. */
+  private stance: Arm3DStance | null = null
 
   constructor(
     private view: Arm3DView,
@@ -267,7 +285,7 @@ export class Arm3DSide {
         restArm: { texture: restArm, rect: [rect.x, rect.y, rect.w, rect.h], at: armPoints(hanging) },
       }
       // The body the portrait's arm leaves bare: drawn in the arm's place.
-      this.gestures.push({ layer, gesture: layer.source.armVariant!.gesture, bound, motion, touch: this.touchOf(layers, shape) })
+      this.gestures.push({ layer, gesture: layer.source.armVariant!.gesture, bound, motion, touch: this.touchOf(layers, shape), order: layers.indexOf(layer), near: 0, exact: 0 })
       layer.ownTexture = createBodyTexture(gl, split.body, pixels.width, pixels.height)
       layer.follows = true
     }
@@ -310,41 +328,144 @@ export class Arm3DSide {
     this.wanted = gesture && this.gestures.some((g) => g.gesture === gesture) ? gesture : null
   }
 
+  /** Put the hand where `aim` says, from wherever the arm is; null lets it follow the gestures asked for again. */
+  aimAt(aim: Anime25DArmAim | null): void {
+    this.aim = aim && this.gestures.length > 0 ? aim : null
+  }
+
+  /** The aim that holds the arm as `gesture` is drawn; null without that gesture. */
+  aimOf(gesture: string): Anime25DArmAim | null {
+    const g = this.gestures.find((it) => it.gesture === gesture)
+    if (!g) return null
+    return { ...this.drawnAim(g), hand: gesture }
+  }
+
+  private drawnAim(g: Gesture): Required<Omit<Anime25DArmAim, 'hand'>> {
+    const d = g.bound.shape
+    const drawn = g.motion.keyPose(1, [0, 0, 0])
+    return arm3DAimOf(norm(drawn.e), norm(sub(drawn.w, drawn.e)), this.out(d), d.upper, d.fore)
+  }
+
+  /** Which way is out from the body for this arm: 1 the picture's right, -1 its left. */
+  private out(d: Arm3DShape): number {
+    return d.rest.s[0] < this.canvas.width / 2 ? -1 : 1
+  }
+
+  /** The gesture whose picture an aimed arm wears: the one named, else the one it has, else the one drawn nearest. */
+  private aimLook(aim: Anime25DArmAim, shown: Gesture): Gesture {
+    const named = aim.hand ? this.gestures.find((g) => g.gesture === aim.hand) : undefined
+    if (named) return named
+    if (this.aiming) return shown
+    let best = shown
+    let nearest = Infinity
+    for (const g of this.gestures) {
+      const at = this.drawnAim(g)
+      const off = Math.hypot(at.out - aim.out, at.up - aim.up, at.forward - aim.forward)
+      if (off < nearest) {
+        nearest = off
+        best = g
+      }
+    }
+    return best
+  }
+
+  /** An aimed arm wearing `g`'s picture, before the body moves it. */
+  private aimed(aim: Anime25DArmAim, g: Gesture): Arm3DStance {
+    const d = g.bound.shape
+    const { du, df } = arm3DAimBones(aim, this.out(d), d.upper, d.fore)
+    const drawn = g.motion.keyPose(1, [0, 0, 0])
+    const depth = (du[2] * d.upper + df[2] * d.fore - drawn.w[2]) / (d.upper + d.fore)
+    const { hand, turned } = arm3DAimHand(drawn.hand.map((q) => sub(q, drawn.w)), norm(sub(drawn.w, drawn.e)), df, depth, this.aimTurn)
+    this.aimTurn = turned
+    return { du, df, fore: d.fore, hand, handRest: 0, hanging: 0 }
+  }
+
   /** What it shows or is raising now; null while down or going down. */
   raised(): string | null {
     return this.shown?.motion.wanted ? this.shown.gesture : null
   }
 
-  /** Steps the arm to `time`: another gesture waits for this one to come down. Writes the layers' opacity. */
+  /**
+   * From wherever the arm is straight to `to` held (an aim's look, another gesture), or to hanging (null): what
+   * is wanted changes at once, and the transit takes the arm there.
+   */
+  private turnTo(to: Gesture | null): void {
+    const from = this.shown!
+    const next = to ?? from
+    if (next !== from) {
+      this.leaving = { g: from, t: 0 }
+      from.motion.snap(false)
+      this.shown = next
+    }
+    if (!this.aiming && this.aim) this.aimTurn = 0
+    this.aiming = this.aim !== null
+    next.motion.snap(to !== null)
+    this.turned = true
+  }
+
+  /**
+   * Steps the arm to `time`. Hanging, it is raised to the gesture wanted along that gesture's own way; already
+   * up (or aimed), it goes straight on to the next thing wanted. Writes the layers' opacity.
+   */
   applyOpacity(time: number): void {
     const shown = this.shown
     if (!shown) return
     this.dt = this.time === null ? 0 : Math.min(0.1, Math.max(0, time - this.time))
     this.time = time
-    shown.motion.wanted = shown.gesture === this.wanted
-    if (!shown.motion.wanted && this.wanted && shown.motion.resting) {
-      this.shown = this.gestures.find((g) => g.gesture === this.wanted) ?? shown
+    // A standing figure's, its whole arm drawn hanging (its hand too, or not found sure enough).
+    const handover = shown.bound.shape.restFore !== undefined
+    const up = !handover || this.presence >= 1
+    const want = this.gestures.find((g) => g.gesture === this.wanted) ?? null
+    if (this.aim) {
+      const look = this.aimLook(this.aim, shown)
+      if (up && (!this.aiming || look !== shown)) this.turnTo(look)
+    }
+    else if (this.aiming || (want && want !== shown && !(shown.motion.resting && this.transit.idle))) {
+      this.turnTo(want)
     }
     const now = this.shown!
-    // A standing figure's, its whole arm drawn hanging (its hand too, or not found sure enough).
-    const handover = now.bound.shape.restFore !== undefined
+    if (!this.aiming) now.motion.wanted = now.gesture === this.wanted
+    if (!now.motion.wanted && this.wanted && now.motion.resting && this.transit.idle) {
+      this.shown = this.gestures.find((g) => g.gesture === this.wanted) ?? now
+    }
+    return this.show(time, handover)
+  }
+
+  private show(time: number, handover: boolean): void {
+    const now = this.shown!
+    const dt = this.lastTime === null ? 0 : Math.min(1 / 30, Math.max(0, time - this.lastTime))
     if (handover) {
-      const dt = this.lastTime === null ? 0 : Math.min(1 / 30, Math.max(0, time - this.lastTime))
-      const active = this.wanted !== null || !now.motion.resting
+      const active = this.wanted !== null || this.aim !== null || !now.motion.resting || !this.transit.idle
       this.presence = this.lastTime === null
         ? active ? 1 : 0
         : Math.min(1, Math.max(0, this.presence + (active ? 1 : -1) * dt / HANDOVER))
       // It sets off once wholly in, faded in over the drawn arm where that hangs.
-      if (this.presence < 1) now.motion.wanted = false
+      if (this.presence < 1 && !this.aiming) now.motion.wanted = false
     }
     this.lastTime = time
     now.motion.step(time)
+    const leaving = this.leaving
+    if (leaving) {
+      leaving.t += dt
+      if (leaving.t >= SWITCH || leaving.g === now) this.leaving = null
+    }
     const own = !handover || this.presence >= 1
     for (const g of this.gestures) g.layer.frameOpacity = g === now && own ? 1 : 0
     // Coming in or going, the drawn arm stays whole under it: two half-shown arms darken.
     if (!own) return
+    // Between two gestures' pictures the upper layer fades over the lower, whole (two half-shown let the body through).
+    if (this.leaving) {
+      const over = now.order > this.leaving.g.order
+      this.leaving.g.layer.frameOpacity = over ? 1 : 1 - this.switched
+      now.layer.frameOpacity = over ? this.switched : 1
+    }
     for (const base of this.bases) base.frameOpacity = 0
     for (const piece of this.pieces) piece.frameOpacity = 0
+  }
+
+  /** How far the picture of the gesture turned to has come in over the one left (1 with none left). */
+  private get switched(): number {
+    return this.leaving ? smoothstep(0, 1, this.leaving.t / SWITCH) : 1
   }
 
   /**
@@ -362,7 +483,22 @@ export class Arm3DSide {
     const [dx, dy] = chest ? [0, 0] : [mx, my]
     const a = g.bound.shape.rest.s
     const anchor: V3 = [a[0] + dx, a[1] + dy, a[2]]
-    let pose = g.motion.pose(anchor)
+    // What the arm is asked to be this frame (its gesture's own motion, or an aim), and the transit's way there
+    // from whatever it was asked before; nothing of that left, it is the gesture's motion to the last bit.
+    const asked = g.motion.pose(anchor)
+    const wanted: Arm3DStance = this.aiming && this.aim
+      ? this.aimed(this.aim, g)
+      : { du: norm(sub(asked.e, asked.s)), df: norm(sub(asked.w, asked.e)), fore: Math.hypot(asked.w[0] - asked.e[0], asked.w[1] - asked.e[1], asked.w[2] - asked.e[2]), hand: asked.hand.map((q) => sub(q, asked.w)), handRest: g.motion.handRest, hanging: g.motion.hanging }
+    if (this.turned) this.transit.retarget(wanted)
+    this.turned = false
+    const stance = this.transit.pose(wanted, Math.min(1 / 30, this.dt))
+    this.stance = stance
+    let pose = asked
+    if (stance !== wanted || this.aiming) {
+      const e = add(anchor, mul(stance.du, g.bound.shape.upper))
+      const w = add(e, mul(stance.df, stance.fore))
+      pose = { s: anchor, e, w, hand: stance.hand.map((q) => add(w, q)) }
+    }
     const hang = g.motion.keyPose(0, anchor)
     const fore = g.bound.shape.fore
     this.restNear = 1 - smoothstep(0.03 * fore, 0.25 * fore, Math.hypot(pose.w[0] - hang.w[0], pose.w[1] - hang.w[1], pose.w[2] - hang.w[2]))
@@ -371,15 +507,18 @@ export class Arm3DSide {
     // The portrait's arm kept under it that long instead stood beside a bending arm as a dark wedge.
     this.unlined = sleeveLineHeldOff(this.unlined, this.restNear, this.dt)
     // Held as drawn: its elbow where the gesture has it, its hand near (a wave swings the hand, not the elbow).
-    const drawn = g.motion.restPose(anchor)
-    const upper = g.bound.shape.upper
-    this.heldNear = (1 - smoothstep(0.01 * upper, 0.05 * upper, Math.hypot(pose.e[0] - drawn.e[0], pose.e[1] - drawn.e[1], pose.e[2] - drawn.e[2])))
-      * (1 - smoothstep(0.35 * fore, 0.6 * fore, Math.hypot(pose.w[0] - drawn.w[0], pose.w[1] - drawn.w[1], pose.w[2] - drawn.w[2])))
-    this.heldExact = this.heldNear * (1 - smoothstep(0.06 * fore, 0.2 * fore, Math.hypot(pose.w[0] - drawn.w[0], pose.w[1] - drawn.w[1], pose.w[2] - drawn.w[2])))
+    for (const it of this.leaving ? [g, this.leaving.g] : [g]) {
+      const drawn = it.motion.restPose(anchor)
+      const upper = it.bound.shape.upper
+      const reach = it.bound.shape.fore
+      it.near = (1 - smoothstep(0.01 * upper, 0.05 * upper, Math.hypot(pose.e[0] - drawn.e[0], pose.e[1] - drawn.e[1], pose.e[2] - drawn.e[2])))
+        * (1 - smoothstep(0.35 * reach, 0.6 * reach, Math.hypot(pose.w[0] - drawn.w[0], pose.w[1] - drawn.w[1], pose.w[2] - drawn.w[2])))
+      it.exact = it.near * (1 - smoothstep(0.06 * reach, 0.2 * reach, Math.hypot(pose.w[0] - drawn.w[0], pose.w[1] - drawn.w[1], pose.w[2] - drawn.w[2])))
+    }
     this.body = body
     const binding = this.bases.find((b) => b.secondaryDeformation?.arm)?.secondaryDeformation
     const rig = binding?.arm
-    const k = rig ? rig.scale * g.motion.hanging : 0
+    const k = rig ? rig.scale * stance.hanging : 0
     if (sway && rig && k > 0) {
       const left = binding.handwearSide === 'L'
       const swing = (left ? sway.armAngleL : sway.armAngleR) * k
@@ -396,7 +535,8 @@ export class Arm3DSide {
       }
     }
     if (g.touch) {
-      const held = Math.min(1, Math.max(0, (g.motion.progress - 0.85) / 0.15))
+      // Only an arm come to its gesture: aimed or on its way from elsewhere, the hand is not on the face.
+      const held = this.aiming ? 0 : Math.min(1, Math.max(0, (g.motion.progress - 0.85) / 0.15)) * (1 - this.transit.left)
       const [fx, fy] = moved(g.touch)
       // To the face, from where the shoulder has gone (the chest carries the arm after this).
       const tx = (fx - mx) * held
@@ -426,8 +566,17 @@ export class Arm3DSide {
 
   /** This frame's arm, for the view; null before the first lift. */
   frame(): { bound: Arm3DBound; frame: Arm3DFrame } | null {
-    const g = this.shown
-    if (!g || !this.pose || this.presence <= 0) return null
+    return this.shown ? this.frameOf(this.shown, this.presence * this.switched) : null
+  }
+
+  /** The arm in the picture of the gesture it just turned from, drawn under this frame's while that comes in; null else. */
+  leavingFrame(): { bound: Arm3DBound; frame: Arm3DFrame } | null {
+    return this.leaving ? this.frameOf(this.leaving.g, this.presence) : null
+  }
+
+  private frameOf(g: Gesture, presence: number): { bound: Arm3DBound; frame: Arm3DFrame } | null {
+    const stance = this.stance
+    if (!this.pose || !stance || presence <= 0) return null
     const pts = this.foot.map((f) => [f.layer.deformed[f.i * 2], f.layer.deformed[f.i * 2 + 1]] as [number, number]).sort((a, b) => a[0] - b[0])
     const foot = pts.length <= 16 ? pts : Array.from({ length: 16 }, (_, k) => pts[Math.round(k * (pts.length - 1) / 15)])
     const side = (on: Followed[], sign: number) => (on.length ? sign * Math.max(...on.map((f) => sign * f.layer.deformed[f.i * 2])) : sign * Infinity)
@@ -436,12 +585,12 @@ export class Arm3DSide {
     const to = this.restNear > 0.85 ? affineFit(g.bound.restArm.at, armPoints(this.pose)) : null
     const [x, y, w, h] = g.bound.restArm.rect
     const rest = to && { corners: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]].flatMap(([cx, cy]) => [to[0] * cx + to[1] * cy + to[2], to[3] * cx + to[4] * cy + to[5]]), alpha: smoothstep(0.85, 1, this.restNear) }
-    return { bound: g.bound, frame: { pose: this.pose, presence: this.presence, handRest: g.motion.handRest, hanging: g.motion.hanging, restNear: this.restNear, unlined: this.unlined, view: this.canvas, foot, sides, held: this.heldMesh(g), rest } }
+    return { bound: g.bound, frame: { pose: this.pose, presence, handRest: stance.handRest, hanging: stance.hanging, restNear: this.restNear, unlined: this.unlined, view: this.canvas, foot, sides, held: this.heldMesh(g), rest } }
   }
 
   /** The gesture layer's mesh where the figure draws it this frame, for its drawn upper arm under the arm held there. */
   private heldMesh(g: Gesture): Arm3DFrame['held'] {
-    if (this.heldNear <= 0.004) return undefined
+    if (g.near <= 0.004) return undefined
     const { rest, deformed, indices, source } = g.layer
     const n = rest.length / 2
     const pos = new Float32Array(n * 2)
@@ -453,7 +602,7 @@ export class Arm3DSide {
       uv[i * 2] = (rest[i * 2] - source.x) / source.w
       uv[i * 2 + 1] = (rest[i * 2 + 1] - source.y) / source.h
     }
-    return { pos, uv, idx: indices, near: this.heldNear, exact: this.heldExact, toDrawn: affineFit(pos, rest) }
+    return { pos, uv, idx: indices, near: g.near, exact: g.exact, toDrawn: affineFit(pos, rest) }
   }
 
   dispose(): void {
@@ -467,99 +616,6 @@ export class Arm3DSide {
     }
     for (const base of this.bases) base.followers = undefined
   }
-}
-
-/**
- * The gesture as drawn (its layer over the portrait it leaves showing; layer pixels, `scale` to a model unit)
- * about its upper arm and elbow alone: not its forearm, which a wave swings away from the drawing. All of it
- * there, not only what was measured as arm: a dark sleeve drawn over the portrait's dark sleeve is not in the
- * arm's outline, and left out, the portrait's hanging cuff showed under the elbow. `front`, what the portrait
- * draws in front of the arm. `over` is laid over the sleeve; `beside` where the body under the drawn arm keeps the
- * portrait's own (`portraitArm`, its share there), which the sleeve does not quite cover: its hanging cuff showed
- * in bits about the raised elbow. `fore`, for a gesture whose forearm is held still (`still`), that forearm as
- * drawn on into the heel of its hand, laid over the arm after its hand wherever the modelled hand is not: the
- * modelled forearm and its sleeve's end are a tube's, the drawing's a cloth's (a kimono's slanting sleeve mouth).
- * `foreFront`, the same where the portrait draws in front of its arm, laid on only as the arm is all but held.
- */
-export function arm3DUpperArmAlone(gesture: Uint8ClampedArray, portrait: Uint8ClampedArray, front: Uint8ClampedArray, w: number, h: number, model: Anime25DArmModel, scale: number, portraitArm: Float32Array, still = false): { over: Uint8ClampedArray; beside: Uint8ClampedArray; fore: Uint8ClampedArray | null; foreFront: Uint8ClampedArray | null } {
-  const out = new Uint8ClampedArray(gesture.length)
-  const beside = new Uint8ClampedArray(gesture.length)
-  const fore = still ? new Uint8ClampedArray(gesture.length) : null
-  const foreFront = still ? new Uint8ClampedArray(gesture.length) : null
-  const { shoulder: s, elbow: e, wrist: wr } = model.raised
-  const R = model.radius
-  const half = R.length >> 1
-  const upperR = 1.25 * Math.max(...R.slice(0, half + 1))
-  const foreR = 1.1 * R.slice(half).reduce((a, b) => a + b, 0) / (R.length - half)
-  // Out to its widest (a sleeve's mouth), not only its mean: the modelled one is as wide there.
-  const foreWide = Math.max(foreR, 1.1 * Math.max(...R.slice(half)))
-  const along = (x: number, y: number, a: readonly number[], b: readonly number[]) => {
-    const dx = b[0] - a[0]
-    const dy = b[1] - a[1]
-    const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / Math.max(1e-6, dx * dx + dy * dy)))
-    return { t, d: Math.hypot(x - a[0] - dx * t, y - a[1] - dy * t) }
-  }
-  for (let p = 0; p < w * h; p += 1) {
-    const x = (p % w) / scale
-    const y = Math.floor(p / w) / scale
-    const up = along(x, y, s, e)
-    const forearm = along(x, y, e, wr)
-    const pastElbow = smoothstep(0.12, 0.25, forearm.t)
-    const notFore = 1 - pastElbow * (1 - smoothstep(foreR * 0.9, foreR * 1.1, forearm.d))
-    const keep = (1 - smoothstep(upperR * 0.9, upperR * 1.1, up.d)) * notFore
-    const i = p * 4
-    const k = gesture[i + 3] / 255
-    const a = Math.max(k, portrait[i + 3] / 255)
-    for (let c = 0; c < 3; c += 1) out[i + c] = beside[i + c] = gesture[i + c] * k + portrait[i + c] * (1 - k)
-    // Not where the portrait draws in front of the arm (hair over the shoulder): that is drawn again over it as it
-    // moves, and the drawing's still copy showed beside it, a grey smudge.
-    out[i + 3] = a * keep * (1 - front[i + 3] / 255) * 255
-    // Nothing beside the forearm either, however wide its drawn cuff: a wave swings it off the drawing.
-    beside[i + 3] = portraitArm[p] * (1 - pastElbow) * (1 - front[i + 3] / 255) * 255
-    if (fore) {
-      for (let c = 0; c < 3; c += 1) fore[i + c] = out[i + c]
-      const sleeve = 1 - smoothstep(foreWide * 1.15, foreWide * 1.35, forearm.d)
-      const drawn = k * pastElbow * sleeve
-      const before = drawn * (1 - front[i + 3] / 255)
-      fore[i + 3] = before * 255
-      // Where the portrait draws in front of its arm, apart: the modelled forearm is in front of that too (only the
-      // upper arm has it drawn again over it), and left out, the tube showed across a chest drawn after the arm;
-      // but laid on as soon as the arm comes near, the drawn forearm showed there faintly before the arm was in it.
-      // Laid over `fore`, not added to it: as much of what `fore` left as makes the two the drawing's own (the soft
-      // edges of what lies in front were short of it, a faint fringe).
-      foreFront![i + 3] = before < 1 ? Math.min(1, (drawn - before) / (1 - before)) * 255 : 0
-      for (let c = 0; c < 3; c += 1) foreFront![i + c] = out[i + c]
-    }
-  }
-  return { over: out, beside, fore, foreFront }
-}
-
-/**
- * The points (layer, vertex) on the picture's left and right edges, as they rest, where the edge cuts the figure:
- * a side counts when what reaches it runs straight down it a good way (a tenth of `height`), not one point of a
- * figure ending inside the picture. Empty for a side not cut.
- */
-export function arm3DCutSides(layers: ReadonlyArray<{ rest: ArrayLike<number> }>, height: number): [Array<[number, number]>, Array<[number, number]>] {
-  const out: [Array<[number, number]>, Array<[number, number]>] = [[], []]
-  for (const [k, sign] of [[0, -1], [1, 1]] as const) {
-    let edge = -Infinity
-    for (const layer of layers) {
-      for (let i = 0; i < layer.rest.length; i += 2) edge = Math.max(edge, sign * layer.rest[i])
-    }
-    const on: Array<[number, number]> = []
-    let top = Infinity
-    let bottom = -Infinity
-    layers.forEach((layer, l) => {
-      for (let i = 0; i < layer.rest.length / 2; i += 1) {
-        if (sign * layer.rest[i * 2] < edge - 0.5) continue
-        on.push([l, i])
-        top = Math.min(top, layer.rest[i * 2 + 1])
-        bottom = Math.max(bottom, layer.rest[i * 2 + 1])
-      }
-    })
-    if (bottom - top > 0.1 * height) out[k] = on
-  }
-  return out
 }
 
 /** The figure's whole-body motion this frame, as its shader applies it to every layer. */

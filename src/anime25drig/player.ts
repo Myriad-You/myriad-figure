@@ -5,6 +5,7 @@ import type { MeropeRigManifest } from '../rig/types'
 import type { MusicMotionSignal } from '../singing/musicSignal'
 import type { SpeechProsodyPlan } from '../speech/prosody'
 import type { FigureTrace } from '../trace'
+import type { Anime25DArmAim } from './arm3dReach'
 import type { Anime25DArmSide } from './armVariantPresenter'
 
 import type { Anime25DMotionUnit } from './behaviorMotion'
@@ -460,6 +461,19 @@ export class Anime25DPlayer {
   /** The gesture each side is raising or holding now. */
   raisedArmVariants(): Record<Anime25DArmSide, string | null> {
     return this.armVariants.raised()
+  }
+
+  /**
+   * Put a side's hand where `aim` says (from its shoulder, in arm lengths), from wherever the arm is and whatever
+   * the drivers ask; null lets it follow them again. Only a modelled gesture arm can.
+   */
+  aimArm(side: Anime25DArmSide, aim: Anime25DArmAim | null): void {
+    this.armVariants.aim(side, aim)
+  }
+
+  /** The aim that holds a side's arm as its `gesture` is drawn: a place to start an aim from. */
+  armGestureAim(side: Anime25DArmSide, gesture: string): Anime25DArmAim | null {
+    return this.armVariants.aimOf(side, gesture)
   }
 
   /** What was drawn this frame, copied out for tests and inspectors. */

@@ -2,6 +2,7 @@
 // activity driver patches, when to run it, and the port a workbench edits it through.
 // The public surface of this directory; everything else in it is internal.
 
+export type { Anime25DArmAim } from './arm3dReach'
 export { realizeAnime25DBehaviorPlan } from './behaviorRealizer'
 export { activityExpressionDriverPatch } from './expressionPresets'
 export { idleSpeechDriverPatch } from './performanceMotion'

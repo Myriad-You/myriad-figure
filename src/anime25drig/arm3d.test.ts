@@ -1,12 +1,14 @@
 import type { V3 } from './arm3dMath'
+import type { Arm3DStance } from './arm3dReach'
 import type { Anime25DArmModel } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { affineFit, arm3DCutSides, arm3DOnBody, arm3DUpperArmAlone, sleeveLineHeldOff } from './arm3dArm'
+import { affineFit, arm3DOnBody, sleeveLineHeldOff } from './arm3dArm'
 import { similarity2D } from './arm3dMath'
 import { arm3DHandMesh, arm3DPalmAsModelled, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
-import { ringFill } from './arm3dPrepare'
+import { arm3DCutSides, arm3DUpperArmAlone, ringFill } from './arm3dPrepare'
+import { arm3DAimBones, arm3DAimHand, arm3DAimOf, Arm3DTransit } from './arm3dReach'
 
 // A left arm hanging from (420, 620), raised with its hand up beside the head; in a layer at (100, 50).
 const hand: Array<[number, number]> = [[200, 420]]
@@ -324,4 +326,101 @@ test('the sleeve\'s line is let go over a moment as the hand lifts, however fast
   // Coming back down: none until the hand is all but at hanging.
   assert.equal(sleeveLineHeldOff(0, 0.6, 1 / 60), 0)
   assert.ok(sleeveLineHeldOff(0, 0.95, 1 / 60) > 0.5)
+})
+
+const stanceOf = (du: V3, df: V3, hanging = 0): Arm3DStance => ({ du, df, fore: 280, hand: hand.map(([x, y]) => [x - hand[0]![0], y - hand[0]![1], 0] as V3), handRest: hanging, hanging })
+function unit(v: V3): V3 {
+  const l = Math.hypot(v[0], v[1], v[2])
+  return [v[0] / l, v[1] / l, v[2] / l]
+}
+const angle = (a: V3, b: V3) => Math.acos(Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2])))
+
+test('an aim gives the two bones that reach it, and the bones give the aim back', () => {
+  for (const side of [-1, 1]) {
+    for (const aim of [{ out: 0.5, up: 0.4, forward: 0.2, swivel: 0 }, { out: 0.1, up: -0.6, forward: 0.5, swivel: 0.7 }, { out: -0.2, up: 0.3, forward: 0.6, swivel: -0.4 }]) {
+      const { du, df } = arm3DAimBones(aim, side, 230, 280)
+      const wrist: V3 = [du[0] * 230 + df[0] * 280, du[1] * 230 + df[1] * 280, du[2] * 230 + df[2] * 280]
+      assert.ok(Math.hypot(wrist[0] - aim.out * side * 510, wrist[1] + aim.up * 510, wrist[2] - aim.forward * 510) < 1e-6)
+      const back = arm3DAimOf(du, df, side, 230, 280)
+      for (const k of ['out', 'up', 'forward', 'swivel'] as const) assert.ok(Math.abs(back[k] - aim[k]) < 1e-6, `${k}: ${back[k]} against ${aim[k]}`)
+    }
+  }
+  // Past the arm's reach it goes straight toward the aim, as far as it reaches.
+  const far = arm3DAimBones({ out: 2, up: 0, forward: 0 }, 1, 230, 280)
+  assert.ok(angle(far.du, [1, 0, 0]) < 0.1 && angle(far.df, [1, 0, 0]) < 0.1)
+  // At ease the elbow falls down and a little back, not toward the viewer.
+  const eased = arm3DAimBones({ out: 0.5, up: 0, forward: 0.3 }, 1, 230, 280)
+  assert.ok(eased.du[1] > 0 && eased.du[2] < eased.df[2])
+})
+
+test('a hand reached toward the viewer grows, and turns in the picture as its forearm is seen to turn', () => {
+  const drawn = hand.map(([x, y]) => [x - hand[0]![0], y - hand[0]![1], 0] as V3)
+  const size = (h: V3[]) => Math.hypot(h[1]![0], h[1]![1])
+  const same = arm3DAimHand(drawn, [0, -1, 0], [0, -1, 0], 0, 0)
+  assert.ok(Math.abs(size(same.hand) - size(drawn)) < 1e-9 && same.turned === 0)
+  const nearer = arm3DAimHand(drawn, [0, -1, 0], [0, -1, 0], 0.6, 0)
+  assert.ok(size(nearer.hand) > size(drawn) * 1.15)
+  const side = arm3DAimHand(drawn, [0, -1, 0], [1, 0, 0], 0, 0)
+  assert.ok(Math.abs(Math.abs(side.turned) - Math.PI / 2) < 1e-9)
+  // Pointed at the viewer the forearm shows no turn to follow: the hand stays as drawn.
+  const at = arm3DAimHand(drawn, [0, -1, 0], unit([0.05, 0, 1]), 0, 0)
+  assert.ok(Math.hypot(at.hand[1]![0] - drawn[1]![0], at.hand[1]![1] - drawn[1]![1]) < 1e-9)
+})
+
+test('wanted elsewhere, the arm goes from where it is without a jump, and arrived is exactly what is wanted', () => {
+  const transit = new Arm3DTransit()
+  const a = stanceOf(unit([-0.9, -0.3, 0.2]), unit([0, -1, 0.2]))
+  const b = stanceOf(unit([-0.4, 0.6, 0.5]), unit([0.7, -0.5, 0.5]))
+  assert.equal(transit.pose(a, 1 / 60), a)
+  assert.ok(transit.idle)
+  transit.retarget(b)
+  let last = a
+  let most = 0
+  let arrived = -1
+  for (let i = 0; i < 240; i += 1) {
+    const now = transit.pose(b, 1 / 60)
+    most = Math.max(most, angle(last.du, now.du), angle(last.df, now.df), Math.hypot(now.hand[1]![0] - last.hand[1]![0], now.hand[1]![1] - last.hand[1]![1]) / 100)
+    last = now
+    if (now === b && arrived < 0) arrived = i
+  }
+  // No frame turns a bone more than a fast arm would (a jump would be the whole way at once: over a radian).
+  assert.ok(most < 0.2, `${most}`)
+  assert.ok(arrived > 12 && arrived < 150, `${arrived}`)
+  assert.ok(transit.idle)
+})
+
+test('caught on the way to one gesture and wanted at another, it turns there from mid-air, never back through hanging', () => {
+  const transit = new Arm3DTransit()
+  const down = stanceOf(unit([-0.1, 1, 0]), unit([-0.05, 1, 0]), 1)
+  const a = stanceOf(unit([-0.9, -0.3, 0.2]), unit([-0.2, -1, 0.2]))
+  const b = stanceOf(unit([-0.8, 0.2, 0.3]), unit([0.6, -0.7, 0.4]))
+  transit.pose(down, 1 / 60)
+  transit.retarget(a)
+  for (let i = 0; i < 12; i += 1) transit.pose(a, 1 / 60)
+  const caught = transit.pose(a, 1 / 60)
+  transit.retarget(b)
+  const first = transit.pose(b, 1 / 60)
+  assert.ok(angle(caught.du, first.du) < 0.25 && angle(caught.df, first.df) < 0.35)
+  let lowest = 0
+  for (let i = 0; i < 200; i += 1) lowest = Math.max(lowest, transit.pose(b, 1 / 60).df[1])
+  assert.ok(lowest < Math.max(caught.df[1], b.df[1]) + 0.15, `${lowest}`)
+  assert.equal(transit.pose(b, 1 / 60), b)
+})
+
+test('from raised straight up to hanging the arm comes down in front of the body, not through it', () => {
+  const transit = new Arm3DTransit()
+  const up = stanceOf([0, -1, 0], [0, -1, 0])
+  const down = stanceOf([0, 1, 0], [0, 1, 0], 1)
+  transit.pose(up, 1 / 60)
+  transit.retarget(down)
+  let back = 0
+  let front = 0
+  for (let i = 0; i < 200; i += 1) {
+    const now = transit.pose(down, 1 / 60)
+    // Until it is nearly down; there it may swing a little past hanging before it settles.
+    if (now.du[1] < 0.9) back = Math.min(back, now.du[2])
+    if (now.df[1] < 0.9) back = Math.min(back, now.df[2])
+    front = Math.max(front, now.df[2])
+  }
+  assert.ok(back >= 0 && front > 0.3, `${back} ${front}`)
 })
