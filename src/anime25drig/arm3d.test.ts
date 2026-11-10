@@ -155,6 +155,37 @@ test('meshes keep their vertices pose to pose, so pictures laid on them once sta
   assert.ok(arm3DWristMesh(shape, raised).uv.every((v, i) => i % 2 === 0 || v <= -2))
 })
 
+test('the elbow keeps its rings in step where the forearm folds toward the viewer', () => {
+  const shape = arm3DShape(model, 100, 50)
+  const motion = new Arm3DMotion(shape, false)
+  const raised = motion.restPose(shape.rest.s)
+  const s = raised.s
+  const e: [number, number, number] = [s[0], s[1] + 230, s[2]]
+  const elbowFrom = arm3DSleeveMesh(shape, motion.keyPose(0, shape.rest.s), 1, 2).pos.length / 3 - 13 * 37
+  // Upper arm straight down, the forearm folded up toward the viewer: straight at them, and a little to one side.
+  for (const tilt of [-8, 8]) {
+    const t = (tilt * Math.PI) / 180
+    const fold = (150 * Math.PI) / 180
+    const w: [number, number, number] = [e[0] + 280 * Math.sin(fold) * Math.sin(t), e[1] + 280 * Math.cos(fold), e[2] + 280 * Math.sin(fold) * Math.cos(t)]
+    const m = arm3DSleeveMesh(shape, { ...raised, e, w }, 0, 2)
+    // Across both arms: the upper arm runs down y, so the hinge lies in x and z.
+    const hx = w[2] - e[2]
+    const hz = -(w[0] - e[0])
+    const hinge = [hx / Math.hypot(hx, hz), 0, hz / Math.hypot(hx, hz)]
+    for (let i = 0; i < 12; i += 1) {
+      for (let j = 0; j <= 36; j += 1) {
+        const a = (elbowFrom + i * 37 + j) * 3
+        const b = a + 37 * 3
+        const along = m.nrm[a] * m.nrm[b] + m.nrm[a + 1] * m.nrm[b + 1] + m.nrm[a + 2] * m.nrm[b + 2]
+        // Not the half drawn in to the hinge's ends (each of its points goes to the end on its own side).
+        const atEnd = (k: number) => Math.abs(m.nrm[k] * hinge[0] + m.nrm[k + 1] * hinge[1] + m.nrm[k + 2] * hinge[2]) > 0.999
+        if (atEnd(a) || atEnd(b)) continue
+        assert.ok(along > 0, `ring ${i} to ${i + 1} at ${j}, tilt ${tilt}: ${along}`)
+      }
+    }
+  }
+})
+
 test('a forearm bare from the elbow ends there round, back past the elbow, its end turned away along the arm', () => {
   const bareFromElbow = arm3DShape({ ...model, cuff: 0.1 }, 100, 50)
   const raised = new Arm3DMotion(bareFromElbow, false).restPose(bareFromElbow.rest.s)

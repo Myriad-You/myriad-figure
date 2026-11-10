@@ -193,10 +193,10 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
   }
   const c = p.e
   const ballFrom = m.pos.length / 3
-  // The elbow itself: the sleeve's ring turned about the hinge from the upper arm's way to the forearm's, each
-  // ring's u where the tubes either side have it. (As a ball with its poles along the two ways' middle, a forearm
-  // folded back up the upper arm had that middle toward the viewer: a pole in front, the elbow's rows drawn round
-  // it as a pale disc with stripes out from its centre.)
+  // The elbow itself: the sleeve's ring turned about the hinge from the upper arm's way to the forearm's, its u
+  // starting where the upper tube has it and ending where the forearm's does, turned evenly between. (As a ball
+  // with its poles along the two ways' middle, a forearm folded back up the upper arm had that middle toward the
+  // viewer: a pole in front, the elbow's rows drawn round it as a pale disc with stripes out from its centre.)
   {
     const SWEEP = 12
     let hinge = cross(du, df)
@@ -204,16 +204,29 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
     hinge = norm(hinge)
     const across = cross(hinge, du)
     const angle = Math.acos(Math.min(1, Math.max(-1, dot(du, df))))
-    let prevSide: V3 | null = null
+    // A tube's own front (toward the viewer, across its way), and a turn about an axis.
+    const tubeFront = (d: V3): V3 => {
+      const f = sub([0, 0, 1], mul(d, d[2]))
+      return len(f) < 1e-6 ? norm(cross(d, [1, 0, 0])) : norm(f)
+    }
+    const turn = (v: V3, k: V3, t: number): V3 =>
+      add(add(mul(v, Math.cos(t)), mul(cross(k, v), Math.sin(t))), mul(k, dot(k, v) * (1 - Math.cos(t))))
+    // The first ring's front carried round the hinge, the rest of the way to the forearm's own front spread over
+    // the rings: each ring's front found afresh from the viewer's way, a sweep passing near that way had two rings
+    // next to each other half a turn apart, the strip between them twisted through the elbow. (Folded past a right
+    // angle toward the viewer the two ends' fronts are near half a turn apart, and which way round the rings go
+    // changes as the forearm crosses the plane of the upper arm and the viewer's way: the outline stays, the
+    // elbow's rows change sides in that one step.)
+    const front0 = tubeFront(du)
+    const carried = turn(front0, hinge, angle)
+    const wanted = tubeFront(df)
+    const twist = Math.atan2(dot(cross(carried, wanted), df), dot(carried, wanted))
     const innerAt: boolean[] = []
     for (let i = 0; i <= SWEEP; i += 1) {
       const a = angle * (i / SWEEP)
       const way = norm(add(mul(du, Math.cos(a)), mul(across, Math.sin(a))))
-      let ringFront = sub([0, 0, 1], mul(way, way[2]))
-      if (len(ringFront) < 0.2) ringFront = prevSide ? cross(prevSide, way) : cross(way, [1, 0, 0])
-      ringFront = norm(ringFront)
+      const ringFront = norm(turn(turn(front0, hinge, a), way, twist * (i / SWEEP)))
       const ringSide = norm(cross(way, ringFront))
-      prevSide = ringSide
       const outer = cross(way, hinge)
       const ph = -Math.PI / 2 + (i / SWEEP) * Math.PI
       const v = 0.5 + Math.sin(ph) * (ph < 0 ? vUp : vDown)
@@ -221,8 +234,8 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
         const th = (j / ARM3D_AROUND) * Math.PI * 2
         const round = add(mul(ringFront, Math.cos(th)), mul(ringSide, Math.sin(th)))
         // Inside the bend the rings cross (the tubes are there already): each ring's inner half drawn in to the
-        // hinge's end on its side, none of it turned to show its back; with it the strip beside it that lies
-        // along the tubes' own surface (drawn over them it flickered against them).
+        // hinge's end on its side (raised all the way none of it is drawn, see below); with it the strip beside
+        // it that lies along the tubes' own surface (drawn over them it flickered against them).
         const inner = dot(round, outer) < 0.2
         const swept = inner ? mul(hinge, dot(round, hinge) < 0 ? -1 : 1) : round
         // Hanging it is the ball it was, point for point (its outline is drawn out to the portrait's arm from there).

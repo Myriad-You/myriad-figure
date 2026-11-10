@@ -148,8 +148,11 @@ void main() {
   // Held as drawn, none of the hand where the gesture drew no hand (the wrist aside, which the picture fades out
   // below): fingers found running on over bare skin stood past the drawn tips as outlined ghosts. The drawn hand
   // is where the cut-out has it or the gesture differs from the portrait (the cut-out misses a palm's shadow).
-  float differs = textureLod(uDrawn, vPic, 2.0).a;
-  float drawnHere = max(smoothstep(0.03, 0.25, textureLod(uHand, vPic, 2.0).a) * smoothstep(0.03, 0.2, differs), smoothstep(0.5, 0.9, differs));
+  // Past the gesture's own picture it drew nothing (read there, its last row of pixels ran on).
+  vec2 in01 = step(vec2(0.0), vPic) * step(vPic, vec2(1.0));
+  float inPic = in01.x * in01.y;
+  float differs = textureLod(uDrawn, vPic, 2.0).a * inPic;
+  float drawnHere = max(smoothstep(0.03, 0.25, textureLod(uHand, vPic, 2.0).a * inPic) * smoothstep(0.03, 0.2, differs), smoothstep(0.5, 0.9, differs));
   // With the whole drawn hand kept, held as drawn the model wears it wherever it is: past the drawn hand it shows
   // what the drawing has there, so nothing need fade.
   vec2 fp = vPic * uFullMap.zw + uFullMap.xy;
@@ -164,7 +167,7 @@ void main() {
     // Held in the drawn pose, a part's outline inside the drawn hand is not on the drawing (a hidden thumb's
     // stood as a pale stick by the wrist, a curled finger's doubled its drawn lines): the drawing there.
     vec4 s = texture(uHand, vPic);
-    float under = uExact * smoothstep(0.85, 0.98, textureLod(uHand, vPic, 2.0).a) * s.a;
+    float under = uExact * smoothstep(0.85, 0.98, textureLod(uHand, vPic, 2.0).a) * s.a * inPic;
     o = vec4(mix(mix(mix(uSolid.rgb, s.rgb, under), full.rgb, held), hung.rgb, hangHand) * al, al);
     return;
   }
@@ -184,9 +187,9 @@ void main() {
   float endOn = smoothstep(0.45, 0.8, vFace);
   toon = mix(toon, uShade * vec3(0.96, 0.86, 0.86) * vec3(0.9, 0.79, 0.79), rim * onF * 0.95 * (1.0 - 0.8 * endOn));
   // The drawing where it saw this part of the hand, eased out toward its edge (a seam crossed the palm there).
-  vec4 t = texture(uHand, vPic);
+  vec4 t = texture(uHand, vPic) * inPic;
   float lod = mix(3.0, 1.5, onF);
-  float e = smoothstep(0.4, 0.95, textureLod(uHand, vPic, lod).a);
+  float e = smoothstep(0.4, 0.95, textureLod(uHand, vPic, lod).a * inPic);
   // On a finger its ink lines only where the finger faces the viewer: turned away, the model's outline is
   // the edge, and the drawing's, a pixel off it, ran inside as a ghost; and only as near as the hand is to
   // the drawn shape.
