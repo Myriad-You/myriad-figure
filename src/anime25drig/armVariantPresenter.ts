@@ -6,6 +6,7 @@ import type { Anime25DSecondaryDeformationFrame } from './secondaryDeformation'
 import type { Anime25DArmLift } from './types'
 import { Arm3DSide } from './arm3dArm'
 import { Arm3DView } from './arm3dView'
+import { cutFrom } from './partSplit'
 
 export type Anime25DArmSide = 'L' | 'R'
 
@@ -107,7 +108,11 @@ export class Anime25DArmVariants {
     let modelled: Arm3DSide | null = null
     try {
       this.view ??= new Arm3DView(gpu.gl)
-      modelled = new Arm3DSide(this.view, bases, { width: gpu.canvasWidth, height: canvasHeight })
+      const names = new Set(bases.map((base) => base.source.name))
+      // A standing figure's arm pieces (a charm cut out of the sleeve) go with its drawn arm; a bust keeps its own.
+      const figure = layers.some((layer) => layer.source.role === 'arm-variant' && layer.source.side === side && layer.source.armVariant?.model?.restFore !== undefined)
+      const pieces = figure ? layers.filter((layer) => names.has(cutFrom(layer.source) ?? '')) : []
+      modelled = new Arm3DSide(this.view, bases, { width: gpu.canvasWidth, height: canvasHeight }, pieces)
       modelled.bind(layers, gpu.gl, gpu.atlas)
       if (modelled.gestures.length > 0) return modelled
     } catch (error) {

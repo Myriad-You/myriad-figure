@@ -98,7 +98,21 @@ export interface Anime25DArmJoints {
  * pixels: from its top-left corner, lengths in the same pixels.
  */
 export interface Anime25DArmModel {
-  /** The bones' lengths, as long as either picture draws them. */
+  /**
+   * Document pixels to one of the trial's (a bust drawn 540 wide), which the arm's drawn sizes (outlines, the gaps
+   * it fills) are given in: a full body's, cut where its hand is a bust's size. Absent on a bust: its canvas's
+   * width over 540.
+   */
+  trialPixel?: number
+  /**
+   * A standing figure's: the portrait draws this arm's hand hanging, 21 points (COCO-WholeBody's). The modelled arm
+   * hangs with it and is shown only while it gestures: hanging, the drawn arm is the figure's own. Absent on a
+   * bust, whose hand hangs off the picture (the gesture's hangs in its place) and whose modelled arm always shows.
+   */
+  restHand?: Array<[number, number]>
+  /** A standing figure's forearm as the portrait draws it hanging: the model's runs between it and `fore`. */
+  restFore?: number
+  /** The bones' lengths, as long as either picture draws them (a figure's forearm, as the gesture draws it). */
   upper: number
   fore: number
   /** The sleeve's radius at evenly spaced places, shoulder to elbow then elbow to cuff. */

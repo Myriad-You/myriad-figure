@@ -1,6 +1,6 @@
 import type { V3 } from './arm3dMath'
 import type { Arm3DMesh } from './arm3dMesh'
-import type { Arm3DPose, Arm3DShape } from './arm3dMotion'
+import type { Arm3DFrame, Arm3DPose, Arm3DShape } from './arm3dMotion'
 import type { Arm3DPicture } from './arm3dPrepare'
 import type { Arm3DTarget } from './arm3dTarget'
 import { handExactness, len, similarity2D, sub } from './arm3dMath'
@@ -10,8 +10,8 @@ import { ringFill } from './arm3dPrepare'
 import { BAKE_FS, BAKE_VS, COMPOSITE_FS, FULL_VS, GAP2_FS, GAP_FS, HAND_FS, HAND_VS, HELD_FS, HELD_VS, SLEEVE_FS, SLEEVE_VS, WHOLE_FS } from './arm3dShaders'
 import { arm3DTexture, createArm3DTarget, dropArm3DTarget, setArm3DGround } from './arm3dTarget'
 
-/** The trial drew the figure 540 pixels wide; its pixel-sized measures (outlines, the gap's reach) scale from there. */
-const TRIAL_WIDTH = 540
+export type { Arm3DFrame } from './arm3dMotion'
+
 const BAKE_W = 1024
 const BAKE_H = 2048
 /** A stencil bit of the figure's own buffer: the upper arm, where what the portrait draws over it stays in front. */
@@ -20,6 +20,8 @@ export const ARM3D_STENCIL = 16
 /** One gesture's arm, bound: its model, its textures and where its pictures lie on its meshes. */
 export interface Arm3DBound {
   shape: Arm3DShape
+  /** Document pixels to a trial pixel (a bust drawn 540 wide): the arm's drawn sizes (outlines, gaps) are in these. */
+  px: number
   sleeve: WebGLTexture
   /** The sleeve with the gesture's own drawing where the portrait wears a band only while hanging (`restBand`). */
   lifted?: WebGLTexture
@@ -42,6 +44,9 @@ export interface Arm3DBound {
   wristWt: Float32Array
   wristHangPic: Float32Array
   wristHangWt: Float32Array
+  /** A standing figure's: the hand in the arm mask as it hangs, where the portrait draws it (a bust's is off the picture). */
+  handHangPic?: Float32Array
+  handHangWt?: Float32Array
   /** Each sleeve vertex's place on the playback canvas (a share of it) as the arm hangs. */
   hangPic: Float32Array
   palm: Array<[number, number]> | null
@@ -66,24 +71,6 @@ interface Program {
   program: WebGLProgram
   attributes: Map<string, number>
   uniforms: Map<string, WebGLUniformLocation | null>
-}
-
-export interface Arm3DFrame {
-  pose: Arm3DPose
-  hanging: number
-  /** 1 with the arm where it hangs (its wrist), 0 once well away from it. */
-  restNear: number
-  /** How far the sleeve's own line is held off yet, as the hand first leaves hanging (1 hanging). */
-  unlined: number
-  view: { width: number; height: number }
-  /** The picture's foot on the playback canvas, left to right: nothing of the arm below it. */
-  foot: Array<[number, number]>
-  /** The picture's left and right edges where they cut it (±Infinity where not): nothing of the arm past them. */
-  sides: [number, number]
-  /** The gesture layer's mesh as drawn this frame (canvas), its texture places, and how near the arm is held to the drawing. */
-  held?: { pos: Float32Array; uv: Float32Array; idx: ArrayLike<number>; near: number; exact: number; toDrawn: [number, number, number, number, number, number] | null }
-  /** Near its rest, the portrait's arm (`restArm`, laid under the tube, which falls short of it) carried to where the arm is now (its rect's corners), and how much of it; null away from it. */
-  rest: { corners: number[]; alpha: number } | null
 }
 
 function compile(gl: WebGL2RenderingContext, vs: string, fs: string): Program {
@@ -270,7 +257,7 @@ export class Arm3DView {
   draw(bound: Arm3DBound, frame: Arm3DFrame, width: number, height: number): void {
     const gl = this.gl
     const t = this.ensureTarget(width, height)
-    const px = frame.view.width / TRIAL_WIDTH
+    const px = bound.px
     const pose = liftForearm(bound.shape, frame.pose)
     gl.bindFramebuffer(gl.FRAMEBUFFER, t.msaa)
     gl.viewport(0, 0, width, height)
@@ -332,7 +319,7 @@ export class Arm3DView {
     gl.uniform2fv(this.uniform(c, 'uFoot[0]'), feet.length ? feet.flat() : [0, 0])
     gl.uniform1i(this.uniform(c, 'uFeet'), feet.length)
     gl.uniform2f(this.uniform(c, 'uSides'), Math.max(-1e9, frame.sides[0]), Math.min(1e9, frame.sides[1]))
-    gl.uniform1f(this.uniform(c, 'uAlpha'), 1)
+    gl.uniform1f(this.uniform(c, 'uAlpha'), frame.presence)
     gl.bindVertexArray(this.vao)
     gl.drawArrays(gl.TRIANGLES, 0, 3)
     gl.bindVertexArray(null)
@@ -435,6 +422,7 @@ export class Arm3DView {
     const n = hand.pos.length / 3
     const fits = bound.handPic.length === n * 2
     const wristFits = bound.wristPic.length === wrist.pos.length / 3 * 2 && bound.wristHangPic.length === bound.wristPic.length
+    const hangs = fits && bound.handHangPic?.length === n * 2
     gl.useProgram(p.program)
     this.common(p, frame, px)
     gl.activeTexture(gl.TEXTURE0)
@@ -453,6 +441,8 @@ export class Arm3DView {
     gl.uniform1f(this.uniform(p, 'uHasFull'), bound.full ? 1 : 0)
     gl.uniform1f(this.uniform(p, 'uHanging'), frame.hanging)
     gl.uniform1f(this.uniform(p, 'uRestNear'), frame.restNear)
+    gl.uniform1f(this.uniform(p, 'uHandHang'), hangs ? 1 : 0)
+    gl.uniform1f(this.uniform(p, 'uHandRest'), frame.handRest)
     gl.activeTexture(gl.TEXTURE0)
     gl.uniform1f(this.uniform(p, 'uExact'), handExactness(bound.drawnHand, pose.hand, px, 1, 4))
     gl.uniform1f(this.uniform(p, 'uNear'), handExactness(bound.drawnHand, pose.hand, px, 2, 12))
@@ -468,7 +458,7 @@ export class Arm3DView {
     type Part = [Arm3DMesh, Float32Array | null, Float32Array | null, Float32Array | null, Float32Array | null]
     const parts: Part[] = [
       wristFits ? [wrist, bound.wristPic, bound.wristWt, bound.wristHangPic, bound.wristHangWt] : [wrist, null, null, null, null],
-      [hand, fits ? bound.handPic : null, fits ? bound.handWt : null, null, null],
+      [hand, fits ? bound.handPic : null, fits ? bound.handWt : null, hangs ? bound.handHangPic! : null, hangs ? bound.handHangWt! : null],
     ]
     const send = ([m, pic, wt, hangPic, hangWt]: Part) => {
       const k = m.pos.length / 3
@@ -647,7 +637,7 @@ export class Arm3DView {
    */
   markUpperArm(bound: Arm3DBound, frame: Arm3DFrame): void {
     const gl = this.gl
-    const px = frame.view.width / TRIAL_WIDTH
+    const px = bound.px
     const pose = liftForearm(bound.shape, frame.pose)
     gl.enable(gl.STENCIL_TEST)
     gl.stencilMask(ARM3D_STENCIL)

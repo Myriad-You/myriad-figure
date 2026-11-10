@@ -45,6 +45,8 @@ export interface ArmVariantReference extends Anime25DSourceReference {
 // The cut works on the portrait resampled to this width, the size it was
 // tuned at (the 2026-11-03 trial, 26 variants on 8 busts).
 const WORK_WIDTH = 1152
+// The trial's busts were drawn this wide: the player gives the arm's drawn sizes in its pixels.
+const TRIAL_WIDTH = 540
 // Channel distance after a light blur of both pictures: shading the model
 // redrew stays out, a moved sleeve comes through.
 const DIFF_BLUR = 1.5
@@ -63,11 +65,24 @@ const BACKGROUND_TOLERANCE = 17
 // Where the portrait's arm layer is drawn, as the 3D arm measures it.
 const BASE_ALPHA = 128
 
+// A full body's arm is cut and measured on a grid where its hand is as large as
+// a bust's was on the 1152-wide one, wrist to middle knuckle (the median of the
+// trial's 26 raised hands): the cut's sizes and the model's measures hold there.
+const BUST_HAND = 214
+// Room about the arm on a full body's grid: by the shoulders' width either side, by the arm's length below.
+const FIGURE_SIDE_ROOM = 0.3
+const FIGURE_FOOT_ROOM = 0.12
+// A full body's crown above its nose, by the nose's height above the shoulders.
+const FIGURE_CROWN_ROOM = 1.6
+// A pose point the model is at least this sure of (as the backend takes a hand's).
+const MIN_POINT_SCORE = 0.3
+
 export function cutArmVariantLayers(
   layers: readonly RasterLayer[],
   neutral: Anime25DSourceReference | undefined,
   references: readonly ArmVariantReference[],
   skeleton?: PsdSkeleton,
+  figure = false,
 ): RasterLayer[] {
   if (!neutral || references.length === 0) return []
   const usedIds = new Set(layers.map((layer) => layer.id))
@@ -79,7 +94,7 @@ export function cutArmVariantLayers(
     if (done.has(key)) continue
     if (reference.width !== neutral.width || reference.height !== neutral.height) continue
     const base = layers.filter((layer) => layer.role === 'handwear' && layer.side === reference.side)
-    const got = cutArmVariant(neutral, reference, base, skeleton)
+    const got = cutArmVariant(neutral, reference, base, skeleton, figure)
     if (!got) continue
     done.add(key)
     const id = uniquePartId(`arm-variant-${key}`, usedIds)
@@ -90,7 +105,8 @@ export function cutArmVariantLayers(
       hands.push({ ...got.hand, id: handId, sourceName: handId })
     }
   }
-  dropMovedCuffs(cut)
+  // A full body's portrait draws its own wrist cuff: a gesture keeping it there moved nothing.
+  if (!figure) dropMovedCuffs(cut)
   // A hand whose arm lost its model is never modelled: its picture goes with it.
   const modelled = new Set(cut.filter((c) => c.layer.armVariant?.model).map((c) => c.layer.id.slice('arm-variant-'.length)))
   return [...cut.map((c) => c.layer), ...hands.filter((h) => modelled.has(h.id.slice('arm-variant-hand-'.length)))]
@@ -101,11 +117,15 @@ function cutArmVariant(
   reference: ArmVariantReference,
   base: readonly RasterLayer[],
   skeleton: PsdSkeleton | undefined,
+  figure: boolean,
 ): { layer: RasterLayer; cuffAtWrist: ArmCuffReading | null; hand?: RasterLayer } | null {
-  const { placement } = reference
+  const window = figure ? figureWindow(reference, skeleton) : null
+  // A full body measured on the bust's grid comes out a bust's model (no hanging hand, no own scale): none.
+  if (figure && !window) return null
+  const placement = window?.frame ?? reference.placement
   if (placement.width <= 0 || placement.height <= 0) return null
-  const scale = placement.width / WORK_WIDTH
-  const w = WORK_WIDTH
+  const scale = window?.scale ?? placement.width / WORK_WIDTH
+  const w = window ? Math.max(1, Math.round(placement.width / scale)) : WORK_WIDTH
   const h = Math.max(1, Math.round(placement.height / scale))
   const variant = resample(reference, placement, w, h)
   const portrait = resample(neutral, placement, w, h)
@@ -208,6 +228,7 @@ function cutArmVariant(
         })(),
         portraitPose: onGrid(skeleton.keypoints, placement, scale),
         variantPose: onGrid(reference.keypoints, placement, scale),
+        ...(window ? { whole: true } : {}),
       })
     : null
   const layer = trimRaster({
@@ -224,9 +245,11 @@ function cutArmVariant(
     data,
     armVariant: { gesture: reference.gesture, lift: ARM_VARIANT_LIFT[reference.gesture] },
   })
-  if (!model || !layer.armVariant) return { layer, cuffAtWrist: null }
+  // A full body's arm is only ever played modelled: drawn flat it slid up from below across the legs.
+  if (!model || !layer.armVariant) return figure ? null : { layer, cuffAtWrist: null }
   const { cuffAtWrist, ...measured } = model
   layer.armVariant.model = placeArmModel(measured, scale, placement.x - layer.left, placement.y - layer.top)
+  if (window) layer.armVariant.model.trialPixel = scale * WORK_WIDTH / TRIAL_WIDTH
   const placed = layer.armVariant.model.hand.map(([x, y]) => [x + layer.left, y + layer.top] as const)
   // The drawing's own empty ground is no part of it: held, a modelled finger a little wider than the drawn one
   // wore the canvas's white about its tip.
@@ -295,6 +318,69 @@ export function dropMovedCuffs(cut: ReadonlyArray<{ layer: RasterLayer; cuffAtWr
 }
 
 /** Document keypoints on the working grid. */
+/**
+ * The part of a full body the arm is cut and measured in, on the document, and the document pixels to a grid
+ * pixel there (its hand a bust's size): the arm on the variant's side as the portrait and the variant draw it,
+ * the face and the other shoulder (a hand comes to the chin, across the chest), with room about them. Null
+ * without the portrait's shoulders and nose; then the whole picture at the bust's grid.
+ */
+function figureWindow(
+  reference: ArmVariantReference,
+  skeleton: PsdSkeleton | undefined,
+): { frame: ArmVariantReference['placement']; scale: number } | null {
+  const sure = (pose: ReadonlyArray<readonly [number, number, number]> | undefined, i: number) => {
+    const p = pose?.[i]
+    return p && p[2] >= MIN_POINT_SCORE ? [p[0], p[1]] as const : null
+  }
+  const portrait = skeleton?.keypoints
+  const nose = sure(portrait, 0)
+  const left = sure(portrait, 5)
+  const right = sure(portrait, 6)
+  if (!nose || !left || !right) return null
+  const shoulders = [left, right]
+  const span = Math.abs(shoulders[0][0] - shoulders[1][0])
+  const shoulderY = (shoulders[0][1] + shoulders[1][1]) / 2
+  // The person's arm drawn on the variant's side of the picture: its shoulder there, then its elbow, wrist, hand.
+  const chain = (pose: typeof portrait) => {
+    const a = sure(pose, 5)
+    const b = sure(pose, 6)
+    if (!a || !b) return []
+    const own = (a[0] < b[0]) === (reference.side === 'left') ? 0 : 1
+    const joints = [5 + own, 7 + own, 9 + own].map((i) => sure(pose, i))
+    const hand = Array.from({ length: 21 }, (_, k) => sure(pose, 91 + 21 * own + k))
+    return [...joints, ...hand].filter((p): p is readonly [number, number] => p !== null)
+  }
+  const points = [nose, ...shoulders, ...chain(portrait), ...chain(reference.keypoints)]
+  const armLength = (own: number) => {
+    const [s, e, w] = [5 + own, 7 + own, 9 + own].map((i) => sure(portrait, i))
+    return s && e && w ? Math.hypot(s[0] - e[0], s[1] - e[1]) + Math.hypot(e[0] - w[0], e[1] - w[1]) : 0
+  }
+  const arm = Math.max(armLength(0), armLength(1), span)
+  const x0 = Math.max(0, Math.floor(Math.min(...points.map((p) => p[0])) - FIGURE_SIDE_ROOM * span))
+  const x1 = Math.min(reference.width, Math.ceil(Math.max(...points.map((p) => p[0])) + FIGURE_SIDE_ROOM * span))
+  // Above the crown too where a hand is raised over the head.
+  const top = Math.min(nose[1] - FIGURE_CROWN_ROOM * Math.max(1, shoulderY - nose[1]), Math.min(...points.map((p) => p[1])) - FIGURE_SIDE_ROOM * span)
+  const y0 = Math.max(0, Math.floor(top))
+  const y1 = Math.min(reference.height, Math.ceil(Math.max(...points.map((p) => p[1])) + FIGURE_FOOT_ROOM * arm))
+  if (x1 - x0 < 2 || y1 - y0 < 2) return null
+  // The hand as drawn: the portrait's, the surer of its two, else the variant's raised one.
+  const handLength = (pose: typeof portrait) => {
+    let best = 0
+    for (const at of [91, 112]) {
+      const wrist = sure(pose, at)
+      const knuckle = sure(pose, at + 9)
+      if (wrist && knuckle) best = Math.max(best, Math.hypot(wrist[0] - knuckle[0], wrist[1] - knuckle[1]))
+    }
+    return best
+  }
+  const hand = handLength(portrait) || handLength(reference.keypoints)
+  if (!hand) return null
+  return {
+    frame: { x: x0, y: y0, width: x1 - x0, height: y1 - y0 },
+    scale: Math.min(3, Math.max(0.5, hand / BUST_HAND)),
+  }
+}
+
 function onGrid(
   keypoints: ReadonlyArray<readonly [number, number, number]>,
   placement: ArmVariantReference['placement'],

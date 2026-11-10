@@ -136,7 +136,7 @@ export async function prepareAnime25DRigPsd(
   layers = addHiddenArmFragments(layers, anime25DShoulderSeeds(layers), new Set(layers.map((layer) => layer.id)))
   // Cut against the arms as split, kept out of everything that reconciles the
   // resting figure with the portrait, and drawn last, over the front hair.
-  const armVariants = profile === 'bust' ? cutArmVariantLayers(layers, sourceReference, armVariantReferences, skeleton) : []
+  const armVariants = cutArmVariantLayers(layers, sourceReference, armVariantReferences, skeleton, profile === 'fullBody')
   layers = splitVariantEyesIfNeeded(layers, rig.anchors.face.cx, 'eye-dizzy')
   layers = splitVariantEyesIfNeeded(layers, rig.anchors.face.cx, 'eye-squeeze')
   layers = splitVariantEyesIfNeeded(layers, rig.anchors.face.cx, 'eye-cry')
