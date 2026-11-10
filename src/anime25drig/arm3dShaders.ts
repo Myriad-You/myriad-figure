@@ -278,7 +278,10 @@ void main() {
   vec2 fp = uv * uFullMap.zw + uFullMap.xy;
   vec2 edge = min(fp, 1.0 - fp);
   vec4 c = texture(uFull, fp);
-  float a = uExact * along * smoothstep(0.0, 0.04, min(edge.x, edge.y)) * smoothstep(0.5, 0.9, texture(uHand, uv).a) * c.a;
+  // Only on the gesture's own picture: past its edge its last column of pixels runs on (a fingertip drawn up to
+  // the edge went on across the neck as a bar of skin).
+  vec2 in01 = step(vec2(0.0), uv) * step(uv, vec2(1.0));
+  float a = uExact * along * smoothstep(0.0, 0.04, min(edge.x, edge.y)) * smoothstep(0.5, 0.9, texture(uHand, uv).a) * c.a * in01.x * in01.y;
   if (uSolid > 0.0) {
     if (a < 0.5) discard;
     o = vec4(1.0);
