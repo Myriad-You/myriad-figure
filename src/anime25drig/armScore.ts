@@ -42,7 +42,7 @@ type Place = Required<Omit<Anime25DArmAim, 'hand'>> & { hand?: string }
 
 /** An arm as good as hanging: where a move from hanging starts and one back to it ends. */
 const HANGING: Place = { out: 0.05, up: -0.96, forward: 0.03, swivel: 0 }
-const ARC = 0.25
+const ARC = 0.12
 
 /** Slow out, slow in, with no jolt at either end. */
 function eased(f: number): number {
@@ -72,6 +72,7 @@ function along(m: Move, beat: number): Place {
  */
 export function armScoreAt(score: Anime25DArmScore, seconds: number, gestureAim: (side: 'L' | 'R', gesture: string) => Anime25DArmAim | null): Anime25DArmScoreFrame {
   const beat = seconds * score.bpm / 60
+  if (!Number.isFinite(beat)) return { arms: {}, drive: {} }
   const arms: Anime25DArmScoreFrame['arms'] = {}
   for (const side of ['L', 'R'] as const) {
     const cues = score.arms.filter((c) => c.side === side || c.side === 'both').sort((a, b) => a.at - b.at)
@@ -81,6 +82,8 @@ export function armScoreAt(score: Anime25DArmScore, seconds: number, gestureAim:
       if (cue.at > beat) break
       let to: Place
       if (cue.to === null) {
+        // Already hanging, it has nowhere to be let down from.
+        if (!move || (move.hangs && cue.at >= move.at + move.over)) continue
         to = HANGING
       }
       else if (typeof cue.to === 'string') {
@@ -92,7 +95,8 @@ export function armScoreAt(score: Anime25DArmScore, seconds: number, gestureAim:
         to = { out: cue.to.out, up: cue.to.up, forward: cue.to.forward, swivel: cue.to.swivel ?? 0, ...(cue.to.hand === undefined ? {} : { hand: cue.to.hand }) }
       }
       // Cut short, a move hands on from wherever it had got to.
-      const from: Place = move ? along(move, cue.at) : HANGING
+      // Let down and hanging, it wears no gesture's hand to raise from.
+      const from: Place = move && !(move.hangs && cue.at >= move.at + move.over) ? along(move, cue.at) : HANGING
       move = { from, to, at: cue.at, over: Math.max(1e-3, cue.over ?? 1), arc: cue.arc ?? ARC, hangs: cue.to === null }
     }
     if (!move || (move.hangs && beat >= move.at + move.over)) arms[side] = null

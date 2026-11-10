@@ -83,6 +83,13 @@ export class Arm3DSide {
    */
   private oneLook = false
   private worn: Gesture | null = null
+  /** With one look, the gesture whose picture of the body (the arm off it) stands for them all. */
+  private led: Gesture | null = null
+  /** With one look: the elbow from its shoulder last frame, and how long (seconds) it has been still. */
+  private elbowWas: V3 | null = null
+  private still = 0
+  /** With one look: layers given the body's picture while binding, before their gesture was made. */
+  private given: Anime25DGpuLayer[] = []
   private wanted: string | null = null
   private shoulder: Followed | null = null
   private foot: Followed[] = []
@@ -160,6 +167,7 @@ export class Arm3DSide {
     const leadShape = lead && leadModel ? arm3DShape(leadModel, lead.source.x, lead.source.y) : null
     const onePalm = leadShape && leadModel ? arm3DPalmAsModelled(new Arm3DMotion(leadShape, false).keyPose(1, leadShape.rest.s).hand, leadModel.palmOutline) : null
     this.oneLook = one !== null
+    this.transit.handInTime = this.oneLook
     /** A figure's gestures wait for the one sleeve they all wear, baked from all their pictures. */
     const waiting: Array<{ lead: boolean; shape: Arm3DShape; px: number; tone: Arm3DBound['wristTone']; passes: (upTo: number) => Parameters<Arm3DView['bakeSleeve']>[3]; made: (sleeve: WebGLTexture, lifted: WebGLTexture | undefined, tone: Arm3DBound['wristTone']) => void; drop: () => void }> = []
     for (const layer of layers) {
@@ -321,6 +329,7 @@ export class Arm3DSide {
       }
       layer.ownTexture = createBodyTexture(gl, split.body, pixels.width, pixels.height)
       layer.follows = true
+      this.given.push(layer)
     }
     const led = waiting.find((w) => w.lead) ?? waiting[0]
     if (led) {
@@ -359,6 +368,7 @@ export class Arm3DSide {
     this.sides = [sides[0].map(([l, i]) => ({ layer: layers[l], i })), sides[1].map(([l, i]) => ({ layer: layers[l], i }))]
     this.shown = this.gestures[0] ?? null
     this.worn = this.shown
+    this.led = lead ? this.gestures.find((g) => g.layer === lead) ?? null : null
   }
 
   /** A hand drawn touching the face (at the chin) stays on it while the head turns. */
@@ -515,6 +525,12 @@ export class Arm3DSide {
     for (const g of this.gestures) g.layer.frameOpacity = g === now && own ? 1 : 0
     // Coming in or going, the drawn arm stays whole under it: two half-shown arms darken.
     if (!own) return
+    // One look: one picture of the body under the arm whatever it turns to (each gesture's drew the clothes about
+    // the arm its own way, and one fading into the next stood as a second picture beside the moving arm).
+    if (this.oneLook && this.led) {
+      for (const g of this.gestures) g.layer.frameOpacity = g === this.led ? 1 : 0
+    }
+    else
     // Between two gestures' pictures the upper layer fades over the lower, whole (two half-shown let the body through).
     if (this.leaving) {
       const over = now.order > this.leaving.g.order
@@ -576,6 +592,21 @@ export class Arm3DSide {
       it.near = (1 - smoothstep(0.01 * upper, 0.05 * upper, Math.hypot(pose.e[0] - drawn.e[0], pose.e[1] - drawn.e[1], pose.e[2] - drawn.e[2])))
         * (1 - smoothstep(0.35 * reach, 0.6 * reach, Math.hypot(pose.w[0] - drawn.w[0], pose.w[1] - drawn.w[1], pose.w[2] - drawn.w[2])))
       it.exact = it.near * (1 - smoothstep(0.06 * reach, 0.2 * reach, Math.hypot(pose.w[0] - drawn.w[0], pose.w[1] - drawn.w[1], pose.w[2] - drawn.w[2])))
+    }
+    if (this.oneLook) {
+      // A gesture's drawn pieces only on an arm come to rest there: on one passing, or setting off, they stood
+      // still while it moved, a second arm left behind.
+      const upper = g.bound.shape.upper
+      const at = sub(pose.e, anchor)
+      const was = this.elbowWas
+      const moving = !was || this.dt <= 0 || Math.hypot(at[0] - was[0], at[1] - was[1], at[2] - was[2]) > 0.05 * upper * this.dt
+      this.still = moving ? 0 : this.still + this.dt
+      this.elbowWas = at
+      const settled = smoothstep(0.04, 0.14, this.still)
+      for (const it of this.gestures) {
+        it.near *= settled
+        it.exact *= settled
+      }
     }
     // The arm takes the hand's picture of the gesture it has turned to once its hand is no longer the last one's.
     const worn = this.worn
@@ -673,6 +704,15 @@ export class Arm3DSide {
   }
 
   dispose(): void {
+    for (const layer of this.given) {
+      if (this.gestures.some((g) => g.layer === layer)) continue
+      layer.follows = false
+      if (layer.ownTexture) {
+        this.view.releaseTexture(layer.ownTexture.texture)
+        layer.ownTexture = null
+      }
+    }
+    this.given = []
     for (const g of this.gestures) {
       this.view.release(g.bound)
       g.layer.follows = false

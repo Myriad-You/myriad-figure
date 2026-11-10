@@ -24,7 +24,7 @@ test('a move goes on without a jump from frame to frame, swinging forward on its
     furthest = Math.max(furthest, a.forward)
     last = a
   }
-  assert.ok(furthest > 0.25)
+  assert.ok(furthest > 0.15)
   assert.ok(Math.abs(last.forward - 0.1) < 1e-9)
   assert.deepEqual(armScoreAt(score, 1, aimOf).arms.L, armScoreAt(score, 1, aimOf).arms.R)
 })
@@ -46,4 +46,17 @@ test('the body is driven to each cue in its beats and keeps what a later cue doe
   assert.deepEqual(armScoreAt(score, 3, aimOf).drive, { torsoTurn: 0.4, body: 0.5 })
   assert.ok(Math.abs(armScoreAt(score, 1, aimOf).drive.torsoTurn! - 0.2) < 1e-9)
   assert.deepEqual(armScoreAt(score, 6, aimOf).drive, { torsoTurn: -0.4, body: 0.5 })
+})
+
+test('an arm let down and raised again wears only the new gesture’s hand', () => {
+  const score = { bpm: 60, arms: [{ at: 0, side: 'L' as const, to: 'wave' }, { at: 4, side: 'L' as const, to: null }, { at: 8, side: 'L' as const, to: 'chin' }] }
+  const aim = () => ({ out: 0.3, up: 0.4, forward: 0.2 })
+  assert.equal(armScoreAt(score, 6, aim).arms.L, null)
+  assert.equal(armScoreAt(score, 8.2, aim).arms.L?.hand, 'chin')
+})
+
+test('a first cue that lets a hanging arm down leaves it hanging', () => {
+  const score = { bpm: 60, arms: [{ at: 0, side: 'R' as const, to: null }] }
+  assert.equal(armScoreAt(score, 0.5, () => null).arms.R, null)
+  assert.deepEqual(armScoreAt(score, Number.NaN, () => null).arms, {})
 })

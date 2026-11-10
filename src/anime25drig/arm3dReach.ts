@@ -203,6 +203,11 @@ export class Arm3DTransit {
   private since = 0
   private now: Arm3DStance | null = null
   private turning: { u: V3; f: V3 } = { u: [0, 0, 0], f: [0, 0, 0] }
+  /**
+   * The hand turns into the next one in its own time, not the bones': an arm of one look for all its gestures
+   * kept the last one's hand through the whole of a long way, and changed it only once there.
+   */
+  handInTime = false
 
   /** Nothing of an earlier stance left in the arm. */
   get idle(): boolean {
@@ -239,7 +244,7 @@ export class Arm3DTransit {
         this.fore.clear()
       }
       else {
-        const m = smoothstep(0, 1, this.left)
+        const m = smoothstep(0, 1, this.handInTime ? Math.max(0, 1 - this.since / LEAST) : this.left)
         const df = this.fore.on(wanted.df)
         out = {
           du: this.upper.on(wanted.du),
