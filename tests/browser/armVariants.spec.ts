@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import type { BustRequest, RiseResult } from './fixture/armVariants'
+import type { BustRequest, FreeResult, RiseResult } from './fixture/armVariants'
 import { Buffer } from 'node:buffer'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
@@ -231,5 +231,24 @@ test.describe('standing figures', () => {
         expect(jump, `frame ${result.flicker.indexOf(jump) + 1} stands ${jump.toFixed(4)} outside its neighbours`).toBeLessThan(0.03)
       })
     }
+  }
+  for (const [figure, side] of [['b08', 'L'], ['b08', 'R'], ['h16', 'R']] as const) {
+    test(`${figure}'s ${side} arm goes from gesture to gesture and where it is aimed without being put down`, async ({ page }, testInfo) => {
+      test.setTimeout(600_000)
+      const tags = figureTags(figure).filter((tag) => tag.endsWith(`-${side}`))
+      test.skip(tags.length < 2, 'fewer than two gestures drawn on this side')
+      const gestures = tags.map((tag) => tag.split('-')[1]!)
+      const request = await serveFigure(page, figure, tags)
+      const result: FreeResult = await page.evaluate(([request, side, gestures]) =>
+        window.armVariantProbe.free(request, side, gestures), [request, side, gestures] as const)
+      await testInfo.attach('flicker', { body: JSON.stringify(Object.fromEntries(Object.entries(result.flicker).map(([name, f]) => [name, Math.max(...f)]))), contentType: 'application/json' })
+      for (const shot of result.shots) await testInfo.attach(shot.name, { body: Buffer.from(shot.image, 'base64'), contentType: 'image/png' })
+      for (const [name, series] of Object.entries(result.flicker)) {
+        const jump = Math.max(...series)
+        expect(jump, `${name}: frame ${series.indexOf(jump) + 1} stands ${jump.toFixed(4)} outside its neighbours`).toBeLessThan(0.03)
+      }
+      // Let go, the figure is the one it was: its drawn arm, nothing of a gesture left.
+      expect(result.changed).toBeLessThan(0.001)
+    })
   }
 })

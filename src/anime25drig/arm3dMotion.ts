@@ -208,6 +208,22 @@ export class Arm3DMotion {
     return !this.wanted && Math.abs(this.p.x) < 0.002 && Math.abs(this.p.v) < 0.01 && this.sway < 0.01 && Math.abs(this.flick.x) < 1e-3
   }
 
+  /**
+   * Put at the gesture, held, or at hanging, at once and still: the arm's way there from wherever it was is
+   * another's to make (`Arm3DTransit`).
+   */
+  snap(raised: boolean): void {
+    this.wanted = raised
+    this.p.x = raised ? 1 : 0
+    this.p.v = 0
+    this.flick.x = 0
+    this.flick.v = 0
+    this.direct = raised ? 0 : 1
+    this.fall = 0
+    this.sway = 0
+    this.held = 0
+  }
+
   step(time: number): void {
     const dt = this.last === null ? 0 : Math.min(1 / 30, Math.max(0, time - this.last))
     this.last = time
@@ -333,7 +349,7 @@ export class Arm3DMotion {
 }
 
 /** Two hands bone by bone: each bone's direction turned between theirs, its length between theirs. */
-function blendHands(a: V3[], b: V3[], t: number): V3[] {
+export function blendHands(a: V3[], b: V3[], t: number): V3[] {
   const hand: V3[] = Array.from({ length: 21 })
   hand[0] = lerp(a[0], b[0], t)
   for (const chain of HAND_CHAINS) {

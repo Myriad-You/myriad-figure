@@ -1,5 +1,6 @@
 import type { ArmVariantGesture } from '../rig/armVariants'
 import type { Arm3DBodyFrame } from './arm3dArm'
+import type { Anime25DArmAim } from './arm3dReach'
 import type { Anime25DDriver } from './driver'
 import type { Anime25DGpuLayer } from './layerGpuBinding'
 import type { Anime25DSecondaryDeformationFrame } from './secondaryDeformation'
@@ -179,6 +180,19 @@ export class Anime25DArmVariants {
   }
 
   /**
+   * Put a side's hand where `aim` says, from wherever its arm is (a modelled arm only); null lets it follow the
+   * gestures asked for again.
+   */
+  aim(side: Anime25DArmSide, aim: Anime25DArmAim | null): void {
+    this.modelled[side]?.aimAt(aim)
+  }
+
+  /** The aim that holds a side's arm as `gesture` is drawn; null without a model of it. */
+  aimOf(side: Anime25DArmSide, gesture: string): Anime25DArmAim | null {
+    return this.modelled[side]?.aimOf(gesture) ?? null
+  }
+
+  /**
    * Steps each side to `time` and writes this frame's opacity: the gesture
    * arm shown, the others hidden, the portrait's arm faded under it. Runs
    * after the face frame has written every layer's own opacity.
@@ -236,6 +250,8 @@ export class Anime25DArmVariants {
     if (!view) return
     for (const side of ['L', 'R'] as const) {
       const modelled = this.modelled[side]
+      const leaving = modelled?.leavingFrame()
+      if (leaving) view.draw(leaving.bound, leaving.frame, width, height)
       const now = modelled?.frame()
       if (!modelled || !now) continue
       view.draw(now.bound, now.frame, width, height)

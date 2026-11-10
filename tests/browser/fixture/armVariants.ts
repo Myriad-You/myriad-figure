@@ -1,3 +1,4 @@
+import type { Anime25DArmAim } from '../../../src/anime25drig/arm3dReach'
 import type { Anime25DDriver } from '../../../src/anime25drig/driver'
 import type { ArmVariantSource } from '../../../src/rig/psdImportClient'
 import type { PreparedRigPsdImport } from '../../../src/rig/psdImporter'
@@ -269,10 +270,77 @@ async function rise(request: BustRequest, side: 'L' | 'R', gesture: string): Pro
   }
 }
 
-declare global {
-  interface Window {
-    armVariantProbe: { golden: typeof golden; rise: typeof rise }
+export interface FreeResult {
+  /** Each frame of every change, how far it stands outside its neighbours (`flicker`), under the change's name. */
+  flicker: Record<string, number[]>
+  /** The share of the picture's pixels that differ, once all is put down, from the figure left alone as long. */
+  changed: number
+  shots: { name: string; image: string }[]
+}
+
+/**
+ * One arm taken from gesture to gesture without being put down between, then by aims (out to the side, toward the
+ * viewer, across the body), then let go.
+ */
+async function free(request: BustRequest, side: 'L' | 'R', gestures: string[]): Promise<FreeResult> {
+  const prepared = await importBust(request)
+  const flickers: Record<string, number[]> = {}
+  const shots: { name: string; image: string }[] = []
+  let ticks = 0
+  let after: Uint8Array
+  const stage = await open(prepared)
+  try {
+    const playback = prepared.source.anime25dPlayback!
+    const parts = playback.layers.filter((layer) => layer.w > 8 && layer.side === side && (layer.role === 'handwear' || gestures.includes(layer.armVariant?.gesture ?? '')))
+    const x = Math.min(...parts.map((layer) => layer.x))
+    const y = Math.min(...parts.map((layer) => layer.y))
+    const box = { x, y, w: Math.max(...parts.map((layer) => layer.x + layer.w)) - x, h: Math.max(...parts.map((layer) => layer.y + layer.h)) - y }
+    const drivers = ARM_VARIANT_DRIVERS[side] as Record<string, keyof Anime25DDriver>
+    const run = (name: string, pose: Partial<Anime25DDriver>, aim: Anime25DArmAim | null, frames: number) => {
+      stage.player.replaceTarget({ ...IDENTITY_DRIVER, ...QUIET, ...pose })
+      stage.player.aimArm(side, aim)
+      const series: Array<{ drawn: number; light: number }> = []
+      for (let i = 0; i < frames; i += 1) {
+        stage.player.tick(1 / FPS)
+        ticks += 1
+        series.push(measure(stage, readPixels(stage), box))
+        if (i === 5 || i === frames - 1) shots.push({ name: `${name}-${String(i).padStart(2, '0')}`, image: png(stage) })
+      }
+      flickers[name] = flicker(series)
+    }
+    let held: Partial<Anime25DDriver> = {}
+    for (const gesture of gestures) {
+      held = { [drivers[gesture]!]: 1 }
+      run(gesture, held, null, 50)
+    }
+    run('aim-side', held, { out: 0.7, up: 0.3, forward: 0.15 }, 50)
+    run('aim-forward', held, { out: 0.15, up: 0.2, forward: 0.9 }, 60)
+    run('aim-across', {}, { out: 0.05, up: 0.25, forward: 0.45 }, 50)
+    run('let-go', {}, null, 150)
+    after = readPixels(stage)
+  } finally {
+    stage.close()
+  }
+  // The same figure left alone as long: what it draws by now with nothing ever raised.
+  const alone = await open(prepared)
+  try {
+    alone.player.replaceTarget({ ...IDENTITY_DRIVER, ...QUIET })
+    for (let i = 0; i < ticks; i += 1) alone.player.tick(1 / FPS)
+    const never = readPixels(alone)
+    let changed = 0
+    for (let i = 0; i < after.length; i += 4) {
+      if (Math.max(Math.abs(after[i]! - never[i]!), Math.abs(after[i + 1]! - never[i + 1]!), Math.abs(after[i + 2]! - never[i + 2]!), Math.abs(after[i + 3]! - never[i + 3]!)) > 48) changed += 1
+    }
+    return { flicker: flickers, changed: changed / (after.length / 4), shots }
+  } finally {
+    alone.close()
   }
 }
 
-window.armVariantProbe = { golden, rise }
+declare global {
+  interface Window {
+    armVariantProbe: { golden: typeof golden; rise: typeof rise; free: typeof free }
+  }
+}
+
+window.armVariantProbe = { golden, rise, free }

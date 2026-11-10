@@ -344,3 +344,96 @@ export function arm3DProject(m: Arm3DMesh, toPicture: (x: number, y: number) => 
   }
   return [uv, wt]
 }
+
+/**
+ * The gesture as drawn (its layer over the portrait it leaves showing; layer pixels, `scale` to a model unit)
+ * about its upper arm and elbow alone: not its forearm, which a wave swings away from the drawing. All of it
+ * there, not only what was measured as arm: a dark sleeve drawn over the portrait's dark sleeve is not in the
+ * arm's outline, and left out, the portrait's hanging cuff showed under the elbow. `front`, what the portrait
+ * draws in front of the arm. `over` is laid over the sleeve; `beside` where the body under the drawn arm keeps the
+ * portrait's own (`portraitArm`, its share there), which the sleeve does not quite cover: its hanging cuff showed
+ * in bits about the raised elbow. `fore`, for a gesture whose forearm is held still (`still`), that forearm as
+ * drawn on into the heel of its hand, laid over the arm after its hand wherever the modelled hand is not: the
+ * modelled forearm and its sleeve's end are a tube's, the drawing's a cloth's (a kimono's slanting sleeve mouth).
+ * `foreFront`, the same where the portrait draws in front of its arm, laid on only as the arm is all but held.
+ */
+export function arm3DUpperArmAlone(gesture: Uint8ClampedArray, portrait: Uint8ClampedArray, front: Uint8ClampedArray, w: number, h: number, model: Anime25DArmModel, scale: number, portraitArm: Float32Array, still = false): { over: Uint8ClampedArray; beside: Uint8ClampedArray; fore: Uint8ClampedArray | null; foreFront: Uint8ClampedArray | null } {
+  const out = new Uint8ClampedArray(gesture.length)
+  const beside = new Uint8ClampedArray(gesture.length)
+  const fore = still ? new Uint8ClampedArray(gesture.length) : null
+  const foreFront = still ? new Uint8ClampedArray(gesture.length) : null
+  const { shoulder: s, elbow: e, wrist: wr } = model.raised
+  const R = model.radius
+  const half = R.length >> 1
+  const upperR = 1.25 * Math.max(...R.slice(0, half + 1))
+  const foreR = 1.1 * R.slice(half).reduce((a, b) => a + b, 0) / (R.length - half)
+  // Out to its widest (a sleeve's mouth), not only its mean: the modelled one is as wide there.
+  const foreWide = Math.max(foreR, 1.1 * Math.max(...R.slice(half)))
+  const along = (x: number, y: number, a: readonly number[], b: readonly number[]) => {
+    const dx = b[0] - a[0]
+    const dy = b[1] - a[1]
+    const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / Math.max(1e-6, dx * dx + dy * dy)))
+    return { t, d: Math.hypot(x - a[0] - dx * t, y - a[1] - dy * t) }
+  }
+  for (let p = 0; p < w * h; p += 1) {
+    const x = (p % w) / scale
+    const y = Math.floor(p / w) / scale
+    const up = along(x, y, s, e)
+    const forearm = along(x, y, e, wr)
+    const pastElbow = smoothstep(0.12, 0.25, forearm.t)
+    const notFore = 1 - pastElbow * (1 - smoothstep(foreR * 0.9, foreR * 1.1, forearm.d))
+    const keep = (1 - smoothstep(upperR * 0.9, upperR * 1.1, up.d)) * notFore
+    const i = p * 4
+    const k = gesture[i + 3] / 255
+    const a = Math.max(k, portrait[i + 3] / 255)
+    for (let c = 0; c < 3; c += 1) out[i + c] = beside[i + c] = gesture[i + c] * k + portrait[i + c] * (1 - k)
+    // Not where the portrait draws in front of the arm (hair over the shoulder): that is drawn again over it as it
+    // moves, and the drawing's still copy showed beside it, a grey smudge.
+    out[i + 3] = a * keep * (1 - front[i + 3] / 255) * 255
+    // Nothing beside the forearm either, however wide its drawn cuff: a wave swings it off the drawing.
+    beside[i + 3] = portraitArm[p] * (1 - pastElbow) * (1 - front[i + 3] / 255) * 255
+    if (fore) {
+      for (let c = 0; c < 3; c += 1) fore[i + c] = out[i + c]
+      const sleeve = 1 - smoothstep(foreWide * 1.15, foreWide * 1.35, forearm.d)
+      const drawn = k * pastElbow * sleeve
+      const before = drawn * (1 - front[i + 3] / 255)
+      fore[i + 3] = before * 255
+      // Where the portrait draws in front of its arm, apart: the modelled forearm is in front of that too (only the
+      // upper arm has it drawn again over it), and left out, the tube showed across a chest drawn after the arm;
+      // but laid on as soon as the arm comes near, the drawn forearm showed there faintly before the arm was in it.
+      // Laid over `fore`, not added to it: as much of what `fore` left as makes the two the drawing's own (the soft
+      // edges of what lies in front were short of it, a faint fringe).
+      foreFront![i + 3] = before < 1 ? Math.min(1, (drawn - before) / (1 - before)) * 255 : 0
+      for (let c = 0; c < 3; c += 1) foreFront![i + c] = out[i + c]
+    }
+  }
+  return { over: out, beside, fore, foreFront }
+}
+
+/**
+ * The points (layer, vertex) on the picture's left and right edges, as they rest, where the edge cuts the figure:
+ * a side counts when what reaches it runs straight down it a good way (a tenth of `height`), not one point of a
+ * figure ending inside the picture. Empty for a side not cut.
+ */
+export function arm3DCutSides(layers: ReadonlyArray<{ rest: ArrayLike<number> }>, height: number): [Array<[number, number]>, Array<[number, number]>] {
+  const out: [Array<[number, number]>, Array<[number, number]>] = [[], []]
+  for (const [k, sign] of [[0, -1], [1, 1]] as const) {
+    let edge = -Infinity
+    for (const layer of layers) {
+      for (let i = 0; i < layer.rest.length; i += 2) edge = Math.max(edge, sign * layer.rest[i])
+    }
+    const on: Array<[number, number]> = []
+    let top = Infinity
+    let bottom = -Infinity
+    layers.forEach((layer, l) => {
+      for (let i = 0; i < layer.rest.length / 2; i += 1) {
+        if (sign * layer.rest[i * 2] < edge - 0.5) continue
+        on.push([l, i])
+        top = Math.min(top, layer.rest[i * 2 + 1])
+        bottom = Math.max(bottom, layer.rest[i * 2 + 1])
+      }
+    })
+    if (bottom - top > 0.1 * height) out[k] = on
+  }
+  return out
+}
