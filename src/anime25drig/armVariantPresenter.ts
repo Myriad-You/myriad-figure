@@ -256,16 +256,18 @@ export class Anime25DArmVariants {
       if (!modelled || !now) continue
       view.draw(now.bound, now.frame, width, height)
       const cloth = modelled.clothOnArm
-      if (cloth.length) {
-        view.markUpperArm(now.bound, now.frame, true)
-        redraw(cloth)
+      // In the portrait's own order, one run after another: clothes that go with the arm over all of the upper
+      // arm, the rest where they stay in front of it.
+      let from = 0
+      while (from < modelled.front.length) {
+        const whole = cloth.includes(modelled.front[from])
+        let to = from + 1
+        while (to < modelled.front.length && cloth.includes(modelled.front[to]) === whole) to += 1
+        view.markUpperArm(now.bound, now.frame, whole)
+        redraw(from === 0 && to === modelled.front.length ? modelled.front : modelled.front.slice(from, to))
         view.endUpperArm()
+        from = to
       }
-      const front = cloth.length ? modelled.front.filter((layer) => !cloth.includes(layer)) : modelled.front
-      if (front.length === 0) continue
-      view.markUpperArm(now.bound, now.frame)
-      redraw(front)
-      view.endUpperArm()
     }
   }
 }

@@ -359,10 +359,10 @@ export class Arm3DSide {
     if (host) host.followers = this.gestures.map((g) => g.layer)
     this.cloth = []
     if (first && this.oneLook) {
-      const side = first.rest.s[0] < canvas.width / 2 ? -1 : 1
+      const side = this.out(first)
       const radius = Math.max(...first.radius.slice(0, (first.radius.length >> 1) + 1))
       for (const layer of this.front) {
-        // (A layer the shader alone moves shares its vertices with its rest.)
+        // (Vertices shared with the layer's rest are not this frame's to turn.)
         if (layer.source.role !== 'topwear' || layer.deformed === layer.rest) continue
         const drape = arm3DDrapeOf(layer.rest, first.rest.s, first.rest.e, radius, side)
         if (drape) this.cloth.push({ layer, ...arm3DDraped(drape) })
@@ -663,7 +663,7 @@ export class Arm3DSide {
       pose = { s: carried(pose.s), e: carried(pose.e), w: carried(pose.w), hand: pose.hand.map(carried) }
     }
     if (this.cloth.length) {
-      this.clothTurn.step(stance.du, sub(hang.e, hang.s), this.dt)
+      this.clothTurn.step(stance.du, sub(hang.e, hang.s), this.out(g.bound.shape), this.dt)
       for (const it of this.cloth) {
         if (turnArm3DDrape(it, it.layer.deformed, pose.s, this.clothTurn)) it.layer.geometryDirty = true
       }

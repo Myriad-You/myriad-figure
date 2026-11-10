@@ -21,10 +21,11 @@ export function arm3DDrapeOf(rest: Float32Array, s: readonly number[], e: readon
   if (length < 1e-6) return null
   const ax = (e[0] - s[0]) / length
   const ay = (e[1] - s[1]) / length
+  // An arm drawn held out has no outward side to hang cloth on.
+  if (ay < 0.5) return null
   // Across the arm, away from the body.
-  const flip = -ay * side < 0 ? -1 : 1
-  const nx = -ay * flip
-  const ny = ax * flip
+  const nx = side * ay
+  const ny = -side * ax
   const idx: number[] = []
   const weight: number[] = []
   const free: number[] = []
@@ -35,7 +36,7 @@ export function arm3DDrapeOf(rest: Float32Array, s: readonly number[], e: readon
     const out = x * nx + y * ny
     // From the arm's inner edge outward; from a little over the shoulder down to past the elbow (lower, a coat's
     // skirt beside the hand is the body's).
-    const w = smoothstep(-1.2 * radius, 0.1 * radius, out) * smoothstep(-0.6, -0.25, along) * (1 - smoothstep(1.3, 1.7, along))
+    const w = smoothstep(-0.9 * radius, 0.1 * radius, out) * smoothstep(-0.6, -0.25, along) * (1 - smoothstep(1.3, 1.7, along))
     if (w <= 1e-4) continue
     idx.push(i)
     weight.push(w)
@@ -46,6 +47,12 @@ export function arm3DDrapeOf(rest: Float32Array, s: readonly number[], e: readon
 
 /** The most the cloth turns with the arm (radians): past it the arm goes on under cloth that hangs. */
 const MOST = 1.1
+/** The most it turns toward the body: cloth off a shoulder does not go into the chest. */
+const INWARD = 0.35
+/** Outward turns are told from inward ones up to here (radians inward): an arm overhead is always an outward one. */
+const CUT = 2.2
+/** The fastest the cloth is taken round (radians a second). */
+const FASTEST = 9
 const OMEGA = 2 * Math.PI * 1.4
 const ZETA = 0.38
 
@@ -55,19 +62,24 @@ export class Arm3DDrapeTurn {
   with = 0
   hem = 0
   private v = 0
-  private last = 0
 
-  /** `du`, the upper arm now, and `hung`, hanging (their directions in the picture), `dt` on. */
-  step(du: readonly number[], hung: readonly number[], dt: number): void {
+  /**
+   * `du`, the upper arm now, and `hung`, hanging (their directions in the picture), on the picture's side `side`,
+   * `dt` on. The turn is what the arm shows now, whatever way it came: kept from frame to frame, an arm raised by
+   * the side and let down by the front had gone once round, and left its cloth turned on a hanging arm.
+   */
+  step(du: readonly number[], hung: readonly number[], side: number, dt: number): void {
     const seen = Math.hypot(du[0], du[1])
-    let turn = this.last
+    let wanted = 0
     if (seen > 1e-3 && Math.hypot(hung[0], hung[1]) > 1e-3) {
-      turn = Math.atan2(du[1], du[0]) - Math.atan2(hung[1], hung[0])
-      turn += 2 * Math.PI * Math.round((this.last - turn) / (2 * Math.PI))
+      // Outward positive.
+      let turn = -side * (Math.atan2(du[1], du[0]) - Math.atan2(hung[1], hung[0]))
+      turn -= 2 * Math.PI * Math.floor((turn + CUT) / (2 * Math.PI))
+      // An arm pointed at the viewer has no turn in the picture to give.
+      wanted = -side * (turn > 0 ? MOST * Math.tanh(turn / MOST) : -INWARD * Math.tanh(-turn / INWARD)) * smoothstep(0.15, 0.5, seen)
     }
-    this.last = turn
-    // An arm pointed at the viewer has no turn in the picture to give.
-    this.with = MOST * Math.tanh(turn / MOST) * smoothstep(0.15, 0.5, seen)
+    const most = FASTEST * Math.min(1 / 30, dt)
+    this.with += Math.max(-most, Math.min(most, wanted - this.with))
     const n = 4
     const h = Math.min(1 / 30, dt) / n
     for (let i = 0; i < n; i += 1) {
