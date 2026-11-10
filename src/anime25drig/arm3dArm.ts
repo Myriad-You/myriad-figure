@@ -84,6 +84,8 @@ export class Arm3DSide {
    * no longer that drawing's.
    */
   private oneLook = false
+  /** The gesture whose hand an arm of one look hangs in. */
+  private hangs: Gesture | null = null
   private worn: Gesture | null = null
   /** With one look, the gesture whose picture of the body (the arm off it) stands for them all. */
   private led: Gesture | null = null
@@ -187,7 +189,7 @@ export class Arm3DSide {
       const shape = one ? arm3DInLook(own, one.look) : own
       // A full body's arm gives its drawn sizes on its own scale; a bust's on its canvas's.
       const px = (one ? leadModel!.trialPixel : undefined) ?? model.trialPixel ?? bustPixel
-      const motion = new Arm3DMotion(own, layer.source.armVariant!.gesture === 'wave', own.restFore === undefined ? 0 : own.rest.s[0] < canvas.width / 2 ? -1 : 1)
+      const motion = new Arm3DMotion(own, layer.source.armVariant!.gesture === 'wave', own.restFore === undefined ? 0 : own.rest.s[0] < canvas.width / 2 ? -1 : 1, one !== null)
       const hanging = motion.keyPose(0, shape.rest.s)
       const raised = motion.keyPose(1, shape.rest.s)
       // The portrait about its hanging arm, whole and its arm alone (the arm layers say where the arm is).
@@ -397,7 +399,12 @@ export class Arm3DSide {
     const figure = this.gestures.some((g) => g.bound.shape.restFore !== undefined)
     const sides = figure ? [[], []] as ReturnType<typeof arm3DCutSides> : arm3DCutSides(layers, canvas.height)
     this.sides = [sides[0].map(([l, i]) => ({ layer: layers[l], i })), sides[1].map(([l, i]) => ({ layer: layers[l], i }))]
-    this.shown = this.gestures[0] ?? null
+    // One of one look hangs in a gesture's hand from the first frame: the one that hangs most like a hand at rest.
+    const hangs = this.oneLook ? ['chest', 'chin', 'wave', 'point'].map((name) => this.gestures.find((g) => g.gesture === name)).find((g) => g) : undefined
+    this.hangs = hangs ?? null
+    if (hangs) { for (const g of this.gestures) g.motion.hangIn(hangs.motion.hangHand)
+}
+    this.shown = hangs ?? this.gestures[0] ?? null
     this.worn = this.shown
     this.led = lead ? this.gestures.find((g) => g.layer === lead) ?? null : null
   }
@@ -514,7 +521,9 @@ export class Arm3DSide {
     this.dt = this.time === null ? 0 : Math.min(0.1, Math.max(0, time - this.time))
     this.time = time
     // A standing figure's, its whole arm drawn hanging (its hand too, or not found sure enough).
-    const handover = shown.bound.shape.restFore !== undefined
+    // (One of one look is the modelled arm from the first frame on and stays it: handed back to the drawn one where
+    // it hangs, the two never quite matched, and the hand was another picture each time.)
+    const handover = shown.bound.shape.restFore !== undefined && !this.oneLook
     const up = !handover || this.presence >= 1
     const want = this.gestures.find((g) => g.gesture === this.wanted) ?? null
     if (this.aim) {
@@ -639,8 +648,15 @@ export class Arm3DSide {
     }
     // The arm takes the hand's picture of the gesture it has turned to once its hand is no longer the last one's.
     const worn = this.worn
-    if (!this.oneLook || !worn || this.transit.idle) this.worn = g
-    else if (worn !== g && worn.near <= 0.004 && handExactness(worn.bound.drawnHand, pose.hand, worn.bound.px, 2, 12) <= 0.004) this.worn = g
+    // Near hanging its hand is the one it hangs in, and wears that one's picture.
+    const wears = this.oneLook && !this.aiming && this.hangs && g.motion.handTurned < 0.5 ? this.hangs : g
+    if (!this.oneLook || !worn || this.transit.idle) { this.worn = wears
+}
+    else if (wears !== g) {
+      if (this.transit.left < 0.5) this.worn = wears
+    }
+    else if (worn !== g && worn.near <= 0.004 && handExactness(worn.bound.drawnHand, pose.hand, worn.bound.px, 2, 12) <= 0.004) { this.worn = g
+}
     this.body = body
     const binding = this.bases.find((b) => b.secondaryDeformation?.arm)?.secondaryDeformation
     const rig = binding?.arm
@@ -711,7 +727,7 @@ export class Arm3DSide {
     const side = (on: Followed[], sign: number) => (on.length ? sign * Math.max(...on.map((f) => sign * f.layer.deformed[f.i * 2])) : sign * Infinity)
     const sides: [number, number] = [side(this.sides[0], -1), side(this.sides[1], 1)]
     // Gone soon as it lifts: a still copy of the hanging arm beside the moving one.
-    const to = this.restWhole > 0.85 ? affineFit(g.bound.restArm.at, armPoints(this.pose)) : null
+    const to = this.restWhole > 0.85 && !this.oneLook ? affineFit(g.bound.restArm.at, armPoints(this.pose)) : null
     const [x, y, w, h] = g.bound.restArm.rect
     const rest = to && { corners: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]].flatMap(([cx, cy]) => [to[0] * cx + to[1] * cy + to[2], to[3] * cx + to[4] * cy + to[5]]), alpha: smoothstep(0.85, 1, this.restWhole) * (this.oneLook ? smoothstep(0.55, 1, this.restStayed) : 1) }
     // The portrait's own hand comes onto a hand turning into it over the middle of the turn only: half on, the
