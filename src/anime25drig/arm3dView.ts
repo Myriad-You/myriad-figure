@@ -443,6 +443,7 @@ export class Arm3DView {
     gl.uniform1f(this.uniform(p, 'uRestNear'), frame.restNear)
     gl.uniform1f(this.uniform(p, 'uHandHang'), hangs ? 1 : 0)
     gl.uniform1f(this.uniform(p, 'uHandRest'), frame.handRest)
+    gl.uniform1f(this.uniform(p, 'uRestShown'), frame.rest?.alpha ?? 0)
     gl.activeTexture(gl.TEXTURE0)
     gl.uniform1f(this.uniform(p, 'uExact'), handExactness(bound.drawnHand, pose.hand, px, 1, 4))
     gl.uniform1f(this.uniform(p, 'uNear'), handExactness(bound.drawnHand, pose.hand, px, 2, 12))
@@ -634,9 +635,10 @@ export class Arm3DView {
   /**
    * Marks ARM3D_STENCIL in the figure's buffer (bound) where the upper arm is, less where the forearm or
    * hand crosses it: what the portrait draws over the upper arm (hair over the shoulder) stays in front there.
-   * `whole`, down to the elbow (clothes that go with the arm cover it as they did hanging).
+   * With `drawn`, instead of the upper arm, wherever `drawn` draws (called with the mark being written): a cloth
+   * of the arm's own lies over all of it but what comes in front; and `over` draws what lies over those too.
    */
-  markUpperArm(bound: Arm3DBound, frame: Arm3DFrame, whole = false): void {
+  markUpperArm(bound: Arm3DBound, frame: Arm3DFrame, drawn?: () => void, over?: () => void): void {
     const gl = this.gl
     const px = bound.px
     const pose = liftForearm(bound.shape, frame.pose)
@@ -648,6 +650,10 @@ export class Arm3DView {
     gl.disable(gl.DEPTH_TEST)
     gl.disable(gl.CULL_FACE)
     gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
+    if (drawn) {
+      gl.stencilFunc(gl.ALWAYS, ARM3D_STENCIL, ARM3D_STENCIL)
+      drawn()
+    }
     const s = this.sleeveProgram
     gl.useProgram(s.program)
     this.common(s, frame, px)
@@ -679,7 +685,7 @@ export class Arm3DView {
     const stays = (1 - smoothstep(0.08, 0.3, moved)) * smoothstep(0, 0.05, 1 - frame.hanging) * smoothstep(0.3, 0.6, frame.hanging)
     gl.stencilFunc(gl.ALWAYS, ARM3D_STENCIL, ARM3D_STENCIL)
     gl.uniform1f(this.uniform(s, 'uPush'), 2 * px)
-    gl.drawElements(gl.TRIANGLES, this.upload(s, attrs, along(-Infinity, whole ? 0.5 : 0.36 + 0.14 * stays)), gl.UNSIGNED_INT, 0)
+    if (!drawn) gl.drawElements(gl.TRIANGLES, this.upload(s, attrs, along(-Infinity, 0.36 + 0.14 * stays)), gl.UNSIGNED_INT, 0)
     gl.stencilFunc(gl.ALWAYS, 0, ARM3D_STENCIL)
     gl.uniform1f(this.uniform(s, 'uPush'), 0)
     gl.drawElements(gl.TRIANGLES, this.upload(s, attrs, along(0.5, Infinity)), gl.UNSIGNED_INT, 0)
@@ -691,6 +697,11 @@ export class Arm3DView {
     gl.uniform4f(this.uniform(h, 'uSolid'), 1, 1, 1, 1)
     for (const m of [arm3DWristMesh(bound.shape, pose), arm3DHandMesh(bound.shape, pose, bound.palm)]) {
       gl.drawElements(gl.TRIANGLES, this.upload(h, { aPos: [m.pos, 3], aNrm: [m.nrm, 3] }, m.idx), gl.UNSIGNED_INT, 0)
+    }
+    if (over) {
+      gl.bindVertexArray(null)
+      gl.stencilFunc(gl.ALWAYS, ARM3D_STENCIL, ARM3D_STENCIL)
+      over()
     }
     gl.colorMask(true, true, true, true)
     gl.stencilMask(0)

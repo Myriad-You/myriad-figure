@@ -276,7 +276,8 @@ function drawLayer(
 /**
  * Ordinary `layers` drawn again over the frame, wherever the stencil the
  * caller set up passes: what the portrait draws over a modelled arm's
- * shoulder stays in front of it.
+ * shoulder stays in front of it. `cut`, only where they are at least that
+ * opaque (to mark where they are drawn, not to draw them).
  */
 export function redrawAnime25DLayers(
   gl: WebGL2RenderingContext,
@@ -285,6 +286,7 @@ export function redrawAnime25DLayers(
   layers: readonly Anime25DRenderableLayer[],
   atlasTexture: WebGLTexture,
   frame: Readonly<Anime25DRenderFrame>,
+  cut = 0,
 ): void {
   gl.useProgram(program)
   gl.activeTexture(gl.TEXTURE0)
@@ -294,7 +296,7 @@ export function redrawAnime25DLayers(
     if (layer.renderKind !== 'ordinary' || !layer.vao) continue
     if (layer.frameOpacity * (1 - (layer.behindFace ?? 0)) < 0.004) continue
     bindLayerUniforms(gl, bindings, layer, frame)
-    gl.uniform1f(bindings.cut, 0)
+    gl.uniform1f(bindings.cut, cut)
     gl.bindVertexArray(layer.vao)
     const own = layer.ownTexture
     if (own) {

@@ -134,7 +134,7 @@ precision highp float;
 in vec3 vNrm; in vec2 vUv; in vec2 vPic; in float vWt; in vec2 vHangPic; in float vHangWt; in float vAlong; in float vFace;
 uniform sampler2D uHand; uniform sampler2D uHang; uniform float uHanging; uniform float uRestNear; uniform vec3 uLit; uniform vec3 uShade; uniform vec4 uSolid; uniform float uAlpha;
 uniform vec3 uWristTone; uniform float uExact; uniform float uNear; uniform sampler2D uDrawn;
-uniform sampler2D uFull; uniform vec4 uFullMap; uniform float uHasFull; uniform float uHandHang; uniform float uHandRest;
+uniform sampler2D uFull; uniform vec4 uFullMap; uniform float uHasFull; uniform float uHandHang; uniform float uHandRest; uniform float uRestShown;
 out vec4 o;
 void main() {
   float al = uAlpha;
@@ -144,7 +144,9 @@ void main() {
   vec4 hung = texture(uHang, vHangPic) * onMask;
   // While it is still the portrait's hand (carried up as drawn), not once it turns into the gesture's.
   float hangHand = uHandHang * step(-1.5, vUv.y) * uHandRest;
-  al *= mix(1.0, hung.a, hangHand);
+  // Cut to the drawn hand only as the portrait's arm is there under it to be that hand: on its way, a hand half
+  // the portrait's was half see-through wherever the drawn one was not.
+  al *= mix(1.0, hung.a, hangHand * uRestShown);
   // Held as drawn, none of the hand where the gesture drew no hand (the wrist aside, which the picture fades out
   // below): fingers found running on over bare skin stood past the drawn tips as outlined ghosts. The drawn hand
   // is where the cut-out has it or the gesture differs from the portrait (the cut-out misses a palm's shadow).
@@ -168,7 +170,7 @@ void main() {
     // stood as a pale stick by the wrist, a curled finger's doubled its drawn lines): the drawing there.
     vec4 s = texture(uHand, vPic);
     float under = uExact * smoothstep(0.85, 0.98, textureLod(uHand, vPic, 2.0).a) * s.a * inPic;
-    o = vec4(mix(mix(mix(uSolid.rgb, s.rgb, under), full.rgb, held), hung.rgb, hangHand) * al, al);
+    o = vec4(mix(mix(mix(uSolid.rgb, s.rgb, under), full.rgb, held), hung.rgb, hangHand * hung.a) * al, al);
     return;
   }
   vec3 n = normalize(vNrm);
@@ -223,8 +225,10 @@ void main() {
     t.rgb = w > 0.0 ? (t.rgb * rw + h.rgb * hw * (1.0 - rw)) / w : t.rgb;
   } else {
     // The figure's hand at rest: the portrait's drawing, its sides too.
-    w = mix(w, 1.0, hangHand);
-    t.rgb = mix(t.rgb, hung.rgb, hangHand);
+    // Only where the portrait drew it: part way to hanging the hand lies off the drawn one, and took the empty
+    // ground beside it as a grey shape across its back.
+    w = mix(w, 1.0, hangHand * hung.a);
+    t.rgb = mix(t.rgb, hung.rgb, hangHand * hung.a);
   }
   // A fingertip flushed pink; a short crease at each finger joint on the side toward the viewer.
   toon = mix(toon, toon * vec3(1.0, 0.86, 0.84), smoothstep(0.72, 0.97, vAlong) * 0.75);

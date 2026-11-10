@@ -157,6 +157,11 @@ export function splitArm3DLayer(
   scale: number,
   /** On the layer's pixels: the portrait as it rests, its arm alone, and that arm spread a little. */
   portrait: { whole: Uint8ClampedArray; arm: Uint8ClampedArray; near: Uint8ClampedArray },
+  /**
+   * The body without the gesture's empty ground: where the portrait's arm hung before hair, the gesture drew its
+   * white ground between the strands, and the arm raised left it there as white patches in the hair.
+   */
+  noGround = false,
 ): { hand: Uint8ClampedArray; arm: Uint8ClampedArray; body: Uint8ClampedArray; portraitArm: Float32Array } {
   const { width: w, height: h, pixels } = layer
   const handCover = coverage(model.handOutline, w, h, scale)
@@ -206,7 +211,8 @@ export function splitArm3DLayer(
     const a = pixels[i + 3]
     // The body: the gesture's beside its arm, over the portrait's under it.
     const near = Math.min(1, portrait.near[i + 3] / 255 * 3)
-    const fa = a / 255 * (1 - armHard[p]) * near
+    const ground = noGround ? smoothstep(238, 250, Math.min(pixels[i], pixels[i + 1], pixels[i + 2])) : 0
+    const fa = a / 255 * (1 - armHard[p]) * near * (1 - ground)
     const pa = armHard[p] * portrait.arm[i + 3] / 255
     portraitArm[p] = pa
     const ba = fa + pa * (1 - fa)
