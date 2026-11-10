@@ -656,10 +656,12 @@ export class Arm3DView {
     // Cut as the sleeve is (the program's last cut and textures would stand otherwise, the hand's picture bound there).
     setArm3DGround(gl, (name) => this.uniform(s, name), bound.groundClip, frame.held, bound.armMask)
     const sleeve = arm3DSleeveMesh(bound.shape, pose, frame.hanging, px)
+    // What the sleeve gains past a bent elbow is the elbow's once raised, whichever rows it wears (the upper sleeve's,
+    // by their v the upper arm's: the portrait's front layers came back over the elbow's point).
     const along = (lo: number, hi: number) => {
       const keep: number[] = []
       for (let i = 0; i < sleeve.idx.length; i += 3) {
-        const v = sleeve.uv[sleeve.idx[i] * 2 + 1]
+        const v = i < (sleeve.gained ?? Infinity) || frame.hanging >= 1 ? sleeve.uv[sleeve.idx[i] * 2 + 1] : 0.5
         if (v >= lo && v < hi) keep.push(sleeve.idx[i], sleeve.idx[i + 1], sleeve.idx[i + 2])
       }
       return keep
