@@ -280,7 +280,7 @@ export interface FreeResult {
 
 /**
  * One arm taken from gesture to gesture without being put down between, then by aims (out to the side, toward the
- * viewer), then let go; the other raised meanwhile.
+ * viewer, across the body), then let go.
  */
 async function free(request: BustRequest, side: 'L' | 'R', gestures: string[]): Promise<FreeResult> {
   const prepared = await importBust(request)

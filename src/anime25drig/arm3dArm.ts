@@ -100,6 +100,8 @@ export class Arm3DSide {
   private aiming = false
   /** The drawn hand's turn on an aimed forearm, last frame. */
   private aimTurn = 0
+  /** The aim the arm was last stepped to. */
+  private aimLast: Anime25DArmAim | null = null
   private transit = new Arm3DTransit()
   /** The arm is wanted elsewhere than it was going: the transit takes it on from where it is, at the next pose. */
   private turned = false
@@ -328,9 +330,21 @@ export class Arm3DSide {
     this.wanted = gesture && this.gestures.some((g) => g.gesture === gesture) ? gesture : null
   }
 
-  /** Put the hand where `aim` says, from wherever the arm is; null lets it follow the gestures asked for again. */
+  /**
+   * Put the hand where `aim` says, from wherever the arm is; null lets it follow the gestures asked for again.
+   * An aim that is not numbers is none.
+   */
   aimAt(aim: Anime25DArmAim | null): void {
-    this.aim = aim && this.gestures.length > 0 ? aim : null
+    const sound = aim !== null && [aim.out, aim.up, aim.forward, aim.swivel ?? 0].every((n) => Number.isFinite(n))
+    this.aim = sound && this.gestures.length > 0 ? aim : null
+  }
+
+  /** An aim moved further in one frame than a hand is led (arm lengths, radians): the arm goes there, it is not put there. */
+  private aimLeapt(aim: Anime25DArmAim): boolean {
+    const last = this.aimLast
+    if (!last || last === aim) return false
+    return Math.hypot(aim.out - last.out, aim.up - last.up, aim.forward - last.forward) > 0.06
+      || Math.abs((aim.swivel ?? 0) - (last.swivel ?? 0)) > 0.15
   }
 
   /** The aim that holds the arm as `gesture` is drawn; null without that gesture. */
@@ -377,7 +391,7 @@ export class Arm3DSide {
     const depth = (du[2] * d.upper + df[2] * d.fore - drawn.w[2]) / (d.upper + d.fore)
     const { hand, turned } = arm3DAimHand(drawn.hand.map((q) => sub(q, drawn.w)), norm(sub(drawn.w, drawn.e)), df, depth, this.aimTurn)
     this.aimTurn = turned
-    return { du, df, fore: d.fore, hand, handRest: 0, hanging: 0 }
+    return { du, df, upper: d.upper, fore: d.fore, hand, handRest: 0, hanging: 0 }
   }
 
   /** What it shows or is raising now; null while down or going down. */
@@ -419,6 +433,8 @@ export class Arm3DSide {
     if (this.aim) {
       const look = this.aimLook(this.aim, shown)
       if (up && (!this.aiming || look !== shown)) this.turnTo(look)
+      else if (this.aiming && this.aimLeapt(this.aim)) this.turned = true
+      if (this.aiming) this.aimLast = this.aim
     }
     else if (this.aiming || (want && want !== shown && !(shown.motion.resting && this.transit.idle))) {
       this.turnTo(want)
@@ -488,14 +504,14 @@ export class Arm3DSide {
     const asked = g.motion.pose(anchor)
     const wanted: Arm3DStance = this.aiming && this.aim
       ? this.aimed(this.aim, g)
-      : { du: norm(sub(asked.e, asked.s)), df: norm(sub(asked.w, asked.e)), fore: Math.hypot(asked.w[0] - asked.e[0], asked.w[1] - asked.e[1], asked.w[2] - asked.e[2]), hand: asked.hand.map((q) => sub(q, asked.w)), handRest: g.motion.handRest, hanging: g.motion.hanging }
+      : { du: norm(sub(asked.e, asked.s)), df: norm(sub(asked.w, asked.e)), upper: g.bound.shape.upper, fore: Math.hypot(asked.w[0] - asked.e[0], asked.w[1] - asked.e[1], asked.w[2] - asked.e[2]), hand: asked.hand.map((q) => sub(q, asked.w)), handRest: g.motion.handRest, hanging: g.motion.hanging }
     if (this.turned) this.transit.retarget(wanted)
     this.turned = false
     const stance = this.transit.pose(wanted, Math.min(1 / 30, this.dt))
     this.stance = stance
     let pose = asked
     if (stance !== wanted || this.aiming) {
-      const e = add(anchor, mul(stance.du, g.bound.shape.upper))
+      const e = add(anchor, mul(stance.du, stance.upper))
       const w = add(e, mul(stance.df, stance.fore))
       pose = { s: anchor, e, w, hand: stance.hand.map((q) => add(w, q)) }
     }

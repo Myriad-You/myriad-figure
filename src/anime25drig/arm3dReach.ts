@@ -16,10 +16,11 @@ export interface Anime25DArmAim {
   hand?: string
 }
 
-/** An arm without its shoulder: its bones' directions, its forearm's length, its hand from the wrist. */
+/** An arm without its shoulder: its bones' directions and lengths, its hand from the wrist. */
 export interface Arm3DStance {
   du: V3
   df: V3
+  upper: number
   fore: number
   hand: V3[]
   /** How much a figure's hand still is the portrait's drawn one. */
@@ -232,6 +233,7 @@ export class Arm3DTransit {
         out = {
           du: this.upper.on(wanted.du),
           df,
+          upper: wanted.upper + (from.upper - wanted.upper) * m,
           fore: wanted.fore + (from.fore - wanted.fore) * m,
           hand: blendHands(wanted.hand, from.hand.map((q) => carry(q, from.df, df)), m),
           handRest: wanted.handRest + (from.handRest - wanted.handRest) * m,

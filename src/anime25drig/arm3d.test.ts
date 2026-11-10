@@ -328,7 +328,7 @@ test('the sleeve\'s line is let go over a moment as the hand lifts, however fast
   assert.ok(sleeveLineHeldOff(0, 0.95, 1 / 60) > 0.5)
 })
 
-const stanceOf = (du: V3, df: V3, hanging = 0): Arm3DStance => ({ du, df, fore: 280, hand: hand.map(([x, y]) => [x - hand[0]![0], y - hand[0]![1], 0] as V3), handRest: hanging, hanging })
+const stanceOf = (du: V3, df: V3, hanging = 0): Arm3DStance => ({ du, df, upper: 300, fore: 280, hand: hand.map(([x, y]) => [x - hand[0]![0], y - hand[0]![1], 0] as V3), handRest: hanging, hanging })
 function unit(v: V3): V3 {
   const l = Math.hypot(v[0], v[1], v[2])
   return [v[0] / l, v[1] / l, v[2] / l]
@@ -423,4 +423,19 @@ test('from raised straight up to hanging the arm comes down in front of the body
     front = Math.max(front, now.df[2])
   }
   assert.ok(back >= 0 && front > 0.3, `${back} ${front}`)
+})
+
+test('a change between gestures of unlike upper arms takes the length across too, no step in it', () => {
+  const transit = new Arm3DTransit()
+  const a = { ...stanceOf(unit([0.2, 1, 0]), unit([0.9, -0.3, 0.2])), upper: 300 }
+  const b = { ...stanceOf(unit([0.6, 0.7, 0.1]), unit([0.1, -1, 0.3])), upper: 340 }
+  transit.pose(a, 1 / 60)
+  transit.retarget(b)
+  let last = 300
+  for (let i = 0; i < 240; i += 1) {
+    const now = transit.pose(b, 1 / 60).upper
+    assert.ok(Math.abs(now - last) < 6, `frame ${i}: ${last} to ${now}`)
+    last = now
+  }
+  assert.equal(last, 340)
 })

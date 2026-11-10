@@ -465,7 +465,8 @@ export class Anime25DPlayer {
 
   /**
    * Put a side's hand where `aim` says (from its shoulder, in arm lengths), from wherever the arm is and whatever
-   * the drivers ask; null lets it follow them again. Only a modelled gesture arm can.
+   * the drivers ask; null lets it follow them again. Led a little each frame the hand is there at once; moved
+   * far at once the arm goes there. Only a modelled gesture arm of a bound figure can.
    */
   aimArm(side: Anime25DArmSide, aim: Anime25DArmAim | null): void {
     this.armVariants.aim(side, aim)
