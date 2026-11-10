@@ -89,6 +89,17 @@ export function arm3DAimHand(hand: readonly V3[], drawn: V3, df: V3, depth: numb
   return { hand: hand.map((q) => mul(spin(q, by), size)), turned: turn }
 }
 
+/**
+ * A modelled hand (from its wrist, as its gesture holds it, forearm along `drawn`) on a forearm along `df`:
+ * turned with the forearm as a hand on an arm is, by way of toward the viewer (straight over, a forearm turned
+ * right round had no one way to take its hand), and larger the nearer it comes.
+ */
+export function arm3DCarryHand(hand: readonly V3[], drawn: V3, df: V3, depth: number): V3[] {
+  const mid = norm(add(add(drawn, df), [0, 0, 0.6]))
+  const size = Math.min(1.6, Math.max(0.75, VIEWER / (VIEWER - depth)))
+  return hand.map((q) => mul(carry(carry(q, drawn, mid), mid, df), size))
+}
+
 function rotate(v: V3, r: V3): V3 {
   const a = len(r)
   if (a < 1e-12) return v
