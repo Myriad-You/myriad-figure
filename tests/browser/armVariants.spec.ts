@@ -200,16 +200,17 @@ async function serveFigure(page: Page, figure: string, tags: string[]): Promise<
 test.describe('standing figures', () => {
   test.skip(!hasFigures, 'FIGURE_ARM_VARIANTS_FULL names no variants')
 
-  test('gesture arms on a standing figure change nothing it draws until one is raised, swaying and turning', async ({ page }) => {
+  test('gesture arms on a standing figure, hanging, stay near its drawn ones, swaying and turning', async ({ page }, testInfo) => {
     test.setTimeout(600_000)
     for (const figure of Object.keys(FIGURES).filter((f) => figureTags(f).length > 0)) {
       const request = await serveFigure(page, figure, figureTags(figure))
       const result = await page.evaluate((request) => window.armVariantProbe.golden(request), request)
       expect(result.roles.filter((role) => role === 'arm-variant')).toHaveLength(request.variants.length)
       expect(result.frames).toBeGreaterThan(10)
-      // Its drawn arms hang until one gesture is raised: a rounding step at most, as on a bust without joints.
-      expect(result.worst, figure).toBeLessThanOrEqual(1)
-      expect(Math.max(...result.apart), figure).toBe(0)
+      await testInfo.attach(`${figure} apart`, { body: JSON.stringify(result.apart), contentType: 'application/json' })
+      // A standing figure's arms are the modelled ones hanging too (no drawn arm to change into as one rises):
+      // they lie where its drawn ones did, so little of the picture is far off the figure without them.
+      expect(Math.max(...result.apart), figure).toBeLessThan(0.04)
     }
   })
 
@@ -247,7 +248,7 @@ test.describe('standing figures', () => {
         const jump = Math.max(...series)
         expect(jump, `${name}: frame ${series.indexOf(jump) + 1} stands ${jump.toFixed(4)} outside its neighbours`).toBeLessThan(0.03)
       }
-      // Let go, the figure is the one it was: its drawn arm, nothing of a gesture left.
+      // Let go, the figure is the one it was: its arm hanging, nothing of a gesture left.
       expect(result.changed).toBeLessThan(0.001)
     })
   }

@@ -6,6 +6,8 @@ import type { Arm3DBound, Arm3DFrame, Arm3DView } from './arm3dView'
 import type { Anime25DGpuLayer } from './layerGpuBinding'
 import type { Anime25DRenderFrame } from './renderer'
 import type { Anime25DSecondaryDeformationFrame } from './secondaryDeformation'
+import { isAnime25DLiningPiece } from '../rig/anime25dLayerSemantics'
+import { Arm3DClothLayer } from './arm3dClothLayer'
 import { arm3DInLook, arm3DOneLook } from './arm3dLook'
 import { add, handExactness, mul, norm, smoothstep, sub } from './arm3dMath'
 import { arm3DHandMesh, arm3DPalmAsModelled, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
@@ -82,6 +84,8 @@ export class Arm3DSide {
    * no longer that drawing's.
    */
   private oneLook = false
+  /** The gesture whose hand an arm of one look hangs in. */
+  private hangs: Gesture | null = null
   private worn: Gesture | null = null
   /** With one look, the gesture whose picture of the body (the arm off it) stands for them all. */
   private led: Gesture | null = null
@@ -94,8 +98,17 @@ export class Arm3DSide {
   private sides: [Followed[], Followed[]] = [[], []]
   /** What the portrait draws in front of the upper arm (hair over the shoulder), drawn again there. */
   front: Anime25DGpuLayer[] = []
+  /**
+   * A figure's cloth that lies on its upper arm without being the arm's (a cape off the shoulder), each a piece of
+   * its own while the arm is away. Left in its layer, the lifted arm came out from under a cape that stayed hanging
+   * in the air.
+   */
+  cloths: Arm3DClothLayer[] = []
   private pose: Arm3DPose | null = null
   private restNear = 1
+  /** How near the whole arm is to hanging as drawn, its elbow too (1 there). */
+  private restWhole = 1
+  private restStayed = 1
   /** How far the sleeve's own line is still held off as the hand first lifts (1 hanging, gone over a moment). */
   private unlined = 1
   private time: number | null = null
@@ -148,7 +161,7 @@ export class Arm3DSide {
     }
   }
 
-  bind(layers: readonly Anime25DGpuLayer[], gl: WebGL2RenderingContext, atlas: HTMLImageElement): void {
+  bind(layers: readonly Anime25DGpuLayer[], gl: WebGL2RenderingContext, atlas: HTMLImageElement, drawing?: { texture: WebGLTexture; program: WebGLProgram }): void {
     const { view, bases, canvas } = this
     const bustPixel = trialPixel(canvas)
     const still = layers.filter((layer) => layer.source.role !== 'arm-variant' && !layer.source.fade)
@@ -176,11 +189,11 @@ export class Arm3DSide {
       const shape = one ? arm3DInLook(own, one.look) : own
       // A full body's arm gives its drawn sizes on its own scale; a bust's on its canvas's.
       const px = (one ? leadModel!.trialPixel : undefined) ?? model.trialPixel ?? bustPixel
-      const motion = new Arm3DMotion(own, layer.source.armVariant!.gesture === 'wave', own.restFore === undefined ? 0 : own.rest.s[0] < canvas.width / 2 ? -1 : 1)
+      const motion = new Arm3DMotion(own, layer.source.armVariant!.gesture === 'wave', own.restFore === undefined ? 0 : own.rest.s[0] < canvas.width / 2 ? -1 : 1, one !== null)
       const hanging = motion.keyPose(0, shape.rest.s)
       const raised = motion.keyPose(1, shape.rest.s)
       // The portrait about its hanging arm, whole and its arm alone (the arm layers say where the arm is).
-      const hangWrist = arm3DWristMesh(shape, hanging)
+      const hangWrist = arm3DWristMesh(shape, hanging, 1)
       // The drawn hand lies where the gesture drew it; the modelled one hangs from the portrait's shoulder.
       const palm = one ? onePalm : arm3DPalmAsModelled(raised.hand, model.palmOutline)
       // A standing figure's hangs where the portrait draws it: the picture about the arm takes it in too.
@@ -235,7 +248,7 @@ export class Arm3DSide {
         arm: atLayer(bases),
         // About where the portrait's arm was: its rim, the gesture's arm drawn beside it on the ground, is not body.
         near: atLayer(bases, 4 * px * pixels.width / layer.source.w),
-      })
+      }, Boolean(one))
       const toLayer = (x: number, y: number): [number, number] => [(x - layer.source.x) / layer.source.w * pixels.width, (y - layer.source.y) / layer.source.h * pixels.height]
       const share = (r: { x: number; y: number; w: number; h: number }): [number, number, number, number] => [r.x / canvas.width, r.y / canvas.height, r.w / canvas.width, r.h / canvas.height]
       const layerRect = share(layer.source)
@@ -349,6 +362,22 @@ export class Arm3DSide {
     const first = this.gestures[0]?.bound.shape
     const host = bases.reduce<Anime25DGpuLayer | null>((last, layer) => (!last || layers.indexOf(layer) > layers.indexOf(last) ? layer : last), null)
     if (host) host.followers = this.gestures.map((g) => g.layer)
+    if (first && this.oneLook && drawing) {
+      const half = first.radius.length >> 1
+      const hanging = { ...first.rest, upper: Math.max(...first.radius.slice(0, half + 1)), fore: Math.max(...first.radius.slice(half)), side: this.out(first) }
+      const gpu = { gl, ...drawing, atlasWidth: atlas.naturalWidth, atlasHeight: atlas.naturalHeight }
+      const mine = (layer: Anime25DGpuLayer) => layer.source.role === 'arm-variant' || layer.source.role === 'arm-variant-hand' || layer.source.role === 'handwear' || this.pieces.includes(layer)
+      for (const layer of this.front) {
+        if (layer.source.role !== 'topwear' || isAnime25DLiningPiece(layer.source.name) || layer.ownTexture || !layer.vao) continue
+        try {
+          const over = layers.slice(layers.indexOf(layer) + 1).filter((l) => l.renderKind === 'ordinary' && !mine(l))
+          const cloth = Arm3DClothLayer.bind(gpu, layer, over, hanging)
+          if (cloth) this.cloths.push(cloth)
+        } catch (error) {
+          console.warn('[figure] cloth over the arm left in its layer: it could not be cut out', error)
+        }
+      }
+    }
     if (first) {
       this.shoulder = nearest(layers, first.rest.s[0], first.rest.s[1], (l) => l.source.role !== 'arm-variant' && l.source.role !== 'arm-variant-hand' && l.source.role !== 'handwear' && !l.source.role.startsWith('hair') && !l.source.role.includes('hair')).at
     }
@@ -370,7 +399,12 @@ export class Arm3DSide {
     const figure = this.gestures.some((g) => g.bound.shape.restFore !== undefined)
     const sides = figure ? [[], []] as ReturnType<typeof arm3DCutSides> : arm3DCutSides(layers, canvas.height)
     this.sides = [sides[0].map(([l, i]) => ({ layer: layers[l], i })), sides[1].map(([l, i]) => ({ layer: layers[l], i }))]
-    this.shown = this.gestures[0] ?? null
+    // One of one look hangs in a gesture's hand from the first frame: the one that hangs most like a hand at rest.
+    const hangs = this.oneLook ? ['chest', 'chin', 'wave', 'point'].map((name) => this.gestures.find((g) => g.gesture === name)).find((g) => g) : undefined
+    this.hangs = hangs ?? null
+    if (hangs) { for (const g of this.gestures) g.motion.hangIn(hangs.motion.hangHand)
+}
+    this.shown = hangs ?? this.gestures[0] ?? null
     this.worn = this.shown
     this.led = lead ? this.gestures.find((g) => g.layer === lead) ?? null : null
   }
@@ -487,7 +521,9 @@ export class Arm3DSide {
     this.dt = this.time === null ? 0 : Math.min(0.1, Math.max(0, time - this.time))
     this.time = time
     // A standing figure's, its whole arm drawn hanging (its hand too, or not found sure enough).
-    const handover = shown.bound.shape.restFore !== undefined
+    // (One of one look is the modelled arm from the first frame on and stays it: handed back to the drawn one where
+    // it hangs, the two never quite matched, and the hand was another picture each time.)
+    const handover = shown.bound.shape.restFore !== undefined && !this.oneLook
     const up = !handover || this.presence >= 1
     const want = this.gestures.find((g) => g.gesture === this.wanted) ?? null
     if (this.aim) {
@@ -511,7 +547,9 @@ export class Arm3DSide {
     const now = this.shown!
     const dt = this.lastTime === null ? 0 : Math.min(1 / 30, Math.max(0, time - this.lastTime))
     if (handover) {
-      const active = this.wanted !== null || this.aim !== null || !now.motion.resting || !this.transit.idle
+      // Turned to hanging this frame, it is still on its way (the transit takes it up once posed): for that one
+      // frame nothing held the arm, and the drawn one showed hanging beside it.
+      const active = this.wanted !== null || this.aim !== null || this.turned || !now.motion.resting || !this.transit.idle
       this.presence = this.lastTime === null
         ? active ? 1 : 0
         : Math.min(1, Math.max(0, this.presence + (active ? 1 : -1) * dt / HANDOVER))
@@ -588,6 +626,15 @@ export class Arm3DSide {
     // flared cuff's drawn mouth, and the step that leaves (a light seam) came out lined, a stroke across the body.
     // The portrait's arm kept under it that long instead stood beside a bending arm as a dark wedge.
     this.unlined = sleeveLineHeldOff(this.unlined, this.restNear, this.dt)
+    // A standing figure's arm is the portrait's only with its elbow there too: its hand near hanging on an arm bent
+    // another way, the portrait's arm fitted to it stood beside it a frame or two, sheared.
+    const upper = g.bound.shape.upper
+    this.restWhole = this.oneLook
+      ? this.restNear * (1 - smoothstep(0.03 * upper, 0.25 * upper, Math.hypot(pose.e[0] - hang.e[0], pose.e[1] - hang.e[1], pose.e[2] - hang.e[2])))
+      : this.restNear
+    // And only once it has stayed there: an arm let fall swings through where it hangs and a little past, and the
+    // portrait's arm showed for the frame it passed.
+    this.restStayed = this.oneLook && this.restWhole < 0.85 ? 0 : Math.min(1, this.restStayed + this.dt / STAYED)
     // Held as drawn: its elbow where the gesture has it, its hand near (a wave swings the hand, not the elbow).
     // (An arm of one look is the modelled one wherever it is: a gesture's drawn pieces, laid on as it came to rest
     // where that gesture drew it, were another sleeve of another cut come up over this one, and gone as it left.)
@@ -601,8 +648,15 @@ export class Arm3DSide {
     }
     // The arm takes the hand's picture of the gesture it has turned to once its hand is no longer the last one's.
     const worn = this.worn
-    if (!this.oneLook || !worn || this.transit.idle) this.worn = g
-    else if (worn !== g && worn.near <= 0.004 && handExactness(worn.bound.drawnHand, pose.hand, worn.bound.px, 2, 12) <= 0.004) this.worn = g
+    // Near hanging its hand is the one it hangs in, and wears that one's picture.
+    const wears = this.oneLook && !this.aiming && this.hangs && g.motion.handTurned < 0.5 ? this.hangs : g
+    if (!this.oneLook || !worn || this.transit.idle) { this.worn = wears
+}
+    else if (wears !== g) {
+      if (this.transit.left < 0.5) this.worn = wears
+    }
+    else if (worn !== g && worn.near <= 0.004 && handExactness(worn.bound.drawnHand, pose.hand, worn.bound.px, 2, 12) <= 0.004) { this.worn = g
+}
     this.body = body
     const binding = this.bases.find((b) => b.secondaryDeformation?.arm)?.secondaryDeformation
     const rig = binding?.arm
@@ -643,6 +697,8 @@ export class Arm3DSide {
       }
       pose = { s: carried(pose.s), e: carried(pose.e), w: carried(pose.w), hand: pose.hand.map(carried) }
     }
+    // (Before the body's lean: the cloth's vertices get it from the shader, as every layer's do.)
+    for (const cloth of this.cloths) cloth.step(pose.s, pose.e, pose.w, 1 - this.restNear, Math.min(1 / 30, this.dt))
     // The body's lean and lift, which the figure's shader gives every layer after its own deformation: left out,
     // the arm stood upright beside a leaning body, its shoulder parting from the sleeve's.
     if (body) {
@@ -671,10 +727,13 @@ export class Arm3DSide {
     const side = (on: Followed[], sign: number) => (on.length ? sign * Math.max(...on.map((f) => sign * f.layer.deformed[f.i * 2])) : sign * Infinity)
     const sides: [number, number] = [side(this.sides[0], -1), side(this.sides[1], 1)]
     // Gone soon as it lifts: a still copy of the hanging arm beside the moving one.
-    const to = this.restNear > 0.85 ? affineFit(g.bound.restArm.at, armPoints(this.pose)) : null
+    const to = this.restWhole > 0.85 && !this.oneLook ? affineFit(g.bound.restArm.at, armPoints(this.pose)) : null
     const [x, y, w, h] = g.bound.restArm.rect
-    const rest = to && { corners: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]].flatMap(([cx, cy]) => [to[0] * cx + to[1] * cy + to[2], to[3] * cx + to[4] * cy + to[5]]), alpha: smoothstep(0.85, 1, this.restNear) }
-    return { bound: g.bound, frame: { pose: this.pose, presence, handRest: stance.handRest, hanging: stance.hanging, restNear: this.restNear, unlined: this.unlined, view: this.canvas, foot, sides, held: this.heldMesh(g), rest } }
+    const rest = to && { corners: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]].flatMap(([cx, cy]) => [to[0] * cx + to[1] * cy + to[2], to[3] * cx + to[4] * cy + to[5]]), alpha: smoothstep(0.85, 1, this.restWhole) * (this.oneLook ? smoothstep(0.55, 1, this.restStayed) : 1) }
+    // The portrait's own hand comes onto a hand turning into it over the middle of the turn only: half on, the
+    // lines of its curled fingers lay across the back of an open hand for as long as the arm took to fall.
+    const handRest = this.oneLook ? smoothstep(0.3, 0.7, stance.handRest) : stance.handRest
+    return { bound: g.bound, frame: { pose: this.pose, presence, handRest, hanging: stance.hanging, restNear: this.restNear, unlined: this.unlined, view: this.canvas, foot, sides, held: this.heldMesh(g), rest } }
   }
 
   /** The gesture layer's mesh where the figure draws it this frame, for its drawn upper arm under the arm held there. */
@@ -713,6 +772,8 @@ export class Arm3DSide {
       }
     }
     for (const base of this.bases) base.followers = undefined
+    for (const cloth of this.cloths) cloth.dispose()
+    this.cloths = []
   }
 }
 
@@ -735,6 +796,9 @@ export function arm3DOnBody(q: V3, body: Arm3DBodyFrame): V3 {
   applyBodyLift(point, body.bodyLift)
   return [point.x, point.y, q[2]]
 }
+
+/** How long an arm has hung before the portrait's own arm is all there again (seconds). */
+const STAYED = 0.3
 
 /**
  * How far the sleeve's own line is still held off (1 hanging): let go over a fifth of a second from when the hand

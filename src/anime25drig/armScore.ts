@@ -18,7 +18,7 @@ export interface Anime25DArmCue {
   side: 'L' | 'R' | 'both'
   /** A gesture drawn for the side (held as drawn), a place for the hand, or null: the arm let hang. */
   to: string | Anime25DArmAim | null
-  /** Beats the move takes (1 unless given): short is sharp, long is slow. */
+  /** Beats the move takes (1 unless given): short is sharp, long is slow. An arm let hang falls in its own time. */
   over?: number
   /** How far the hand swings out toward the viewer on its way, against how far it goes (0.25 unless given). */
   arc?: number
@@ -99,7 +99,9 @@ export function armScoreAt(score: Anime25DArmScore, seconds: number, gestureAim:
       const from: Place = move && !(move.hangs && cue.at >= move.at + move.over) ? along(move, cue.at) : HANGING
       move = { from, to, at: cue.at, over: Math.max(1e-3, cue.over ?? 1), arc: cue.arc ?? ARC, hangs: cue.to === null }
     }
-    if (!move || (move.hangs && beat >= move.at + move.over)) arms[side] = null
+    // Let hang, the arm is let go at once: it falls in its own time, as an arm does (led down by the hand, its
+    // elbow was left pointing at the viewer half way, and it came to hanging as another arm than the one that hangs).
+    if (!move || move.hangs) arms[side] = null
     else arms[side] = along(move, beat)
   }
   const drive: Record<string, number> = {}

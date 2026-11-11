@@ -3,6 +3,7 @@ import type { Arm3DBodyFrame } from './arm3dArm'
 import type { Anime25DArmAim } from './arm3dReach'
 import type { Anime25DDriver } from './driver'
 import type { Anime25DGpuLayer } from './layerGpuBinding'
+import type { Anime25DRenderableLayer } from './renderer'
 import type { Anime25DSecondaryDeformationFrame } from './secondaryDeformation'
 import type { Anime25DArmLift } from './types'
 import { Arm3DSide } from './arm3dArm'
@@ -18,6 +19,8 @@ export const ARM_VARIANT_DRIVERS = {
 } as const satisfies Record<Anime25DArmSide, Record<ArmVariantGesture, keyof Anime25DDriver>>
 /** A gesture's driver past this raises it; the strongest one on a side wins. */
 const RAISED_AT = 0.5
+/** A cloth's piece counts as drawn where it is at least this opaque. */
+const CLOTH_DRAWN = 4 / 255
 
 /**
  * Raises a drawn gesture arm (an `arm-variant` layer) in from below the
@@ -68,6 +71,9 @@ export interface Anime25DArmGpu {
   gl: WebGL2RenderingContext
   atlas: HTMLImageElement
   canvasWidth: number
+  /** The atlas as uploaded and the layers' program: with them a figure's cloth over its arm is a piece of its own. */
+  texture?: WebGLTexture
+  program?: WebGLProgram
 }
 
 export class Anime25DArmVariants {
@@ -114,7 +120,7 @@ export class Anime25DArmVariants {
       const figure = layers.some((layer) => layer.source.role === 'arm-variant' && layer.source.side === side && layer.source.armVariant?.model?.restFore !== undefined)
       const pieces = figure ? layers.filter((layer) => names.has(cutFrom(layer.source) ?? '')) : []
       modelled = new Arm3DSide(this.view, bases, { width: gpu.canvasWidth, height: canvasHeight }, pieces)
-      modelled.bind(layers, gpu.gl, gpu.atlas)
+      modelled.bind(layers, gpu.gl, gpu.atlas, gpu.texture && gpu.program ? { texture: gpu.texture, program: gpu.program } : undefined)
       if (modelled.gestures.length > 0) return modelled
     } catch (error) {
       console.warn('[figure] gesture arm drawn flat: its 3D model could not be bound', error)
@@ -243,9 +249,10 @@ export class Anime25DArmVariants {
 
   /**
    * The modelled arms over the drawn frame (the figure's buffer bound, `width` × `height`), then
-   * `redraw` of what the portrait draws in front of each upper arm, within the stencil marked for it.
+   * `redraw` of what the portrait draws in front of each upper arm, within the stencil marked for it
+   * (`cut`: only where it is that opaque).
    */
-  drawModelled(width: number, height: number, redraw: (layers: readonly Anime25DGpuLayer[]) => void): void {
+  drawModelled(width: number, height: number, redraw: (layers: readonly Anime25DRenderableLayer[], cut?: number) => void): void {
     const view = this.view
     if (!view) return
     for (const side of ['L', 'R'] as const) {
@@ -255,10 +262,28 @@ export class Anime25DArmVariants {
       const now = modelled?.frame()
       if (!modelled || !now) continue
       view.draw(now.bound, now.frame, width, height)
-      if (modelled.front.length === 0) continue
-      view.markUpperArm(now.bound, now.frame)
-      redraw(modelled.front)
-      view.endUpperArm()
+      if (modelled.front.length) {
+        view.markUpperArm(now.bound, now.frame)
+        redraw(modelled.front)
+        view.endUpperArm()
+      }
+      // The arm's cloth over it: what of it lies under the forearm, but for the forearm and hand come in front, then
+      // what lies over them; and over the cloth, where it is, what the portrait draws over its layer.
+      for (const cloth of modelled.cloths) {
+        if (!cloth.awake) continue
+        const { under, front } = cloth.drawn()
+        if (under.indexCount) {
+          view.markUpperArm(now.bound, now.frame, () => redraw([under], CLOTH_DRAWN))
+          redraw([under])
+          view.endUpperArm()
+        }
+        if (front) redraw([front])
+        if (cloth.over.length) {
+          view.markUpperArm(now.bound, now.frame, () => redraw([under], CLOTH_DRAWN), front ? () => redraw([front], CLOTH_DRAWN) : undefined)
+          redraw(cloth.over)
+          view.endUpperArm()
+        }
+      }
     }
   }
 }

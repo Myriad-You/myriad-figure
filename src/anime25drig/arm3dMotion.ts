@@ -135,8 +135,10 @@ export class Arm3DMotion {
   /**
    * `out` is which way is away from the body for a standing figure's arm (1 the picture's right, -1 its left):
    * given, the arm is raised elbow first, as a person's is; without it, as the pictures' poses run into each other.
+   * `keepHand`: a figure's hand hangs as the gesture's own, turned down with its forearm, never the portrait's drawn
+   * one (an arm that is the modelled one from the first frame on has no drawn hand to change into).
    */
-  constructor(private d: Arm3DShape, private wave: boolean, private out = 0) {
+  constructor(private d: Arm3DShape, private wave: boolean, private out = 0, private keepHand = false) {
     this.figure = Boolean(d.restHand)
     const all = [d.rest, d.raised]
     // Every pose hangs from the portrait's shoulder, its elbow where the picture drew it and as deep as the
@@ -155,6 +157,11 @@ export class Arm3DMotion {
     const hand = handOffsets(d)
     const drawn = d.restHand
     this.hands = [drawn ? drawn.map(([x, y]) => [x - d.rest.w[0], y - d.rest.w[1], 0] as V3) : hand, hand]
+    if (drawn && keepHand) {
+      // By way of toward the viewer, as a hand on an arm is turned (straight over had no one way to take it).
+      const mid = norm(add(add(this.dirsF[1], this.dirsF[0]), [0, 0, 0.6]))
+      this.hands[0] = hand.map((q) => carry(carry(q, this.dirsF[1], mid), mid, this.dirsF[0]))
+    }
     // Progress runs along the way the hand travels as it is seen, not evenly in pose: a stretch going mostly
     // toward the viewer crept on screen where the next shot across it (a twitch).
     const STEPS = 64
@@ -194,7 +201,7 @@ export class Arm3DMotion {
 
   /** How much a figure's hand still is the portrait's drawn one (1 at rest), before it turns into the gesture's. */
   get handRest(): number {
-    if (!this.figure) return 0
+    if (!this.figure || this.keepHand) return 0
     // Between the curve's pose space and the straight way's, as far as the arm follows each: switched at once,
     // the drawn hand's picture jumped as a raise was asked again on the way down.
     const along = this.keyAt(this.p.x)
@@ -202,6 +209,28 @@ export class Arm3DMotion {
     const f = along + (straight - along) * this.direct
     // Over the hand's turn: gone sooner, the drawn picture went in a frame or two of a quick rise.
     return 1 - smoothstep(HAND_TURNS[0] - 0.05, HAND_TURNS[1], f)
+  }
+
+  /** Its hand as it hangs, from the wrist. */
+  get hangHand(): V3[] {
+    return this.hands[0]
+  }
+
+  /**
+   * Hanging, it has the hand `hand` (the one gesture's whose hand the arm hangs in, as that hangs) and turns into
+   * its own on the way up, back into it on the way down: each gesture's own hand hung at its side, a curled one
+   * came down as a claw, and the hand was another the frame the next gesture was asked for.
+   */
+  hangIn(hand: V3[]): void {
+    if (this.keepHand && this.figure) this.hands[0] = hand
+  }
+
+  /** How far a figure's hand is the gesture's own (0 the one it hangs in). */
+  get handTurned(): number {
+    if (!this.figure) return 1
+    const along = this.keyAt(this.p.x)
+    const straight = Math.max(0, Math.min(1, this.p.x)) ** (1 + 0.8 * this.fall)
+    return smoothstep(HAND_TURNS[0], HAND_TURNS[1], along + (straight - along) * this.direct)
   }
 
   /** How near hanging the arm is (1 hanging): the sleeve takes the portrait's outline there. */

@@ -189,6 +189,8 @@ class Turn {
 
 /** The least a change takes (seconds): one of the hand alone, the arm where it was. */
 const LEAST = 0.15
+/** What a hand takes to turn into the next one in its own time (seconds): in the least, fingers were swapped, not moved. */
+const HAND = 0.3
 
 /**
  * Takes the arm from wherever it is to wherever it is next wanted, with no stop between: what it is asked to
@@ -214,10 +216,14 @@ export class Arm3DTransit {
     return this.from === null
   }
 
+  private get least(): number {
+    return this.handInTime ? HAND : LEAST
+  }
+
   /** How much of what it left is still in the arm (1 just left, 0 arrived). */
   get left(): number {
     if (!this.from) return 0
-    return Math.min(1, Math.max(this.upper.left, this.fore.left, 1 - this.since / LEAST))
+    return Math.min(1, Math.max(this.upper.left, this.fore.left, 1 - this.since / this.least))
   }
 
   /** From now the arm is wanted as `wanted`: it goes there from where it last was. */
@@ -238,7 +244,7 @@ export class Arm3DTransit {
       this.upper.step(dt)
       this.fore.step(dt)
       this.since += dt
-      if (this.upper.still && this.fore.still && this.since >= LEAST) {
+      if (this.upper.still && this.fore.still && this.since >= this.least) {
         this.from = null
         this.upper.clear()
         this.fore.clear()
@@ -246,14 +252,20 @@ export class Arm3DTransit {
       else {
         const m = smoothstep(0, 1, this.left)
         // In its own time the hand is the next one, carried on the forearm as it now lies (as the last one is).
-        const h = this.handInTime ? smoothstep(0, 1, Math.max(0, 1 - this.since / LEAST)) : m
+        // But onto the portrait's own hand it turns with the bones: that one is drawn where the arm hangs, and worn
+        // by an arm still raised it showed as a grey shape across the hand.
+        const own = smoothstep(0, 1, Math.max(0, 1 - this.since / HAND))
+        const h = this.handInTime && wanted.handRest <= from.handRest ? own : m
+        // Its fingers, though, in their own time either way: curled ones swung out on the arm's long way down
+        // were hooks against the background.
+        const g = this.handInTime ? own : h
         const df = this.fore.on(wanted.df)
         out = {
           du: this.upper.on(wanted.du),
           df,
           upper: wanted.upper + (from.upper - wanted.upper) * m,
           fore: wanted.fore + (from.fore - wanted.fore) * m,
-          hand: blendHands(this.handInTime ? wanted.hand.map((q) => carry(q, wanted.df, df)) : wanted.hand, from.hand.map((q) => carry(q, from.df, df)), h),
+          hand: blendHands(this.handInTime ? wanted.hand.map((q) => carry(q, wanted.df, df)) : wanted.hand, from.hand.map((q) => carry(q, from.df, df)), g),
           handRest: wanted.handRest + (from.handRest - wanted.handRest) * h,
           hanging: wanted.hanging + (from.hanging - wanted.hanging) * m,
         }
