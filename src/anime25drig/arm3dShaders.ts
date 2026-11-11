@@ -71,6 +71,8 @@ void main() {
     if (uSolid.a > 0.0) discard;
     vec4 t = texture(uCap, m) * inMask;
     float ca = t.a * vUv.x;
+    // (Nothing of it left in the depth where it shows nothing: what passed behind its disc was cut by it.)
+    if (ca < 0.004) discard;
     o = vec4(t.rgb * ca, ca);
     return;
   }

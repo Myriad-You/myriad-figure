@@ -236,12 +236,14 @@ export class Arm3DSide {
       // the arm (a cape's hem at the elbow), and the lifted arm carried that off with it, a piece of the cape on the sleeve.
       // A standing figure's shoulder cap: the arm layer where the portrait shows it, nothing worn over it (a
       // pauldron, an epaulette: the arm's skin under one came out on top of it), nor the pieces the arm carries.
-      const capPixels = one && shape.restFore !== undefined ? composeArm3DPicture(atlas, bases.map(asSource), rect).pixels : null
+      const capPixels = shape.restFore !== undefined ? composeArm3DPicture(atlas, bases.map(asSource), rect).pixels : null
       for (let i = 0; i < whole.pixels.length; i += 4) {
         const drawn = armOnly.pixels[i + 3] >= 128
         if (capPixels) {
           const off = Math.abs(whole.pixels[i] - capPixels[i]) + Math.abs(whole.pixels[i + 1] - capPixels[i + 1]) + Math.abs(whole.pixels[i + 2] - capPixels[i + 2])
           capPixels[i + 3] = capPixels[i + 3] >= 128 && off < 48 ? 255 : 0
+          // (Off it the portrait's colour, as the arm's own picture below: its edge is not drawn toward black.)
+          if (capPixels[i + 3] === 0) capPixels.set([whole.pixels[i], whole.pixels[i + 1], whole.pixels[i + 2]], i)
         }
         // (Off the arm the portrait's colour still: a sample across the arm's edge is not drawn toward black.)
         if (!one || !drawn) armOnly.pixels.set([whole.pixels[i], whole.pixels[i + 1], whole.pixels[i + 2]], i)
@@ -249,7 +251,8 @@ export class Arm3DSide {
       }
       if (capPixels) {
         const k = armOnly.width / rect.w
-        const bare = arm3DShoulderIsBare(capPixels, armOnly.width, armOnly.height, (hanging.s[0] - rect.x) * k, (hanging.s[1] - rect.y) * k, arm3DCapReach(shape) * k)
+        // (An arm of more than one look has no picture of its own to take it from: no cap.)
+        const bare = Boolean(one) && arm3DShoulderIsBare(capPixels, armOnly.width, armOnly.height, (hanging.s[0] - rect.x) * k, (hanging.s[1] - rect.y) * k, arm3DCapReach(shape) * k)
         if (!bare) capPixels.fill(0)
       }
       const size = { width: pixels.width, height: pixels.height }
