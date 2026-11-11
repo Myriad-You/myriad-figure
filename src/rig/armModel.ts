@@ -219,19 +219,26 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
   }
   upper = steady(upper, 0.08 * U, 0.18 * U)
   fore = steady(fore, 0.06 * U, 0.14 * U)
+  let wide: number[] | undefined
   if (pictures.whole) {
     // What a standing figure wears on its shoulder and upper arm (a pauldron, a short sleeve flaring at the elbow) is
     // drawn in its arm's layer and was measured as the arm: twice the forearm's width, a ball at the elbow of the arm
     // raised. No wider than an arm is to its own forearm near the wrist.
     const half = fore.length >> 1
     const most = 1.6 * median(fore.slice(half))
+    if (upper.some((v) => v > most) || fore.some((v, i) => i < half && v > most)) wide = [...upper, ...fore]
     upper = upper.map((v) => Math.min(v, most))
     fore = fore.map((v, i) => (i < half ? Math.min(v, most) : v))
   }
-  const joined = [...upper, ...fore]
-  const radius = joined.map((_, i) => ((joined[i - 1] ?? 0) + joined[i] + (joined[i + 1] ?? 0)) / 3)
-  radius[0] = upper[0]
-  radius[radius.length - 1] = fore[fore.length - 1]
+  // A standing figure's short sleeve, its forearm hanging bare: where it ends along the arm.
+  const shortSleeve = pictures.whole && !hangs ? hangingShortSleeve(base, (x, y) => color(pictures.portrait, x, y), tone, ps, pe, pw) : null
+  const smooth = (joined: number[]) => {
+    const out = joined.map((_, i) => ((joined[i - 1] ?? 0) + joined[i] + (joined[i + 1] ?? 0)) / 3)
+    out[0] = joined[0]
+    out[out.length - 1] = joined[joined.length - 1]
+    return out
+  }
+  const radius = smooth([...upper, ...fore])
 
   const restReach = measureRestReach(base, W, H, radius, ps, pe, hangWrist, hangs?.end ?? cuff)
 
@@ -316,6 +323,9 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
     raised: { shoulder: raised[0], elbow: raised[1], wrist: raised[2] },
     ...drawnHand,
     ...(pictures.whole ? { restFore } : {}),
+    // Past a short sleeve's end the arm is drawn bare: no wider there than it is modelled.
+    ...(wide ? { drawnRadius: smooth(wide).map((v, i, all) => round(shortSleeve !== null && i / (all.length - 1) > shortSleeve ? radius[i] : v, 1)) } : {}),
+    ...(shortSleeve === null ? {} : { shortSleeve: round(shortSleeve, 3) }),
     ...(hangs ? { restCuff: round(hangs.end, 3), cuffFrom: round(hangs.from, 3) } : {}),
     ...(pictures.whole && portraitJoints.hand ? { restHand: portraitJoints.hand.map(([x, y]) => [x, y] as [number, number]) } : {}),
     skin,
@@ -336,6 +346,52 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
  * where its cuff begins (the sleeve's plain colour left for another). Null with no skin at the hand to go back
  * from (a glove), or a forearm bare most of its way.
  */
+/**
+ * Where a short sleeve ends along the arm the portrait draws hanging (shoulder 0, elbow 0.5, wrist 1), its forearm
+ * bare below it: null where the forearm is not bare, or the arm bare from the shoulder.
+ */
+function hangingShortSleeve(
+  base: (x: number, y: number) => boolean,
+  color: (x: number, y: number) => Anime25DVec3,
+  tone: Anime25DVec3,
+  ps: P2,
+  pe: P2,
+  pw: P2,
+): number | null {
+  // The arm drawn across the bone at v is skin for at least `share` of its width.
+  const skin = (v: number, share: number) => {
+    const [a, b, t] = v <= 0.5 ? [ps, pe, v / 0.5] : [pe, pw, (v - 0.5) / 0.5]
+    const L = dist2(a, b)
+    if (L < 8) return false
+    const d = unit2(sub2(b, a))
+    let drawn = 0
+    let bare = 0
+    for (let k = -200; k <= 200; k += 1) {
+      const x = Math.trunc(a[0] + d[0] * t * L - d[1] * k)
+      const y = Math.trunc(a[1] + d[1] * t * L + d[0] * k)
+      if (!base(x, y)) continue
+      drawn += 1
+      if (dist3(color(x, y), tone) < 14) bare += 1
+    }
+    return drawn > 4 && bare >= share * drawn
+  }
+  if (linspace(0.62, 0.9, 12).filter((v) => skin(v, 0.4)).length < 9) return null
+  // Not skin from the first row up (the sleeve's end lower than looked for, or a band round the elbow): not known.
+  let end: number | null = null
+  let off = 0
+  for (let v = 0.62; v >= 0.2; v -= 0.01) {
+    // What hangs off the sleeve over the arm (a strap's end) leaves skin either side of it; the sleeve leaves none.
+    if (skin(v, 0.2)) {
+      end = v
+      off = 0
+    }
+    else if (++off >= 3) {
+      return end
+    }
+  }
+  return null
+}
+
 function hangingSleeve(
   base: (x: number, y: number) => boolean,
   color: (x: number, y: number) => Anime25DVec3,
@@ -410,6 +466,7 @@ export function placeArmModel(model: Anime25DArmModel, scale: number, dx: number
     fore: model.fore * scale,
     ...(model.restFore === undefined ? {} : { restFore: model.restFore * scale }),
     radius: model.radius.map((r) => r * scale),
+    ...(model.drawnRadius ? { drawnRadius: model.drawnRadius.map((r) => r * scale) } : {}),
     ...(model.bare === undefined ? {} : { bare: model.bare * scale }),
     bareShift: model.bareShift * scale,
     restReach: model.restReach.map((o) => (o ? [o[0] * scale, o[1] * scale] : null)),

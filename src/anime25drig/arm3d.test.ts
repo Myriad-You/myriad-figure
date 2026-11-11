@@ -5,9 +5,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { affineFit, arm3DOnBody, sleeveLineHeldOff } from './arm3dArm'
 import { similarity2D } from './arm3dMath'
-import { arm3DHandMesh, arm3DPalmAsModelled, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
+import { ARM3D_AROUND, ARM3D_RINGS, arm3DHandMesh, arm3DPalmAsModelled, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
-import { arm3DCutSides, arm3DUpperArmAlone, clothCuffMouth, ringFill } from './arm3dPrepare'
+import { arm3DCutSides, arm3DUpperArmAlone, bareBelowSleeve, clothCuffMouth, ringFill } from './arm3dPrepare'
 import { arm3DAimBones, arm3DAimHand, arm3DAimOf, Arm3DTransit } from './arm3dReach'
 
 // A left arm hanging from (420, 620), raised with its hand up beside the head; in a layer at (100, 50).
@@ -533,4 +533,42 @@ test('a cuff\'s last rows lose the drawn mouth and keep its trim', () => {
   assert.deepEqual([...px.slice(46 * w * 4, 46 * w * 4 + 3)], [248, 231, 224])
   assert.deepEqual([...px.slice(48 * w * 4, 48 * w * 4 + 3)], [200, 160, 90])
   assert.deepEqual([...px.slice((46 * w + 1) * 4, (46 * w + 1) * 4 + 3)], [248, 231, 224])
+})
+
+test('under a short sleeve the raised arm\'s elbow wears the rows past the sleeve\'s end; hanging, and any other arm, the rows it had', () => {
+  const motion = new Arm3DMotion(shape, false)
+  const raised = motion.restPose(shape.rest.s)
+  const vs = (d: typeof shape, rest: number) => arm3DSleeveMesh(d, raised, rest, 2).uv.filter((_, i) => i % 2 === 1)
+  const short = { ...shape, shortSleeve: 0.58 }
+  // Raised: nothing of the arm from the elbow's rows back to the sleeve's end but the upper arm's own tube.
+  const plain = vs(shape, 0)
+  const bare = vs(short, 0)
+  assert.equal(bare.length, plain.length)
+  const upper = (ARM3D_RINGS / 2 + 1) * (ARM3D_AROUND + 1)
+  assert.deepEqual(bare.slice(0, upper), plain.slice(0, upper))
+  assert.ok(plain.slice(upper).some((v) => v < 0.62))
+  assert.ok(bare.slice(upper).every((v) => v >= 0.63 - 1e-9), `${Math.min(...bare.slice(upper))}`)
+  // Hanging it is the arm it was.
+  assert.deepEqual(vs(short, 1), vs(shape, 1))
+})
+
+test('what hangs off a short sleeve over the skin is taken out of the baked rows past its end, the arm\'s outline left', () => {
+  const w = 3
+  const h = 100
+  const skin = [250, 225, 215]
+  const px = new Uint8Array(w * h * 4)
+  for (let y = 0; y < h; y += 1) {
+    px.set(y < 58 ? [40, 44, 60, 255] : [...skin, 255], (y * w) * 4)
+    px.set(y < 70 ? [40, 44, 60, 255] : [...skin, 255], (y * w + 1) * 4)
+    px.set([30, 20, 20, 255], (y * w + 2) * 4)
+  }
+  bareBelowSleeve(px, w, h, 0.585, 0.63, skin, [230, 190, 185])
+  const at = (x: number, y: number) => [...px.slice((y * w + x) * 4, (y * w + x) * 4 + 3)]
+  // The strap in column 1 from the sleeve's end on is skin; the sleeve itself above its end stays.
+  assert.deepEqual(at(1, 60), skin)
+  assert.deepEqual(at(1, 69), skin)
+  assert.deepEqual(at(1, 57), [40, 44, 60])
+  assert.deepEqual(at(0, 57), [40, 44, 60])
+  // A column with no skin (the outline) is left as it is.
+  assert.deepEqual(at(2, 65), [30, 20, 20])
 })
