@@ -275,8 +275,8 @@ export function arm3DWristTone(hand: Uint8ClampedArray, w: number, h: number, sh
  * cuff's plain cloth from just above.
  */
 /**
- * A baked sleeve's rows from a short sleeve's end `from` to the bare elbow's row `to` (shares of its height) as the
- * skin the row `to` has, where that is skin: what hangs off the sleeve over the arm as it is drawn hanging (a
+ * A baked sleeve's rows from a short sleeve's end `from` to a little past the bare elbow's row `to` (shares of its
+ * height) as the nearest skin from the row `to` on, where there is any: what hangs off the sleeve over the arm as it is drawn hanging (a
  * strap's end, the hem's lower side) stayed on the skin of the arm raised, a dark block by the elbow.
  */
 export function bareBelowSleeve(px: Uint8Array, w: number, h: number, from: number, to: number, skin: readonly number[], shade: readonly number[]): void {

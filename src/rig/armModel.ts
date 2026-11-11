@@ -376,7 +376,8 @@ function hangingShortSleeve(
     return drawn > 4 && bare >= share * drawn
   }
   if (linspace(0.62, 0.9, 12).filter((v) => skin(v, 0.4)).length < 9) return null
-  let end = 0.62
+  // Not skin from the first row up (the sleeve's end lower than looked for, or a band round the elbow): not known.
+  let end: number | null = null
   let off = 0
   for (let v = 0.62; v >= 0.2; v -= 0.01) {
     // What hangs off the sleeve over the arm (a strap's end) leaves skin either side of it; the sleeve leaves none.
