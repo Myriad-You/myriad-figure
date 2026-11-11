@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { affineFit, arm3DOnBody, sleeveLineHeldOff } from './arm3dArm'
 import { similarity2D } from './arm3dMath'
-import { ARM3D_AROUND, ARM3D_RINGS, arm3DHandMesh, arm3DPalmAsModelled, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
+import { ARM3D_AROUND, ARM3D_CAP_V, ARM3D_RINGS, arm3DCapReach, arm3DHandMesh, arm3DPalmAsModelled, arm3DShoulderIsBare, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
 import { arm3DCutSides, arm3DUpperArmAlone, bareBelowSleeve, clothCuffMouth, ringFill } from './arm3dPrepare'
 import { arm3DAimBones, arm3DAimHand, arm3DAimOf, Arm3DTransit } from './arm3dReach'
@@ -588,4 +588,44 @@ test('what hangs off a short sleeve over the skin is taken out of the baked rows
   assert.deepEqual(at(0, 57), [40, 44, 60])
   // A column with no skin (the outline) is left as it is.
   assert.deepEqual(at(2, 65), [30, 20, 20])
+})
+
+test('a standing figure\'s sleeve begins with a cap about its shoulder, and only a bare shoulder is capped', () => {
+  const pose = new Arm3DMotion(shape, false).keyPose(0, shape.rest.s)
+  const [sx, sy] = pose.s
+  const plain = arm3DSleeveMesh(shape, pose, 1, 2)
+  const standing = { ...shape, restFore: 280 }
+  const capped = arm3DSleeveMesh(standing, pose, 1, 2)
+  // A bust's sleeve is what it was: no cap, its tubes from the first triangle.
+  assert.equal(plain.tubes ?? 0, 0)
+  assert.ok(plain.uv.every((v, i) => i % 2 === 0 || v >= 0))
+  // The cap comes first, marked by its v, flat about the joint; the tubes after it are joined as a bust's are.
+  const tubes = capped.tubes ?? 0
+  assert.ok(tubes > 0)
+  const capPoints = Math.max(...capped.idx.slice(0, tubes)) + 1
+  const reach = arm3DCapReach(standing)
+  for (let i = 0; i < capPoints; i += 1) {
+    assert.equal(capped.uv[i * 2 + 1], ARM3D_CAP_V)
+    assert.ok(Math.hypot(capped.pos[i * 3]! - sx, capped.pos[i * 3 + 1]! - sy) <= reach + 1e-6)
+    // Straight below the joint it is a ball as wide as the arm: whole inside, nothing past it.
+    const below = capped.pos[i * 3 + 1]! - sy
+    if (Math.abs(capped.pos[i * 3]! - sx) < 1e-6 && below > 0) {
+      if (below >= reach / 1.6 - 1e-6) assert.equal(capped.uv[i * 2], 0)
+      if (below <= 0.8 * reach / 1.6 + 1e-6) assert.equal(capped.uv[i * 2], 1)
+    }
+  }
+  assert.ok(capped.uv.slice(capPoints * 2).every((v, i) => i % 2 === 0 || v >= 0))
+  assert.equal(capped.pos.length - capPoints * 3, plain.pos.length)
+  assert.deepEqual(capped.idx.slice(tubes).map((i) => i - capPoints), [...plain.idx])
+
+  // A round shoulder ends inside the cap; a pauldron drawn into the arm's layer runs on past its rim.
+  const picture = (radius: number) => {
+    const px = new Uint8ClampedArray(100 * 100 * 4)
+    for (let y = 0; y < 100; y += 1) { for (let x = 0; x < 100; x += 1) { if (Math.hypot(x - 50, y - 50) < radius) px[(y * 100 + x) * 4 + 3] = 255
+}
+}
+    return px
+  }
+  assert.equal(arm3DShoulderIsBare(picture(20), 100, 100, 50, 50, 30), true)
+  assert.equal(arm3DShoulderIsBare(picture(45), 100, 100, 50, 50, 30), false)
 })

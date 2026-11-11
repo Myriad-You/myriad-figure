@@ -23,14 +23,16 @@ export interface Arm3DMesh {
   face?: number[]
   /** Sleeve only: where in `idx` what it gains past a bent elbow starts. */
   gained?: number
+  /** Where its two tubes' triangles start in idx: after a standing figure's shoulder cap. */
+  tubes?: number
 }
 
 function emptyMesh(): Arm3DMesh {
   return { pos: [], nrm: [], uv: [], idx: [] }
 }
 
-/** A tube through `points`; its v per ring, u round it. A round tip at the end if `closeEnd`. */
-function tube(mesh: Arm3DMesh, points: V3[], radii: number[], vs: number[], around: number, closeEnd = false): void {
+/** A tube through `points`; its v per ring, u round it. A round tip at the end if `closeEnd`, its v by how far round the tip (`tipV`) or the last ring's. */
+function tube(mesh: Arm3DMesh, points: V3[], radii: number[], vs: number[], around: number, closeEnd = false, tipV?: (turned: number) => number): void {
   const base = mesh.pos.length / 3
   let prevSide: V3 | null = null
   const frame = (d: V3): [V3, V3] => {
@@ -74,7 +76,7 @@ function tube(mesh: Arm3DMesh, points: V3[], radii: number[], vs: number[], arou
       const radial = add(mul(front, Math.cos(th)), mul(side, Math.sin(th)))
       mesh.pos.push(...add(end, add(mul(radial, r * Math.cos(a)), mul(d, r * Math.sin(a)))))
       mesh.nrm.push(...norm(add(mul(radial, Math.cos(a)), mul(d, Math.sin(a)))))
-      mesh.uv.push(j / around, vs[vs.length - 1])
+      mesh.uv.push(j / around, tipV ? tipV(a) : vs[vs.length - 1])
     }
     for (let j = 0; j < around; j += 1) {
       const a0 = ring + j
@@ -140,6 +142,69 @@ function reachOut(d: Arm3DShape, m: Arm3DMesh, from: number, to: number, centre:
   }
 }
 
+/** A shoulder cap's rows are marked by this v (the sleeve's own run from 0). */
+export const ARM3D_CAP_V = -1
+/** How far round the shoulder joint the cap reaches, in the sleeve's radius there. */
+const CAP_REACH = 1.6
+
+/** How far a standing figure's shoulder cap reaches from the joint. */
+export function arm3DCapReach(d: Arm3DShape): number {
+  return CAP_REACH * sleeveRadius(d, 0)
+}
+
+/**
+ * Whether what a picture (RGBA, the arm layer where the portrait shows it) draws about a shoulder at (cx, cy) is
+ * a shoulder: it ends within `reach`. Something larger worn there (a pauldron drawn into the arm's layer) runs on
+ * past the cap's rim: capped, a cut piece of it stood still above the arm that carries the rest.
+ */
+export function arm3DShoulderIsBare(pixels: Uint8ClampedArray, width: number, height: number, cx: number, cy: number, reach: number): boolean {
+  let rim = 0
+  let drawn = 0
+  for (let y = Math.max(0, Math.floor(cy - reach)); y < Math.min(height, cy); y += 1) {
+    for (let x = Math.max(0, Math.floor(cx - reach)); x < Math.min(width, cx + reach); x += 1) {
+      const r = Math.hypot(x + 0.5 - cx, y + 0.5 - cy)
+      if (r < 0.8 * reach || r > reach) continue
+      rim += 1
+      if (pixels[(y * width + x) * 4 + 3] >= 128) drawn += 1
+    }
+  }
+  return rim === 0 || drawn < 0.15 * rim
+}
+const CAP_RINGS = 8
+
+/**
+ * A standing figure's shoulder above its arm: the portrait draws the round of the shoulder with the arm, and the
+ * modelled arm starts at the joint (without it the shoulder ended flat across, a box's corner beside the body).
+ * A flat round of the picture about the joint, staying with the shoulder whatever the arm does: all of it above
+ * the joint, and below it a ball as wide as the arm (cut straight across under the joint, an arm turned in across
+ * the chest left a step in the shoulder's outline where the cap stopped). Its u is how much of it shows.
+ */
+function shoulderCap(d: Arm3DShape, m: Arm3DMesh, s: V3): void {
+  const reach = arm3DCapReach(d)
+  const ball = sleeveRadius(d, 0)
+  const base = m.pos.length / 3
+  for (let i = 0; i <= CAP_RINGS; i += 1) {
+    const r = reach * (i / CAP_RINGS)
+    for (let j = 0; j <= ARM3D_AROUND; j += 1) {
+      const th = (j / ARM3D_AROUND) * Math.PI * 2
+      const x = Math.cos(th) * r
+      const y = Math.sin(th) * r
+      m.pos.push(s[0] + x, s[1] + y, s[2])
+      m.nrm.push(0, 0, 1)
+      // Below the joint its rim draws in to the arm's own width: the ball the arm turns about.
+      const rim = reach + (ball - reach) * smoothstep(0, 0.85, r < 1e-9 ? 0 : Math.max(0, y) / r)
+      m.uv.push(1 - smoothstep(0.8 * rim, rim, r), ARM3D_CAP_V)
+    }
+  }
+  for (let i = 0; i < CAP_RINGS; i += 1) {
+    for (let j = 0; j < ARM3D_AROUND; j += 1) {
+      const a = base + i * (ARM3D_AROUND + 1) + j
+      const b = a + ARM3D_AROUND + 1
+      m.idx.push(a, b, a + 1, a + 1, b, b + 1)
+    }
+  }
+}
+
 /**
  * The sleeve: upper arm and forearm each straight, the elbow the sleeve's ring
  * turned round the bend (hanging, a ball as wide as the sleeve there), the
@@ -149,6 +214,8 @@ function reachOut(d: Arm3DShape, m: Arm3DMesh, from: number, to: number, centre:
 export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: number): Arm3DMesh {
   const m = emptyMesh()
   const half = ARM3D_RINGS / 2
+  if (d.restFore !== undefined) shoulderCap(d, m, p.s)
+  m.tubes = m.idx.length
   const sleeved = len(sub(p.w, p.e)) * sleeveEnd(d, rest)
   // Under a short sleeve the elbow of the arm raised is skin: the rows past the sleeve's end, not the sleeve's own.
   const bareRow = d.shortSleeve === undefined ? null : arm3DBareElbowRow(d.shortSleeve)
@@ -313,7 +380,15 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
     // portrait's own sleeve where a band off the upper arm would show past its edge.
     const past = vPast * 0.9 * bend * (1 - rest)
     m.gained = m.idx.length
-    tube(m, [c, lerp(c, end, 0.5), end], [r, r, r], [0.5, Math.max(0.28, 0.5 - past / 2), Math.max(0.28, 0.5 - past)].map(worn), ARM3D_AROUND)
+    const rows = [0.5, Math.max(0.28, 0.5 - past / 2), Math.max(0.28, 0.5 - past)].map(worn)
+    // A standing figure's ends in a round tip about the upper arm's own line, the tube's columns and rows going on
+    // over it: a ball turned to the elbow's poles wore them askew, a dark mark on the sleeve fanned into stripes
+    // across the elbow's point.
+    if (d.restFore !== undefined) {
+      tube(m, [c, lerp(c, end, 0.5), end], [r, r, r], rows, ARM3D_AROUND, true, turned => worn(Math.max(0.28, 0.5 - past - (1 - rest) * Math.sin(turned) * vPast)))
+      return m
+    }
+    tube(m, [c, lerp(c, end, 0.5), end], [r, r, r], rows, ARM3D_AROUND)
     ball(end, past)
   }
   return m

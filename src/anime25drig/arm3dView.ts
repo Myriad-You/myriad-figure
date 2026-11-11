@@ -34,6 +34,8 @@ export interface Arm3DBound {
   /** The drawn pose's place to the gesture layer's texture: u = (x - [0]) * [2], v = (y - [1]) * [3]. */
   drawnPic: [number, number, number, number]
   armMask: WebGLTexture
+  /** A standing figure's: the arm layer about its shoulder where the portrait shows it (on the arm mask's rectangle). */
+  cap?: WebGLTexture
   /** The arm mask's rectangle on the playback canvas, as a share of it. */
   maskRect: [number, number, number, number]
   /** Each hand vertex's place in the hand texture and how much of it to take (at the drawn pose). */
@@ -128,7 +130,7 @@ export class Arm3DView {
   }
 
   release(bound: Arm3DBound): void {
-    for (const t of [bound.sleeve, bound.lifted, bound.hand, bound.drawn, bound.full, bound.armMask, bound.held, bound.heldBeside, bound.heldFore, bound.heldForeFront, bound.groundClip?.texture, bound.restArm.texture]) {
+    for (const t of [bound.sleeve, bound.lifted, bound.hand, bound.drawn, bound.full, bound.armMask, bound.cap, bound.held, bound.heldBeside, bound.heldFore, bound.heldForeFront, bound.groundClip?.texture, bound.restArm.texture]) {
       if (t) this.gl.deleteTexture(t)
     }
   }
@@ -209,7 +211,7 @@ export class Arm3DView {
       const pic: number[] = []
       for (let i = 0; i < m.pos.length / 3; i += 1) pic.push(m.pos[i * 3] / view.width, m.pos[i * 3 + 1] / view.height)
       // The two tubes only (the elbow's balls and the cuff's end have their own v).
-      const n = this.upload(p, { aPos: [m.pos, 3], aNrm: [m.nrm, 3], aUv: [m.uv, 2], aPic: [pic, 2] }, m.idx.slice(0, 2 * (ARM3D_RINGS / 2) * ARM3D_AROUND * 6))
+      const n = this.upload(p, { aPos: [m.pos, 3], aNrm: [m.nrm, 3], aUv: [m.uv, 2], aPic: [pic, 2] }, m.idx.slice(m.tubes ?? 0, (m.tubes ?? 0) + 2 * (ARM3D_RINGS / 2) * ARM3D_AROUND * 6))
       gl.activeTexture(gl.TEXTURE0)
       gl.bindTexture(gl.TEXTURE_2D, pass.src)
       gl.uniform1i(this.uniform(p, 'uSrc'), 0)
@@ -353,6 +355,9 @@ export class Arm3DView {
     gl.activeTexture(gl.TEXTURE2)
     gl.bindTexture(gl.TEXTURE_2D, bound.lifted ?? bound.sleeve)
     gl.uniform1i(this.uniform(p, 'uLifted'), 2)
+    gl.activeTexture(gl.TEXTURE4)
+    gl.bindTexture(gl.TEXTURE_2D, bound.cap ?? bound.armMask)
+    gl.uniform1i(this.uniform(p, 'uCap'), 4)
     gl.activeTexture(gl.TEXTURE0)
     gl.uniform4fv(this.uniform(p, 'uMaskRect'), bound.maskRect)
     gl.uniform1f(this.uniform(p, 'uRest'), frame.hanging)
