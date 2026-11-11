@@ -552,6 +552,23 @@ test('under a short sleeve the raised arm\'s elbow wears the rows past the sleev
   assert.deepEqual(vs(short, 1), vs(shape, 1))
 })
 
+test('a short sleeve drawn wider than the arm is that much wider round the raised upper arm, closed on the arm at the elbow; hanging it is the arm', () => {
+  const motion = new Arm3DMotion(shape, false)
+  const pose = motion.restPose(shape.rest.s)
+  const wide = { ...shape, shortSleeve: 0.58, drawnRadius: shape.radius.map((r) => r * 2) }
+  const narrow = { ...shape, shortSleeve: 0.58 }
+  const upper = (ARM3D_RINGS / 2 + 1) * (ARM3D_AROUND + 1) * 3
+  const ring = (ARM3D_AROUND + 1) * 3
+  const a = arm3DSleeveMesh(wide, pose, 0, 2).pos
+  const b = arm3DSleeveMesh(narrow, pose, 0, 2).pos
+  assert.equal(a.length, b.length)
+  assert.notDeepEqual([...a.slice(0, upper - ring)], [...b.slice(0, upper - ring)])
+  assert.deepEqual([...a.slice(upper - ring)], [...b.slice(upper - ring)])
+  assert.deepEqual([...arm3DSleeveMesh(wide, pose, 1, 2).pos], [...arm3DSleeveMesh(narrow, pose, 1, 2).pos])
+  // No short sleeve, what was drawn wider changes nothing of the arm.
+  assert.deepEqual([...arm3DSleeveMesh({ ...shape, drawnRadius: wide.drawnRadius }, pose, 0, 2).pos], [...arm3DSleeveMesh(shape, pose, 0, 2).pos])
+})
+
 test('what hangs off a short sleeve over the skin is taken out of the baked rows past its end, the arm\'s outline left', () => {
   const w = 3
   const h = 100

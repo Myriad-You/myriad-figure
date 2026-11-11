@@ -85,6 +85,9 @@ function tube(mesh: Arm3DMesh, points: V3[], radii: number[], vs: number[], arou
   }
 }
 
+/** How much of a short sleeve's drawn width past the arm's own it has round the raised upper arm. */
+const SHORT_SLEEVE_FLARE = 0.6
+
 /** The sleeve's radius at v (shoulder 0, elbow 0.5, cuff 1), between the measured places; gathered at the cuff. */
 function sleeveRadius(d: Arm3DShape, v: number): number {
   const R = d.radius
@@ -159,7 +162,12 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
     for (let i = 0; i <= half; i += 1) {
       const v = v0 + (v0 > 0 ? forearmRow(d, i / half, sleeved) : i / half) * 0.5
       pts.push(lerp(a, b, i / half))
-      radii.push(sleeveRadius(d, v) * (tuck ? 1 - 0.45 * smoothstep(0.5, 0.56, v) : 1))
+      // A short sleeve drawn wider than the arm in it is that wide round the raised upper arm (as narrow as the
+      // arm, what is drawn on it stood squeezed along a thin tube); it closes on the arm at the elbow, where the arm's own surface goes on.
+      const flare = v0 === 0 && d.shortSleeve !== undefined && d.drawnRadius
+        ? SHORT_SLEEVE_FLARE * (1 - rest) * (1 - smoothstep(0.42, 0.5, v)) * Math.max(0, sleeveRadius({ ...d, radius: d.drawnRadius }, v) - sleeveRadius(d, v))
+        : 0
+      radii.push(sleeveRadius(d, v) * (tuck ? 1 - 0.45 * smoothstep(0.5, 0.56, v) : 1) + flare)
       // So the forearm's first of it, where the hem hung over it: the hem stays with the upper arm.
       vs.push(v0 > 0 && bareRow !== null && v < bareRow ? worn(v) : v)
     }
@@ -187,7 +195,9 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
   // A forearm bare from the elbow is the elbow's skin too: raised, the ball as narrow as the sleeve's stub, inside it
   // (as wide, it stood past the forearm's round end in the sleeve's colours, its outline across the skin).
   const tucked = arm3DBareFromElbow(d) ? 0.55 + 0.45 * rest ** 4 : 1
-  const r = (sleeveRadius(d, 0.5) + rest * Math.min(0, sleeveRadius(d, 0.46) - sleeveRadius(d, 0.5))) * tucked
+  const sleeveR = (sleeveRadius(d, 0.5) + rest * Math.min(0, sleeveRadius(d, 0.46) - sleeveRadius(d, 0.5))) * tucked
+  // Under a short sleeve the raised elbow is the bare arm's: as wide as the forearm just past the sleeve's end.
+  const r = bareRow === null ? sleeveR : sleeveR + (1 - rest) * Math.min(0, sleeveRadius(d, bareRow + 0.04) - sleeveR)
   // Hanging, the ball's v as far along the arm as each point of it lies (squeezed, it wore rows from nearer
   // the elbow than its place); bent, back to the elbow's own rows (spread, it showed the elbow's band as she waved).
   const vUp = 0.04 + rest * (0.5 * r / Math.max(1e-6, len(sub(p.e, p.s))) - 0.04)
@@ -296,7 +306,8 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
   // a sleeve ending at the elbow: past it was the portrait's arm where it hangs, a white patch beside the skin.
   const bend = Math.min(1, Math.max(0, (1 - dot(du, df)) / 2) / 0.5)
   if (bend > 0.05 && !arm3DBareFromElbow(d)) {
-    const end = add(c, mul(du, r * 0.9 * bend))
+    // Under a short sleeve only as the arm hangs: raised, the elbow is bare and ends round where it is.
+    const end = add(c, mul(du, r * 0.9 * bend * (bareRow === null ? 1 : rest)))
     // Raised, it wears the upper sleeve's rows back from the elbow, as far as it runs on: all of it in the elbow's
     // one row, a flower or a star lying on that row stood as stripes down it. Hanging it keeps that row, under the
     // portrait's own sleeve where a band off the upper arm would show past its edge.
