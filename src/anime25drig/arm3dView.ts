@@ -4,9 +4,9 @@ import type { Arm3DFrame, Arm3DPose, Arm3DShape } from './arm3dMotion'
 import type { Arm3DPicture } from './arm3dPrepare'
 import type { Arm3DTarget } from './arm3dTarget'
 import { handExactness, len, similarity2D, smoothstep, sub } from './arm3dMath'
-import { ARM3D_AROUND, ARM3D_RINGS, arm3DBareFromElbow, arm3DHandMesh, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
+import { ARM3D_AROUND, ARM3D_RINGS, arm3DBareElbowRow, arm3DBareFromElbow, arm3DHandMesh, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { liftForearm, wristOverUpper } from './arm3dMotion'
-import { clothCuffMouth, ringFill } from './arm3dPrepare'
+import { bareBelowSleeve, clothCuffMouth, ringFill } from './arm3dPrepare'
 import { BAKE_FS, BAKE_VS, COMPOSITE_FS, FULL_VS, GAP2_FS, GAP_FS, HAND_FS, HAND_VS, HELD_FS, HELD_VS, SLEEVE_FS, SLEEVE_VS, WHOLE_FS } from './arm3dShaders'
 import { arm3DTexture, createArm3DTarget, dropArm3DTarget, setArm3DGround } from './arm3dTarget'
 
@@ -202,8 +202,10 @@ export class Arm3DView {
     gl.enable(gl.BLEND)
     gl.blendFunc(gl.ONE_MINUS_DST_ALPHA, gl.ONE)
     gl.useProgram(p.program)
+    // As wide as the sleeve is drawn where that is wider than it is modelled: all of the drawing is its texture.
+    const drawn = shape.drawnRadius ? { ...shape, radius: shape.drawnRadius } : shape
     for (const pass of passes) {
-      const m = arm3DSleeveMesh(shape, pass.pose, pass.rest, px)
+      const m = arm3DSleeveMesh(drawn, pass.pose, pass.rest, px)
       const pic: number[] = []
       for (let i = 0; i < m.pos.length / 3; i += 1) pic.push(m.pos[i * 3] / view.width, m.pos[i * 3 + 1] / view.height)
       // The two tubes only (the elbow's balls and the cuff's end have their own v).
@@ -224,6 +226,7 @@ export class Arm3DView {
     // About 11° round the ring in from where a picture saw the sleeve last: past the outline it draws there.
     ringFill(px8, BAKE_W, BAKE_H, BAKE_W >> 5)
     if (shape.restCuff !== undefined) clothCuffMouth(px8, BAKE_W, BAKE_H)
+    if (shape.shortSleeve !== undefined) bareBelowSleeve(px8, BAKE_W, BAKE_H, shape.shortSleeve, arm3DBareElbowRow(shape.shortSleeve), shape.skin, shape.shade)
     gl.bindTexture(gl.TEXTURE_2D, out)
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, BAKE_W, BAKE_H, 0, gl.RGBA, gl.UNSIGNED_BYTE, px8)

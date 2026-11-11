@@ -147,6 +147,9 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
   const m = emptyMesh()
   const half = ARM3D_RINGS / 2
   const sleeved = len(sub(p.w, p.e)) * sleeveEnd(d, rest)
+  // Under a short sleeve the elbow of the arm raised is skin: the rows past the sleeve's end, not the sleeve's own.
+  const bareRow = d.shortSleeve === undefined ? null : arm3DBareElbowRow(d.shortSleeve)
+  const worn = (v: number) => (bareRow === null ? v : bareRow + (v - bareRow) * rest)
   for (const [a, b, v0] of [[p.s, p.e, 0], [p.e, lerp(p.e, p.w, sleeveEnd(d, rest)), 0.5]] as const) {
     const pts: V3[] = []
     const radii: number[] = []
@@ -157,7 +160,8 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
       const v = v0 + (v0 > 0 ? forearmRow(d, i / half, sleeved) : i / half) * 0.5
       pts.push(lerp(a, b, i / half))
       radii.push(sleeveRadius(d, v) * (tuck ? 1 - 0.45 * smoothstep(0.5, 0.56, v) : 1))
-      vs.push(v)
+      // So the forearm's first of it, where the hem hung over it: the hem stays with the upper arm.
+      vs.push(v0 > 0 && bareRow !== null && v < bareRow ? worn(v) : v)
     }
     const from = m.pos.length / 3
     tube(m, pts, radii, vs, ARM3D_AROUND)
@@ -205,7 +209,7 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
         // The end past the elbow goes on from its tube, row for row along the upper arm (by its own poles, turned
         // from the tube's, its rows stepped where the two meet); hanging, its own rows as before.
         // No further up than the shoulder's fade reaches down (a very wide sleeve's end ran into it, its outline thinned).
-        m.uv.push(j / ARM3D_AROUND, past < 0 ? 0.5 + own : Math.max(0.28, 0.5 - past + rest * own - (1 - rest) * dot(n, du) * vPast))
+        m.uv.push(j / ARM3D_AROUND, past < 0 ? 0.5 + own : worn(Math.max(0.28, 0.5 - past + rest * own - (1 - rest) * dot(n, du) * vPast)))
       }
     }
     for (let i = 0; i < LAT; i += 1) {
@@ -254,7 +258,7 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
       const ringSide = norm(cross(way, ringFront))
       const outer = cross(way, hinge)
       const ph = -Math.PI / 2 + (i / SWEEP) * Math.PI
-      const v = 0.5 + Math.sin(ph) * (ph < 0 ? vUp : vDown)
+      const v = worn(0.5 + Math.sin(ph) * (ph < 0 ? vUp : vDown))
       for (let j = 0; j <= ARM3D_AROUND; j += 1) {
         const th = (j / ARM3D_AROUND) * Math.PI * 2
         const round = add(mul(ringFront, Math.cos(th)), mul(ringSide, Math.sin(th)))
@@ -298,10 +302,15 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
     // portrait's own sleeve where a band off the upper arm would show past its edge.
     const past = vPast * 0.9 * bend * (1 - rest)
     m.gained = m.idx.length
-    tube(m, [c, lerp(c, end, 0.5), end], [r, r, r], [0.5, Math.max(0.28, 0.5 - past / 2), Math.max(0.28, 0.5 - past)], ARM3D_AROUND)
+    tube(m, [c, lerp(c, end, 0.5), end], [r, r, r], [0.5, Math.max(0.28, 0.5 - past / 2), Math.max(0.28, 0.5 - past)].map(worn), ARM3D_AROUND)
     ball(end, past)
   }
   return m
+}
+
+/** The sleeve's row a short sleeve's bare elbow wears: just past where the sleeve ends, no nearer the shoulder than the elbow. */
+export function arm3DBareElbowRow(shortSleeve: number): number {
+  return Math.max(0.5, shortSleeve) + 0.05
 }
 
 /** The forearm drawn bare all the way from the elbow (the cuff measured no further down than it is ever put). */

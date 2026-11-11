@@ -110,6 +110,17 @@ export interface Anime25DArmModel {
    * bust, whose hand hangs off the picture (the gesture's hangs in its place) and whose modelled arm always shows.
    */
   restHand?: Array<[number, number]>
+  /**
+   * A standing figure's sleeve as wide as it is drawn, where that is wider than `radius` has it (a pauldron, a short
+   * sleeve flaring at the elbow, no wider modelled than an arm is): the sleeve's texture is taken from the whole of
+   * what is drawn and worn on the narrower arm. Absent where the arm is modelled as wide as drawn.
+   */
+  drawnRadius?: number[]
+  /**
+   * Where a standing figure's short sleeve ends along the arm (shoulder 0, elbow 0.5, wrist 1), the forearm drawn
+   * bare below it: the elbow of the arm raised is skin, not the sleeve run on round it.
+   */
+  shortSleeve?: number
   /** A standing figure's forearm as the portrait draws it hanging: the model's runs between it and `fore`. */
   restFore?: number
   /**

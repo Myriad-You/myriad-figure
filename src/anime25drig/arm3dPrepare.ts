@@ -274,6 +274,31 @@ export function arm3DWristTone(hand: Uint8ClampedArray, w: number, h: number, sh
  * seen through the cloth. Down each column, what is no more coloured than skin (its trim and jewels stay) takes the
  * cuff's plain cloth from just above.
  */
+/**
+ * A baked sleeve's rows from a short sleeve's end `from` to the bare elbow's row `to` (shares of its height) as the
+ * skin the row `to` has, where that is skin: what hangs off the sleeve over the arm as it is drawn hanging (a
+ * strap's end, the hem's lower side) stayed on the skin of the arm raised, a dark block by the elbow.
+ */
+export function bareBelowSleeve(px: Uint8Array, w: number, h: number, from: number, to: number, skin: readonly number[], shade: readonly number[]): void {
+  const y0 = Math.max(0, Math.floor(from * h))
+  const y1 = Math.min(h - 1, Math.floor((to + 0.12) * h))
+  const ref = Math.min(h - 1, Math.floor(to * h))
+  const off = (i: number, c: readonly number[]) => Math.hypot(px[i] - c[0], px[i + 1] - c[1], px[i + 2] - c[2])
+  const bare = (i: number) => px[i + 3] > 0 && Math.min(off(i, skin), off(i, shade)) < 48
+  for (let x = 0; x < w; x += 1) {
+    // The nearest skin at or past the elbow's row in this place round the arm; none (the arm's own outline), left.
+    let src = -1
+    for (let y = ref; y <= y1 && src < 0; y += 1) { if (bare((y * w + x) * 4)) src = (y * w + x) * 4
+}
+    if (src < 0) continue
+    for (let y = y1; y >= y0; y -= 1) {
+      const i = (y * w + x) * 4
+      if (bare(i)) src = i
+      else px.copyWithin(i, src, src + 4)
+    }
+  }
+}
+
 export function clothCuffMouth(px: Uint8Array, w: number, h: number): void {
   const from = Math.floor(h * 0.88)
   const above = Math.floor(h * 0.76)
