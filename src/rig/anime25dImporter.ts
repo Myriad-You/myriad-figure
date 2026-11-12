@@ -183,6 +183,7 @@ export async function prepareAnime25DRigPsd(
       visibleInAnalysisReference,
       sourceReference,
       Math.max(0, MAX_RIG_PARTS - layers.length - armVariants.length),
+      profile === 'fullBody',
     )
     layers = paintAccessoriesFromReference(
       raiseEarwearOverFrontHair(repair.layers),

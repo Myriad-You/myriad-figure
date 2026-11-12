@@ -269,6 +269,56 @@ test('missing art is lifted from the source into a group layer above its neighbo
   assert.equal(result.reconciliation?.repairs.recovered, 1)
 })
 
+test('on a standing figure a piece hanging from an arm rides that arm, at its depth', () => {
+  const arm = { ...layer('handwear', [165, 110, 30, 60], SKIN), side: 'right' as const }
+  const layers = [layer('face', FACE, SKIN, 'head'), arm, layer('topwear', TORSO, CLOTH)]
+  const source = reference((fill) => {
+    portrait(fill)
+    fill([165, 110, 30, 60], SKIN)
+    fill([172, 166, 10, 24], GEM)
+  })
+  const carried = repairAnime25DPsd(layers, allVisible, source, 2, true)
+  const piece = carried.layers.find((candidate) => candidate.id.startsWith('recovered-'))!
+  assert.equal(piece.role, 'handwear')
+  assert.equal(piece.side, 'right')
+  assert.equal(carried.layers.indexOf(piece), carried.layers.indexOf(arm) + 1, 'right above its arm, under the top')
+  // (Numbered: named by its role and side alone it took the arm's own name.)
+  assert.match(piece.id, /-\d+$/)
+  assert.deepEqual(pixel(piece, 176, 185), [...GEM, 255])
+  // A bust's, or without the flag, it stays an object of the body as before.
+  const kept = repairAnime25DPsd(layers, allVisible, source, 2)
+  const object = kept.layers.find((candidate) => candidate.id.startsWith('recovered-'))!
+  assert.equal(object.role, 'objects')
+  assert.equal(object.side, null)
+})
+
+test('on a standing figure a piece the top is drawn over, or a lock of hair across the arm, does not ride it', () => {
+  // Hanging from the arm but drawn over the top, which is above the arm: put under it, it would be hidden.
+  const arm = { ...layer('handwear', [150, 100, 30, 60], SKIN), side: 'right' as const }
+  const over = repairAnime25DPsd([layer('face', FACE, SKIN, 'head'), arm, layer('topwear', TORSO, CLOTH)], allVisible, reference((fill) => {
+    portrait(fill)
+    fill([150, 100, 30, 60], SKIN)
+    fill([145, 155, 12, 20], GEM)
+  }), 2, true)
+  const kept = over.layers.find((candidate) => candidate.id.startsWith('recovered-'))!
+  assert.equal(kept.role, 'objects')
+  assert.ok(over.layers.indexOf(kept) > over.layers.findIndex((candidate) => candidate.role === 'topwear'))
+  assert.deepEqual(over.reconciliation?.regions, [])
+  // A gap in a lock of hair lying across the arm is the hair's.
+  const hand = { ...layer('handwear', [160, 100, 30, 70], SKIN), side: 'right' as const }
+  const hair = layer('front-hair', [165, 10, 12, 150], HAIR, 'head')
+  for (let y = 120; y < 140; y += 1) {
+    for (let x = 165; x < 177; x += 1) hair.data[((y - hair.top) * hair.width + (x - hair.left)) * 4 + 3] = 0
+  }
+  const lock = repairAnime25DPsd([layer('face', FACE, SKIN, 'head'), layer('topwear', TORSO, CLOTH), hand, hair], allVisible, reference((fill) => {
+    portrait(fill)
+    fill([160, 100, 30, 70], SKIN)
+    fill([165, 10, 12, 150], HAIR)
+  }), 2, true)
+  const strand = lock.layers.find((candidate) => candidate.id.startsWith('recovered-'))!
+  assert.notEqual(strand.role, 'handwear')
+})
+
 test('a bow as big as a garment piece is recovered when it hangs from the hair above the chin', () => {
   const face = layer('face', FACE, SKIN, 'head')
   const hair = layer('back-hair', [40, 10, 20, 60], HAIR, 'head')

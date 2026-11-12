@@ -45,6 +45,8 @@ const RECOVER_MAX_HEAD_SHARE = 0.1
  * a part this large is recovered only as the garment it is (droppedGarment).
  */
 const RECOVER_MAX_GARMENT_SHARE = 0.5
+/** A piece riding an arm, put under the layers above the arm, may lose no more of its drawing than this. */
+const ARM_HIDDEN_SHARE = 0.05
 
 /**
  * Repairs what reconciliation can prove from the source illustration:
@@ -63,6 +65,8 @@ export function repairAnime25DPsd(
   visibleAtRest: (layer: RasterLayer) => boolean,
   reference: Readonly<Anime25DSourceReference>,
   maxNewLayers: number,
+  /** A standing figure's: what hangs from an arm rides it (mountFor). */
+  armsCarry = false,
 ): Anime25DPsdRepair {
   const visible = layers.filter(visibleAtRest)
   const before = analyzeAnime25DPsd(visible, reference)
@@ -235,10 +239,21 @@ export function repairAnime25DPsd(
         return reference.data[(y * reference.width + x) * 4 + 3] >= 250
       })
       if (shown.length < regionFloor(before, shown) || shown.length > maxGarmentArea) continue
-      let mount = mountFor(before, shown, visible)
+      let mount: Pick<RecoveredPiece, 'group' | 'neighbour' | 'owner' | 'role' | 'side'> = mountFor(before, shown, visible, armsCarry)
       // Only an earring is let in under the portrait's size floor: a piece
       // that small which does not hang from an ear is a speck of something else.
       if (shown.length < before.minArea && mount.role !== 'earwear') continue
+      // Riding an arm it goes in just above it; a piece the source draws over a
+      // layer above the arm (the top) would go under that, hidden: it stays put.
+      if (mount.side) {
+        const arm = mount.neighbour
+        const hidden = shown.filter((target) => {
+          const { x, y } = at(target)
+          const top = before.top[target]
+          return top > arm && visible.slice(arm + 1, top + 1).some((layer) => alphaAt(layer, x, y) >= 128)
+        }).length
+        if (hidden > ARM_HIDDEN_SHARE * shown.length) mount = mountFor(before, shown, visible)
+      }
       if (mount.owner < 0 && mount.role === 'objects') mount = garmentEdge(before, shown, visible, reference) ?? mount
       let garment = false
       if (shown.length > maxArea) {
@@ -291,7 +306,9 @@ export function repairAnime25DPsd(
       }
       addAntialiasedRim(before, shown, reference, pixels)
       if (garment) closeGarmentGaps(before, shown, above, reference, pixels)
-      pieces.push({ pixels, above, ...mount })
+      // What rides an arm stays at the arm's depth: lifted over the top it
+      // overlaps, the arm drawn with it came out over the top's straps.
+      pieces.push({ pixels, above: mount.side ? mount.neighbour : above, ...mount })
     }
   }
   // A piece of an existing accessory, e.g. the tassel under a hair ornament,

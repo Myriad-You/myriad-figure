@@ -124,6 +124,8 @@ export interface RecoveredPiece {
   owner: number
   group: Group
   role: RasterLayer['role']
+  /** The arm a piece hanging from one rides, for a `handwear` piece. */
+  side?: RasterLayer['side']
 }
 
 const ACCESSORY_ROLES = new Set([
@@ -138,6 +140,8 @@ const ACCESSORY_ROLES = new Set([
 const ACCESSORY_VOTE_SHARE = 0.15
 /** Hanging art is held at its top: that end must reach what holds it. */
 const HOOK_REACH = 8
+/** Of what rings a piece, at least this share is the arm it rides. */
+const ARM_VOTE_SHARE = 0.35
 const HOOK_BAND = 0.2
 
 /**
@@ -149,7 +153,8 @@ export function mountFor(
   analysis: Readonly<Anime25DPsdAnalysis>,
   members: readonly number[],
   visible: readonly RasterLayer[],
-): Pick<RecoveredPiece, 'group' | 'neighbour' | 'owner' | 'role'> {
+  armsCarry = false,
+): Pick<RecoveredPiece, 'group' | 'neighbour' | 'owner' | 'role' | 'side'> {
   const votes = new Map<number, number>()
   let total = 0
   for (const [target] of fringe(
@@ -215,6 +220,16 @@ export function mountFor(
   ) {
     return { group: 'body', neighbour, owner: -1, role: 'neckwear' }
   }
+  // On a standing figure whose arms rise, what hangs from an arm (a clip under a
+  // pauldron, a piece of the pauldron the layers lost) is the arm's: left on the
+  // body, it stayed hanging in the air where the arm had been. Only what lies
+  // mostly on the arm: a lock of hair or a cape's edge across it is not its.
+  if (armsCarry) {
+    const arm = hangsFrom(analysis, members, visible, (layer) => layer.role === 'handwear' && layer.side !== null)
+    if (arm >= 0 && (votes.get(arm) ?? 0) / total >= ARM_VOTE_SHARE && hairHolder(analysis, members, visible) < 0) {
+      return { group: visible[arm].group, neighbour: arm, owner: -1, role: 'handwear', side: visible[arm].side }
+    }
+  }
   return { group: main.group, neighbour, owner: -1, role: 'objects' }
 }
 
@@ -278,7 +293,7 @@ export function mergeByGroup(
   pieces: readonly RecoveredPiece[],
   maxLayers: number,
 ): RecoveredPiece[] {
-  const byRole = mergeBy(pieces, (piece) => `${piece.group}:${piece.role}`, null)
+  const byRole = mergeBy(pieces, (piece) => `${piece.group}:${piece.role}:${piece.side ?? ''}`, null)
   return byRole.length <= maxLayers ? byRole : mergeBy(pieces, (piece) => piece.group, 'objects', maxLayers)
 }
 
@@ -297,6 +312,7 @@ function mergeBy(
         ...piece,
         pixels: new Map(piece.pixels),
         role: role ?? piece.role,
+        side: role ? undefined : piece.side,
       })
       continue
     }
@@ -358,7 +374,7 @@ export function withPixels(
 }
 
 export function overlayLayer(
-  { group, pixels, role }: RecoveredPiece,
+  { group, pixels, role, side }: RecoveredPiece,
   referenceWidth: number,
   layers: readonly RasterLayer[],
 ): RasterLayer | null {
@@ -383,8 +399,10 @@ export function overlayLayer(
     const y = Math.floor(key / referenceWidth) - top
     data.set(rgba, (y * width + x) * 4)
   }
+  // (A piece riding an arm keeps a number: named by its role and side alone it
+  // took the arm's own name.)
   const id = uniquePartId(
-    `recovered-${role}`,
+    side ? `recovered-${role}-1` : `recovered-${role}`,
     new Set(layers.map((layer) => layer.id)),
   )
   return {
@@ -392,7 +410,7 @@ export function overlayLayer(
     role,
     sourceName: id,
     order: 0,
-    side: null,
+    side: side ?? null,
     group,
     left,
     top,
