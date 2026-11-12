@@ -34,6 +34,8 @@ export interface Arm3DBound {
   /** The drawn pose's place to the gesture layer's texture: u = (x - [0]) * [2], v = (y - [1]) * [3]. */
   drawnPic: [number, number, number, number]
   armMask: WebGLTexture
+  /** Playback's own: how far round the elbow's rings turned last frame. */
+  elbowTwist?: number
   /** A standing figure's: the arm layer about its shoulder where the portrait shows it (on the arm mask's rectangle). */
   cap?: WebGLTexture
   /** The arm mask's rectangle on the playback canvas, as a share of it. */
@@ -331,10 +333,17 @@ export class Arm3DView {
     gl.bindVertexArray(null)
   }
 
+  /** The sleeve as posed, its elbow turned the way it was last frame (afresh once the arm hangs). */
+  private sleeveMesh(bound: Arm3DBound, pose: Arm3DPose, frame: Arm3DFrame, px: number): Arm3DMesh {
+    const m = arm3DSleeveMesh(bound.shape, pose, frame.hanging, px, frame.hanging >= 1 ? undefined : bound.elbowTwist)
+    bound.elbowTwist = m.twist
+    return m
+  }
+
   private drawSleeve(bound: Arm3DBound, pose: Arm3DPose, frame: Arm3DFrame, px: number, line: number[]): void {
     const gl = this.gl
     const p = this.sleeveProgram
-    const m = arm3DSleeveMesh(bound.shape, pose, frame.hanging, px)
+    const m = this.sleeveMesh(bound, pose, frame, px)
     const n = m.pos.length / 3
     const pic = new Float32Array(n * 2)
     pic.set(bound.hangPic.subarray(0, Math.min(bound.hangPic.length, n * 2)))
@@ -673,7 +682,7 @@ export class Arm3DView {
     gl.uniform4f(this.uniform(s, 'uSolid'), 1, 1, 1, 1)
     // Cut as the sleeve is (the program's last cut and textures would stand otherwise, the hand's picture bound there).
     setArm3DGround(gl, (name) => this.uniform(s, name), bound.groundClip, frame.held, bound.armMask)
-    const sleeve = arm3DSleeveMesh(bound.shape, pose, frame.hanging, px)
+    const sleeve = this.sleeveMesh(bound, pose, frame, px)
     // What the sleeve gains past a bent elbow is the elbow's once raised, whichever rows it wears (the upper sleeve's,
     // by their v the upper arm's: the portrait's front layers came back over the elbow's point).
     const along = (lo: number, hi: number) => {

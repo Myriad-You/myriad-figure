@@ -23,6 +23,8 @@ export interface Arm3DMesh {
   face?: number[]
   /** Sleeve only: where in `idx` what it gains past a bent elbow starts. */
   gained?: number
+  /** Sleeve only: how far round its elbow's rings turn from the upper arm's front to the forearm's (`near` for the next frame). */
+  twist?: number
   /** Where its two tubes' triangles start in idx: after a standing figure's shoulder cap. */
   tubes?: number
 }
@@ -288,8 +290,9 @@ export const ARM3D_WORN_REACH = 2.5
  * turned round the bend (hanging, a ball as wide as the sleeve there), the
  * cuff's end face. `rest` (1 hanging) draws its outline to where
  * the portrait's arm reaches; `px` is a trial pixel on this canvas.
+ * `near` is the last frame's `twist`, for an arm being played.
  */
-export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: number): Arm3DMesh {
+export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: number, near?: number): Arm3DMesh {
   const m = emptyMesh()
   const half = ARM3D_RINGS / 2
   if (d.restFore !== undefined) {
@@ -412,7 +415,12 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
     const front0 = tubeFront(du)
     const carried = turn(front0, hinge, angle)
     const wanted = tubeFront(df)
-    const twist = Math.atan2(dot(cross(carried, wanted), df), dot(carried, wanted))
+    const direct = Math.atan2(dot(cross(carried, wanted), df), dot(carried, wanted))
+    // Near half a turn either way round gets there, and a small movement about such a pose (a wave held in the
+    // picture's plane) took the other way from one frame to the next, the elbow's rows changing sides each time:
+    // the way that is nearer the last frame's.
+    const twist = near === undefined ? direct : direct + 2 * Math.PI * Math.max(-1, Math.min(1, Math.round((near - direct) / (2 * Math.PI))))
+    m.twist = twist
     const innerAt: boolean[] = []
     for (let i = 0; i <= SWEEP; i += 1) {
       const a = angle * (i / SWEEP)
