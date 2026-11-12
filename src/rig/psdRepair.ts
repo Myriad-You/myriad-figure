@@ -63,6 +63,8 @@ export function repairAnime25DPsd(
   visibleAtRest: (layer: RasterLayer) => boolean,
   reference: Readonly<Anime25DSourceReference>,
   maxNewLayers: number,
+  /** A standing figure's: what hangs from an arm rides it (mountFor). */
+  armsCarry = false,
 ): Anime25DPsdRepair {
   const visible = layers.filter(visibleAtRest)
   const before = analyzeAnime25DPsd(visible, reference)
@@ -235,7 +237,7 @@ export function repairAnime25DPsd(
         return reference.data[(y * reference.width + x) * 4 + 3] >= 250
       })
       if (shown.length < regionFloor(before, shown) || shown.length > maxGarmentArea) continue
-      let mount = mountFor(before, shown, visible)
+      let mount: Pick<RecoveredPiece, 'group' | 'neighbour' | 'owner' | 'role' | 'side'> = mountFor(before, shown, visible, armsCarry)
       // Only an earring is let in under the portrait's size floor: a piece
       // that small which does not hang from an ear is a speck of something else.
       if (shown.length < before.minArea && mount.role !== 'earwear') continue
@@ -291,7 +293,9 @@ export function repairAnime25DPsd(
       }
       addAntialiasedRim(before, shown, reference, pixels)
       if (garment) closeGarmentGaps(before, shown, above, reference, pixels)
-      pieces.push({ pixels, above, ...mount })
+      // What rides an arm stays at the arm's depth: lifted over the top it
+      // overlaps, the arm drawn with it came out over the top's straps.
+      pieces.push({ pixels, above: mount.side ? mount.neighbour : above, ...mount })
     }
   }
   // A piece of an existing accessory, e.g. the tassel under a hair ornament,

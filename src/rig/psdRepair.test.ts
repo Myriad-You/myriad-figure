@@ -269,6 +269,28 @@ test('missing art is lifted from the source into a group layer above its neighbo
   assert.equal(result.reconciliation?.repairs.recovered, 1)
 })
 
+test('on a standing figure a piece hanging from an arm rides that arm, at its depth', () => {
+  const arm = { ...layer('handwear', [165, 110, 30, 60], SKIN), side: 'right' as const }
+  const layers = [layer('face', FACE, SKIN, 'head'), arm, layer('topwear', TORSO, CLOTH)]
+  const source = reference((fill) => {
+    portrait(fill)
+    fill([165, 110, 30, 60], SKIN)
+    fill([172, 166, 10, 24], GEM)
+  })
+  const carried = repairAnime25DPsd(layers, allVisible, source, 2, true)
+  const piece = carried.layers.find((candidate) => candidate.id.startsWith('recovered-'))!
+  assert.equal(piece.role, 'handwear')
+  assert.equal(piece.side, 'right')
+  assert.equal(carried.layers.indexOf(piece), carried.layers.indexOf(arm) + 1, 'right above its arm, under the top')
+  assert.notEqual(piece.id, 'handwear-right')
+  assert.deepEqual(pixel(piece, 176, 185), [...GEM, 255])
+  // A bust's, or without the flag, it stays an object of the body as before.
+  const kept = repairAnime25DPsd(layers, allVisible, source, 2)
+  const object = kept.layers.find((candidate) => candidate.id.startsWith('recovered-'))!
+  assert.equal(object.role, 'objects')
+  assert.equal(object.side, null)
+})
+
 test('a bow as big as a garment piece is recovered when it hangs from the hair above the chin', () => {
   const face = layer('face', FACE, SKIN, 'head')
   const hair = layer('back-hair', [40, 10, 20, 60], HAIR, 'head')

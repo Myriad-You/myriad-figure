@@ -124,6 +124,8 @@ export interface RecoveredPiece {
   owner: number
   group: Group
   role: RasterLayer['role']
+  /** The arm a piece hanging from one rides, for a `handwear` piece. */
+  side?: RasterLayer['side']
 }
 
 const ACCESSORY_ROLES = new Set([
@@ -149,7 +151,8 @@ export function mountFor(
   analysis: Readonly<Anime25DPsdAnalysis>,
   members: readonly number[],
   visible: readonly RasterLayer[],
-): Pick<RecoveredPiece, 'group' | 'neighbour' | 'owner' | 'role'> {
+  armsCarry = false,
+): Pick<RecoveredPiece, 'group' | 'neighbour' | 'owner' | 'role' | 'side'> {
   const votes = new Map<number, number>()
   let total = 0
   for (const [target] of fringe(
@@ -168,6 +171,15 @@ export function mountFor(
   }
   const ranked = [...votes].toSorted((left, right) => right[1] - left[1])
   const neighbour = ranked[0][0]
+  // On a standing figure whose arms rise, what hangs from an arm (a clip under a
+  // pauldron, a piece of the pauldron the layers lost) is the arm's: left on the
+  // body, it stayed hanging in the air where the arm had been.
+  if (armsCarry) {
+    const arm = hangsFrom(analysis, members, visible, (layer) => layer.role === 'handwear' && layer.side !== null)
+    if (arm >= 0) {
+      return { group: visible[arm].group, neighbour: arm, owner: -1, role: 'handwear', side: visible[arm].side }
+    }
+  }
   const accessory = ranked.find(
     ([index, count]) =>
       ACCESSORY_ROLES.has(visible[index].role) &&
@@ -278,7 +290,7 @@ export function mergeByGroup(
   pieces: readonly RecoveredPiece[],
   maxLayers: number,
 ): RecoveredPiece[] {
-  const byRole = mergeBy(pieces, (piece) => `${piece.group}:${piece.role}`, null)
+  const byRole = mergeBy(pieces, (piece) => `${piece.group}:${piece.role}:${piece.side ?? ''}`, null)
   return byRole.length <= maxLayers ? byRole : mergeBy(pieces, (piece) => piece.group, 'objects', maxLayers)
 }
 
@@ -297,6 +309,7 @@ function mergeBy(
         ...piece,
         pixels: new Map(piece.pixels),
         role: role ?? piece.role,
+        side: role ? undefined : piece.side,
       })
       continue
     }
@@ -358,7 +371,7 @@ export function withPixels(
 }
 
 export function overlayLayer(
-  { group, pixels, role }: RecoveredPiece,
+  { group, pixels, role, side }: RecoveredPiece,
   referenceWidth: number,
   layers: readonly RasterLayer[],
 ): RasterLayer | null {
@@ -383,8 +396,10 @@ export function overlayLayer(
     const y = Math.floor(key / referenceWidth) - top
     data.set(rgba, (y * width + x) * 4)
   }
+  // (A piece riding an arm keeps a number: named by its role and side alone it
+  // took the arm's own name.)
   const id = uniquePartId(
-    `recovered-${role}`,
+    side ? `recovered-${role}-1` : `recovered-${role}`,
     new Set(layers.map((layer) => layer.id)),
   )
   return {
@@ -392,7 +407,7 @@ export function overlayLayer(
     role,
     sourceName: id,
     order: 0,
-    side: null,
+    side: side ?? null,
     group,
     left,
     top,
