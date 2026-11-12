@@ -202,7 +202,9 @@ export class Arm3DSide {
       let y0 = Infinity
       let x1 = -Infinity
       let y1 = -Infinity
-      for (const pos of [arm3DSleeveMesh(shape, hanging, 1, px).pos, hangWrist.pos, ...(hangHand ? [hangHand.pos] : [])]) {
+      // (With room for a short sleeve's shoulder piece, should it prove to wear one.)
+      const roomy = shape.restFore !== undefined && shape.shortSleeve !== undefined ? { ...shape, worn: true } : shape
+      for (const pos of [arm3DSleeveMesh(roomy, hanging, 1, px).pos, hangWrist.pos, ...(hangHand ? [hangHand.pos] : [])]) {
         for (let i = 0; i < pos.length; i += 3) {
           x0 = Math.min(x0, pos[i])
           x1 = Math.max(x1, pos[i])
@@ -237,6 +239,7 @@ export class Arm3DSide {
       // A standing figure's shoulder cap: the arm layer where the portrait shows it, nothing worn over it (a
       // pauldron, an epaulette: the arm's skin under one came out on top of it), nor the pieces the arm carries.
       const capPixels = shape.restFore !== undefined ? composeArm3DPicture(atlas, bases.map(asSource), rect).pixels : null
+      const capDrawn = capPixels?.slice()
       for (let i = 0; i < whole.pixels.length; i += 4) {
         const drawn = armOnly.pixels[i + 3] >= 128
         if (capPixels) {
@@ -254,6 +257,22 @@ export class Arm3DSide {
         // (An arm of more than one look has no picture of its own to take it from: no cap.)
         const bare = Boolean(one) && arm3DShoulderIsBare(capPixels, armOnly.width, armOnly.height, (hanging.s[0] - rect.x) * k, (hanging.s[1] - rect.y) * k, arm3DCapReach(shape) * k)
         if (!bare) capPixels.fill(0)
+        // Something worn there over a short sleeve: the arm layer's own drawing of it all, carried flat with the upper arm.
+        if (!bare && one && capDrawn && shape.shortSleeve !== undefined) {
+          shape.worn = true
+          const hungL = Math.hypot(hanging.e[0] - hanging.s[0], hanging.e[1] - hanging.s[1]) || 1
+          const hungX = (hanging.e[0] - hanging.s[0]) / hungL
+          const hungY = (hanging.e[1] - hanging.s[1]) / hungL
+          for (let i = 0; i < capDrawn.length; i += 4) {
+            // (About the shoulder only where the portrait shows it: the arm's skin drawn on under the body's straps
+            // stays under them. Further down all of it: what hangs from the body before the sleeve stays behind.)
+            const at = i / 4
+            const down = (((at % armOnly.width) + 0.5) / k + rect.x - hanging.s[0]) * hungX + ((Math.floor(at / armOnly.width) + 0.5) / k + rect.y - hanging.s[1]) * hungY
+            const off = Math.abs(whole.pixels[i] - capDrawn[i]) + Math.abs(whole.pixels[i + 1] - capDrawn[i + 1]) + Math.abs(whole.pixels[i + 2] - capDrawn[i + 2])
+            const on = capDrawn[i + 3] >= 128 && (off < 48 || down > 0.2 * shape.upper)
+            capPixels.set(on ? [capDrawn[i], capDrawn[i + 1], capDrawn[i + 2], 255] : [whole.pixels[i], whole.pixels[i + 1], whole.pixels[i + 2], 0], i)
+          }
+        }
       }
       const size = { width: pixels.width, height: pixels.height }
       const atLayer = (from: readonly Anime25DGpuLayer[], blur = 0) => composeArm3DPicture(atlas, from.map(asSource), layer.source, size, blur).pixels

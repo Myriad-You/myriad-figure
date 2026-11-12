@@ -206,6 +206,37 @@ function shoulderCap(d: Arm3DShape, m: Arm3DMesh, s: V3): void {
 }
 
 /**
+ * What a standing figure wears on its shoulder and upper arm, drawn wider than any arm and to one side of it (a
+ * pauldron over a short sleeve): round a tube it stood squeezed to the arm's width, its shape gone. Carried as it
+ * is drawn: the picture of the upper arm from above the shoulder to the sleeve's end, flat, turned about the joint
+ * with the upper arm and as short along it as the arm is seen. One quad, where it hangs exactly where it is drawn.
+ */
+function wornPiece(d: Arm3DShape, m: Arm3DMesh, p: Arm3DPose): void {
+  const hung = sub(d.rest.e, d.rest.s)
+  const l0 = Math.hypot(hung[0], hung[1])
+  const now = norm(sub(p.e, p.s))
+  const l = Math.hypot(now[0], now[1])
+  if (l0 < 1e-6 || d.shortSleeve === undefined) return
+  const a0: [number, number] = [hung[0] / l0, hung[1] / l0]
+  const a1: [number, number] = l < 1e-6 ? a0 : [now[0] / l, now[1] / l]
+  // (Seen as long as the upper arm is: toward the viewer it shortens with it.)
+  const along = l / Math.max(1e-6, l0 / len(hung))
+  const wide = ARM3D_WORN_REACH * Math.max(...Array.from({ length: 9 }, (_, i) => sleeveRadius(d.drawnRadius ? { ...d, radius: d.drawnRadius } : d, i / 16)))
+  const end = l0 * Math.min(1, 2 * d.shortSleeve - 0.03)
+  const front = 1.1 * Math.max(sleeveRadius(d, 0), sleeveRadius(d, 0.25), sleeveRadius(d, 0.5))
+  const base = m.pos.length / 3
+  for (const [a, c] of [[-wide, -wide], [-wide, wide], [end, -wide], [end, wide]]) {
+    const t = Math.max(0, Math.min(1, a / l0))
+    m.pos.push(p.s[0] + a1[0] * a * along - a1[1] * c, p.s[1] + a1[1] * a * along + a1[0] * c, p.s[2] + (p.e[2] - p.s[2]) * t + front)
+    m.nrm.push(0, 0, 1)
+    m.uv.push(1, ARM3D_CAP_V)
+  }
+  m.idx.push(base, base + 2, base + 1, base + 1, base + 2, base + 3)
+}
+/** How far to either side of the arm a worn piece's picture is taken, in the widest the upper sleeve is drawn. */
+export const ARM3D_WORN_REACH = 2.5
+
+/**
  * The sleeve: upper arm and forearm each straight, the elbow the sleeve's ring
  * turned round the bend (hanging, a ball as wide as the sleeve there), the
  * cuff's end face. `rest` (1 hanging) draws its outline to where
@@ -214,7 +245,10 @@ function shoulderCap(d: Arm3DShape, m: Arm3DMesh, s: V3): void {
 export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: number): Arm3DMesh {
   const m = emptyMesh()
   const half = ARM3D_RINGS / 2
-  if (d.restFore !== undefined) shoulderCap(d, m, p.s)
+  if (d.restFore !== undefined) {
+    if (d.worn) wornPiece(d, m, p)
+    else shoulderCap(d, m, p.s)
+  }
   m.tubes = m.idx.length
   const sleeved = len(sub(p.w, p.e)) * sleeveEnd(d, rest)
   // Under a short sleeve the elbow of the arm raised is skin: the rows past the sleeve's end, not the sleeve's own.
@@ -231,7 +265,7 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
       pts.push(lerp(a, b, i / half))
       // A short sleeve drawn wider than the arm in it is that wide round the raised upper arm (as narrow as the
       // arm, what is drawn on it stood squeezed along a thin tube); it closes on the arm at the elbow, where the arm's own surface goes on.
-      const flare = v0 === 0 && d.shortSleeve !== undefined && d.drawnRadius
+      const flare = v0 === 0 && d.shortSleeve !== undefined && d.drawnRadius && !d.worn
         ? SHORT_SLEEVE_FLARE * (1 - rest) * (1 - smoothstep(0.42, 0.5, v)) * Math.max(0, sleeveRadius({ ...d, radius: d.drawnRadius }, v) - sleeveRadius(d, v))
         : 0
       radii.push(sleeveRadius(d, v) * (tuck ? 1 - 0.45 * smoothstep(0.5, 0.56, v) : 1) + flare)

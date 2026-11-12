@@ -590,6 +590,34 @@ test('what hangs off a short sleeve over the skin is taken out of the baked rows
   assert.deepEqual(at(2, 65), [30, 20, 20])
 })
 
+test('what a standing figure wears on a short sleeve\'s shoulder is carried flat with the upper arm', () => {
+  const motion = new Arm3DMotion(shape, false)
+  const hung = motion.keyPose(0, shape.rest.s)
+  const worn = { ...shape, restFore: 280, shortSleeve: 0.4, worn: true }
+  const piece = (pose: typeof hung) => {
+    const m = arm3DSleeveMesh(worn, pose, 1, 2)
+    assert.equal(m.tubes, 6)
+    return { m, at: [0, 1, 2, 3].map((i) => [m.pos[i * 3]!, m.pos[i * 3 + 1]!] as const) }
+  }
+  const rest = piece(hung)
+  for (let i = 0; i < 4; i += 1) assert.deepEqual([rest.m.uv[i * 2], rest.m.uv[i * 2 + 1]], [1, ARM3D_CAP_V])
+  // The tubes after it are a plain sleeve's, and without the mark neither it nor a long sleeve has one.
+  assert.equal(rest.m.pos.length - 12, arm3DSleeveMesh({ ...worn, worn: false, restFore: undefined }, hung, 1, 2).pos.length)
+  assert.equal(arm3DSleeveMesh({ ...worn, shortSleeve: undefined }, hung, 1, 2).tubes, 0)
+  // Hanging it lies along the drawn upper arm, from above the joint to just short of the sleeve's end.
+  const axis = [hung.e[0] - hung.s[0], hung.e[1] - hung.s[1]]
+  const l = Math.hypot(shape.rest.e[0] - shape.rest.s[0], shape.rest.e[1] - shape.rest.s[1])
+  const along = (q: readonly [number, number], s: readonly number[], a: number[]) => ((q[0] - s[0]) * a[0] + (q[1] - s[1]) * a[1]) / Math.hypot(a[0], a[1])
+  assert.ok(along(rest.at[0], hung.s, axis) < 0)
+  assert.ok(Math.abs(along(rest.at[2], hung.s, axis) - (2 * 0.4 - 0.03) * l) < 1e-6 * l + 0.5)
+  // The upper arm turned in the picture's plane, the piece turns with it about the joint, its shape kept.
+  const turned = { ...hung, e: [hung.s[0] + axis[1], hung.s[1] - axis[0], hung.e[2]] as [number, number, number] }
+  const now = piece(turned)
+  const side = (q: readonly [number, number], r: readonly [number, number]) => Math.hypot(q[0] - r[0], q[1] - r[1])
+  for (const [i, j] of [[0, 1], [0, 2], [1, 3], [0, 3]]) assert.ok(Math.abs(side(now.at[i], now.at[j]) - side(rest.at[i], rest.at[j])) < 1e-6)
+  assert.ok(Math.abs(along(now.at[2], turned.s, [axis[1], -axis[0]]) - along(rest.at[2], hung.s, axis)) < 1e-6)
+})
+
 test('a standing figure\'s sleeve begins with a cap about its shoulder, and only a bare shoulder is capped', () => {
   const pose = new Arm3DMotion(shape, false).keyPose(0, shape.rest.s)
   const [sx, sy] = pose.s
