@@ -10,7 +10,7 @@ import { isAnime25DLiningPiece } from '../rig/anime25dLayerSemantics'
 import { Arm3DClothLayer } from './arm3dClothLayer'
 import { arm3DInLook, arm3DOneLook } from './arm3dLook'
 import { add, handExactness, mul, norm, smoothstep, sub } from './arm3dMath'
-import { arm3DCapReach, arm3DHandMesh, arm3DPalmAsModelled, arm3DShoulderIsBare, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
+import { arm3DCapReach, arm3DHandMesh, arm3DKeepWhole, arm3DPalmAsModelled, arm3DShoulderIsBare, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
 import { arm3DCutSides, arm3DGroundClip, arm3DProject, arm3DUpperArmAlone, arm3DWristTone, composeArm3DPicture, splitArm3DLayer } from './arm3dPrepare'
 import { arm3DAimBones, arm3DAimHand, arm3DAimOf, arm3DCarryHand, Arm3DTransit } from './arm3dReach'
@@ -272,6 +272,7 @@ export class Arm3DSide {
             const on = capDrawn[i + 3] >= 128 && (off < 48 || down > 0.2 * shape.upper)
             capPixels.set(on ? [capDrawn[i], capDrawn[i + 1], capDrawn[i + 2], 255] : [whole.pixels[i], whole.pixels[i + 1], whole.pixels[i + 2], 0], i)
           }
+          arm3DKeepWhole(capPixels, armOnly.width, armOnly.height, 0.02)
         }
       }
       const size = { width: pixels.width, height: pixels.height }

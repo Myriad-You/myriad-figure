@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { affineFit, arm3DOnBody, sleeveLineHeldOff } from './arm3dArm'
 import { similarity2D } from './arm3dMath'
-import { ARM3D_AROUND, ARM3D_CAP_V, ARM3D_RINGS, arm3DCapReach, arm3DHandMesh, arm3DPalmAsModelled, arm3DShoulderIsBare, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
+import { ARM3D_AROUND, ARM3D_CAP_V, ARM3D_RINGS, arm3DCapReach, arm3DHandMesh, arm3DKeepWhole, arm3DPalmAsModelled, arm3DShoulderIsBare, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
 import { arm3DCutSides, arm3DUpperArmAlone, bareBelowSleeve, clothCuffMouth, ringFill } from './arm3dPrepare'
 import { arm3DAimBones, arm3DAimHand, arm3DAimOf, Arm3DTransit } from './arm3dReach'
@@ -616,6 +616,38 @@ test('what a standing figure wears on a short sleeve\'s shoulder is carried flat
   const side = (q: readonly [number, number], r: readonly [number, number]) => Math.hypot(q[0] - r[0], q[1] - r[1])
   for (const [i, j] of [[0, 1], [0, 2], [1, 3], [0, 3]]) assert.ok(Math.abs(side(now.at[i], now.at[j]) - side(rest.at[i], rest.at[j])) < 1e-6)
   assert.ok(Math.abs(along(now.at[2], turned.s, [axis[1], -axis[0]]) - along(rest.at[2], hung.s, axis)) < 1e-6)
+})
+
+test('a worn piece\'s picture keeps its large pieces and drops the specks about them', () => {
+  const w = 40
+  const px = new Uint8ClampedArray(w * w * 4)
+  const draw = (x0: number, y0: number, x1: number, y1: number) => {
+    for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) px.set([9, 9, 9, 255], (y * w + x) * 4)
+  }
+  draw(0, 0, 30, 30)
+  draw(32, 0, 40, 20)
+  draw(35, 35, 37, 37)
+  arm3DKeepWhole(px, w, w, 0.02)
+  const at = (x: number, y: number) => px[(y * w + x) * 4 + 3]
+  assert.equal(at(5, 5), 255)
+  assert.equal(at(35, 10), 255)
+  // (Dropped, its colour left as it was.)
+  assert.equal(at(35, 35), 0)
+  assert.equal(px[(35 * w + 35) * 4], 9)
+})
+
+test('a worn piece is in front of the upper arm at the shoulder and as far out as the arm at its hem', () => {
+  const hung = new Arm3DMotion(shape, false).keyPose(0, shape.rest.s)
+  const worn = { ...shape, restFore: 280, shortSleeve: 0.4, worn: true }
+  const m = arm3DSleeveMesh(worn, hung, 0, 2)
+  const z = (i: number) => m.pos[i * 3 + 2]! - hung.s[2]
+  // Vertices 0, 1 above the joint, 2, 3 at the hem.
+  assert.ok(z(0) > 0 && Math.abs(z(0) - z(1)) < 1e-9)
+  assert.ok(z(2) < 0.5 * z(0))
+  // And the upper sleeve's tube, raised, is kept inside it.
+  const plain = arm3DSleeveMesh({ ...worn, worn: false, restFore: undefined }, hung, 0, 2)
+  const reach = (mesh: typeof m, from: number) => Math.max(...Array.from({ length: 10 }, (_, i) => Math.abs(mesh.pos[(from + i) * 3 + 2]! - hung.s[2])))
+  assert.ok(reach(m, 4) < reach(plain, 0))
 })
 
 test('a standing figure\'s sleeve begins with a cap about its shoulder, and only a bare shoulder is capped', () => {
