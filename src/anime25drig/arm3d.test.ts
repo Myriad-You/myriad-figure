@@ -622,7 +622,9 @@ test('a worn piece\'s picture keeps its large pieces and drops the specks about 
   const w = 40
   const px = new Uint8ClampedArray(w * w * 4)
   const draw = (x0: number, y0: number, x1: number, y1: number) => {
-    for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) px.set([9, 9, 9, 255], (y * w + x) * 4)
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = x0; x < x1; x += 1) px.set([9, 9, 9, 255], (y * w + x) * 4)
+    }
   }
   draw(0, 0, 30, 30)
   draw(32, 0, 40, 20)

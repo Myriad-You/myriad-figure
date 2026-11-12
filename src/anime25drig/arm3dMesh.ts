@@ -181,7 +181,9 @@ export function arm3DKeepWhole(pixels: Uint8ClampedArray, width: number, height:
   let most = 0
   for (const n of sizes) most = Math.max(most, n)
   const least = share * most
-  for (let at = 0; at < width * height; at += 1) if (piece[at] >= 0 && sizes[piece[at]] < least) pixels[at * 4 + 3] = 0
+  for (let at = 0; at < width * height; at += 1) {
+    if (piece[at] >= 0 && sizes[piece[at]] < least) pixels[at * 4 + 3] = 0
+  }
 }
 
 /**
