@@ -667,9 +667,10 @@ test('a worn piece stays in front of the upper sleeve under it, and steps back a
     // Past its hem the bare arm is its own width again, as without one.
     const raised = arm3DSleeveMesh(worn, hung, 0, 2)
     const plain = arm3DSleeveMesh({ ...worn, worn: false, restFore: undefined }, hung, 0, 2)
-    const last = ARM3D_RINGS / 2
-    const width = (mesh: typeof raised, base: number) => Math.max(...Array.from({ length: ring }, (_, k) => mesh.pos[(base + last * ring + k) * 3 + 2]!)) - hung.s[2]
-    assert.ok(Math.abs(width(raised, 4) - width(plain, 0)) < 1e-6)
+    const width = (mesh: typeof raised, base: number, r: number) => Math.max(...Array.from({ length: ring }, (_, k) => mesh.pos[(base + r * ring + k) * 3 + 2]!)) - hung.s[2]
+    for (let r = Math.ceil((shortSleeve - 0.015 + 0.03) / 0.5 * (ARM3D_RINGS / 2)); r <= ARM3D_RINGS / 2; r += 1) {
+      assert.ok(Math.abs(width(raised, 4, r) - width(plain, 0, r)) < 1e-6, `sleeve ${shortSleeve}, ring ${r}`)
+    }
   }
 })
 
