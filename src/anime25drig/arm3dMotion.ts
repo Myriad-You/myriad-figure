@@ -10,6 +10,11 @@ export interface Arm3DShape extends Omit<Anime25DArmModel, 'rest' | 'raised' | '
   hand: Array<[number, number]>
   /** A standing figure's drawn hanging hand, 21 points; absent on a bust. */
   restHand?: Array<[number, number]>
+  /**
+   * A standing figure's short sleeve with something worn on its shoulder (a pauldron drawn into the arm's layer):
+   * the upper arm's drawing is carried whole, a flat piece turning with the upper arm (set once its picture is read).
+   */
+  worn?: boolean
 }
 
 /** Pose space over which a figure's drawn hand turns into the gesture's. */
