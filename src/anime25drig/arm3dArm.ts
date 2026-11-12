@@ -10,7 +10,7 @@ import { isAnime25DLiningPiece } from '../rig/anime25dLayerSemantics'
 import { Arm3DClothLayer } from './arm3dClothLayer'
 import { arm3DInLook, arm3DOneLook } from './arm3dLook'
 import { add, handExactness, mul, norm, smoothstep, sub } from './arm3dMath'
-import { arm3DHandMesh, arm3DPalmAsModelled, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
+import { arm3DCapReach, arm3DHandMesh, arm3DPalmAsModelled, arm3DShoulderIsBare, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
 import { arm3DCutSides, arm3DGroundClip, arm3DProject, arm3DUpperArmAlone, arm3DWristTone, composeArm3DPicture, splitArm3DLayer } from './arm3dPrepare'
 import { arm3DAimBones, arm3DAimHand, arm3DAimOf, arm3DCarryHand, Arm3DTransit } from './arm3dReach'
@@ -234,11 +234,26 @@ export class Arm3DSide {
       const restArm = view.picture({ pixels: restPixels, width: armOnly.width, height: armOnly.height })
       // A figure's sleeve wears the arm layer's own drawing: the portrait's over it took in what hangs in front of
       // the arm (a cape's hem at the elbow), and the lifted arm carried that off with it, a piece of the cape on the sleeve.
+      // A standing figure's shoulder cap: the arm layer where the portrait shows it, nothing worn over it (a
+      // pauldron, an epaulette: the arm's skin under one came out on top of it), nor the pieces the arm carries.
+      const capPixels = shape.restFore !== undefined ? composeArm3DPicture(atlas, bases.map(asSource), rect).pixels : null
       for (let i = 0; i < whole.pixels.length; i += 4) {
         const drawn = armOnly.pixels[i + 3] >= 128
+        if (capPixels) {
+          const off = Math.abs(whole.pixels[i] - capPixels[i]) + Math.abs(whole.pixels[i + 1] - capPixels[i + 1]) + Math.abs(whole.pixels[i + 2] - capPixels[i + 2])
+          capPixels[i + 3] = capPixels[i + 3] >= 128 && off < 48 ? 255 : 0
+          // (Off it the portrait's colour, as the arm's own picture below: its edge is not drawn toward black.)
+          if (capPixels[i + 3] === 0) capPixels.set([whole.pixels[i], whole.pixels[i + 1], whole.pixels[i + 2]], i)
+        }
         // (Off the arm the portrait's colour still: a sample across the arm's edge is not drawn toward black.)
         if (!one || !drawn) armOnly.pixels.set([whole.pixels[i], whole.pixels[i + 1], whole.pixels[i + 2]], i)
         armOnly.pixels[i + 3] = drawn ? 255 : 0
+      }
+      if (capPixels) {
+        const k = armOnly.width / rect.w
+        // (An arm of more than one look has no picture of its own to take it from: no cap.)
+        const bare = Boolean(one) && arm3DShoulderIsBare(capPixels, armOnly.width, armOnly.height, (hanging.s[0] - rect.x) * k, (hanging.s[1] - rect.y) * k, arm3DCapReach(shape) * k)
+        if (!bare) capPixels.fill(0)
       }
       const size = { width: pixels.width, height: pixels.height }
       const atLayer = (from: readonly Anime25DGpuLayer[], blur = 0) => composeArm3DPicture(atlas, from.map(asSource), layer.source, size, blur).pixels
@@ -254,6 +269,7 @@ export class Arm3DSide {
       const layerRect = share(layer.source)
       const wholeTexture = view.picture(whole, false)
       const armMask = view.picture(armOnly, true)
+      const cap = capPixels ? view.picture({ pixels: capPixels, width: armOnly.width, height: armOnly.height }, true) : undefined
       const keyTexture = view.picture({ pixels: split.arm, width: pixels.width, height: pixels.height }, false)
       const passes = (upTo: number): Parameters<Arm3DView['bakeSleeve']>[3] => [
         { src: one ? armMask : wholeTexture, rect: share(rect), pose: hanging, rest: 1, minFace: -0.05, maskFrom: one ? 0 : 2, vmax: Math.min(shape.restEnd, upTo) },
@@ -313,6 +329,7 @@ export class Arm3DSide {
         drawn: view.picture(pixels),
         ...this.wholeHand(layers, layer, atlas),
         armMask,
+        cap,
         maskRect: share(rect),
         handPic,
         handWt,

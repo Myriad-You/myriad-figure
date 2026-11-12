@@ -20,7 +20,7 @@ void main() {
 export const SLEEVE_FS = `#version 300 es
 precision highp float;
 in vec2 vUv; in vec3 vNrm; in float vV; in vec2 vPic; in vec2 vAt;
-uniform sampler2D uTex; uniform sampler2D uArmMask; uniform vec4 uMaskRect;
+uniform sampler2D uTex; uniform sampler2D uArmMask; uniform sampler2D uCap; uniform vec4 uMaskRect;
 uniform float uRest; uniform vec4 uSolid; uniform float uFadeTop; uniform float uRestEnd; uniform vec3 uLine;
 uniform float uUnlined; uniform float uOpen; uniform float uLined; uniform vec3 uBand; uniform sampler2D uLifted;
 // Held, cut away over the drawing's own ground (uGround, on uGroundRect of the canvas as drawn; uToDrawn0/1 carry
@@ -66,6 +66,16 @@ void main() {
   vec2 m = (vPic - uMaskRect.xy) / uMaskRect.zw;
   float inMask = step(0.0, m.x) * step(m.x, 1.0) * step(0.0, m.y) * step(m.y, 1.0);
   a *= mix(1.0, texture(uArmMask, m).a * inMask, hang * smoothstep(uRestEnd - 0.02, uRestEnd + 0.02, vV));
+  // The shoulder's cap (its v below the sleeve's): the portrait's own picture of the arm there, no line or mark of its own.
+  if (vV < -0.5) {
+    if (uSolid.a > 0.0) discard;
+    vec4 t = texture(uCap, m) * inMask;
+    float ca = t.a * vUv.x;
+    // (Nothing of it left in the depth where it shows nothing: what passed behind its disc was cut by it.)
+    if (ca < 0.004) discard;
+    o = vec4(t.rgb * ca, ca);
+    return;
+  }
   float edge = 0.0;
   if (uGroundOn > 0.0) {
     vec2 g = (vec2(dot(uToDrawn0, vec3(vAt, 1.0)), dot(uToDrawn1, vec3(vAt, 1.0))) - uGroundRect.xy) / uGroundRect.zw;
