@@ -153,6 +153,40 @@ export function arm3DCapReach(d: Arm3DShape): number {
 }
 
 /**
+ * A picture's drawn pixels (alpha 255) kept only in pieces of a `share` of the largest one or more: what shows of an
+ * arm between the body's straps came apart into specks that, carried off with the raised arm, hung about the armpit.
+ */
+export function arm3DKeepWhole(pixels: Uint8ClampedArray, width: number, height: number, share: number): void {
+  const piece = new Int32Array(width * height).fill(-1)
+  const sizes: number[] = []
+  const stack: number[] = []
+  for (let start = 0; start < width * height; start += 1) {
+    if (piece[start] >= 0 || pixels[start * 4 + 3] < 255) continue
+    const id = sizes.length
+    let n = 0
+    piece[start] = id
+    stack.push(start)
+    while (stack.length > 0) {
+      const at = stack.pop()!
+      n += 1
+      const x = at % width
+      for (const next of [x > 0 ? at - 1 : -1, x < width - 1 ? at + 1 : -1, at - width, at + width]) {
+        if (next < 0 || next >= width * height || piece[next] >= 0 || pixels[next * 4 + 3] < 255) continue
+        piece[next] = id
+        stack.push(next)
+      }
+    }
+    sizes.push(n)
+  }
+  let most = 0
+  for (const n of sizes) most = Math.max(most, n)
+  const least = share * most
+  for (let at = 0; at < width * height; at += 1) {
+    if (piece[at] >= 0 && sizes[piece[at]] < least) pixels[at * 4 + 3] = 0
+  }
+}
+
+/**
  * Whether what a picture (RGBA, the arm layer where the portrait shows it) draws about a shoulder at (cx, cy) is
  * a shoulder: it ends within `reach`. Something larger worn there (a pauldron drawn into the arm's layer) runs on
  * past the cap's rim: capped, a cut piece of it stood still above the arm that carries the rest.
@@ -211,7 +245,7 @@ function shoulderCap(d: Arm3DShape, m: Arm3DMesh, s: V3): void {
  * is drawn: the picture of the upper arm from above the shoulder to the sleeve's end, flat, turned about the joint
  * with the upper arm and as short along it as the arm is seen. One quad, where it hangs exactly where it is drawn.
  */
-function wornPiece(d: Arm3DShape, m: Arm3DMesh, p: Arm3DPose): void {
+function wornPiece(d: Arm3DShape, m: Arm3DMesh, p: Arm3DPose, rest: number): void {
   const hung = sub(d.rest.e, d.rest.s)
   const l0 = Math.hypot(hung[0], hung[1])
   const now = norm(sub(p.e, p.s))
@@ -222,17 +256,30 @@ function wornPiece(d: Arm3DShape, m: Arm3DMesh, p: Arm3DPose): void {
   // (Seen as long as the upper arm is: toward the viewer it shortens with it.)
   const along = l / Math.max(1e-6, l0 / len(hung))
   const wide = ARM3D_WORN_REACH * Math.max(...Array.from({ length: 9 }, (_, i) => sleeveRadius(d.drawnRadius ? { ...d, radius: d.drawnRadius } : d, i / 16)))
-  const end = l0 * Math.min(1, 2 * d.shortSleeve - 0.03)
-  const front = 1.1 * Math.max(sleeveRadius(d, 0), sleeveRadius(d, 0.25), sleeveRadius(d, 0.5))
+  const end = l0 * 2 * wornEnd(d.shortSleeve)
+  // In front of the upper arm all along it hanging; raised, at its hem only as far out as the tube kept inside it,
+  // so a forearm folded up in front of the upper arm is in front of the hem (the hem stood across it at the elbow).
+  const front = 1.1 * Math.max(...Array.from({ length: 9 }, (_, i) => sleeveRadius(d, i / 16)))
+  const hem = arm3DWornInside(rest)
   const base = m.pos.length / 3
   for (const [a, c] of [[-wide, -wide], [-wide, wide], [end, -wide], [end, wide]]) {
     const t = Math.max(0, Math.min(1, a / l0))
-    m.pos.push(p.s[0] + a1[0] * a * along - a1[1] * c, p.s[1] + a1[1] * a * along + a1[0] * c, p.s[2] + (p.e[2] - p.s[2]) * t + front)
+    m.pos.push(p.s[0] + a1[0] * a * along - a1[1] * c, p.s[1] + a1[1] * a * along + a1[0] * c, p.s[2] + (p.e[2] - p.s[2]) * t + front * (a > 0 ? 1 - (1 - hem) * a / end : 1))
     m.nrm.push(0, 0, 1)
     m.uv.push(1, ARM3D_CAP_V)
   }
   m.idx.push(base, base + 2, base + 1, base + 1, base + 2, base + 3)
 }
+/** Where a worn piece ends down the sleeve (shoulder 0, elbow 0.5): just short of the short sleeve's own end. */
+function wornEnd(shortSleeve: number): number {
+  return Math.min(0.5, shortSleeve - 0.015)
+}
+
+/** How far out a worn piece's hem, and the raised upper sleeve under it, stand: in full hanging (`rest` 1), less raised. */
+export function arm3DWornInside(rest: number): number {
+  return 1 - 0.7 * (1 - rest)
+}
+
 /** How far to either side of the arm a worn piece's picture is taken, in the widest the upper sleeve is drawn. */
 export const ARM3D_WORN_REACH = 2.5
 
@@ -246,7 +293,7 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
   const m = emptyMesh()
   const half = ARM3D_RINGS / 2
   if (d.restFore !== undefined) {
-    if (d.worn) wornPiece(d, m, p)
+    if (d.worn) wornPiece(d, m, p, rest)
     else shoulderCap(d, m, p.s)
   }
   m.tubes = m.idx.length
@@ -268,7 +315,12 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
       const flare = v0 === 0 && d.shortSleeve !== undefined && d.drawnRadius && !d.worn
         ? SHORT_SLEEVE_FLARE * (1 - rest) * (1 - smoothstep(0.42, 0.5, v)) * Math.max(0, sleeveRadius({ ...d, radius: d.drawnRadius }, v) - sleeveRadius(d, v))
         : 0
-      radii.push(sleeveRadius(d, v) * (tuck ? 1 - 0.45 * smoothstep(0.5, 0.56, v) : 1) + flare)
+      // Under a worn piece the upper sleeve is the piece's to show: the tube kept inside it as far as its hem, the
+      // arm past the hem its own width again (kept narrow to the elbow, it was pinched there).
+      const under = v0 === 0 && d.worn && d.shortSleeve !== undefined
+        ? 1 - (1 - arm3DWornInside(rest)) * (1 - smoothstep(wornEnd(d.shortSleeve), wornEnd(d.shortSleeve) + 0.03, v))
+        : 1
+      radii.push(sleeveRadius(d, v) * (tuck ? 1 - 0.45 * smoothstep(0.5, 0.56, v) : 1) * under + flare)
       // So the forearm's first of it, where the hem hung over it: the hem stays with the upper arm.
       vs.push(v0 > 0 && bareRow !== null && v < bareRow ? worn(v) : v)
     }

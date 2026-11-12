@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { affineFit, arm3DOnBody, sleeveLineHeldOff } from './arm3dArm'
 import { similarity2D } from './arm3dMath'
-import { ARM3D_AROUND, ARM3D_CAP_V, ARM3D_RINGS, arm3DCapReach, arm3DHandMesh, arm3DPalmAsModelled, arm3DShoulderIsBare, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
+import { ARM3D_AROUND, ARM3D_CAP_V, ARM3D_RINGS, arm3DCapReach, arm3DHandMesh, arm3DKeepWhole, arm3DPalmAsModelled, arm3DShoulderIsBare, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
 import { arm3DCutSides, arm3DUpperArmAlone, bareBelowSleeve, clothCuffMouth, ringFill } from './arm3dPrepare'
 import { arm3DAimBones, arm3DAimHand, arm3DAimOf, Arm3DTransit } from './arm3dReach'
@@ -616,6 +616,64 @@ test('what a standing figure wears on a short sleeve\'s shoulder is carried flat
   const side = (q: readonly [number, number], r: readonly [number, number]) => Math.hypot(q[0] - r[0], q[1] - r[1])
   for (const [i, j] of [[0, 1], [0, 2], [1, 3], [0, 3]]) assert.ok(Math.abs(side(now.at[i], now.at[j]) - side(rest.at[i], rest.at[j])) < 1e-6)
   assert.ok(Math.abs(along(now.at[2], turned.s, [axis[1], -axis[0]]) - along(rest.at[2], hung.s, axis)) < 1e-6)
+})
+
+test('a worn piece\'s picture keeps its large pieces and drops the specks about them', () => {
+  const w = 40
+  const px = new Uint8ClampedArray(w * w * 4)
+  const draw = (x0: number, y0: number, x1: number, y1: number) => {
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = x0; x < x1; x += 1) px.set([9, 9, 9, 255], (y * w + x) * 4)
+    }
+  }
+  draw(0, 0, 30, 30)
+  draw(32, 0, 40, 20)
+  draw(35, 35, 37, 37)
+  arm3DKeepWhole(px, w, w, 0.02)
+  const at = (x: number, y: number) => px[(y * w + x) * 4 + 3]
+  assert.equal(at(5, 5), 255)
+  assert.equal(at(35, 10), 255)
+  // (Dropped, its colour left as it was.)
+  assert.equal(at(35, 35), 0)
+  assert.equal(px[(35 * w + 35) * 4], 9)
+})
+
+test('a worn piece stays in front of the upper sleeve under it, and steps back at its hem as the arm is raised', () => {
+  const hung = new Arm3DMotion(shape, false).keyPose(0, shape.rest.s)
+  const span = Math.hypot(hung.e[0] - hung.s[0], hung.e[1] - hung.s[1])
+  const axis = [(hung.e[0] - hung.s[0]) / span, (hung.e[1] - hung.s[1]) / span]
+  const down = (x: number, y: number) => (x - hung.s[0]) * axis[0] + (y - hung.s[1]) * axis[1]
+  const ring = ARM3D_AROUND + 1
+  for (const shortSleeve of [0.3, 0.4, 0.48]) {
+    const worn = { ...shape, restFore: 280, shortSleeve, worn: true }
+    let hemWas = Infinity
+    for (const rest of [1, 0.9, 0.6, 0.3, 0]) {
+      const m = arm3DSleeveMesh(worn, hung, rest, 2)
+      const z = (i: number) => m.pos[i * 3 + 2]! - hung.s[2]
+      // Vertices 0, 1 above the joint, 2, 3 at the hem; between them it is flat across, straight along.
+      const [a0, a2] = [down(m.pos[0]!, m.pos[1]!), down(m.pos[6]!, m.pos[7]!)]
+      const quad = (a: number) => z(0) + (z(2) - z(0)) * (a - a0) / (a2 - a0)
+      assert.ok(Math.abs(z(0) - z(1)) < 1e-9 && Math.abs(z(2) - z(3)) < 1e-9)
+      if (rest === 1) assert.ok(Math.abs(z(2) - z(0)) < 1e-9)
+      assert.ok(z(2) < hemWas + 1e-9)
+      hemWas = z(2)
+      // Every ring of the upper sleeve the piece reaches over is behind it.
+      for (let r = 0; r <= ARM3D_RINGS / 2; r += 1) {
+        const at = Array.from({ length: ring }, (_, k) => 4 + r * ring + k)
+        const a = at.reduce((sum, i) => sum + down(m.pos[i * 3]!, m.pos[i * 3 + 1]!), 0) / ring
+        if (a > a2) continue
+        for (const i of at) assert.ok(z(i) < quad(a), `rest ${rest}, sleeve ${shortSleeve}, ring ${r}`)
+      }
+    }
+    assert.ok(hemWas < 0.5 * arm3DSleeveMesh(worn, hung, 1, 2).pos[2]!)
+    // Past its hem the bare arm is its own width again, as without one.
+    const raised = arm3DSleeveMesh(worn, hung, 0, 2)
+    const plain = arm3DSleeveMesh({ ...worn, worn: false, restFore: undefined }, hung, 0, 2)
+    const width = (mesh: typeof raised, base: number, r: number) => Math.max(...Array.from({ length: ring }, (_, k) => mesh.pos[(base + r * ring + k) * 3 + 2]!)) - hung.s[2]
+    for (let r = Math.ceil((shortSleeve - 0.015 + 0.03) / 0.5 * (ARM3D_RINGS / 2)); r <= ARM3D_RINGS / 2; r += 1) {
+      assert.ok(Math.abs(width(raised, 4, r) - width(plain, 0, r)) < 1e-6, `sleeve ${shortSleeve}, ring ${r}`)
+    }
+  }
 })
 
 test('a standing figure\'s sleeve begins with a cap about its shoulder, and only a bare shoulder is capped', () => {
