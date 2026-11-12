@@ -636,18 +636,41 @@ test('a worn piece\'s picture keeps its large pieces and drops the specks about 
   assert.equal(px[(35 * w + 35) * 4], 9)
 })
 
-test('a worn piece is in front of the upper arm at the shoulder and as far out as the arm at its hem', () => {
+test('a worn piece stays in front of the upper sleeve under it, and steps back at its hem as the arm is raised', () => {
   const hung = new Arm3DMotion(shape, false).keyPose(0, shape.rest.s)
-  const worn = { ...shape, restFore: 280, shortSleeve: 0.4, worn: true }
-  const m = arm3DSleeveMesh(worn, hung, 0, 2)
-  const z = (i: number) => m.pos[i * 3 + 2]! - hung.s[2]
-  // Vertices 0, 1 above the joint, 2, 3 at the hem.
-  assert.ok(z(0) > 0 && Math.abs(z(0) - z(1)) < 1e-9)
-  assert.ok(z(2) < 0.5 * z(0))
-  // And the upper sleeve's tube, raised, is kept inside it.
-  const plain = arm3DSleeveMesh({ ...worn, worn: false, restFore: undefined }, hung, 0, 2)
-  const reach = (mesh: typeof m, from: number) => Math.max(...Array.from({ length: 10 }, (_, i) => Math.abs(mesh.pos[(from + i) * 3 + 2]! - hung.s[2])))
-  assert.ok(reach(m, 4) < reach(plain, 0))
+  const span = Math.hypot(hung.e[0] - hung.s[0], hung.e[1] - hung.s[1])
+  const axis = [(hung.e[0] - hung.s[0]) / span, (hung.e[1] - hung.s[1]) / span]
+  const down = (x: number, y: number) => (x - hung.s[0]) * axis[0] + (y - hung.s[1]) * axis[1]
+  const ring = ARM3D_AROUND + 1
+  for (const shortSleeve of [0.3, 0.4, 0.48]) {
+    const worn = { ...shape, restFore: 280, shortSleeve, worn: true }
+    let hemWas = Infinity
+    for (const rest of [1, 0.9, 0.6, 0.3, 0]) {
+      const m = arm3DSleeveMesh(worn, hung, rest, 2)
+      const z = (i: number) => m.pos[i * 3 + 2]! - hung.s[2]
+      // Vertices 0, 1 above the joint, 2, 3 at the hem; between them it is flat across, straight along.
+      const [a0, a2] = [down(m.pos[0]!, m.pos[1]!), down(m.pos[6]!, m.pos[7]!)]
+      const quad = (a: number) => z(0) + (z(2) - z(0)) * (a - a0) / (a2 - a0)
+      assert.ok(Math.abs(z(0) - z(1)) < 1e-9 && Math.abs(z(2) - z(3)) < 1e-9)
+      if (rest === 1) assert.ok(Math.abs(z(2) - z(0)) < 1e-9)
+      assert.ok(z(2) < hemWas + 1e-9)
+      hemWas = z(2)
+      // Every ring of the upper sleeve the piece reaches over is behind it.
+      for (let r = 0; r <= ARM3D_RINGS / 2; r += 1) {
+        const at = Array.from({ length: ring }, (_, k) => 4 + r * ring + k)
+        const a = at.reduce((sum, i) => sum + down(m.pos[i * 3]!, m.pos[i * 3 + 1]!), 0) / ring
+        if (a > a2) continue
+        for (const i of at) assert.ok(z(i) < quad(a), `rest ${rest}, sleeve ${shortSleeve}, ring ${r}`)
+      }
+    }
+    assert.ok(hemWas < 0.5 * arm3DSleeveMesh(worn, hung, 1, 2).pos[2]!)
+    // Past its hem the bare arm is its own width again, as without one.
+    const raised = arm3DSleeveMesh(worn, hung, 0, 2)
+    const plain = arm3DSleeveMesh({ ...worn, worn: false, restFore: undefined }, hung, 0, 2)
+    const last = ARM3D_RINGS / 2
+    const width = (mesh: typeof raised, base: number) => Math.max(...Array.from({ length: ring }, (_, k) => mesh.pos[(base + last * ring + k) * 3 + 2]!)) - hung.s[2]
+    assert.ok(Math.abs(width(raised, 4) - width(plain, 0)) < 1e-6)
+  }
 })
 
 test('a standing figure\'s sleeve begins with a cap about its shoulder, and only a bare shoulder is capped', () => {
