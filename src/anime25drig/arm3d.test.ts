@@ -4,7 +4,7 @@ import type { Anime25DArmModel } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { affineFit, arm3DOnBody, sleeveLineHeldOff } from './arm3dArm'
-import { ARM3D_BUST_LIFTED, arm3DBetweenLooks, arm3DOneLook } from './arm3dLook'
+import { arm3DMixedWear, arm3DOneLook, arm3DTurnWear, arm3DWearDrawn } from './arm3dLook'
 import { similarity2D } from './arm3dMath'
 import { ARM3D_AROUND, ARM3D_CAP_V, ARM3D_RINGS, arm3DCapReach, arm3DHandMesh, arm3DKeepWhole, arm3DPalmAsModelled, arm3DShoulderIsBare, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
@@ -775,7 +775,6 @@ test('a bust\'s gestures are one arm led by the wave, or the one folded least', 
   assert.equal(one.lead, 1)
   assert.deepEqual(one.look.radius, wave.radius)
   assert.equal(one.look.cuff, 1)
-  assert.deepEqual(one.look.restBand, [...ARM3D_BUST_LIFTED])
   // A finger the leading picture has no width for takes the first picture's that shows it.
   assert.equal(one.look.fingers[2], 8)
   assert.deepEqual(one.look.hiddenFingers, [])
@@ -795,21 +794,54 @@ test('a standing figure\'s look is its own kind; a figure with no hand found for
   assert.equal(arm3DOneLook([]), null)
 })
 
-test('a bust\'s sleeve is its gesture\'s own held, turned from the one it left on the way, the leading one\'s hanging', () => {
-  const chin = { radius: [10, 20, 30], restEnd: 0.8 }
-  const chest = { radius: [20, 20, 10], restEnd: 0.6 }
-  const wave = { radius: [40, 40, 40], restEnd: 1 }
+test('a bust\'s sleeve is its gestures\' by their shares, the leading one\'s hanging', () => {
+  const chin = { radius: [10, 20, 30], restEnd: 0.8, ink: 0.4 }
+  const chest = { radius: [20, 20, 10], restEnd: 0.6, ink: 0.8 }
+  const wave = { radius: [40, 40, 40], restEnd: 1, ink: 0.6 }
+  const all = [chin, chest, wave]
   // Held: the very gesture's own.
-  assert.equal(arm3DBetweenLooks(chin, null, 1, wave, 0), chin)
-  assert.equal(arm3DBetweenLooks(chin, chest, 1, wave, 0), chin)
-  // Just turned from another, it is still that one's; half way, half each.
-  assert.deepEqual(arm3DBetweenLooks(chin, chest, 0, wave, 0), chest)
-  assert.deepEqual(arm3DBetweenLooks(chin, chest, 0.5, null, 0), { radius: [15, 20, 20], restEnd: 0.7 })
+  assert.deepEqual(arm3DMixedWear(all, [1, 0, 0], 0, 2, 0), chin)
+  // Half way between two, half each.
+  const half = arm3DMixedWear(all, [0.5, 0.5, 0], 0, 2, 0)
+  assert.deepEqual(half.radius, [15, 20, 20])
+  assert.ok(Math.abs(half.restEnd - 0.7) < 1e-9 && Math.abs(half.ink - 0.6) < 1e-9)
   // Hanging, the leading one's whatever it was on the way to.
-  assert.deepEqual(arm3DBetweenLooks(chin, chest, 0.3, wave, 1), wave)
-  assert.deepEqual(arm3DBetweenLooks(chin, null, 1, wave, 0.5), { radius: [25, 30, 35], restEnd: 0.9 })
+  assert.deepEqual(arm3DMixedWear(all, [0.3, 0.7, 0], 0, 2, 1), wave)
+  assert.deepEqual(arm3DMixedWear(all, [1, 0, 0], 0, 2, 0.5).radius, [25, 30, 35])
   // Widths measured at other places are not mixed in.
-  assert.equal(arm3DBetweenLooks(chin, { radius: [1, 2], restEnd: 0 }, 0.5, { radius: [1], restEnd: 0 }, 1), chin)
+  assert.deepEqual(arm3DMixedWear([chin, { radius: [1, 2], restEnd: 0, ink: 0 }], [0.5, 0.5], 0, 1, 1), chin)
+})
+
+test('a bust\'s sleeve turns to another gesture\'s step by step, with no jump when turned again on the way', () => {
+  let shares = [1, 0, 0]
+  shares = arm3DTurnWear(shares, 1, 0.25)
+  assert.deepEqual(shares, [0.75, 0.25, 0])
+  // Turned to a third on the way: the two it was give way in the shares they had.
+  shares = arm3DTurnWear(shares, 2, 0.2)
+  assert.ok(Math.abs(shares[0] - 0.6) < 1e-9 && Math.abs(shares[1] - 0.2) < 1e-9 && Math.abs(shares[2] - 0.2) < 1e-9)
+  // Back to the first: on from where it is.
+  shares = arm3DTurnWear(shares, 0, 0.1)
+  assert.ok(Math.abs(shares[0] - 0.7) < 1e-9 && Math.abs(shares.reduce((a, b) => a + b, 0) - 1) < 1e-9)
+  assert.deepEqual(arm3DTurnWear([0, 1], 1, 0.5), [0, 1])
+  assert.deepEqual(arm3DTurnWear([0.5, 0.5], 0, 2), [1, 0])
+})
+
+test('a bust\'s sleeve wears the drawing of the gesture with the most share, changed over where two are even', () => {
+  // All one gesture's, drawn in its own: nothing else.
+  assert.deepEqual(arm3DWearDrawn([1, 0, 0], 0, 2, 0), { other: null, lead: 0 })
+  // Mostly the one it is drawn in: still that one's alone; even: half the other's, from either side.
+  assert.deepEqual(arm3DWearDrawn([0.7, 0.3, 0], 0, 2, 0), { other: null, lead: 0 })
+  const even = [arm3DWearDrawn([0.5, 0.5, 0], 0, 2, 0).other, arm3DWearDrawn([0.5, 0.5, 0], 1, 2, 0).other]
+  assert.deepEqual(even.map((o) => o?.[0]), [1, 0])
+  assert.ok(even.every((o) => o !== null && Math.abs(o[1] - 0.5) < 1e-9))
+  // Mostly another's than it is drawn in: that one's.
+  assert.deepEqual(arm3DWearDrawn([0.2, 0.8, 0], 0, 2, 0), { other: [1, 1], lead: 0 })
+  assert.deepEqual(arm3DWearDrawn([0, 1, 0], 0, 2, 0), { other: [1, 1], lead: 0 })
+  // Drawn in a third gesture's: the one of the two with the most.
+  assert.deepEqual(arm3DWearDrawn([0, 0.3, 0.7], 0, -1, 0), { other: [2, 1], lead: 0 })
+  // Hanging: the leading one's over it, but not drawn in the leading one's own.
+  assert.deepEqual(arm3DWearDrawn([1, 0, 0], 0, 2, 0.8), { other: null, lead: 0.8 })
+  assert.deepEqual(arm3DWearDrawn([0, 0, 1], 2, 2, 1), { other: null, lead: 0 })
 })
 
 test('a gesture hung as another arm hangs exactly as that one, and is held exactly as its own picture', () => {
