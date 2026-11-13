@@ -4,6 +4,7 @@ import type { Anime25DArmModel } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { affineFit, arm3DOnBody, sleeveLineHeldOff } from './arm3dArm'
+import { ARM3D_BUST_LIFTED, arm3DBustOwn, arm3DInLook, arm3DOneLook } from './arm3dLook'
 import { similarity2D } from './arm3dMath'
 import { ARM3D_AROUND, ARM3D_CAP_V, ARM3D_RINGS, arm3DCapReach, arm3DHandMesh, arm3DKeepWhole, arm3DPalmAsModelled, arm3DShoulderIsBare, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
@@ -763,3 +764,71 @@ test('an elbow folded toward the viewer keeps turning the way it did last frame'
   assert.equal(arm3DSleeveMesh(shape, at(20), 0, 2, side.twist! - 2 * Math.PI).twist, side.twist)
   assert.equal(arm3DSleeveMesh(shape, at(92), 0, 2, Number.NaN).twist, afresh.twist)
 })
+
+test('a bust\'s gestures share one look, the leading one\'s, its lifted sleeve the gestures\' own drawing about the elbow', () => {
+  const chin: Anime25DArmModel = { ...model, radius: model.radius.map((r) => r + 9), cuff: 0.9, hiddenFingers: [3] }
+  const wave: Anime25DArmModel = { ...model, cuff: 1, bare: undefined, fingers: [9, 8, 0, 8, 7], hiddenFingers: [] }
+  delete wave.bare
+  const one = arm3DOneLook([{ gesture: 'chin', model: chin }, { gesture: 'wave', model: wave }])
+  assert.ok(one)
+  assert.equal(one.bust, true)
+  assert.equal(one.lead, 1)
+  assert.deepEqual(one.look.radius, wave.radius)
+  assert.equal(one.look.cuff, 1)
+  assert.deepEqual(one.look.restBand, [...ARM3D_BUST_LIFTED])
+  // A finger the leading picture has no width for takes the first picture's that shows it.
+  assert.equal(one.look.fingers[2], 8)
+  assert.deepEqual(one.look.hiddenFingers, [])
+  // Without a wave a bust is led by the gesture folded least.
+  assert.equal(arm3DOneLook([{ gesture: 'chin', model: chin }, { gesture: 'point', model: chin }, { gesture: 'chest', model: chin }])?.lead, 2)
+  // A band found on the portrait is kept as found.
+  assert.deepEqual(arm3DOneLook([{ gesture: 'wave', model: { ...wave, restBand: [0.4, 0.5] } }])?.look.restBand, [0.4, 0.5])
+})
+
+test('a standing figure\'s look is its own kind; a figure with no hand found for a gesture keeps each gesture\'s own', () => {
+  const stood: Anime25DArmModel = { ...model, restFore: 270, restHand: model.hand }
+  const one = arm3DOneLook([{ gesture: 'chin', model: stood }, { gesture: 'wave', model: stood }])
+  assert.equal(one?.bust, false)
+  assert.equal(one?.look.restBand, undefined)
+  assert.equal(arm3DOneLook([{ gesture: 'chin', model: stood }, { gesture: 'wave', model: { ...model, restFore: 270 } }]), null)
+  assert.equal(arm3DOneLook([{ gesture: 'chin', model: stood }, { gesture: 'wave', model }]), null)
+  assert.equal(arm3DOneLook([]), null)
+})
+
+test('a bust\'s arm in its look ends its sleeve where its own picture does, its hand its own', () => {
+  const lead = arm3DShape({ ...model, cuff: 1, bare: 30, bareShift: 3 }, 100, 50)
+  const own = arm3DShape({ ...model, cuff: 0.8, bareShift: 1, bare: undefined, fingers: [7, 7, 7, 7, 7], hiddenFingers: [0] }, 100, 50)
+  delete own.bare
+  const worn = arm3DBustOwn(arm3DInLook(own, arm3DOneLook([{ gesture: 'wave', model: { ...model, cuff: 1, bare: 30, bareShift: 3 } }])!.look), own)
+  assert.equal(worn.cuff, 0.8)
+  assert.equal(worn.bareShift, 1)
+  assert.equal('bare' in worn, false)
+  assert.deepEqual(worn.radius, lead.radius)
+  assert.deepEqual(worn.fingers, [7, 7, 7, 7, 7])
+  assert.deepEqual(worn.hiddenFingers, [0])
+})
+
+test('a gesture hung as another arm hangs exactly as that one, and is held exactly as its own picture', () => {
+  const lead = arm3DShape({ ...model, upper: 240, fore: 300, rest: { ...model.rest, elbow: [400, 850, 30], wrist: [385, 1149, 30] } }, 100, 50)
+  const alone = new Arm3DMotion(shape, false)
+  const hung = new Arm3DMotion(shape, false, 0, false, lead)
+  const as = new Arm3DMotion(lead, false).keyPose(0, lead.rest.s)
+  const hangs = hung.keyPose(0, lead.rest.s)
+  for (const k of ['s', 'e', 'w'] as const) assert.ok(Math.hypot(...sub3(hangs[k], as[k])) < 1e-9, k)
+  const held = hung.keyPose(1, shape.rest.s)
+  const drawn = alone.keyPose(1, shape.rest.s)
+  for (const k of ['s', 'e', 'w'] as const) assert.deepEqual(held[k], drawn[k])
+  assert.deepEqual(held.hand, drawn.hand)
+  // Its bones turn from the one's lengths into its own on the way up.
+  assert.equal(hung.upper, 240)
+  hung.snap(true)
+  assert.equal(hung.upper, 230)
+  assert.equal(alone.upper, 230)
+  // Up, it is posed as alone.
+  alone.snap(true)
+  assert.deepEqual(hung.pose(shape.rest.s), alone.pose(shape.rest.s))
+})
+
+function sub3(a: V3, b: V3): V3 {
+  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
