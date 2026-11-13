@@ -57,7 +57,7 @@ export interface Arm3DBound {
   wristTone: [number, number, number]
   /** The drawn pose's hand, for how near the hand is to it. */
   drawnHand: V3[]
-  /** The gesture's drawing of its upper arm and elbow alone (in the gesture layer's texture space), laid under the arm held there. Null (as the three below) for a bust, whose arm is the modelled one alone. */
+  /** The gesture's drawing of its upper arm and elbow alone (in the gesture layer's texture space), laid under the arm held there. Null (as the three below) for a bust, whose arm is the modelled one alone (its hand still wears the whole drawn hand, `full`). */
   held: WebGLTexture | null
   /** The same where the body under the drawn arm keeps the portrait's arm: laid on whether or not the sleeve covers it. */
   heldBeside: WebGLTexture | null

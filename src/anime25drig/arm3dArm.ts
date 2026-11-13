@@ -360,7 +360,8 @@ export class Arm3DSide {
         lifted,
         hand: view.picture({ pixels: split.hand, width: pixels.width, height: pixels.height }),
         drawn: view.picture(pixels),
-        ...(laid ? this.wholeHand(layers, layer, atlas) : { full: null, fullMap: [0, 0, 1, 1] as [number, number, number, number] }),
+        // (A bust's too: its modelled fingers leave a curled hand's palm open, the body showing through a fist.)
+        ...this.wholeHand(layers, layer, atlas),
         armMask,
         cap,
         maskRect: share(rect),
