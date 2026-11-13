@@ -715,3 +715,29 @@ test('a standing figure\'s sleeve begins with a cap about its shoulder, and only
   assert.equal(arm3DShoulderIsBare(picture(20), 100, 100, 50, 50, 30), true)
   assert.equal(arm3DShoulderIsBare(picture(45), 100, 100, 50, 50, 30), false)
 })
+
+test('an elbow folded toward the viewer keeps turning the way it did last frame', () => {
+  const shape = arm3DShape(model, 100, 50)
+  const motion = new Arm3DMotion(shape, false)
+  const raised = motion.restPose(shape.rest.s)
+  const s = raised.s
+  const e: [number, number, number] = [s[0], s[1] + 230, s[2]]
+  // Upper arm straight down, the forearm folded back up in front of it, a little to either side of straight at the viewer.
+  const at = (tilt: number) => {
+    const t = (tilt * Math.PI) / 180
+    const fold = (160 * Math.PI) / 180
+    const w: [number, number, number] = [e[0] + 280 * Math.sin(fold) * Math.cos(t), e[1] + 280 * Math.cos(fold), e[2] + 280 * Math.sin(fold) * Math.sin(t)]
+    return { ...raised, e, w }
+  }
+  const before = arm3DSleeveMesh(shape, at(88), 0, 2)
+  const afresh = arm3DSleeveMesh(shape, at(92), 0, 2)
+  const after = arm3DSleeveMesh(shape, at(92), 0, 2, before.twist)
+  // Found afresh the two go round opposite ways (near half a turn each); told the last frame's, the same way.
+  assert.ok(Math.abs(before.twist!) > 2.5 && before.twist! * afresh.twist! < 0)
+  assert.ok(Math.abs(after.twist! - before.twist!) < 0.5)
+  assert.ok(Math.abs(Math.abs(after.twist! - afresh.twist!) - 2 * Math.PI) < 1e-9)
+  // Not past a sixth of a turn beyond the half, nor from a last frame's that is no number: found afresh.
+  const side = arm3DSleeveMesh(shape, at(20), 0, 2)
+  assert.equal(arm3DSleeveMesh(shape, at(20), 0, 2, side.twist! - 2 * Math.PI).twist, side.twist)
+  assert.equal(arm3DSleeveMesh(shape, at(92), 0, 2, Number.NaN).twist, afresh.twist)
+})
