@@ -367,6 +367,10 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
     ? 0.04 + rest * (0.5 * r / Math.max(1e-6, len(sub(p.w, p.e)) * d.cuff) - 0.04)
     : 0.04 + rest * (0.5 * forearmRow(d, Math.min(1, r / Math.max(1e-6, sleeved)), sleeved) - 0.04)
   const vPast = 0.5 * r / Math.max(1e-6, len(sub(p.e, p.s)))
+  // What it gains past a bent elbow wears the upper sleeve's rows no further up than this. A bust's only those at
+  // the elbow: lifted, its upper sleeve is the gesture's drawing, and what that draws just above the elbow (a
+  // band, its charm) came out a second time below it.
+  const PAST_FROM = d.restFore === undefined ? 0.45 : 0.28
   const ball = (c: V3, past = -1) => {
     const base = m.pos.length / 3
     const LAT = 12
@@ -381,7 +385,7 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
         // The end past the elbow goes on from its tube, row for row along the upper arm (by its own poles, turned
         // from the tube's, its rows stepped where the two meet); hanging, its own rows as before.
         // No further up than the shoulder's fade reaches down (a very wide sleeve's end ran into it, its outline thinned).
-        m.uv.push(j / ARM3D_AROUND, past < 0 ? 0.5 + own : worn(Math.max(0.28, 0.5 - past + rest * own - (1 - rest) * dot(n, du) * vPast)))
+        m.uv.push(j / ARM3D_AROUND, past < 0 ? 0.5 + own : worn(Math.max(PAST_FROM, 0.5 - past + rest * own - (1 - rest) * dot(n, du) * vPast)))
       }
     }
     for (let i = 0; i < LAT; i += 1) {
@@ -482,12 +486,12 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
     // portrait's own sleeve where a band off the upper arm would show past its edge.
     const past = vPast * 0.9 * bend * (1 - rest)
     m.gained = m.idx.length
-    const rows = [0.5, Math.max(0.28, 0.5 - past / 2), Math.max(0.28, 0.5 - past)].map(worn)
+    const rows = [0.5, Math.max(PAST_FROM, 0.5 - past / 2), Math.max(PAST_FROM, 0.5 - past)].map(worn)
     // A standing figure's ends in a round tip about the upper arm's own line, the tube's columns and rows going on
     // over it: a ball turned to the elbow's poles wore them askew, a dark mark on the sleeve fanned into stripes
     // across the elbow's point.
     if (d.restFore !== undefined) {
-      tube(m, [c, lerp(c, end, 0.5), end], [r, r, r], rows, ARM3D_AROUND, true, turned => worn(Math.max(0.28, 0.5 - past - (1 - rest) * Math.sin(turned) * vPast)))
+      tube(m, [c, lerp(c, end, 0.5), end], [r, r, r], rows, ARM3D_AROUND, true, turned => worn(Math.max(PAST_FROM, 0.5 - past - (1 - rest) * Math.sin(turned) * vPast)))
       return m
     }
     tube(m, [c, lerp(c, end, 0.5), end], [r, r, r], rows, ARM3D_AROUND)

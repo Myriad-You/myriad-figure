@@ -58,9 +58,9 @@ export interface Arm3DBound {
   /** The drawn pose's hand, for how near the hand is to it. */
   drawnHand: V3[]
   /** The gesture's drawing of its upper arm and elbow alone (in the gesture layer's texture space), laid under the arm held there. */
-  held: WebGLTexture
+  held: WebGLTexture | null
   /** The same where the body under the drawn arm keeps the portrait's arm: laid on whether or not the sleeve covers it. */
-  heldBeside: WebGLTexture
+  heldBeside: WebGLTexture | null
   /** The drawn forearm of a gesture holding it still, laid over the arm after its hand; null for a wave. */
   heldFore: WebGLTexture | null
   /** Its share where the portrait draws in front of its arm, laid on only as the arm is all but held where drawn. */
@@ -283,7 +283,7 @@ export class Arm3DView {
     const line = bound.shape.line.map((c) => c / 255 * 0.85)
     if (frame.rest) this.drawHeld(bound, frame, bound.restArm.texture, frame.rest.alpha, { pos: frame.rest.corners, uv: [0, 0, 1, 0, 1, 1, 0, 1], idx: [0, 1, 2, 0, 2, 3] })
     this.drawSleeve(bound, pose, frame, px, line)
-    if (frame.held && frame.held.near > 0.004) this.drawHeld(bound, frame)
+    if (bound.held && frame.held && frame.held.near > 0.004) this.drawHeld(bound, frame)
     const hand = this.drawHand(bound, pose, frame, px, line)
     if (bound.heldFore && frame.held && frame.held.near > 0.004) {
       // Wherever the modelled hand is not (its stencil): the drawn heel of the hand where the model's palm falls
