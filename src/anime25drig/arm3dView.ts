@@ -57,7 +57,7 @@ export interface Arm3DBound {
   wristTone: [number, number, number]
   /** The drawn pose's hand, for how near the hand is to it. */
   drawnHand: V3[]
-  /** The gesture's drawing of its upper arm and elbow alone (in the gesture layer's texture space), laid under the arm held there. */
+  /** The gesture's drawing of its upper arm and elbow alone (in the gesture layer's texture space), laid under the arm held there. Null (as the three below) for a bust, whose arm is the modelled one alone. */
   held: WebGLTexture | null
   /** The same where the body under the drawn arm keeps the portrait's arm: laid on whether or not the sleeve covers it. */
   heldBeside: WebGLTexture | null
@@ -454,7 +454,8 @@ export class Arm3DView {
     gl.bindTexture(gl.TEXTURE_2D, bound.drawn)
     gl.uniform1i(this.uniform(p, 'uDrawn'), 2)
     gl.activeTexture(gl.TEXTURE3)
-    gl.bindTexture(gl.TEXTURE_2D, bound.full)
+    // (Without one, any texture: the program samples it and takes none of it.)
+    gl.bindTexture(gl.TEXTURE_2D, bound.full ?? bound.hand)
     gl.uniform1i(this.uniform(p, 'uFull'), 3)
     gl.uniform4f(this.uniform(p, 'uFullMap'), ...bound.fullMap)
     gl.uniform1f(this.uniform(p, 'uHasFull'), bound.full ? 1 : 0)

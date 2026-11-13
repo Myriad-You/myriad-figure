@@ -70,18 +70,19 @@ function asSource(layer: Anime25DGpuLayer): Arm3DSourceLayer {
 }
 
 /**
- * One side's arm as a 3D model: always the arm on that side, hanging too
- * (handed to and from the drawn arm at each start and end, the two never
- * quite matched and every gesture began and ended with a change), raised to
- * whichever of its gestures is wanted, one at a time.
- */
-/**
  * A bust's sleeve, lifted, is the gesture's own drawing of it about the elbow (along the arm: shoulder 0, elbow
  * 0.5, wrist 1): the portrait's above the elbow met the gesture's below it with whatever the two draw there (a
  * band) worn twice. No further down: past it the sleeve is the gesture's anyway, and baked for this stretch alone
  * a long sleeve came out without its cuff.
  */
-const LIFTED: [number, number] = [0.3, 0.62]
+const LIFTED: readonly [number, number] = [0.3, 0.62]
+
+/**
+ * One side's arm as a 3D model: always the arm on that side, hanging too
+ * (handed to and from the drawn arm at each start and end, the two never
+ * quite matched and every gesture began and ended with a change), raised to
+ * whichever of its gestures is wanted, one at a time.
+ */
 export class Arm3DSide {
   readonly gestures: Gesture[] = []
   private shown: Gesture | null = null
@@ -194,8 +195,8 @@ export class Arm3DSide {
       if (!pixels) continue
       const own = arm3DShape(model, layer.source.x, layer.source.y)
       const shape = one ? arm3DInLook(own, one.look) : own
-      // Pieces of the drawings themselves are laid on the modelled arm only for a standing figure that has no one
-      // look (handed back to its drawn arm where it hangs). A bust's arm is the modelled one alone, wherever it is:
+      // Pieces of the drawings themselves are made for a standing figure's arm only (and laid on it only where it
+      // has no one look, handed back to its drawn arm where it hangs). A bust's arm is the modelled one alone, wherever it is:
       // the drawing come up over it as it reached its gesture, and gone as it left, was another arm for a moment.
       const laid = own.restFore !== undefined
       // A full body's arm gives its drawn sizes on its own scale; a bust's on its canvas's.
@@ -391,7 +392,7 @@ export class Arm3DSide {
       else {
         // Lifted, the portrait's sleeve stops short of a band the gestures all draw at the wrist instead.
         // A bust's is the gesture's own drawing about the elbow whether or not a band was found there.
-        if (!laid && !shape.restBand) shape.restBand = LIFTED
+        if (!laid && !shape.restBand) shape.restBand = [...LIFTED]
         made(view.bakeSleeve(shape, px, canvas, passes(2)), shape.restBand ? view.bakeSleeve(shape, px, canvas, passes(shape.restBand[0])) : undefined, tone)
         drop()
       }
