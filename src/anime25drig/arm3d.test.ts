@@ -129,7 +129,10 @@ test('meshes keep their vertices pose to pose, so pictures laid on them once sta
   assert.ok(a.uv.every((v, i) => i % 2 === 0 || (v >= 0 && v <= 1.05)))
   // What it gains wears the upper sleeve's rows back from the elbow, not the elbow's one row all along.
   const gained = b.uv.slice(a.uv.length).filter((_, i) => i % 2 === 1)
-  assert.ok(gained.length > 0 && Math.max(...gained) < 0.52 && Math.min(...gained) < 0.4)
+  // (A bust's only those at the elbow; a standing figure's further back.)
+  assert.ok(gained.length > 0 && Math.max(...gained) < 0.52 && Math.min(...gained) < 0.5 && Math.min(...gained) >= 0.45)
+  const standing = arm3DSleeveMesh({ ...shape, restFore: shape.fore }, raised, 0, px)
+  assert.ok(Math.min(...standing.uv.slice(a.uv.length).filter((_, i) => i % 2 === 1)) < 0.4)
   // Its round end goes on from its tube with no step in the rows where the two meet (the end's own equator is
   // turned from the tube's last ring; the rows follow the upper arm on both).
   const du = [raised.e[0] - raised.s[0], raised.e[1] - raised.s[1], raised.e[2] - raised.s[2]]
@@ -138,7 +141,7 @@ test('meshes keep their vertices pose to pose, so pictures laid on them once sta
   const from = a.pos.length / 3
   const rows = Array.from({ length: b.pos.length / 3 - from }, (_, k) => [alongUpper(b, from + k), b.uv[(from + k) * 2 + 1]])
   const slope = 0.5 / dl
-  assert.ok(rows.every(([x, v]) => Math.abs(v - (0.5 - x * slope)) < 1e-6))
+  assert.ok(rows.every(([x, v]) => Math.abs(v - Math.max(0.45, 0.5 - x * slope)) < 1e-6))
   // The picture's upper arm is told from its elbow by the sleeve's rows: what it gains is marked as its own.
   assert.equal(a.gained, undefined)
   assert.ok(b.gained! > 0 && b.gained! < b.idx.length && b.idx.slice(b.gained).every((i) => i >= from))

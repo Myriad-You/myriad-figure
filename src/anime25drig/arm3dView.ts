@@ -57,10 +57,10 @@ export interface Arm3DBound {
   wristTone: [number, number, number]
   /** The drawn pose's hand, for how near the hand is to it. */
   drawnHand: V3[]
-  /** The gesture's drawing of its upper arm and elbow alone (in the gesture layer's texture space), laid under the arm held there. */
-  held: WebGLTexture
+  /** The gesture's drawing of its upper arm and elbow alone (in the gesture layer's texture space), laid under the arm held there. Null (as the three below) for a bust, whose arm is the modelled one alone. */
+  held: WebGLTexture | null
   /** The same where the body under the drawn arm keeps the portrait's arm: laid on whether or not the sleeve covers it. */
-  heldBeside: WebGLTexture
+  heldBeside: WebGLTexture | null
   /** The drawn forearm of a gesture holding it still, laid over the arm after its hand; null for a wave. */
   heldFore: WebGLTexture | null
   /** Its share where the portrait draws in front of its arm, laid on only as the arm is all but held where drawn. */
@@ -283,7 +283,7 @@ export class Arm3DView {
     const line = bound.shape.line.map((c) => c / 255 * 0.85)
     if (frame.rest) this.drawHeld(bound, frame, bound.restArm.texture, frame.rest.alpha, { pos: frame.rest.corners, uv: [0, 0, 1, 0, 1, 1, 0, 1], idx: [0, 1, 2, 0, 2, 3] })
     this.drawSleeve(bound, pose, frame, px, line)
-    if (frame.held && frame.held.near > 0.004) this.drawHeld(bound, frame)
+    if (bound.held && frame.held && frame.held.near > 0.004) this.drawHeld(bound, frame)
     const hand = this.drawHand(bound, pose, frame, px, line)
     if (bound.heldFore && frame.held && frame.held.near > 0.004) {
       // Wherever the modelled hand is not (its stencil): the drawn heel of the hand where the model's palm falls
@@ -454,7 +454,8 @@ export class Arm3DView {
     gl.bindTexture(gl.TEXTURE_2D, bound.drawn)
     gl.uniform1i(this.uniform(p, 'uDrawn'), 2)
     gl.activeTexture(gl.TEXTURE3)
-    gl.bindTexture(gl.TEXTURE_2D, bound.full)
+    // (Without one, any texture: the program samples it and takes none of it.)
+    gl.bindTexture(gl.TEXTURE_2D, bound.full ?? bound.hand)
     gl.uniform1i(this.uniform(p, 'uFull'), 3)
     gl.uniform4f(this.uniform(p, 'uFullMap'), ...bound.fullMap)
     gl.uniform1f(this.uniform(p, 'uHasFull'), bound.full ? 1 : 0)
