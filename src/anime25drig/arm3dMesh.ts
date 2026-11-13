@@ -416,10 +416,12 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
     const carried = turn(front0, hinge, angle)
     const wanted = tubeFront(df)
     const direct = Math.atan2(dot(cross(carried, wanted), df), dot(carried, wanted))
-    // Near half a turn either way round gets there, and a small movement about such a pose (a wave held in the
-    // picture's plane) took the other way from one frame to the next, the elbow's rows changing sides each time:
-    // the way that is nearer the last frame's.
-    const twist = near === undefined ? direct : direct + 2 * Math.PI * Math.max(-1, Math.min(1, Math.round((near - direct) / (2 * Math.PI))))
+    // Near half a turn either way round gets there, and a small movement about such a pose (a wave held with the
+    // forearm folded toward the viewer) took the other way from one frame to the next, the elbow's rows changing
+    // sides each time: the way that is nearer the last frame's, while that stays within a sixth of a turn past the
+    // half (further is a turn wound on by a way round, or what another pose left: found afresh).
+    const kept = near !== undefined && Number.isFinite(near) ? direct + 2 * Math.PI * Math.round((near - direct) / (2 * Math.PI)) : direct
+    const twist = Math.abs(kept) <= Math.PI * (1 + 1 / 3) ? kept : direct
     m.twist = twist
     const innerAt: boolean[] = []
     for (let i = 0; i <= SWEEP; i += 1) {

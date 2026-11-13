@@ -736,4 +736,8 @@ test('an elbow folded toward the viewer keeps turning the way it did last frame'
   assert.ok(Math.abs(before.twist!) > 2.5 && before.twist! * afresh.twist! < 0)
   assert.ok(Math.abs(after.twist! - before.twist!) < 0.5)
   assert.ok(Math.abs(Math.abs(after.twist! - afresh.twist!) - 2 * Math.PI) < 1e-9)
+  // Not past a sixth of a turn beyond the half, nor from a last frame's that is no number: found afresh.
+  const side = arm3DSleeveMesh(shape, at(20), 0, 2)
+  assert.equal(arm3DSleeveMesh(shape, at(20), 0, 2, side.twist! - 2 * Math.PI).twist, side.twist)
+  assert.equal(arm3DSleeveMesh(shape, at(92), 0, 2, Number.NaN).twist, afresh.twist)
 })
