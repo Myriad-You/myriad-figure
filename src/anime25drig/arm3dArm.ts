@@ -1,3 +1,4 @@
+import type { Arm3DWear } from './arm3dLook'
 import type { V3 } from './arm3dMath'
 import type { Arm3DPose, Arm3DShape } from './arm3dMotion'
 import type { Arm3DSourceLayer } from './arm3dPrepare'
@@ -8,11 +9,11 @@ import type { Anime25DRenderFrame } from './renderer'
 import type { Anime25DSecondaryDeformationFrame } from './secondaryDeformation'
 import { isAnime25DLiningPiece } from '../rig/anime25dLayerSemantics'
 import { Arm3DClothLayer } from './arm3dClothLayer'
-import { arm3DInLook, arm3DOneLook } from './arm3dLook'
+import { ARM3D_BUST_LIFTED, arm3DInLook, arm3DMixedWear, arm3DOneLook, arm3DTurnWear, arm3DWearDrawn } from './arm3dLook'
 import { add, handExactness, mul, norm, smoothstep, sub } from './arm3dMath'
 import { arm3DCapReach, arm3DHandMesh, arm3DKeepWhole, arm3DPalmAsModelled, arm3DShoulderIsBare, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
-import { arm3DCutSides, arm3DGroundClip, arm3DProject, arm3DUpperArmAlone, arm3DWristTone, composeArm3DPicture, splitArm3DLayer } from './arm3dPrepare'
+import { ARM3D_INK, arm3DCutSides, arm3DGroundClip, arm3DInk, arm3DProject, arm3DUpperArmAlone, arm3DWristTone, composeArm3DPicture, splitArm3DLayer } from './arm3dPrepare'
 import { arm3DAimBones, arm3DAimHand, arm3DAimOf, arm3DCarryHand, Arm3DTransit } from './arm3dReach'
 import { armPoints, createBodyTexture, draped, swung } from './arm3dSwing'
 import { armDrapeWeight } from './armRig'
@@ -33,7 +34,16 @@ interface Gesture {
   /** How near the arm is held to this gesture as drawn (its elbow there, its hand near), and how exactly. */
   near: number
   exact: number
+  /** Where its own picture draws the sleeve's end along the forearm (elbow 0, wrist 1). */
+  cuff: number
+  /** Its sleeve as its own picture has it (a bust's on the way between gestures is turned from one into another). */
+  own: Arm3DWear
 }
+
+/** A bust's sleeve slides to where the gesture turned to draws its end in about this long (seconds). */
+const CUFF = 0.1
+/** A bust's sleeve turns into the one of the gesture turned to in this long (seconds). */
+const WEAR = 0.35
 
 /** A standing figure's modelled arm comes in over its drawn one, and goes, in this long (seconds), where it hangs. */
 const HANDOVER = 0.12
@@ -70,14 +80,6 @@ function asSource(layer: Anime25DGpuLayer): Arm3DSourceLayer {
 }
 
 /**
- * A bust's sleeve, lifted, is the gesture's own drawing of it about the elbow (along the arm: shoulder 0, elbow
- * 0.5, wrist 1): the portrait's above the elbow met the gesture's below it with whatever the two draw there (a
- * band) worn twice. No further down: past it the sleeve is the gesture's anyway, and baked for this stretch alone
- * a long sleeve came out without its cuff.
- */
-const LIFTED: readonly [number, number] = [0.3, 0.62]
-
-/**
  * One side's arm as a 3D model: always the arm on that side, hanging too
  * (handed to and from the drawn arm at each start and end, the two never
  * quite matched and every gesture began and ended with a change), raised to
@@ -92,6 +94,24 @@ export class Arm3DSide {
    * no longer that drawing's.
    */
   private oneLook = false
+  /**
+   * A bust's arm is one arm too: going from one gesture to another it is the same arm in another pose, never two
+   * crossed over, wearing the hand of the one it left (`worn`: that gesture's picture and fitted fingers) until
+   * its hand is no longer that drawing's. Held, its sleeve is the gesture's own as that picture draws it (one
+   * sleeve of all its pictures wore each pose with what another drew, its cuff a flap, streaks where that one saw
+   * nothing); on the way it turns from the one into the other on the arm (`wear`), and hangs the leading one's.
+   * Not a standing figure's in the rest: its hanging hand is off the picture (none drawn to hang in), the
+   * portrait's arm still lies under its sleeve where it hangs, and each gesture keeps its picture of the body
+   * beside its arm.
+   */
+  private bustLook = false
+  /** With a bust's one arm: how much its sleeve is each gesture's (shares of `gestures`, summing to 1). */
+  private wear: number[] = []
+  /** With a bust's one arm: where the sleeve ends along the forearm this frame, and where it does hanging. */
+  private cuff: number | null = null
+  private hangCuff = 1
+  /** With a bust's one arm, the leading gesture: come to rest, the arm is that one's, whichever it last made (each hung a hand of its own at the picture's foot). */
+  private rests: Gesture | null = null
   /** The gesture whose hand an arm of one look hangs in. */
   private hangs: Gesture | null = null
   private worn: Gesture | null = null
@@ -179,13 +199,19 @@ export class Arm3DSide {
       && layer.source.role !== 'back-hair' && layer.renderKind === 'ordinary' && (i > baseAt || layer.source.role.includes('hair')))
     const mine = layers.filter((layer) => layer.source.role === 'arm-variant' && arm(layer) && layer.source.side === bases[0]?.source.side)
     const one = arm3DOneLook(mine.map((layer) => ({ gesture: layer.source.armVariant!.gesture, model: arm(layer)! })))
+    // What only a standing figure's one look does (a bust's bakes and hangs as a bust's own).
+    const standing = one !== null && !one.bust
     const lead = one ? mine[one.lead] : null
     const leadModel = lead ? arm(lead)! : null
     // The palm as the leading gesture draws it, on that gesture's own hand.
     const leadShape = lead && leadModel ? arm3DShape(leadModel, lead.source.x, lead.source.y) : null
     const onePalm = leadShape && leadModel ? arm3DPalmAsModelled(new Arm3DMotion(leadShape, false).keyPose(1, leadShape.rest.s).hand, leadModel.palmOutline) : null
-    this.oneLook = one !== null
-    this.transit.handInTime = this.oneLook
+    this.oneLook = standing
+    this.hangCuff = one?.look.cuff ?? 1
+    this.bustLook = one !== null && one.bust
+    // (A bust's hand turns into the next with its bones, as ever: come to a gesture's shape before the arm is there,
+    // the modelled hand stood in for the drawn one across the picture, short of it at the fingers' roots.)
+    this.transit.handInTime = standing
     /** A figure's gestures wait for the one sleeve they all wear, baked from all their pictures. */
     const waiting: Array<{ lead: boolean; shape: Arm3DShape; px: number; tone: Arm3DBound['wristTone']; passes: (upTo: number) => Parameters<Arm3DView['bakeSleeve']>[3]; made: (sleeve: WebGLTexture, lifted: WebGLTexture | undefined, tone: Arm3DBound['wristTone']) => void; drop: () => void }> = []
     for (const layer of layers) {
@@ -194,20 +220,22 @@ export class Arm3DSide {
       const pixels = readLayerPixels(atlas, layer.source)
       if (!pixels) continue
       const own = arm3DShape(model, layer.source.x, layer.source.y)
-      const shape = one ? arm3DInLook(own, one.look) : own
+      // (A bust's is its own as its picture draws it: one arm of its gestures by turning from one's into another's.)
+      const shape = standing ? arm3DInLook(own, one!.look) : own
       // Pieces of the drawings themselves are made for a standing figure's arm only (and laid on it only where it
       // has no one look, handed back to its drawn arm where it hangs). A bust's arm is the modelled one alone, wherever it is:
       // the drawing come up over it as it reached its gesture, and gone as it left, was another arm for a moment.
       const laid = own.restFore !== undefined
       // A full body's arm gives its drawn sizes on its own scale; a bust's on its canvas's.
-      const px = (one ? leadModel!.trialPixel : undefined) ?? model.trialPixel ?? bustPixel
-      const motion = new Arm3DMotion(own, layer.source.armVariant!.gesture === 'wave', own.restFore === undefined ? 0 : own.rest.s[0] < canvas.width / 2 ? -1 : 1, one !== null)
+      const px = (standing ? leadModel!.trialPixel : undefined) ?? model.trialPixel ?? bustPixel
+      const motion = new Arm3DMotion(own, layer.source.armVariant!.gesture === 'wave', own.restFore === undefined ? 0 : own.rest.s[0] < canvas.width / 2 ? -1 : 1, one !== null, one?.bust && layer !== lead ? leadShape! : undefined)
       const hanging = motion.keyPose(0, shape.rest.s)
       const raised = motion.keyPose(1, shape.rest.s)
       // The portrait about its hanging arm, whole and its arm alone (the arm layers say where the arm is).
       const hangWrist = arm3DWristMesh(shape, hanging, 1)
       // The drawn hand lies where the gesture drew it; the modelled one hangs from the portrait's shoulder.
-      const palm = one ? onePalm : arm3DPalmAsModelled(raised.hand, model.palmOutline)
+      // (A bust's palm is each gesture's own, as all its hand is.)
+      const palm = standing ? onePalm : arm3DPalmAsModelled(raised.hand, model.palmOutline)
       // A standing figure's hangs where the portrait draws it: the picture about the arm takes it in too.
       const hangHand = shape.restHand ? arm3DHandMesh(shape, hanging, palm) : null
       let x0 = Infinity
@@ -261,16 +289,16 @@ export class Arm3DSide {
           if (capPixels[i + 3] === 0) capPixels.set([whole.pixels[i], whole.pixels[i + 1], whole.pixels[i + 2]], i)
         }
         // (Off the arm the portrait's colour still: a sample across the arm's edge is not drawn toward black.)
-        if (!one || !drawn) armOnly.pixels.set([whole.pixels[i], whole.pixels[i + 1], whole.pixels[i + 2]], i)
+        if (!standing || !drawn) armOnly.pixels.set([whole.pixels[i], whole.pixels[i + 1], whole.pixels[i + 2]], i)
         armOnly.pixels[i + 3] = drawn ? 255 : 0
       }
       if (capPixels) {
         const k = armOnly.width / rect.w
         // (An arm of more than one look has no picture of its own to take it from: no cap.)
-        const bare = Boolean(one) && arm3DShoulderIsBare(capPixels, armOnly.width, armOnly.height, (hanging.s[0] - rect.x) * k, (hanging.s[1] - rect.y) * k, arm3DCapReach(shape) * k)
+        const bare = standing && arm3DShoulderIsBare(capPixels, armOnly.width, armOnly.height, (hanging.s[0] - rect.x) * k, (hanging.s[1] - rect.y) * k, arm3DCapReach(shape) * k)
         if (!bare) capPixels.fill(0)
         // Something worn there over a short sleeve: the arm layer's own drawing of it all, carried flat with the upper arm.
-        if (!bare && one && capDrawn && shape.shortSleeve !== undefined) {
+        if (!bare && standing && capDrawn && shape.shortSleeve !== undefined) {
           shape.worn = true
           const hungL = Math.hypot(hanging.e[0] - hanging.s[0], hanging.e[1] - hanging.s[1]) || 1
           const hungX = (hanging.e[0] - hanging.s[0]) / hungL
@@ -295,7 +323,7 @@ export class Arm3DSide {
         arm: atLayer(bases),
         // About where the portrait's arm was: its rim, the gesture's arm drawn beside it on the ground, is not body.
         near: atLayer(bases, 4 * px * pixels.width / layer.source.w),
-      }, Boolean(one))
+      }, standing)
       const toLayer = (x: number, y: number): [number, number] => [(x - layer.source.x) / layer.source.w * pixels.width, (y - layer.source.y) / layer.source.h * pixels.height]
       const share = (r: { x: number; y: number; w: number; h: number }): [number, number, number, number] => [r.x / canvas.width, r.y / canvas.height, r.w / canvas.width, r.h / canvas.height]
       const layerRect = share(layer.source)
@@ -304,7 +332,7 @@ export class Arm3DSide {
       const cap = capPixels ? view.picture({ pixels: capPixels, width: armOnly.width, height: armOnly.height }, true) : undefined
       const keyTexture = view.picture({ pixels: split.arm, width: pixels.width, height: pixels.height }, false)
       const passes = (upTo: number): Parameters<Arm3DView['bakeSleeve']>[3] => [
-        { src: one ? armMask : wholeTexture, rect: share(rect), pose: hanging, rest: 1, minFace: -0.05, maskFrom: one ? 0 : 2, vmax: Math.min(shape.restEnd, upTo) },
+        { src: standing ? armMask : wholeTexture, rect: share(rect), pose: hanging, rest: 1, minFace: -0.05, maskFrom: standing ? 0 : 2, vmax: Math.min(shape.restEnd, upTo) },
         { src: armMask, rect: share(rect), pose: hanging, rest: 1, minFace: -0.05, maskFrom: 0, vmax: upTo },
         { src: keyTexture, rect: layerRect, pose: raised, rest: 0, minFace: 0.15, maskFrom: 0, vmax: 2 },
       ]
@@ -352,6 +380,8 @@ export class Arm3DSide {
       const [handHangPic, handHangWt] = hangHand ? arm3DProject(hangHand, onMask) : []
       const tone = arm3DWristTone(split.hand, pixels.width, pixels.height, shape, toLayer)
       const order = layers.indexOf(layer)
+      // (A bust's sleeve is lined as dark as its own picture lines its arm.)
+      const ink = laid ? ARM3D_INK : arm3DInk(split.arm, pixels.width, pixels.height)
       const made = (sleeve: WebGLTexture, lifted: WebGLTexture | undefined, wristTone: Arm3DBound['wristTone']) => {
       const bound: Arm3DBound = {
         shape,
@@ -375,6 +405,7 @@ export class Arm3DSide {
         hangPic,
         palm,
         wristTone,
+        ...(laid ? {} : { ink }),
         drawnHand: raised.hand.map((q) => [q[0], q[1], q[2]] as V3),
         drawnPic: [dx + layer.source.x, dy + layer.source.y, 1 / layer.source.w, 1 / layer.source.h],
         held,
@@ -385,15 +416,15 @@ export class Arm3DSide {
         restArm: { texture: restArm, rect: [rect.x, rect.y, rect.w, rect.h], at: armPoints(hanging) },
       }
       // The body the portrait's arm leaves bare: drawn in the arm's place.
-      this.gestures.push({ layer, gesture: layer.source.armVariant!.gesture, bound, motion, touch: this.touchOf(layers, shape), order, near: 0, exact: 0 })
+      this.gestures.push({ layer, gesture: layer.source.armVariant!.gesture, bound, motion, touch: this.touchOf(layers, shape), order, near: 0, exact: 0, cuff: shape.cuff, own: { radius: [...shape.radius], restEnd: shape.restEnd, ink } })
       }
-      if (one) {
+      if (standing) {
         waiting.push({ lead: layer === lead, shape, px, tone, passes, made, drop })
       }
       else {
         // Lifted, the portrait's sleeve stops short of a band the gestures all draw at the wrist instead.
         // A bust's is the gesture's own drawing about the elbow whether or not a band was found there.
-        if (!laid && !shape.restBand) shape.restBand = [...LIFTED]
+        if (!laid && !shape.restBand) shape.restBand = [...ARM3D_BUST_LIFTED]
         made(view.bakeSleeve(shape, px, canvas, passes(2)), shape.restBand ? view.bakeSleeve(shape, px, canvas, passes(shape.restBand[0])) : undefined, tone)
         drop()
       }
@@ -459,7 +490,8 @@ export class Arm3DSide {
 }
     this.shown = hangs ?? this.gestures[0] ?? null
     this.worn = this.shown
-    this.led = lead ? this.gestures.find((g) => g.layer === lead) ?? null : null
+    this.led = lead && standing ? this.gestures.find((g) => g.layer === lead) ?? null : null
+    this.rests = lead && one?.bust ? this.gestures.find((g) => g.layer === lead) ?? null : null
   }
 
   /** A hand drawn touching the face (at the chin) stays on it while the head turns. */
@@ -593,6 +625,9 @@ export class Arm3DSide {
     if (!now.motion.wanted && this.wanted && now.motion.resting && this.transit.idle) {
       this.shown = this.gestures.find((g) => g.gesture === this.wanted) ?? now
     }
+    else if (this.rests && !this.aim && !this.wanted && now !== this.rests && now.motion.resting && this.transit.idle) {
+      this.shown = this.rests
+    }
     return this.show(time, handover)
   }
 
@@ -661,11 +696,17 @@ export class Arm3DSide {
     const asked = g.motion.pose(anchor)
     const wanted: Arm3DStance = this.aiming && this.aim
       ? this.aimed(this.aim, g)
-      : { du: norm(sub(asked.e, asked.s)), df: norm(sub(asked.w, asked.e)), upper: g.bound.shape.upper, fore: Math.hypot(asked.w[0] - asked.e[0], asked.w[1] - asked.e[1], asked.w[2] - asked.e[2]), hand: asked.hand.map((q) => sub(q, asked.w)), handRest: g.motion.handRest, hanging: g.motion.hanging }
+      : { du: norm(sub(asked.e, asked.s)), df: norm(sub(asked.w, asked.e)), upper: g.motion.upper, fore: Math.hypot(asked.w[0] - asked.e[0], asked.w[1] - asked.e[1], asked.w[2] - asked.e[2]), hand: asked.hand.map((q) => sub(q, asked.w)), handRest: g.motion.handRest, hanging: g.motion.hanging }
     if (this.turned) this.transit.retarget(wanted)
     this.turned = false
     const stance = this.transit.pose(wanted, Math.min(1 / 30, this.dt))
     this.stance = stance
+    if (this.bustLook) {
+      const at = this.gestures.indexOf(g)
+      this.wear = this.wear.length === this.gestures.length ? arm3DTurnWear(this.wear, at, this.dt / WEAR) : this.gestures.map((_, i) => (i === at ? 1 : 0))
+      const to = this.hangCuff + (g.cuff - this.hangCuff) * (1 - stance.hanging)
+      this.cuff = this.cuff === null ? to : this.cuff + (to - this.cuff) * Math.min(1, this.dt / CUFF)
+    }
     let pose = asked
     if (stance !== wanted || this.aiming) {
       const e = add(anchor, mul(stance.du, stance.upper))
@@ -691,7 +732,8 @@ export class Arm3DSide {
     // Held as drawn: its elbow where the gesture has it, its hand near (a wave swings the hand, not the elbow).
     // (An arm of one look is the modelled one wherever it is: a gesture's drawn pieces, laid on as it came to rest
     // where that gesture drew it, were another sleeve of another cut come up over this one, and gone as it left.)
-    for (const it of this.oneLook ? [] : new Set([g, ...(this.leaving ? [this.leaving.g] : [])])) {
+    // (A bust's one arm wears its gesture's drawn hand whole, held as drawn: of the one it wears, too.)
+    for (const it of this.oneLook ? [] : new Set([g, ...(this.leaving ? [this.leaving.g] : []), ...(this.bustLook && this.worn ? [this.worn] : [])])) {
       const drawn = it.motion.restPose(anchor)
       const upper = it.bound.shape.upper
       const reach = it.bound.shape.fore
@@ -703,7 +745,7 @@ export class Arm3DSide {
     const worn = this.worn
     // Near hanging its hand is the one it hangs in, and wears that one's picture.
     const wears = this.oneLook && !this.aiming && this.hangs && g.motion.handTurned < 0.5 ? this.hangs : g
-    if (!this.oneLook || !worn || this.transit.idle) { this.worn = wears
+    if (!(this.oneLook || this.bustLook) || !worn || this.transit.idle) { this.worn = wears
 }
     else if (wears !== g) {
       if (this.transit.left < 0.5) this.worn = wears
@@ -763,18 +805,33 @@ export class Arm3DSide {
 
   /** This frame's arm, for the view; null before the first lift. */
   frame(): { bound: Arm3DBound; frame: Arm3DFrame } | null {
-    if (this.oneLook) return this.worn ? this.frameOf(this.worn, this.presence) : null
+    if (this.oneLook || this.bustLook) return this.worn ? this.frameOf(this.worn, this.presence) : null
     return this.shown ? this.frameOf(this.shown, this.presence * this.switched) : null
   }
 
   /** The arm in the picture of the gesture it just turned from, drawn under this frame's while that comes in; null else. */
   leavingFrame(): { bound: Arm3DBound; frame: Arm3DFrame } | null {
-    return this.leaving && !this.oneLook ? this.frameOf(this.leaving.g, this.presence) : null
+    return this.leaving && !this.oneLook && !this.bustLook ? this.frameOf(this.leaving.g, this.presence) : null
   }
 
   private frameOf(g: Gesture, presence: number): { bound: Arm3DBound; frame: Arm3DFrame } | null {
     const stance = this.stance
     if (!this.pose || !stance || presence <= 0) return null
+    let also: Arm3DFrame['also']
+    if (this.bustLook) {
+      if (this.cuff !== null) g.bound.shape.cuff = this.cuff
+      // Its sleeve this frame: its gestures' by their shares, hanging the leading one's.
+      const lead = this.rests ? this.gestures.indexOf(this.rests) : -1
+      const hung = lead >= 0 ? smoothstep(0.55, 0.995, stance.hanging) : 0
+      const wears = this.gestures.map((it) => it.own)
+      const shown = Math.max(0, this.gestures.indexOf(this.shown ?? g))
+      const wear = arm3DMixedWear(wears, this.wear, shown, lead, hung)
+      Object.assign(g.bound.shape, { radius: wear.radius, restEnd: wear.restEnd })
+      g.bound.ink = wear.ink
+      const drawn = arm3DWearDrawn(this.wear, this.gestures.indexOf(g), lead, hung)
+      also = [{ bound: (drawn.other ? this.gestures[drawn.other[0]] : g).bound, weight: drawn.other ? drawn.other[1] : 0 }, { bound: (this.rests ?? g).bound, weight: drawn.lead }]
+      if (also.every((a) => a.weight <= 0)) also = undefined
+    }
     const pts = this.foot.map((f) => [f.layer.deformed[f.i * 2], f.layer.deformed[f.i * 2 + 1]] as [number, number]).sort((a, b) => a[0] - b[0])
     const foot = pts.length <= 16 ? pts : Array.from({ length: 16 }, (_, k) => pts[Math.round(k * (pts.length - 1) / 15)])
     const side = (on: Followed[], sign: number) => (on.length ? sign * Math.max(...on.map((f) => sign * f.layer.deformed[f.i * 2])) : sign * Infinity)
@@ -786,7 +843,7 @@ export class Arm3DSide {
     // The portrait's own hand comes onto a hand turning into it over the middle of the turn only: half on, the
     // lines of its curled fingers lay across the back of an open hand for as long as the arm took to fall.
     const handRest = this.oneLook ? smoothstep(0.3, 0.7, stance.handRest) : stance.handRest
-    return { bound: g.bound, frame: { pose: this.pose, presence, handRest, hanging: stance.hanging, restNear: this.restNear, unlined: this.unlined, view: this.canvas, foot, sides, held: this.heldMesh(g), rest } }
+    return { bound: g.bound, frame: { pose: this.pose, presence, handRest, hanging: stance.hanging, restNear: this.restNear, unlined: this.unlined, view: this.canvas, foot, sides, held: this.heldMesh(g), rest, ...(also ? { also } : {}) } }
   }
 
   /** The gesture layer's mesh where the figure draws it this frame, for its drawn upper arm under the arm held there. */

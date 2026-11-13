@@ -49,6 +49,8 @@ export interface Arm3DFrame {
   held?: { pos: Float32Array; uv: Float32Array; idx: ArrayLike<number>; near: number; exact: number; toDrawn: [number, number, number, number, number, number] | null }
   /** Near its rest, the portrait's arm (`restArm`, laid under the tube, which falls short of it) carried to where the arm is now (its rect's corners), and how much of it; null away from it. */
   rest: { corners: number[]; alpha: number } | null
+  /** A bust's sleeve on its way between gestures: other gestures' drawings of it (their `sleeve`, `lifted`, band), the first that much of it, the second that much of what that gives. */
+  also?: Array<{ bound: { sleeve: WebGLTexture; lifted?: WebGLTexture; shape: Pick<Arm3DShape, 'restBand'> }; weight: number }>
 }
 
 export function arm3DShape(model: Anime25DArmModel, x: number, y: number): Arm3DShape {
@@ -142,8 +144,11 @@ export class Arm3DMotion {
    * given, the arm is raised elbow first, as a person's is; without it, as the pictures' poses run into each other.
    * `keepHand`: a figure's hand hangs as the gesture's own, turned down with its forearm, never the portrait's drawn
    * one (an arm that is the modelled one from the first frame on has no drawn hand to change into).
+   * `hang`: the arm it hangs as (a bust's one arm for all its gestures hangs as the leading one's: each picture
+   * found the forearm another length, and the arm hung another for each gesture last made), its bones turning
+   * into this gesture's own lengths on the way up.
    */
-  constructor(private d: Arm3DShape, private wave: boolean, private out = 0, private keepHand = false) {
+  constructor(private d: Arm3DShape, private wave: boolean, private out = 0, private keepHand = false, private hang?: Pick<Arm3DShape, 'rest' | 'upper' | 'fore'>) {
     this.figure = Boolean(d.restHand)
     const all = [d.rest, d.raised]
     // Every pose hangs from the portrait's shoulder, its elbow where the picture drew it and as deep as the
@@ -157,6 +162,13 @@ export class Arm3DMotion {
       return norm([x, y, k.e[2] - k.s[2] < 0 ? -z : z])
     })
     this.dirsF = all.map((k) => norm(sub(k.w, k.e)))
+    if (hang) {
+      const x = hang.rest.e[0] - hang.rest.s[0]
+      const y = hang.rest.e[1] - hang.rest.s[1]
+      const z = Math.sqrt(Math.max(0, hang.upper * hang.upper - x * x - y * y))
+      this.dirsU[0] = norm([x, y, hang.rest.e[2] - hang.rest.s[2] < 0 ? -z : z])
+      this.dirsF[0] = norm(sub(hang.rest.w, hang.rest.e))
+    }
     // A bust's portrait has no hand hanging (it is out of frame): it is the gesture's. A figure's is drawn: it
     // hangs as drawn, flat in the picture, about where the portrait's wrist has it.
     const hand = handOffsets(d)
@@ -298,14 +310,25 @@ export class Arm3DMotion {
 
   /** The forearm's length at pose space f: a figure's as each picture draws it, between them. */
   private foreAt(f: number): number {
-    const r = this.d.restFore
+    const r = this.d.restFore ?? this.hang?.fore
     const t = Math.max(0, Math.min(1, f))
     return r === undefined ? this.d.fore : r + (this.d.fore - r) * t
   }
 
+  /** The upper arm's length at pose space f: its own, but from the one it hangs as (`hang`). */
+  private upperAt(f: number): number {
+    const r = this.hang?.upper
+    return r === undefined ? this.d.upper : r + (this.d.upper - r) * Math.max(0, Math.min(1, f))
+  }
+
+  /** The upper arm's length as posed now. */
+  get upper(): number {
+    return this.upperAt(this.p.x)
+  }
+
   /** Pose i (0 hanging, 1 the gesture) exactly as drawn. */
   keyPose(i: number, anchor: V3): Arm3DPose {
-    const e = add(anchor, mul(this.dirsU[i], this.d.upper))
+    const e = add(anchor, mul(this.dirsU[i], this.upperAt(i)))
     const w = add(e, mul(this.dirsF[i], this.foreAt(i)))
     return { s: anchor, e, w, hand: this.hands[i].map((o) => add(w, o)) }
   }
@@ -345,7 +368,7 @@ export class Arm3DMotion {
         hand[b] = add(hand[a], mul(dir, l))
       }
     }
-    return { du, df, w: add(mul(du, this.d.upper), mul(df, this.foreAt(u))), hand }
+    return { du, df, w: add(mul(du, this.upperAt(u)), mul(df, this.foreAt(u))), hand }
   }
 
   /**
@@ -408,7 +431,7 @@ export class Arm3DMotion {
       df = spin(df, this.out * ramp * WAVE_LEAN)
     }
     const s = anchor
-    const e = add(s, mul(du, this.d.upper))
+    const e = add(s, mul(du, this.upper))
     const w = add(e, mul(df, this.foreAt(this.p.x)))
     const wristTurn = turn + this.flick.x + (this.wave ? -ramp * 0.12 * Math.sin(this.held * 2 * Math.PI * 1.6 - 0.9) : 0)
     return { s, e, w, hand: hand.map((o) => add(w, spin(o, wristTurn))) }

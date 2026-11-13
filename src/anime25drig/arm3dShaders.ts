@@ -23,6 +23,9 @@ in vec2 vUv; in vec3 vNrm; in float vV; in vec2 vPic; in vec2 vAt;
 uniform sampler2D uTex; uniform sampler2D uArmMask; uniform sampler2D uCap; uniform vec4 uMaskRect;
 uniform float uRest; uniform vec4 uSolid; uniform float uFadeTop; uniform float uRestEnd; uniform vec3 uLine;
 uniform float uUnlined; uniform float uOpen; uniform float uLined; uniform vec3 uBand; uniform sampler2D uLifted;
+// A bust's sleeve on its way from one gesture to another, or to hanging: that much (uAlso.x, then uAlso.y of what
+// that gives) another gesture's drawing of it, on the one arm.
+uniform float uInk; uniform sampler2D uTexB; uniform sampler2D uLiftedB; uniform vec3 uBandB; uniform sampler2D uTexC; uniform sampler2D uLiftedC; uniform vec3 uBandC; uniform vec2 uAlso;
 // Held, cut away over the drawing's own ground (uGround, on uGroundRect of the canvas as drawn; uToDrawn0/1 carry
 // this frame's canvas back to it), by how near it is held (uGroundOn).
 uniform sampler2D uGround; uniform vec4 uGroundRect; uniform vec3 uToDrawn0; uniform vec3 uToDrawn1; uniform float uGroundOn;
@@ -31,10 +34,16 @@ out vec4 o;
 // there is one) is worn while the arm hangs; lifted, that stretch is the sleeve as the gestures draw it there
 // (uLifted), and the drawn cuff comes up at the wrist alone. The plain sleeve above the band stretched down over
 // it came out in streaks.
+vec3 clothOf(sampler2D tex, sampler2D lifted, vec3 band, vec2 uv) {
+  float off = band.z * (1.0 - smoothstep(0.55, 0.995, uRest))
+    * smoothstep(band.x - 0.015, band.x, uv.y) * (1.0 - smoothstep(band.y, band.y + 0.015, uv.y));
+  return mix(texture(tex, uv).rgb, texture(lifted, uv).rgb, off);
+}
 vec3 cloth(vec2 uv) {
-  float off = uBand.z * (1.0 - smoothstep(0.55, 0.995, uRest))
-    * smoothstep(uBand.x - 0.015, uBand.x, uv.y) * (1.0 - smoothstep(uBand.y, uBand.y + 0.015, uv.y));
-  return mix(texture(uTex, uv).rgb, texture(uLifted, uv).rgb, off);
+  vec3 c = clothOf(uTex, uLifted, uBand, uv);
+  if (uAlso.x > 0.0) c = mix(c, clothOf(uTexB, uLiftedB, uBandB, uv), uAlso.x);
+  if (uAlso.y > 0.0) c = mix(c, clothOf(uTexC, uLiftedC, uBandC, uv), uAlso.y);
+  return c;
 }
 // The cuff's cloth at its palest round the rim: what a standing figure's cuff is inside (the rim's average took in
 // its gold trim, and the inside came out tan).
@@ -86,8 +95,9 @@ void main() {
     a *= 1.0 - cut.r;
     edge = cut.g;
   }
-  // The outline takes the fabric's own colour, darkened, as the drawings line a white cuff in grey-brown.
-  if (uSolid.a > 1.5) { float la = a * (1.0 - unlined); o = vec4(mix(uSolid.rgb, cloth(vUv) * 0.4, 0.75) * la, la); return; }
+  // The outline takes the fabric's own colour, darkened (uInk: as dark as the picture lines its arm), as the
+  // drawings line a white cuff in grey-brown.
+  if (uSolid.a > 1.5) { float la = a * (1.0 - unlined); o = vec4(mix(uSolid.rgb, cloth(vUv) * uInk, 0.75) * la, la); return; }
   // A mark (the upper arm's stencil): only where it is all but solid.
   if (uSolid.a > 0.0) { if (a < 0.5) discard; o = vec4(uSolid.rgb * a, a); return; }
   vec3 c = cloth(vUv);
