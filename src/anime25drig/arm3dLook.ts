@@ -88,6 +88,7 @@ export type Arm3DWear = Pick<Arm3DShape, 'radius' | 'restEnd'> & { ink: number }
  * others give way in the shares they had, so turned again on the way nothing of it jumps.
  */
 export function arm3DTurnWear(shares: readonly number[], to: number, step: number): number[] {
+  if (to < 0 || to >= shares.length) return [...shares]
   const was = Math.max(0, Math.min(1, shares[to] ?? 0))
   const now = Math.min(1, was + Math.max(0, step))
   const rest = was < 1 ? (1 - now) / (1 - was) : 0
@@ -126,15 +127,19 @@ export function arm3DMixedWear(wears: readonly Arm3DWear[], shares: readonly num
  */
 export function arm3DWearDrawn(shares: readonly number[], drawn: number, lead: number, hung: number): { other: [number, number] | null; lead: number } {
   const order = shares.map((share, i) => [share, i] as const).filter(([share]) => share > 0).sort((a, b) => b[0] - a[0] || a[1] - b[1])
-  const led = lead >= 0 && lead !== drawn ? Math.max(0, Math.min(1, hung)) : 0
+  const h = lead >= 0 ? Math.max(0, Math.min(1, hung)) : 0
+  // (Drawn in the leading one's own, hanging is less of the other's, not more of the leading one's over it.)
+  const led = lead === drawn ? 0 : h
+  const less = lead === drawn ? 1 - h : 1
+  const other = (of: number, much: number): [number, number] | null => (much * less > 0 ? [of, much * less] : null)
   if (order.length === 0) return { other: null, lead: led }
   const [first, second] = order
-  if (!second) return { other: first[1] === drawn ? null : [first[1], 1], lead: led }
+  if (!second) return { other: first[1] === drawn ? null : other(first[1], 1), lead: led }
   // The pair in a set order, so that nothing turns over as their shares cross.
   const [p, q] = first[1] < second[1] ? [first, second] : [second, first]
   const t = q[0] / (p[0] + q[0])
   const ofQ = t <= 0.4 ? 0 : t >= 0.6 ? 1 : ((t - 0.4) / 0.2) ** 2 * (3 - 2 * (t - 0.4) / 0.2)
-  if (drawn === p[1]) return { other: ofQ > 0 ? [q[1], ofQ] : null, lead: led }
-  if (drawn === q[1]) return { other: ofQ < 1 ? [p[1], 1 - ofQ] : null, lead: led }
-  return { other: [ofQ >= 0.5 ? q[1] : p[1], 1], lead: led }
+  if (drawn === p[1]) return { other: other(q[1], ofQ), lead: led }
+  if (drawn === q[1]) return { other: other(p[1], 1 - ofQ), lead: led }
+  return { other: other(ofQ >= 0.5 ? q[1] : p[1], 1), lead: led }
 }

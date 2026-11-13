@@ -824,6 +824,7 @@ test('a bust\'s sleeve turns to another gesture\'s step by step, with no jump wh
   assert.ok(Math.abs(shares[0] - 0.7) < 1e-9 && Math.abs(shares.reduce((a, b) => a + b, 0) - 1) < 1e-9)
   assert.deepEqual(arm3DTurnWear([0, 1], 1, 0.5), [0, 1])
   assert.deepEqual(arm3DTurnWear([0.5, 0.5], 0, 2), [1, 0])
+  assert.deepEqual(arm3DTurnWear([0.5, 0.5], -1, 0.1), [0.5, 0.5])
 })
 
 test('a bust\'s sleeve wears the drawing of the gesture with the most share, changed over where two are even', () => {
@@ -842,6 +843,9 @@ test('a bust\'s sleeve wears the drawing of the gesture with the most share, cha
   // Hanging: the leading one's over it, but not drawn in the leading one's own.
   assert.deepEqual(arm3DWearDrawn([1, 0, 0], 0, 2, 0.8), { other: null, lead: 0.8 })
   assert.deepEqual(arm3DWearDrawn([0, 0, 1], 2, 2, 1), { other: null, lead: 0 })
+  // Come to rest after another gesture, drawn in the leading one's again: still the leading one's alone.
+  assert.deepEqual(arm3DWearDrawn([0.05, 0.95], 0, 0, 1), { other: null, lead: 0 })
+  assert.deepEqual(arm3DWearDrawn([0.05, 0.95], 0, 0, 0.75), { other: [1, 0.25], lead: 0 })
 })
 
 test('a gesture hung as another arm hangs exactly as that one, and is held exactly as its own picture', () => {
