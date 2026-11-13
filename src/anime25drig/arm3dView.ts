@@ -7,7 +7,7 @@ import { handExactness, len, similarity2D, smoothstep, sub } from './arm3dMath'
 import { ARM3D_AROUND, ARM3D_RINGS, arm3DBareElbowRow, arm3DBareFromElbow, arm3DHandMesh, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { liftForearm, wristOverUpper } from './arm3dMotion'
 import { bareBelowSleeve, clothCuffMouth, ringFill } from './arm3dPrepare'
-import { BAKE_FS, BAKE_INSET_FS, BAKE_VS, COMPOSITE_FS, FULL_VS, GAP2_FS, GAP_FS, HAND_FS, HAND_VS, HELD_FS, HELD_VS, SLEEVE_FS, SLEEVE_VS, WHOLE_FS } from './arm3dShaders'
+import { BAKE_FS, BAKE_VS, COMPOSITE_FS, FULL_VS, GAP2_FS, GAP_FS, HAND_FS, HAND_VS, HELD_FS, HELD_VS, SLEEVE_FS, SLEEVE_VS, WHOLE_FS } from './arm3dShaders'
 import { arm3DTexture, createArm3DTarget, dropArm3DTarget, setArm3DGround } from './arm3dTarget'
 
 export type { Arm3DFrame } from './arm3dMotion'
@@ -101,7 +101,6 @@ export class Arm3DView {
   private sleeveProgram: Program
   private handProgram: Program
   private bakeProgram: Program
-  private bakeInsetProgram: Program | null = null
   private gapProgram: Program
   private gap2Program: Program
   private compositeProgram: Program
@@ -125,7 +124,7 @@ export class Arm3DView {
 
   dispose(): void {
     const gl = this.gl
-    for (const p of [this.sleeveProgram, this.handProgram, this.bakeProgram, this.gapProgram, this.gap2Program, this.compositeProgram, this.heldProgram, this.wholeProgram, ...(this.bakeInsetProgram ? [this.bakeInsetProgram] : [])]) gl.deleteProgram(p.program)
+    for (const p of [this.sleeveProgram, this.handProgram, this.bakeProgram, this.gapProgram, this.gap2Program, this.compositeProgram, this.heldProgram, this.wholeProgram]) gl.deleteProgram(p.program)
     for (const b of this.buffers.values()) gl.deleteBuffer(b)
     this.buffers.clear()
     gl.deleteVertexArray(this.vao)
@@ -191,8 +190,9 @@ export class Arm3DView {
    * then the gesture's picture where it lies raised; first come, first kept. What none shows (the back, the
    * sides) takes the colour already on its ring.
    */
-  bakeSleeve(shape: Arm3DShape, px: number, view: { width: number; height: number }, passes: Array<{ src: WebGLTexture; rect: [number, number, number, number]; pose: Arm3DPose; rest: number; minFace: number; maskFrom: number; vmax: number; inset?: [number, number, number] }>): WebGLTexture {
+  bakeSleeve(shape: Arm3DShape, px: number, view: { width: number; height: number }, passes: Array<{ src: WebGLTexture; rect: [number, number, number, number]; pose: Arm3DPose; rest: number; minFace: number; maskFrom: number; vmax: number }>): WebGLTexture {
     const gl = this.gl
+    const p = this.bakeProgram
     const out = arm3DTexture(gl, BAKE_W, BAKE_H, null, false)
     const fb = gl.createFramebuffer()
     gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
@@ -205,12 +205,10 @@ export class Arm3DView {
     gl.disable(gl.STENCIL_TEST)
     gl.enable(gl.BLEND)
     gl.blendFunc(gl.ONE_MINUS_DST_ALPHA, gl.ONE)
+    gl.useProgram(p.program)
     // As wide as the sleeve is drawn where that is wider than it is modelled: all of the drawing is its texture.
     const drawn = shape.drawnRadius ? { ...shape, radius: shape.drawnRadius } : shape
     for (const pass of passes) {
-      // (`inset`: by the cuff only what the picture draws that far in from its arm's edge.)
-      const p = pass.inset ? (this.bakeInsetProgram ??= compile(gl, BAKE_VS, BAKE_INSET_FS)) : this.bakeProgram
-      gl.useProgram(p.program)
       const m = arm3DSleeveMesh(drawn, pass.pose, pass.rest, px)
       const pic: number[] = []
       for (let i = 0; i < m.pos.length / 3; i += 1) pic.push(m.pos[i * 3] / view.width, m.pos[i * 3 + 1] / view.height)
@@ -223,7 +221,6 @@ export class Arm3DView {
       gl.uniform1f(this.uniform(p, 'uMinFace'), pass.minFace)
       gl.uniform1f(this.uniform(p, 'uMaskFrom'), pass.maskFrom)
       gl.uniform1f(this.uniform(p, 'uVmax'), pass.vmax)
-      if (pass.inset) gl.uniform3fv(this.uniform(p, 'uInset'), pass.inset)
       gl.drawElements(gl.TRIANGLES, n, gl.UNSIGNED_INT, 0)
     }
     const px8 = new Uint8Array(BAKE_W * BAKE_H * 4)
@@ -370,6 +367,21 @@ export class Arm3DView {
     gl.activeTexture(gl.TEXTURE4)
     gl.bindTexture(gl.TEXTURE_2D, bound.cap ?? bound.armMask)
     gl.uniform1i(this.uniform(p, 'uCap'), 4)
+    // (A bust's on its way between gestures: the others' drawings of the sleeve, by how much of each.)
+    const also = frame.also ?? []
+    for (let i = 0; i < 2; i += 1) {
+      const other = also[i]?.bound ?? bound
+      const tag = i === 0 ? 'B' : 'C'
+      gl.activeTexture(gl.TEXTURE5 + i * 2)
+      gl.bindTexture(gl.TEXTURE_2D, other.sleeve)
+      gl.uniform1i(this.uniform(p, `uTex${tag}`), 5 + i * 2)
+      gl.activeTexture(gl.TEXTURE6 + i * 2)
+      gl.bindTexture(gl.TEXTURE_2D, other.lifted ?? other.sleeve)
+      gl.uniform1i(this.uniform(p, `uLifted${tag}`), 6 + i * 2)
+      const otherBand = other.lifted && other.shape.restBand
+      gl.uniform3f(this.uniform(p, `uBand${tag}`), otherBand ? otherBand[0] : 0, otherBand ? otherBand[1] : 0, otherBand ? 1 : 0)
+    }
+    gl.uniform2f(this.uniform(p, 'uAlso'), also[0]?.weight ?? 0, also[1]?.weight ?? 0)
     gl.activeTexture(gl.TEXTURE0)
     gl.uniform4fv(this.uniform(p, 'uMaskRect'), bound.maskRect)
     gl.uniform1f(this.uniform(p, 'uRest'), frame.hanging)

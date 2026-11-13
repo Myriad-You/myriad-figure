@@ -49,6 +49,8 @@ export interface Arm3DFrame {
   held?: { pos: Float32Array; uv: Float32Array; idx: ArrayLike<number>; near: number; exact: number; toDrawn: [number, number, number, number, number, number] | null }
   /** Near its rest, the portrait's arm (`restArm`, laid under the tube, which falls short of it) carried to where the arm is now (its rect's corners), and how much of it; null away from it. */
   rest: { corners: number[]; alpha: number } | null
+  /** A bust's sleeve on its way between gestures: other gestures' drawings of it (their `sleeve`, `lifted`, band), the first that much of it, the second that much of what that gives. */
+  also?: Array<{ bound: { sleeve: WebGLTexture; lifted?: WebGLTexture; shape: Pick<Arm3DShape, 'restBand'> }; weight: number }>
 }
 
 export function arm3DShape(model: Anime25DArmModel, x: number, y: number): Arm3DShape {

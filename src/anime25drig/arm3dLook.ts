@@ -18,9 +18,9 @@ export const ARM3D_BUST_LIFTED: readonly [number, number] = [0.3, 0.62]
  * on the way (a bust's was two arms, one fading over the other). The sleeve, palm and colours are the leading
  * gesture's (the wave, its hand open and whole; else the first, a bust's the one folded least); each finger's widths the first picture's that
  * shows it, a finger no picture shows left hidden. A standing figure's (every gesture with its drawn hanging
- * hand) or a bust's (`bust`: none with one, nor a hanging forearm's length; of this look its arm takes the sleeve,
- * its sleeve's end and hand each gesture's own, `arm3DBustOwn`); null for any other, whose gestures each keep
- * their own.
+ * hand) or a bust's (`bust`: none with one, nor a hanging forearm's length; its arm hangs as the leading one, and
+ * held is each gesture's own as its picture draws it, turned from one into another on the way,
+ * `arm3DBetweenLooks`); null for any other, whose gestures each keep their own.
  */
 export function arm3DOneLook(gestures: ReadonlyArray<{ gesture: string; model: Anime25DArmModel }>): { lead: number; look: Arm3DLook; bust: boolean } | null {
   if (gestures.length === 0) return null
@@ -82,24 +82,18 @@ export function arm3DInLook(shape: Arm3DShape, look: Arm3DLook): Arm3DShape {
   return { ...own, ...look }
 }
 
+/** What of a bust's sleeve turns from one gesture's into another's on the way between them. */
+export type Arm3DWear = Pick<Arm3DShape, 'radius' | 'restEnd'>
+
 /**
- * A bust's arm in its look, but what its own picture alone says: where the sleeve ends on this gesture's forearm
- * (and its forearm bare past it), and its hand. The drawn hand begins where that picture ends the sleeve (a sleeve
- * ending where another has it left a block of plain wrist between the two); and its hand is that picture's drawing,
- * the model under it fitted to it finger by finger (in another picture's widths it fell short of the drawing, a
- * crack at a finger's root as the hand left).
+ * A bust's sleeve on the way: held, it is its gesture's own as that picture draws it (`to`); `turned` of the way
+ * from another gesture (`from`), that much the one turned to; and `hung` (1 hanging) the leading gesture's, the arm
+ * all its gestures hang as. Widths measured at other places than `to`'s are left out.
  */
-export function arm3DBustOwn(inLook: Arm3DShape, own: Arm3DShape): Arm3DShape {
-  const { bare: _bare, ...rest } = inLook
-  return {
-    ...rest,
-    cuff: own.cuff,
-    bareShift: own.bareShift,
-    ...(own.bare === undefined ? {} : { bare: own.bare }),
-    fingers: own.fingers,
-    fingerProfile: own.fingerProfile,
-    keyProfile: own.keyProfile,
-    palmOutline: own.palmOutline,
-    hiddenFingers: own.hiddenFingers,
+export function arm3DBetweenLooks(to: Arm3DWear, from: Arm3DWear | null, turned: number, lead: Arm3DWear | null, hung: number): Arm3DWear {
+  const into = (a: Arm3DWear, b: Arm3DWear | null, t: number): Arm3DWear => {
+    if (!b || t <= 0 || b.radius.length !== a.radius.length) return a
+    return { radius: a.radius.map((r, i) => r + (b.radius[i] - r) * t), restEnd: a.restEnd + (b.restEnd - a.restEnd) * t }
   }
+  return into(from ? into(to, from, 1 - Math.max(0, Math.min(1, turned))) : to, lead, Math.max(0, Math.min(1, hung)))
 }
