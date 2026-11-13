@@ -8,7 +8,7 @@ import { ARM3D_BUST_LIFTED, arm3DBetweenLooks, arm3DOneLook } from './arm3dLook'
 import { similarity2D } from './arm3dMath'
 import { ARM3D_AROUND, ARM3D_CAP_V, ARM3D_RINGS, arm3DCapReach, arm3DHandMesh, arm3DKeepWhole, arm3DPalmAsModelled, arm3DShoulderIsBare, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
-import { arm3DCutSides, arm3DUpperArmAlone, bareBelowSleeve, clothCuffMouth, ringFill } from './arm3dPrepare'
+import { ARM3D_INK, arm3DCutSides, arm3DInk, arm3DUpperArmAlone, bareBelowSleeve, clothCuffMouth, ringFill } from './arm3dPrepare'
 import { arm3DAimBones, arm3DAimHand, arm3DAimOf, Arm3DTransit } from './arm3dReach'
 
 // A left arm hanging from (420, 620), raised with its hand up beside the head; in a layer at (100, 50).
@@ -836,3 +836,25 @@ test('a gesture hung as another arm hangs exactly as that one, and is held exact
 function sub3(a: V3, b: V3): V3 {
   return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
+
+test('a sleeve is lined as dark as its picture lines its arm, never darker than the usual', () => {
+  const w = 120
+  const h = 120
+  const picture = (line: number, cloth: number) => {
+    const px = new Uint8ClampedArray(w * h * 4)
+    for (let y = 20; y < 100; y += 1) {
+      for (let x = 20; x < 100; x += 1) {
+        const edge = x < 23 || x >= 97 || y < 23 || y >= 97
+        px.set([edge ? line : cloth, edge ? line : cloth, edge ? line : cloth, 255], (y * w + x) * 4)
+      }
+    }
+    return px
+  }
+  // Lined pale: about as pale as drawn.
+  const pale = arm3DInk(picture(150, 220), w, h)
+  assert.ok(pale > 0.6 && pale < 0.75, String(pale))
+  // Lined near black: as ever.
+  assert.equal(arm3DInk(picture(20, 220), w, h), ARM3D_INK)
+  // Too little to measure: as ever.
+  assert.equal(arm3DInk(new Uint8ClampedArray(w * h * 4), w, h), ARM3D_INK)
+})

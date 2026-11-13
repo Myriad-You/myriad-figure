@@ -13,7 +13,7 @@ import { ARM3D_BUST_LIFTED, arm3DBetweenLooks, arm3DInLook, arm3DOneLook } from 
 import { add, handExactness, mul, norm, smoothstep, sub } from './arm3dMath'
 import { arm3DCapReach, arm3DHandMesh, arm3DKeepWhole, arm3DPalmAsModelled, arm3DShoulderIsBare, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape } from './arm3dMotion'
-import { arm3DCutSides, arm3DGroundClip, arm3DProject, arm3DUpperArmAlone, arm3DWristTone, composeArm3DPicture, splitArm3DLayer } from './arm3dPrepare'
+import { arm3DCutSides, arm3DGroundClip, arm3DInk, arm3DProject, arm3DUpperArmAlone, arm3DWristTone, composeArm3DPicture, splitArm3DLayer } from './arm3dPrepare'
 import { arm3DAimBones, arm3DAimHand, arm3DAimOf, arm3DCarryHand, Arm3DTransit } from './arm3dReach'
 import { armPoints, createBodyTexture, draped, swung } from './arm3dSwing'
 import { armDrapeWeight } from './armRig'
@@ -401,6 +401,8 @@ export class Arm3DSide {
         hangPic,
         palm,
         wristTone,
+        // (A bust's sleeve is lined as dark as its own picture lines its arm.)
+        ...(laid ? {} : { ink: arm3DInk(split.arm, pixels.width, pixels.height) }),
         drawnHand: raised.hand.map((q) => [q[0], q[1], q[2]] as V3),
         drawnPic: [dx + layer.source.x, dy + layer.source.y, 1 / layer.source.w, 1 / layer.source.h],
         held,

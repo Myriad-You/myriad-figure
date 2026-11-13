@@ -531,3 +531,44 @@ export function arm3DCutSides(layers: ReadonlyArray<{ rest: ArrayLike<number> }>
   }
   return out
 }
+
+/** A sleeve's outline as dark as the drawings have theirs where nothing is measured (a standing figure's, always). */
+export const ARM3D_INK = 0.4
+
+/**
+ * How dark the picture draws the line round its arm, of the cloth just inside it (1 as light as the cloth): the
+ * modelled sleeve's outline is drawn that dark. At a fixed darkness a picture lined pale (lilac on lilac) wore a
+ * near-black line where its forearm lay over its own sleeve, harder than any line it draws. `arm`: the arm alone
+ * (RGBA). The darker fifth along its edge against the middle of what lies a little further in; never darker than
+ * `ARM3D_INK`, and that where too little is found.
+ */
+export function arm3DInk(arm: Uint8ClampedArray, width: number, height: number): number {
+  const solid = (x: number, y: number) => x >= 0 && y >= 0 && x < width && y < height && arm[(y * width + x) * 4 + 3] > 250
+  const ringed = (x: number, y: number, r: number) => {
+    for (let k = 0; k < 8; k += 1) {
+      const a = k * Math.PI / 4
+      if (!solid(Math.round(x + Math.cos(a) * r), Math.round(y + Math.sin(a) * r))) return false
+    }
+    return true
+  }
+  const luma = (x: number, y: number) => {
+    const i = (y * width + x) * 4
+    return 0.299 * arm[i] + 0.587 * arm[i + 1] + 0.114 * arm[i + 2]
+  }
+  const r = Math.max(2, Math.round(Math.max(width, height) / 400))
+  const edge: number[] = []
+  const inside: number[] = []
+  for (let y = 0; y < height; y += 2) {
+    for (let x = 0; x < width; x += 2) {
+      if (!solid(x, y)) continue
+      if (!ringed(x, y, r * 2)) edge.push(luma(x, y))
+      else if (ringed(x, y, r * 5) && !ringed(x, y, r * 9)) inside.push(luma(x, y))
+    }
+  }
+  if (edge.length < 200 || inside.length < 200) return ARM3D_INK
+  edge.sort((a, b) => a - b)
+  inside.sort((a, b) => a - b)
+  const cloth = inside[inside.length >> 1]
+  if (cloth < 1) return ARM3D_INK
+  return Math.max(ARM3D_INK, Math.min(0.8, edge[Math.floor(edge.length * 0.2)] / cloth))
+}

@@ -25,7 +25,7 @@ uniform float uRest; uniform vec4 uSolid; uniform float uFadeTop; uniform float 
 uniform float uUnlined; uniform float uOpen; uniform float uLined; uniform vec3 uBand; uniform sampler2D uLifted;
 // A bust's sleeve on its way from one gesture to another, or to hanging: that much (uAlso.x, then uAlso.y of what
 // that gives) another gesture's drawing of it, on the one arm.
-uniform sampler2D uTexB; uniform sampler2D uLiftedB; uniform vec3 uBandB; uniform sampler2D uTexC; uniform sampler2D uLiftedC; uniform vec3 uBandC; uniform vec2 uAlso;
+uniform float uInk; uniform sampler2D uTexB; uniform sampler2D uLiftedB; uniform vec3 uBandB; uniform sampler2D uTexC; uniform sampler2D uLiftedC; uniform vec3 uBandC; uniform vec2 uAlso;
 // Held, cut away over the drawing's own ground (uGround, on uGroundRect of the canvas as drawn; uToDrawn0/1 carry
 // this frame's canvas back to it), by how near it is held (uGroundOn).
 uniform sampler2D uGround; uniform vec4 uGroundRect; uniform vec3 uToDrawn0; uniform vec3 uToDrawn1; uniform float uGroundOn;
@@ -95,8 +95,9 @@ void main() {
     a *= 1.0 - cut.r;
     edge = cut.g;
   }
-  // The outline takes the fabric's own colour, darkened, as the drawings line a white cuff in grey-brown.
-  if (uSolid.a > 1.5) { float la = a * (1.0 - unlined); o = vec4(mix(uSolid.rgb, cloth(vUv) * 0.4, 0.75) * la, la); return; }
+  // The outline takes the fabric's own colour, darkened (uInk: as dark as the picture lines its arm), as the
+  // drawings line a white cuff in grey-brown.
+  if (uSolid.a > 1.5) { float la = a * (1.0 - unlined); o = vec4(mix(uSolid.rgb, cloth(vUv) * uInk, 0.75) * la, la); return; }
   // A mark (the upper arm's stencil): only where it is all but solid.
   if (uSolid.a > 0.0) { if (a < 0.5) discard; o = vec4(uSolid.rgb * a, a); return; }
   vec3 c = cloth(vUv);

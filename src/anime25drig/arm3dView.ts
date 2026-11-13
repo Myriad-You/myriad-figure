@@ -6,7 +6,7 @@ import type { Arm3DTarget } from './arm3dTarget'
 import { handExactness, len, similarity2D, smoothstep, sub } from './arm3dMath'
 import { ARM3D_AROUND, ARM3D_RINGS, arm3DBareElbowRow, arm3DBareFromElbow, arm3DHandMesh, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { liftForearm, wristOverUpper } from './arm3dMotion'
-import { bareBelowSleeve, clothCuffMouth, ringFill } from './arm3dPrepare'
+import { ARM3D_INK, bareBelowSleeve, clothCuffMouth, ringFill } from './arm3dPrepare'
 import { BAKE_FS, BAKE_VS, COMPOSITE_FS, FULL_VS, GAP2_FS, GAP_FS, HAND_FS, HAND_VS, HELD_FS, HELD_VS, SLEEVE_FS, SLEEVE_VS, WHOLE_FS } from './arm3dShaders'
 import { arm3DTexture, createArm3DTarget, dropArm3DTarget, setArm3DGround } from './arm3dTarget'
 
@@ -55,6 +55,8 @@ export interface Arm3DBound {
   hangPic: Float32Array
   palm: Array<[number, number]> | null
   wristTone: [number, number, number]
+  /** How dark the sleeve's outline is, of its cloth (`arm3DInk`); as ever (`ARM3D_INK`) where not given. */
+  ink?: number
   /** The drawn pose's hand, for how near the hand is to it. */
   drawnHand: V3[]
   /** The gesture's drawing of its upper arm and elbow alone (in the gesture layer's texture space), laid under the arm held there. Null (as the three below) for a bust, whose arm is the modelled one alone (its hand still wears the whole drawn hand, `full`). */
@@ -398,6 +400,7 @@ export class Arm3DView {
     setArm3DGround(gl, (name) => this.uniform(p, name), bound.groundClip, frame.held, bound.armMask)
     gl.uniform1f(this.uniform(p, 'uFadeTop'), 0.26)
     gl.uniform3fv(this.uniform(p, 'uLine'), line)
+    gl.uniform1f(this.uniform(p, 'uInk'), bound.ink ?? ARM3D_INK)
     // Its outline first (back faces pushed out), then itself.
     gl.enable(gl.CULL_FACE)
     gl.cullFace(gl.FRONT)
