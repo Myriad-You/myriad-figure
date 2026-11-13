@@ -552,6 +552,25 @@ test('under a short sleeve the raised arm\'s elbow wears the rows past the sleev
   assert.deepEqual(vs(short, 1), vs(shape, 1))
 })
 
+test('under a short sleeve a bent elbow part raised stays in the bare rows; straight, its rows come back with the arm', () => {
+  const motion = new Arm3DMotion(shape, false)
+  const raised = motion.restPose(shape.rest.s)
+  const short = { ...shape, shortSleeve: 0.58 }
+  const { s, e, w } = raised
+  const fore = Math.hypot(w[0] - e[0], w[1] - e[1], w[2] - e[2])
+  const up = [e[0] - s[0], e[1] - s[1], e[2] - s[2]]
+  const l = Math.hypot(...up)
+  const straight = { ...raised, w: [e[0] + up[0] / l * fore, e[1] + up[1] / l * fore, e[2] + up[2] / l * fore] as V3 }
+  const bent = { ...raised, w: [e[0] - up[1] / l * fore, e[1] + up[0] / l * fore, e[2]] as V3 }
+  // The forearm tube's first ring: its row where the hem hangs over it.
+  const first = (pose: typeof raised, rest: number) => arm3DSleeveMesh(short, pose, rest, 2).uv[2 * (ARM3D_RINGS / 2 + 1) * (ARM3D_AROUND + 1) + 1]
+  assert.ok(Math.abs(first(straight, 0.5) - (0.63 + (0.5 - 0.63) * 0.5)) < 1e-9, `${first(straight, 0.5)}`)
+  assert.ok(Math.abs(first(bent, 0.5) - (0.63 + (0.5 - 0.63) * 0.5 ** 4)) < 1e-9, `${first(bent, 0.5)}`)
+  // Hanging, bent or not, the rows it had.
+  assert.equal(first(bent, 1), 0.5)
+  assert.equal(first(straight, 1), 0.5)
+})
+
 test('a short sleeve drawn wider than the arm is that much wider round the raised upper arm, closed on the arm at the elbow; hanging it is the arm', () => {
   const motion = new Arm3DMotion(shape, false)
   const pose = motion.restPose(shape.rest.s)

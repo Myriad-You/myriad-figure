@@ -303,7 +303,13 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
   const sleeved = len(sub(p.w, p.e)) * sleeveEnd(d, rest)
   // Under a short sleeve the elbow of the arm raised is skin: the rows past the sleeve's end, not the sleeve's own.
   const bareRow = d.shortSleeve === undefined ? null : arm3DBareElbowRow(d.shortSleeve)
-  const worn = (v: number) => (bareRow === null ? v : bareRow + (v - bareRow) * rest)
+  // Its hem comes back over a bent elbow only as the arm is all but down: brought back with it all the way, the
+  // hem's lower edge (drawn ragged round the arm, a strap's end over it) passed the bent elbow part raised, dark and
+  // skin by turns round it, fanned out from the hinge as dark wedges. Straight, with it (held back, the hem and
+  // its strap were gone the moment the arm left hanging).
+  const folded = Math.min(1, Math.max(0, (1 - dot(norm(sub(p.e, p.s)), norm(sub(p.w, p.e)))) / 2) / 0.1)
+  const back = rest + (rest ** 4 - rest) * folded
+  const worn = (v: number) => (bareRow === null ? v : bareRow + (v - bareRow) * back)
   for (const [a, b, v0] of [[p.s, p.e, 0], [p.e, lerp(p.e, p.w, sleeveEnd(d, rest)), 0.5]] as const) {
     const pts: V3[] = []
     const radii: number[] = []
