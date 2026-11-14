@@ -24,6 +24,16 @@ const SKIRT_DAMPING = 0.35
  */
 const SKIRT_MAX_SWING = 0.3
 
+/** The hem is lifted over dropping hips at most this share of the skirt's length, and belled out this many times as much across. */
+const SKIRT_MAX_LIFT = 0.08
+const SKIRT_BELL = 1.5
+
+/** The hem's lift, eased into its limit. */
+function heldLift(lift: number, length: number): number {
+  const most = SKIRT_MAX_LIFT * length
+  return most * Math.tanh(lift / most)
+}
+
 /** The hem's trail, eased into its limit. */
 function heldSwing(swing: number, length: number): number {
   const most = SKIRT_MAX_SWING * length
@@ -144,6 +154,8 @@ export type StandingBinding =
 export interface Anime25DStandingFrame {
   /** How far the skirt hem trails the hips, in pixels. */
   skirtSwing: number
+  /** How far the hem is still up over hips that dropped under it, in pixels (below them, negative). */
+  skirtLift?: number
   /** Pelvis tilt in radians; positive raises the hip on the right of the picture. */
   pelvisTilt: number
   /** How bent each knee is, 0 straight to 1 fully relaxed. */
@@ -168,9 +180,11 @@ function settle(spring: Spring, target: number): void {
 }
 
 export class Anime25DStanding {
-  readonly frame: Anime25DStandingFrame = { skirtSwing: 0, pelvisTilt: 0, bendL: 0, bendR: 0 }
+  readonly frame: Anime25DStandingFrame = { skirtSwing: 0, skirtLift: 0, pelvisTilt: 0, bendL: 0, bendR: 0 }
   /** Where the skirt hem has got to, chasing the hips. */
   private readonly skirt: Spring = { value: 0, velocity: 0 }
+  /** How far down it has got to, falling after hips that dropped. */
+  private readonly fall: Spring = { value: 0, velocity: 0 }
   private readonly knees = { L: { value: 0, velocity: 0 }, R: { value: 0, velocity: 0 } }
 
   private constructor(
@@ -214,24 +228,29 @@ export class Anime25DStanding {
    * Steps the stance after the lean. The weight lands on the leg the hips
    * move over: that leg straightens, the other relaxes.
    */
-  step(dt: number, body: number, phys: boolean): Readonly<Anime25DStandingFrame> {
-    const hips = this.shift(body)
+  step(dt: number, body: number, phys: boolean, across = 0, down = 0): Readonly<Anime25DStandingFrame> {
+    // (`across`, `down`: how far a lean toward the viewer has the hips across the picture besides, on a turned figure, and down.)
+    const hips = this.shift(body) + across
     // +1 with the hips fully over the leg on the right of the picture.
     const weight = this.weight(body)
     const free = { L: Math.max(0, weight), R: Math.max(0, -weight) }
     const frame = this.frame
     frame.pelvisTilt = weight * PELVIS_TILT
     if (!phys) {
+      settle(this.fall, down)
       settle(this.skirt, hips)
       settle(this.knees.L, free.L)
       settle(this.knees.R, free.R)
     } else {
+      stepSpring(this.fall, down, dt, this.skirtSpring.frequency, this.skirtSpring.damping)
       stepSpring(this.skirt, hips, dt, this.skirtSpring.frequency, this.skirtSpring.damping)
       stepSpring(this.knees.L, free.L, dt, LEG_FREQUENCY, LEG_DAMPING)
       stepSpring(this.knees.R, free.R, dt, LEG_FREQUENCY, LEG_DAMPING)
     }
     // The hem's lag behind the hips the stance field already carries it with.
     frame.skirtSwing = this.skirt.value - hips
+    // ...and how far above them it is still, hips that dropped under it (below them, as they come up again).
+    frame.skirtLift = down - this.fall.value
     frame.bendL = Math.max(0, this.knees.L.value)
     frame.bendR = Math.max(0, this.knees.R.value)
     return frame
@@ -340,4 +359,10 @@ export function applySkirtTrail(
   const swing = heldSwing(frame.skirtSwing, length)
   point.x += swing * along * along
   point.y -= (restX - binding.centerX) * (swing / length) * along
+  // Left up over hips that dropped, the hem is lifted and belled out by the air under it; as they come up it hangs straighter.
+  if (frame.skirtLift) {
+    const lift = heldLift(frame.skirtLift, length)
+    point.y -= lift * along * along
+    point.x += (restX - binding.centerX) * (lift / length) * SKIRT_BELL * along * along
+  }
 }

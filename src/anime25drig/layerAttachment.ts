@@ -206,6 +206,8 @@ export function deformNeckwearBridge(
 ): boolean {
   writeAnime25DAttachmentTransform(bridge.upper, frame, bridge.upperMatrix)
   writeAnime25DAttachmentTransform(bridge.lower, frame, bridge.lowerMatrix)
+  leanAnime25DAttachment(bridge.upper, frame, bridge.upperMatrix)
+  leanAnime25DAttachment(bridge.lower, frame, bridge.lowerMatrix)
   const a = bridge.upperMatrix
     const b = bridge.lowerMatrix
   const amount = frame.headTurn?.amount ?? 0
@@ -433,6 +435,33 @@ export function carryWithCoiffure(
   headTurnOffset(turn, attachment.x, attachment.y, 'back-hair', 0, 1, rearMove)
   output[6] += coiffureMove.x - rearMove.x
   output[7] += coiffureMove.y - rearMove.y
+}
+
+const nearness = { scale: 1, x: 0, y: 0 }
+
+/**
+ * A standing figure leaning toward the viewer or away shows what it carries
+ * nearer or further (figurePitch). An attachment is placed by a point of its
+ * host and drawn rigid, so it takes its host's size there, about that point:
+ * left as drawn, an earring or a hair clip stayed small on a head grown a fifth.
+ * For its transform once everything else (its swing, its bend) has been done.
+ */
+export function leanAnime25DAttachment(
+  attachment: Readonly<Pick<Anime25DLayerAttachment, 'x' | 'y' | 'binding'>>,
+  frame: Readonly<Anime25DSecondaryDeformationFrame>,
+  m: Float32Array,
+): void {
+  const pitch = frame.figure?.pitch
+  const binding = attachment.binding.figurePitch
+  if (!pitch?.active || !binding) return
+  const { x, y } = attachment
+  const scale = pitch.carryAt(binding, x, y, nearness).scale
+  const atX = m[0] * x + m[3] * y + m[6]
+  const atY = m[1] * x + m[4] * y + m[7]
+  m[0] *= scale; m[1] *= scale
+  m[3] *= scale; m[4] *= scale
+  m[6] = atX - (m[0] * x + m[3] * y)
+  m[7] = atY - (m[1] * x + m[4] * y)
 }
 
 /** The tangent carries rotation, but never scale/shear. */

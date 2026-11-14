@@ -64,6 +64,13 @@ export function writeHairRootMotion(
       x += (Math.fround(point.x) - rx) * sample.weights[k]
       y += (Math.fround(point.y) - ry) * sample.weights[k]
     }
+    // A leaning figure's head shows larger or smaller for its distance; only its travel throws the hair.
+    const pitch = frame.figure?.pitch
+    if (pitch?.active && deformation.figurePitch?.kind === 'head') {
+      point.x = x; point.y = y
+      pitch.headTravel(point)
+      x = point.x; y = point.y
+    }
     // The body rotation is shader-owned for the visible mesh. Include it once
     // in the support input, after the local head/shell and torso translation.
     deformation.springs![i].supportX = bodyPivotX +

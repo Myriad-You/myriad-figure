@@ -280,13 +280,15 @@ export class EarwearPhysics {
     nod: number,
     enabled: boolean,
     keyRoll: number | null = null,
+    ahead = 0,
   ): void {
     if (this.from) a = this.from
     const x = m[0] * a.x + m[3] * a.y + m[6]
     const y = m[1] * a.x + m[4] * a.y + m[7]
     // Depth is unavailable in the raster host mesh. This is an explicit bounded
     // pose-derived proxy, not a second application of its screen-space translation.
-    const z = this.faceHeight * (this.side * yaw * 0.12 + nod * 0.08)
+    // (`ahead`: how far toward the viewer a standing figure's lean has carried the head besides, pixels.)
+    const z = this.faceHeight * (this.side * yaw * 0.12 + nod * 0.08) + ahead
     const dt = this.time === null ? 0 : time - this.time
     const hostRoll = Math.atan2(m[1], m[0]) - (keyRoll ?? 0)
     if (
