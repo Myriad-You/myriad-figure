@@ -17,7 +17,7 @@ import { figureAffineAt, multiplyAffine } from './figureSkeleton'
 import { constrainHairSurface } from './hairSurface'
 import { jellyDisplacement } from './jellyVolume'
 import { keyedGazeShift } from './keyedGaze'
-import { carryWithCoiffure, deformNeckwearBridge, writeAnime25DAttachmentTransform } from './layerAttachment'
+import { carryWithCoiffure, deformNeckwearBridge, leanAnime25DAttachment, writeAnime25DAttachmentTransform } from './layerAttachment'
 import { deformAnime25DUpstreamFeaturePoint } from './layerDeformation'
 import { writeAnime25DLayerGlobalTransform } from './layerTransform'
 import {
@@ -112,6 +112,9 @@ export function writeRigidLayerTransform(
     // Then the bones carry it, as drawn at its middle.
     figureAffineAt(source.y + source.h / 2, skin, figure.rest, figure.pose, figureCarry)
     multiplyAffine(layer.layerTransform, figureCarry, layer.layerTransform)
+    // And lean it toward the viewer or away, as drawn at its middle too.
+    const pitch = layer.secondaryDeformation.figurePitch
+    if (figure.pitch?.active && pitch) figure.pitch.carryAffine(layer.layerTransform, pitch, source.x + source.w / 2, source.y + source.h / 2)
   }
 }
 
@@ -339,6 +342,7 @@ export function settleDependentLayers(
       if (layer.attachmentTurn && deformAttachmentTurn(layer.attachmentTurn, secondaryDeformationFrame.headTurn?.amount ?? 0, secondaryDeformationFrame.headTurn?.nodAmount ?? 0, layer.rest, layer.deformed))
         layer.geometryDirty = true
       if (layer.earSide) layer.behindFace = earBehindFace(layer.earSide, secondaryDeformationFrame.headTurn?.sine ?? 0)
+      leanAnime25DAttachment(layer.attachment, secondaryDeformationFrame, layer.layerTransform)
     }
   }
   return savedUploadBytes

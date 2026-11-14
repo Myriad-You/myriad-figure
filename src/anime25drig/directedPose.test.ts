@@ -17,6 +17,7 @@ import { applyBodyLift } from './bodyLift'
 import { ClosedEyePresentation } from './closedEyePresentation'
 import { BODY_CONTROL_DRIVERS, DirectedPoseController, INDEPENDENT_BODY_CONTROLS } from './directedPose'
 import { IDENTITY_DRIVER } from './driver'
+import { FIGURE_PITCH_BACK, FIGURE_PITCH_FORWARD } from './figurePitch'
 import { Anime25DIrisRebound } from './irisRebound'
 import { deformAnime25DUpstreamFeaturePoint } from './layerDeformation'
 import { Anime25DMotionComposer } from './motionComposer'
@@ -423,6 +424,109 @@ function sampleAt(value: DirectedPoseController, from: number, to: number, fps =
   }
   return samples
 }
+
+/** A standing figure's package and render frame, with nothing drawn but its top. */
+function standingStage() {
+  const layer: Anime25DPlaybackLayer = { name: 'topwear', role: 'topwear', z: 0, depth: 0.9,
+    group: 'body', phys: null, fade: null, side: null, x: 80, y: 440, w: 600, h: 580,
+    atlas: { x: 0, y: 0, w: 1, h: 1 }, strands: [] }
+  const anchors = { face: { x0: 230, y0: 90, x1: 538, y1: 405, cx: 384, cy: 248 },
+    mouth: { x0: 347, y0: 310, x1: 421, y1: 344, cx: 384, cy: 327 },
+    neckPivot: { x: 384, y: 426 }, neckTop: 395, neckBottom: 482,
+    bodyPivot: { x: 384, y: 1024 }, groundY: 2000, faceScale: 0.925 }
+  const playback: Anime25DPlayback = { ...anime25DPlaybackSource(), pixelCanvas: { width: 768, height: 2048 },
+    layers: [layer], anchors, shellProfile: deriveAnime25DShellProfile({ anchors, layers: [layer] }),
+    mouthProfile: { version: 1, source: 'bounds-fallback', silhouettes: [], bridges: [] },
+    chestProfile: { version: 2, source: 'gender-policy', enabled: false, centerX: 384, centerY: 650,
+      radiusX: 140, radiusY: 90, visibleScale: 0, motionScale: 0, frequencyScale: 1,
+      supportScale: 1, garmentMotionScale: 0, confidence: 1 } }
+  const frame: Anime25DRenderFrame = { viewWidth: 768, viewHeight: 2048, bodyPivotX: 384,
+    bodyPivotY: 1024, bodyRotationCosine: 1, bodyRotationSine: 0, bodyBendHeight: 542, time: 0, eyeCry: 0 }
+  return { playback, frame }
+}
+
+test('a standing figure leans on its bones, not in the shader; its head stays on the viewer', () => {
+  const { playback, frame } = standingStage()
+  const settle = (directed: Parameters<typeof pose>[0]) => {
+    const current = { ...IDENTITY_DRIVER }
+    const composer = new Anime25DMotionComposer(current, new ClosedEyePresentation(), new Anime25DIrisRebound())
+    composer.setFigure(playback)
+    composer.directedPose.setCapabilities(capabilities)
+    composer.directedPose.set(pose(directed), 0)
+    const body = new Anime25DBodyFrames(current, frame, composer)
+    const envelope = deriveAnime25DMotionEnvelopeProfile(playback)
+    body.bind(playback, envelope)
+    for (let i = 1; i <= 360; i++) {
+      const time = i / 120
+      composer.step(1 / 120, { time, target: { ...IDENTITY_DRIVER, idle: false, talk: false, blink: false, rand: false },
+        policy: IDLE_MOTION_POLICY, mouse: { x: 0, y: 0, inside: false }, speechActive: false,
+        musicSignal: null, motionEnvelopeProfile: envelope })
+      body.stepPosture(1 / 120, time)
+      body.prepareHeadFrame(time)
+    }
+    return { current, composer, pitch: body.secondaryDeformationFrame.figure!.pitch! }
+  }
+  const forward = settle({ torsoPitch: 0.65 })
+  assert.equal(frame.bodyLift!.pitch, 0, 'the shader takes no part of a figure\'s lean')
+  assert.ok(Math.abs(forward.pitch.angle - 0.65 * FIGURE_PITCH_FORWARD) < 0.002, `${forward.pitch.angle}`)
+  assert.ok(Math.abs(forward.current.angleY) < 0.002, 'leaning in, the head does not nod with it')
+  assert.ok(forward.pitch.head.scale > 1.05)
+  const back = settle({ torsoPitch: -1 })
+  assert.ok(Math.abs(back.pitch.angle + FIGURE_PITCH_BACK) < 0.002 && back.pitch.head.scale < 0.95 && Math.abs(back.current.angleY) < 0.002)
+  // Turned to the picture's right and leaning in, the head goes right; a nod alone leans it a little the way it nods.
+  const turned = settle({ torsoPitch: 1, torsoTurn: 0.8 })
+  assert.ok(turned.pitch.head.x - forward.pitch.head.x > 10, `${turned.pitch.head.x} ${forward.pitch.head.x}`)
+  const nodding = settle({ headNod: -1 })
+  assert.ok(nodding.pitch.angle > 0.02 && nodding.pitch.angle < 0.07, `${nodding.pitch.angle}`)
+  const upright = settle({})
+  assert.equal(upright.pitch.active, false)
+})
+
+test('with its physics running, a figure takes a directed lean in turn, its skirt trailing the hips of a turned one, and comes back to rest', () => {
+  const { playback, frame } = standingStage()
+  const current = { ...IDENTITY_DRIVER }
+  const composer = new Anime25DMotionComposer(current, new ClosedEyePresentation(), new Anime25DIrisRebound())
+  composer.setFigure(playback)
+  composer.directedPose.setCapabilities(capabilities)
+  const body = new Anime25DBodyFrames(current, frame, composer)
+  const envelope = deriveAnime25DMotionEnvelopeProfile(playback)
+  body.bind(playback, envelope)
+  const pitch = body.secondaryDeformationFrame.figure!.pitch!
+  let time = 0
+  // A frame as the player runs it: composed, its springs stepped on the pose, then posed again to be drawn.
+  const tick = () => {
+    time += 1 / 60
+    composer.step(1 / 60, { time, target: { ...IDENTITY_DRIVER, idle: false, talk: false, blink: false, rand: false },
+      policy: IDLE_MOTION_POLICY, mouse: { x: 0, y: 0, inside: false }, speechActive: false,
+      musicSignal: null, motionEnvelopeProfile: envelope })
+    body.stepPosture(1 / 60, time)
+    body.updateSprings(1 / 60, [], time)
+    body.prepareHeadFrame(time)
+  }
+  for (let i = 0; i < 30; i += 1) tick()
+  assert.equal(pitch.active, false)
+  composer.directedPose.set(pose({ torsoPitch: 1, torsoTurn: 1 }), time)
+  const seen = { asked: [] as number[], head: [] as number[], skirt: [] as number[] }
+  for (let i = 0; i < 240; i += 1) {
+    tick()
+    seen.asked.push(current.bodyPitch)
+    seen.head.push(pitch.head.scale)
+    seen.skirt.push(body.secondaryDeformationFrame.standing!.skirtSwing)
+  }
+  const settled = seen.head.at(-1)!
+  assert.ok(settled > 1.15, `${settled}`)
+  // The head, on the chest, is still on its way when the lean asked for is nearly all there; then it goes past and comes back.
+  const there = seen.asked.findIndex((value) => value > 0.95)
+  assert.ok(there >= 0 && seen.head[there]! - 1 < (settled - 1) * 0.8, `${there}: ${seen.head[there]} of ${settled}`)
+  assert.ok(Math.max(...seen.head) > settled + 0.005, `it goes past: ${Math.max(...seen.head)} over ${settled}`)
+  // Its hips went back, across the picture of a turned figure: the hem was left behind them, then caught up.
+  assert.ok(Math.max(...seen.skirt.map(Math.abs)) > 2, `${Math.max(...seen.skirt.map(Math.abs))}`)
+  assert.ok(Math.abs(seen.skirt.at(-1)!) < Math.max(...seen.skirt.map(Math.abs)) / 3)
+  composer.directedPose.set(pose({}), time)
+  for (let i = 0; i < 900; i += 1) tick()
+  assert.equal(pitch.thrown, false, 'and back upright it comes to rest')
+  assert.ok(Math.abs(pitch.head.scale - 1) < 1e-9 && Math.abs(pitch.head.y) < 1e-6)
+})
 
 test('score beats take over held controls on their moment, hold, and give back to the standing pose', () => {
   const value = controller()

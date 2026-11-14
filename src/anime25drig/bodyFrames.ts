@@ -419,7 +419,7 @@ export class Anime25DBodyFrames {
     this.stepArms(dt, layers, time)
     this.figure?.stepParts(dt, e.body, e.phys)
     this.stepJelly(dt)
-    if (this.standing) this.secondaryDeformationFrame.standing = this.standing.step(dt, this.current.body, this.current.phys)
+    if (this.standing) this.secondaryDeformationFrame.standing = this.standing.step(dt, this.current.body, this.current.phys, this.figure?.pitch?.hipsAcross)
   }
 
   /** Shared primary pose for physics substeps and the final visible mesh. */
@@ -431,6 +431,7 @@ export class Anime25DBodyFrames {
     const breathHead = 0.5 + 0.5 * Math.sin((time * Math.PI * 2) / 3.4 - 0.6)
     const faceHeight = anchors.face.y1 - anchors.face.y0
     const span = Math.max(1, anchors.bodyPivot.y - anchors.neckBottom)
+    const recruited = this.bodyPitchResponse.value * (1 - this.motion.directedBodyWeight('torsoPitch'))
     Object.assign(this.bodyLiftField, {
       centerX: anchors.neckPivot.x,
       upperY: anchors.neckBottom + Math.min(faceHeight * 0.65, span * 0.5),
@@ -438,7 +439,8 @@ export class Anime25DBodyFrames {
       // Directed pose is already continuous in the composer: don't filter it
       // a second time here. Only the automatic body recruitment has a spring.
       amount: Math.max(-1, Math.min(1, e.bodyLift + this.bodyLiftResponse.value * (1 - this.motion.directedBodyWeight('torsoRise')))) * Math.min(faceHeight * 0.05, span * 0.035),
-      pitch: Math.max(-1, Math.min(1, e.bodyPitch + this.bodyPitchResponse.value * (1 - this.motion.directedBodyWeight('torsoPitch')))) * 0.18,
+      // A bust's posture is its shader's 2D correction; a figure leans in depth on its bones (figurePitch).
+      pitch: this.figure ? 0 : Math.max(-1, Math.min(1, e.bodyPitch + recruited)) * 0.18,
       depth: this.shellProfile.torso.enabled ? Math.min(this.shellProfile.torso.radiusZ, span * 0.45) : 0,
       shoulderY: anchors.neckBottom,
     })
@@ -468,7 +470,8 @@ export class Anime25DBodyFrames {
     this.renderFrame.bodyPivotY = anchors.bodyPivot.y
     this.renderFrame.bodyBendHeight = frame.bodyBendHeight ?? 0
     // With bones, they sway the figure as each layer's own deformation ends.
-    this.figure?.step(e.body, this.standing?.frame)
+    // ...and lean it in depth: as directed, and a little as its head nods (looking down, in).
+    this.figure?.step(e.body, this.standing?.frame, e.bodyPitch, -recruited, this.torsoShellRotation, frame.torsoShellBlend)
     const lean = this.figure ? 0 : e.body * BODY_ROLL_RADIANS
     this.renderFrame.bodyRotationCosine = Math.cos(lean)
     this.renderFrame.bodyRotationSine = Math.sin(lean)

@@ -112,13 +112,21 @@ export class PartSways {
         })
   }
 
-  /** Steps each spring towards where the bones carry its anchor now. */
-  step(dt: number, pose: Readonly<FigurePose>, dynamic: boolean): void {
+  /**
+   * Steps each spring towards where the bones carry its anchor now, and then `lean`, a figure's lean toward
+   * the viewer or away (figurePitch), which moves a point the bones have carried, drawn at (`restX`, `restY`).
+   */
+  step(dt: number, pose: Readonly<FigurePose>, dynamic: boolean, lean?: ((point: { x: number; y: number }, restX: number, restY: number) => void) | null): void {
     this.springs.forEach((spring, index) => {
       if (!spring) return
       const bone: Readonly<BoneTransform> = pose[spring.bone]
-      const tx = bone.a * spring.anchorX + bone.c * spring.anchorY + bone.tx
-      const ty = bone.b * spring.anchorX + bone.d * spring.anchorY + bone.ty
+      let tx = bone.a * spring.anchorX + bone.c * spring.anchorY + bone.tx
+      let ty = bone.b * spring.anchorX + bone.d * spring.anchorY + bone.ty
+      if (lean) {
+        anchor.x = tx; anchor.y = ty
+        lean(anchor, spring.anchorX, spring.anchorY)
+        tx = anchor.x; ty = anchor.y
+      }
       if (!dynamic || !spring.settled || !(dt > 0)) {
         spring.x = tx
         spring.y = ty
@@ -140,6 +148,8 @@ export class PartSways {
     })
   }
 }
+
+const anchor = { x: 0, y: 0 }
 
 function smoothstep(value: number): number {
   const t = Math.max(0, Math.min(1, value))

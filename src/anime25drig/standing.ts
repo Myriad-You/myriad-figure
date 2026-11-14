@@ -214,8 +214,9 @@ export class Anime25DStanding {
    * Steps the stance after the lean. The weight lands on the leg the hips
    * move over: that leg straightens, the other relaxes.
    */
-  step(dt: number, body: number, phys: boolean): Readonly<Anime25DStandingFrame> {
-    const hips = this.shift(body)
+  step(dt: number, body: number, phys: boolean, across = 0): Readonly<Anime25DStandingFrame> {
+    // (`across`: how far a lean toward the viewer has the hips across the picture besides, on a turned figure.)
+    const hips = this.shift(body) + across
     // +1 with the hips fully over the leg on the right of the picture.
     const weight = this.weight(body)
     const free = { L: Math.max(0, weight), R: Math.max(0, -weight) }

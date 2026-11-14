@@ -1,9 +1,13 @@
+import type { FigurePitch, FigurePitchBinding } from './figurePitch'
 import type { PartSwayBinding } from './partSway'
 import type { Anime25DStandingFrame, StandingBinding } from './standing'
-import type { Anime25DPartProfile, Anime25DPlaybackAnchors } from './types'
+import type { Anime25DChestProfile, Anime25DPartProfile, Anime25DPlaybackAnchors, Anime25DShellProfile } from './types'
+import { resolveChestDeformationRegion } from './chestPhysics'
 import { FigureFloat } from './figureFloat'
+import { bindFigurePitch, figurePitchAngle, figurePitchOf } from './figurePitch'
 import { applyPartSways, bindPartSways, PartSways } from './partSway'
 import { applySkirtTrail } from './standing'
+import { figureShellProfile } from './torsoDeformation'
 
 /**
  * A standing figure's bones, as a Live2D rig nests its rotation deformers:
@@ -85,6 +89,8 @@ export interface FigurePoseInput {
   bendL: number
   bendR: number
 }
+
+export type { FigurePitchBinding } from './figurePitch'
 
 /** How a figure holds itself: standing on its soles, or floating with its legs hanging. */
 export type FigureStance = 'ground' | 'float'
@@ -560,14 +566,19 @@ export function bindFigureLayer(
   baseRole: string,
   layer: Parameters<typeof bindFigureSkin>[1] & { name: string },
   playback: { anchors: Readonly<Anime25DPlaybackAnchors>; partProfile?: Anime25DPartProfile; pixelCanvas: { width: number; height: number } },
-): { figure: FigureRest | null; figureSkin: FigureSkin | null; partSways: PartSwayBinding[] | null } {
+): { figure: FigureRest | null; figureSkin: FigureSkin | null; figurePitch: FigurePitchBinding | null; partSways: PartSwayBinding[] | null } {
   const figure = figureRestOf(playback.anchors)
+  const figureSkin = bindFigureSkin(baseRole, layer, figure)
   return {
     figure,
-    figureSkin: bindFigureSkin(baseRole, layer, figure),
+    figureSkin,
+    figurePitch: figureSkin ? bindFigurePitch(baseRole, layer) : null,
     partSways: figure ? bindPartSways(playback.partProfile, layer.name, playback.pixelCanvas) : null,
   }
 }
+
+const HEAD_PITCH: FigurePitchBinding = { kind: 'head' }
+const TRUNK_PITCH: FigurePitchBinding = { kind: 'trunk' }
 
 /** Parts that hang from the shoulders and neck, carried whole by the chest. */
 const CHEST_ROLES = new Set(['handwear', 'neckwear', 'neck', 'collar_front', 'collar_back', 'hair', 'front-hair', 'back-hair', 'earwear', 'headwear'])
@@ -581,24 +592,27 @@ export function figureRestOf(anchors: Readonly<Anime25DPlaybackAnchors>): Figure
   return figureRests.get(anchors) ?? null
 }
 
-/** What a frame carries of a figure: its bones, this frame's pose and its swaying parts' lags. */
+/** What a frame carries of a figure: its bones, this frame's pose, its lean in depth and its swaying parts' lags. */
 export interface FigureFrame {
   rest: Readonly<FigureRest>
   pose: Readonly<FigurePose>
   sways?: { readonly lags: Readonly<Float32Array> }
+  /** Its lean toward the viewer or away (figurePitch), once bound. */
+  pitch?: FigurePitch | null
 }
 
 /**
  * A layer's point at the end of its own deformation, carried on: a hem
  * trails the hips and cloth hanging free in it trails its bone, on their
- * own, then the bones carry the point. A layer the shader carries whole
- * rides its bones in its layer transform instead.
+ * own, then the bones carry the point, sideways and in depth. A layer the
+ * shader carries whole rides its bones in its layer transform instead.
  */
 export function carryOnFigure(
   point: Point,
   binding: Readonly<{
     standing: StandingBinding | null
     figureSkin?: FigureSkin | null
+    figurePitch?: FigurePitchBinding | null
     partSways?: readonly PartSwayBinding[] | null
     shaderGlobalTransform: boolean
   }>,
@@ -610,6 +624,9 @@ export function carryOnFigure(
   if (binding.partSways && frame.figure?.sways) applyPartSways(point, restX, restY, binding.partSways, frame.figure.sways.lags)
   if (frame.figure && binding.figureSkin && !binding.shaderGlobalTransform) {
     skinFigurePoint(point, restY, binding.figureSkin, frame.figure.rest, frame.figure.pose)
+    // Then it leans toward the viewer or away with them.
+    const pitch = frame.figure.pitch
+    if (pitch?.active && binding.figurePitch) pitch.carryPoint(point, binding.figurePitch, restX, restY)
   }
 }
 
@@ -649,6 +666,8 @@ export function figureSwayReach(rest: Readonly<FigureRest>, canvas: FigureCanvas
 /** A standing figure's bones in a running player: posed each frame from its sway and stance. */
 export class FigureBody {
   readonly pose = createFigurePose()
+  /** Its lean toward the viewer or away; none until its trunk's depth is bound. */
+  pitch: FigurePitch | null = null
 
   private constructor(
     readonly rest: FigureRest,
@@ -664,12 +683,21 @@ export class FigureBody {
     anchors: Readonly<Anime25DPlaybackAnchors>,
     parts?: Anime25DPartProfile,
     stance: FigureStance = 'ground',
-    canvas?: FigureCanvas,
+    /** Its package: the canvas it sways on and, with its trunk's shell and chest, what it leans in depth by. */
+    canvas?: FigureCanvas & { shellProfile?: Readonly<Anime25DShellProfile>; chestProfile?: Readonly<Anime25DChestProfile> },
   ): FigureBody | null {
     const rest = figureRestOf(anchors)
     if (!rest) return null
     const reach = canvas ? figureSwayReach(rest, canvas) : 1
-    return new FigureBody(rest, new PartSways(parts), stance === 'float' ? new FigureFloat(rest) : null, reach)
+    const body = new FigureBody(rest, new PartSways(parts), stance === 'float' ? new FigureFloat(rest) : null, reach)
+    if (canvas?.shellProfile && canvas.chestProfile) {
+      body.pitch = figurePitchOf(rest, anchors, figureShellProfile(canvas.shellProfile).torso, resolveChestDeformationRegion(canvas.chestProfile).centerY, stance !== 'float')
+    }
+    return body
+  }
+
+  private readonly leanAnchor = (point: { x: number; y: number }, restX: number, restY: number): void => {
+    this.pitch?.carryPoint(point, TRUNK_PITCH, restX, restY)
   }
 
   /** Its hip shift at a full lean, as a share of the leg span. */
@@ -681,25 +709,37 @@ export class FigureBody {
   stepParts(dt: number, body: number, dynamic: boolean): void {
     body *= this.reach
     this.float?.step(dt, body, dynamic)
-    this.sways.step(dt, this.pose, dynamic)
+    // What hangs free is thrown by a lean as by a sway: its anchor goes where the trunk's lean has it too.
+    this.sways.step(dt, this.pose, dynamic, this.pitch?.thrown ? this.leanAnchor : null)
+    this.pitch?.follow(dt, dynamic)
   }
 
-  /** Poses the bones for a sway of `body`: floating, or standing on the stance's legs. */
-  step(body: number, stance: Readonly<Anime25DStandingFrame> | undefined): void {
+  /**
+   * Poses the bones for a sway of `body`: floating, or standing on the stance's legs. Then leans them toward
+   * the viewer as directed (`bodyPitch`, −1…1) and as its head's nod recruits (`recruited`), the way the
+   * torso's turn has it facing (a rotation shown by `blend`).
+   */
+  step(body: number, stance: Readonly<Anime25DStandingFrame> | undefined, bodyPitch = 0, recruited = 0, turn?: Readonly<{ active: boolean; yawSine: number }>, blend = 0): void {
     if (this.float) {
       this.float.pose(body * this.reach, this.pose)
-      return
+    } else {
+      solveFigurePose(this.rest, {
+        body: body * this.reach,
+        pelvisTilt: stance?.pelvisTilt ?? 0,
+        bendL: stance?.bendL ?? 0,
+        bendR: stance?.bendR ?? 0,
+      }, this.pose)
     }
-    solveFigurePose(this.rest, {
-      body: body * this.reach,
-      pelvisTilt: stance?.pelvisTilt ?? 0,
-      bendL: stance?.bendL ?? 0,
-      bendR: stance?.bendR ?? 0,
-    }, this.pose)
+    const yaw = turn?.active ? turn.yawSine * blend : 0
+    const directed = Math.max(-1, Math.min(1, bodyPitch))
+    const lean = figurePitchAngle(directed, recruited)
+    // (What the nod recruits has its own spring: the trunk takes that as it is, and comes after the rest in turn.)
+    this.pitch?.step(lean, yaw, Math.sqrt(Math.max(0, 1 - yaw * yaw)), this.pose.chest, lean - figurePitchAngle(directed, 0))
   }
 
-  /** Hangs a head-carry transform (column-major 3×3) from the chest. */
+  /** Hangs a head-carry transform (column-major 3×3) from the chest, leaning with it. */
   carryHead(m: Float32Array): void {
     carryAffine(m, this.pose.chest, m)
+    if (this.pitch?.active) this.pitch.carryAffine(m, HEAD_PITCH, 0, 0)
   }
 }

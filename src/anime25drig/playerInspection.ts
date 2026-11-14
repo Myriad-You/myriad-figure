@@ -39,7 +39,7 @@ export interface Anime25DInspection {
   posture: {
     /** The torso's upward extension this frame, in pixels. */
     lift: number
-    /** The torso's sagittal lean this frame. */
+    /** The torso's sagittal lean this frame: a bust's shader posture, a standing figure's lean in radians toward the viewer. */
     pitch: number
     /** The torso's own turn this frame. */
     torsoYaw: number
@@ -61,6 +61,8 @@ export interface Anime25DInspectionInput {
   collarClip: CollarClipMesh | null
   renderFrame: Readonly<Anime25DRenderFrame>
   torsoYaw: number
+  /** A standing figure's lean toward the viewer (figurePitch), radians; a bust has none. */
+  figurePitch?: number
 }
 
 export function inspectAnime25DFrame(input: Anime25DInspectionInput): Anime25DInspection {
@@ -72,7 +74,7 @@ export function inspectAnime25DFrame(input: Anime25DInspectionInput): Anime25DIn
   const crown = face?.crownOccluders?.[0]
   return {
     driver: { ...input.current },
-    posture: { lift: lift?.amount ?? 0, pitch: lift?.pitch ?? 0, torsoYaw: input.torsoYaw, lean },
+    posture: { lift: lift?.amount ?? 0, pitch: input.figurePitch ?? lift?.pitch ?? 0, torsoYaw: input.torsoYaw, lean },
     layers: input.layers.map(layer => viewLayer(layer)),
     collarAperture: input.collarClip
       ? { rest: input.collarClip.rest.slice(), placed: input.collarClip.deformed.slice(), indices: input.collarClip.indices.slice() }
