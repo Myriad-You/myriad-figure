@@ -1018,6 +1018,13 @@ test('what no picture shows of a texture takes the colours written near it, smoo
   assert.ok(px[(9 * w + 31) * 4] > px[(9 * w + 20) * 4])
 })
 
+test('a texture with nothing written stays so (its user tells by that), and one not a power of two each way is refused', () => {
+  const px = new Uint8Array(16 * 16 * 4)
+  spreadFill(px, 16, 16)
+  assert.ok(px.every((v) => v === 0))
+  assert.throws(() => spreadFill(new Uint8Array(12 * 20 * 4), 12, 20))
+})
+
 test('a bust\'s gestures of one side are no wider in the forearm than the sleeve they mostly measure', () => {
   const of = (fore: number[]) => ({ ...model, radius: [10, 10, 10, ...fore] })
   const [a, b, c] = arm3DOneSleeve([of([10, 11, 12]), of([12, 10, 30]), of([20, 25, 13])])
@@ -1025,6 +1032,7 @@ test('a bust\'s gestures of one side are no wider in the forearm than the sleeve
   assert.deepEqual(a.radius, [10, 10, 10, 10, 11, 12])
   assert.deepEqual(b.radius, [10, 10, 10, 12, 10, 13])
   assert.deepEqual(c.radius, [10, 10, 10, 12, 11, 13])
-  // One gesture alone has only its own measure.
+  // One gesture alone has only its own measure; of two, each its own too (the wider of two is the second narrowest).
   assert.deepEqual(arm3DOneSleeve([of([20, 25, 13])])[0].radius, [10, 10, 10, 20, 25, 13])
+  assert.deepEqual(arm3DOneSleeve([of([20, 25, 13]), of([10, 10, 10])]).map((m) => m.radius.slice(3)), [[20, 25, 13], [10, 10, 10]])
 })

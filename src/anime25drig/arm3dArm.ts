@@ -451,7 +451,7 @@ export class Arm3DSide {
           view.bakeSleeve(shape, px, canvas, passes(2)),
           shape.restBand ? view.bakeSleeve(shape, px, canvas, passes(shape.restBand[0], !laid)) : undefined,
           tone,
-          laid ? undefined : view.bakeSleeve(shape, px, canvas, [{ src: keyTexture, rect: layerRect, pose: raised, rest: 0, minFace: -2, maskFrom: 0, vmax: 2, over, inset: 6 * px }], true),
+          laid ? undefined : view.bakeElbow(shape, px, canvas, [{ src: keyTexture, rect: layerRect, pose: raised, rest: 0, minFace: -2, maskFrom: 0, vmax: 2, over, inset: 6 * px }]),
         )
         drop()
       }

@@ -7,7 +7,7 @@ import type { Anime25DArmModel } from './types'
  * across the body is measured with what lies next to it (the upper arm, the coat's front): near twice as wide as
  * the sleeve, a block where the drawing has a sleeve, wearing the coat beside it. What lies next to it only ever
  * adds, so the sleeve is no wider at each place than the gestures mostly measure it there: the second narrowest of
- * them (one may be measured thin where its picture hides it). A standing figure's is measured where it hangs, with
+ * them (one may be measured thin where its picture hides it; so a side of two gestures keeps each its own measure). A standing figure's is measured where it hangs, with
  * nothing beside it.
  */
 export function arm3DOneSleeve(models: Anime25DArmModel[]): Anime25DArmModel[] {

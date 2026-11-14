@@ -434,6 +434,7 @@ export function ringFill(px: Uint8Array, w: number, h: number, inset = 0): void 
  * along each row (`ringFill`) stood on them as bars, a row's one dark texel at the drawing's edge drawn out all round.
  */
 export function spreadFill(px: Uint8Array, w: number, h: number): void {
+  if ((w & (w - 1)) !== 0 || (h & (h - 1)) !== 0) throw new Error('spreadFill: a power of two each way')
   interface Level { w: number; h: number; c: Float32Array; a: Float32Array }
   const levels: Level[] = [{ w, h, c: new Float32Array(w * h * 3), a: new Float32Array(w * h) }]
   for (let i = 0; i < w * h; i += 1) {

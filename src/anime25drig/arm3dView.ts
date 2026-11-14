@@ -19,6 +19,9 @@ const ELBOW_SIZE = 512
 /** A stencil bit of the figure's own buffer: the upper arm, where what the portrait draws over it stays in front. */
 export const ARM3D_STENCIL = 16
 
+/** One picture laid on the sleeve's texture: where the picture is, the pose it shows, and how much of the sleeve it may give. */
+export interface Arm3DBakePass { src: WebGLTexture; rect: [number, number, number, number]; pose: Arm3DPose; rest: number; minFace: number; maskFrom: number; vmax: number; over?: { from: [number, number]; to: [number, number]; r: number }; inset?: number }
+
 /** One gesture's arm, bound: its model, its textures and where its pictures lie on its meshes. */
 export interface Arm3DBound {
   shape: Arm3DShape
@@ -190,6 +193,22 @@ export class Arm3DView {
     return arm3DTexture(this.gl, picture.width, picture.height, picture.pixels, mip)
   }
 
+  bakeSleeve(shape: Arm3DShape, px: number, view: { width: number; height: number }, passes: Arm3DBakePass[]): WebGLTexture {
+    return this.bake(shape, px, view, passes, false).texture
+  }
+
+  /**
+   * The texture a bust's elbow's own pieces wear (`ARM3D_ELBOW_CHART`), from the gesture's picture; none where the
+   * picture shows next to nothing of the elbow (off its foot, or all under the forearm): a texture with nothing
+   * written is black, and the elbow keeps the sleeve's own rows.
+   */
+  bakeElbow(shape: Arm3DShape, px: number, view: { width: number; height: number }, passes: Arm3DBakePass[]): WebGLTexture | undefined {
+    const { texture, written } = this.bake(shape, px, view, passes, true)
+    if (written >= 0.005 * ELBOW_SIZE * ELBOW_SIZE) return texture
+    this.gl.deleteTexture(texture)
+    return undefined
+  }
+
   /**
    * The sleeve's one texture, made on the very mesh it is worn on: the portrait where it lies hanging (the
    * upper arm from the whole picture, its sleeve there may be drawn with the body; past it only the arm),
@@ -197,7 +216,7 @@ export class Arm3DView {
    * sides) takes the colour already on its ring. With `elbow`, the elbow's own pieces' texture instead, laid out as
    * `ARM3D_ELBOW_CHART` has them.
    */
-  bakeSleeve(shape: Arm3DShape, px: number, view: { width: number; height: number }, passes: Array<{ src: WebGLTexture; rect: [number, number, number, number]; pose: Arm3DPose; rest: number; minFace: number; maskFrom: number; vmax: number; over?: { from: [number, number]; to: [number, number]; r: number }; inset?: number }>, elbow = false): WebGLTexture {
+  private bake(shape: Arm3DShape, px: number, view: { width: number; height: number }, passes: Arm3DBakePass[], elbow: boolean): { texture: WebGLTexture; written: number } {
     const gl = this.gl
     const p = this.bakeProgram
     const [W, H] = elbow ? [ELBOW_SIZE, ELBOW_SIZE] : [BAKE_W, BAKE_H]
@@ -244,6 +263,8 @@ export class Arm3DView {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null)
     gl.deleteFramebuffer(fb)
     // About 11° round the ring in from where a picture saw the sleeve last: past the outline it draws there.
+    let written = 0
+    for (let at = 3; at < px8.length; at += 4) written += px8[at] > 0 ? 1 : 0
     if (elbow) spreadFill(px8, W, H)
     else ringFill(px8, W, H, W >> 5)
     if (!elbow && shape.restCuff !== undefined) clothCuffMouth(px8, W, H)
@@ -260,7 +281,7 @@ export class Arm3DView {
     if (aniso) gl.texParameterf(gl.TEXTURE_2D, aniso.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, gl.getParameter(aniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT)))
     gl.bindVertexArray(null)
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
-    return out
+    return { texture: out, written }
   }
 
   private dropTarget(): void {
