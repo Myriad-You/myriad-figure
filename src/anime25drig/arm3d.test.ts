@@ -6,10 +6,11 @@ import test from 'node:test'
 import { affineFit, arm3DOnBody, sleeveLineHeldOff } from './arm3dArm'
 import { arm3DMixedWear, arm3DOneLook, arm3DTurnWear, arm3DWearDrawn } from './arm3dLook'
 import { similarity2D } from './arm3dMath'
-import { ARM3D_AROUND, ARM3D_CAP_V, ARM3D_ELBOW_U, ARM3D_RINGS, arm3DCapReach, arm3DHandMesh, arm3DKeepWhole, arm3DPalmAsModelled, arm3DShoulderIsBare, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
+import { ARM3D_AROUND, ARM3D_CAP_V, ARM3D_ELBOW_CHART, ARM3D_ELBOW_U, ARM3D_RINGS, arm3DCapReach, arm3DHandMesh, arm3DKeepWhole, arm3DPalmAsModelled, arm3DShoulderIsBare, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { Arm3DMotion, arm3DShape, forearmOver } from './arm3dMotion'
-import { ARM3D_ELBOW_ROWS, ARM3D_ELBOW_V, ARM3D_INK, arm3DCutSides, arm3DInk, arm3DUpperArmAlone, bareBelowSleeve, clothCuffMouth, plainElbowRows, ringFill } from './arm3dPrepare'
+import { ARM3D_INK, arm3DCutSides, arm3DInk, arm3DUpperArmAlone, bareBelowSleeve, clothCuffMouth, ringFill, spreadFill } from './arm3dPrepare'
 import { arm3DAimBones, arm3DAimHand, arm3DAimOf, Arm3DTransit } from './arm3dReach'
+import { arm3DOneSleeve } from './arm3dSleeveFit'
 
 // A left arm hanging from (420, 620), raised with its hand up beside the head; in a layer at (100, 50).
 const hand: Array<[number, number]> = [[200, 420]]
@@ -964,25 +965,74 @@ test('slightly bent, neither tube reaches past the plane half way between them',
   for (let j = 0; j <= ARM3D_AROUND; j += 1) assert.ok(Math.abs(folded.pos[((ARM3D_RINGS / 2) * (ARM3D_AROUND + 1) + j) * 3 + 1] - e[1]) < 1e-6)
 })
 
-test('the rows the elbow\'s pieces wear are the cloth\'s broad tones, the rest of the texture as it was', () => {
-  const w = 48
-  const h = 200
-  const px = new Uint8Array(w * h * 4)
-  // Plain cloth (200) with a thin dark line down it and a bright mark across the rows about the elbow.
-  for (let y = 0; y < h; y += 1) {
-    for (let x = 0; x < w; x += 1) px.set([x === 10 ? 20 : y >= 97 && x > 30 ? 255 : 200, 100, 50, 255], (y * w + x) * 4)
+test('the elbow\'s own pieces have each a place in a texture of their own, apart from one another', () => {
+  const shape = arm3DShape(model, 100, 50)
+  const motion = new Arm3DMotion(shape, false)
+  const m = arm3DSleeveMesh(shape, motion.keyPose(1, shape.rest.s), 0, 2)
+  assert.ok(m.own && m.elbow !== undefined)
+  const n = m.pos.length / 3
+  assert.equal(m.own.length, n * 2)
+  const ring = ARM3D_AROUND + 1
+  const sweepFrom = n - (m.gained === undefined ? 0 : 16 * ring) - 13 * ring
+  // Off them, nothing; on them, u round the ring as the mesh has it and v in its piece's rows.
+  for (let i = 0; i < sweepFrom; i += 1) assert.equal(m.own[i * 2 + 1], 0)
+  const rowsOf = (from: number, count: number) => {
+    let lo = Infinity
+    let hi = -Infinity
+    for (let i = from; i < from + count * ring; i += 1) {
+      assert.ok(Math.abs(m.own![i * 2] - (m.uv[i * 2] - ARM3D_ELBOW_U)) < 1e-9)
+      lo = Math.min(lo, m.own![i * 2 + 1])
+      hi = Math.max(hi, m.own![i * 2 + 1])
+    }
+    return [lo, hi]
   }
-  const before = px.slice()
-  plainElbowRows(px, w, h)
-  const row = Math.floor(ARM3D_ELBOW_V * h)
-  assert.ok(row >= Math.floor(ARM3D_ELBOW_ROWS[0] * h) && row < ARM3D_ELBOW_ROWS[1] * h)
-  const at = (x: number) => px[(row * w + x) * 4]
-  // The line is spread thin (a ninth of the ring wide here) and the mark, from below where the tone is taken, is gone.
-  assert.ok(at(10) > 170 && at(10) < 200)
-  assert.equal(at(40), 200)
-  assert.deepEqual(Array.from(px.subarray(row * w * 4 + 1, row * w * 4 + 3)), [100, 50])
-  // Nothing outside those rows is touched.
-  const first = Math.floor(ARM3D_ELBOW_ROWS[0] * h) * w * 4
-  assert.deepEqual(px.subarray(0, first), before.subarray(0, first))
-  assert.deepEqual(px.subarray(h * w * 2), before.subarray(h * w * 2))
+  assert.deepEqual(rowsOf(sweepFrom, 13), [...ARM3D_ELBOW_CHART.sweep])
+  assert.ok(m.gained !== undefined)
+  assert.deepEqual(rowsOf(sweepFrom + 13 * ring, 3), [...ARM3D_ELBOW_CHART.past])
+  assert.deepEqual(rowsOf(sweepFrom + 16 * ring, 13), [...ARM3D_ELBOW_CHART.end])
+  // Every triangle from `elbow` on is of these pieces, none before it.
+  for (let i = 0; i < m.idx.length; i += 1) assert.equal(m.idx[i] >= sweepFrom, i >= m.elbow)
+})
+
+test('what no picture shows of a texture takes the colours written near it, smoothly, and what is written stays', () => {
+  const w = 32
+  const h = 32
+  const px = new Uint8Array(w * h * 4)
+  const set = (x: number, y: number, c: number[]) => px.set([...c, 255], (y * w + x) * 4)
+  for (let y = 8; y < 12; y += 1) { for (let x = 2; x < 6; x += 1) set(x, y, [200, 40, 40])
+}
+  for (let y = 20; y < 24; y += 1) { for (let x = 24; x < 28; x += 1) set(x, y, [40, 40, 200])
+}
+  spreadFill(px, w, h)
+  for (let i = 3; i < px.length; i += 4) assert.equal(px[i], 255)
+  assert.deepEqual([...px.subarray((9 * w + 3) * 4, (9 * w + 3) * 4 + 3)], [200, 40, 40])
+  assert.deepEqual([...px.subarray((21 * w + 25) * 4, (21 * w + 25) * 4 + 3)], [40, 40, 200])
+  // Beside each patch more its colour than the other's; between them neither's own, and no step from one texel to the next.
+  assert.ok(px[(9 * w + 7) * 4] > px[(9 * w + 7) * 4 + 2] + 40 && px[(21 * w + 23) * 4 + 2] > px[(21 * w + 23) * 4] + 40)
+  const mid = (15 * w + 15) * 4
+  assert.ok(px[mid] > 60 && px[mid] < 180 && px[mid + 2] > 60 && px[mid + 2] < 180)
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 6; x < 23; x += 1) assert.ok(Math.abs(px[(y * w + x) * 4] - px[(y * w + x + 1) * 4]) < 40)
+  }
+  // Round the ring: the red patch by the left edge reaches the right edge across the seam.
+  assert.ok(px[(9 * w + 31) * 4] > px[(9 * w + 20) * 4])
+})
+
+test('a texture with nothing written stays so (its user tells by that), and one not a power of two each way is refused', () => {
+  const px = new Uint8Array(16 * 16 * 4)
+  spreadFill(px, 16, 16)
+  assert.ok(px.every((v) => v === 0))
+  assert.throws(() => spreadFill(new Uint8Array(12 * 20 * 4), 12, 20))
+})
+
+test('a bust\'s gestures of one side are no wider in the forearm than the sleeve they mostly measure', () => {
+  const of = (fore: number[]) => ({ ...model, radius: [10, 10, 10, ...fore] })
+  const [a, b, c] = arm3DOneSleeve([of([10, 11, 12]), of([12, 10, 30]), of([20, 25, 13])])
+  // The second narrowest at each place is the sleeve; none wider, the narrower as they are, the upper arm untouched.
+  assert.deepEqual(a.radius, [10, 10, 10, 10, 11, 12])
+  assert.deepEqual(b.radius, [10, 10, 10, 12, 10, 13])
+  assert.deepEqual(c.radius, [10, 10, 10, 12, 11, 13])
+  // One gesture alone has only its own measure; of two, each its own too (the wider of two is the second narrowest).
+  assert.deepEqual(arm3DOneSleeve([of([20, 25, 13])])[0].radius, [10, 10, 10, 20, 25, 13])
+  assert.deepEqual(arm3DOneSleeve([of([20, 25, 13]), of([10, 10, 10])]).map((m) => m.radius.slice(3)), [[20, 25, 13], [10, 10, 10]])
 })

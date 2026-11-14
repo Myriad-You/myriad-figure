@@ -235,12 +235,15 @@ export function splitArm3DLayer(
       bare ? bareAt(p) * Math.min(1, Math.max(0, (alongFore(p) - model.cuff - 0.02) / 0.05), Math.max(0, (1.04 - alongFore(p)) / 0.04)) : 0,
     )
     if (handA <= 0 && armA <= 0) continue
+    // The arm only where either picture has anything: within the model's outline but past both (off the figure's
+    // edge, the portrait cut there) it was solid black, which the sleeve's texture took for cloth.
+    const have = k + (1 - k) * portrait.whole[i + 3] / 255
     for (let c = 0; c < 3; c += 1) {
       hand[i + c] = v[c]
-      arm[i + c] = v[c]
+      arm[i + c] = have > 0 ? (pixels[i + c] * k + portrait.whole[i + c] * (1 - k) * portrait.whole[i + 3] / 255) / have : 0
     }
     hand[i + 3] = handA * 255
-    arm[i + 3] = armA
+    arm[i + 3] = armA * have
   }
   return { hand, arm, body, portraitArm }
 }
@@ -424,39 +427,78 @@ export function ringFill(px: Uint8Array, w: number, h: number, inset = 0): void 
   }
 }
 
-/** The sleeve texture's rows the elbow's own pieces wear lifted (`ARM3D_ELBOW_V` is in them), and where their tone is taken. */
-export const ARM3D_ELBOW_ROWS = [0.492, 0.5] as const
-export const ARM3D_ELBOW_V = 0.497
-const ELBOW_TONE_V = 0.47
-
 /**
- * A sleeve texture's last rows above the elbow made the cloth's broad tones just above them (each place round the
- * ring the average of a sixth of the ring about it), eased in over the first of them: the elbow's own pieces wear
- * one of these rows all over, and whatever fine thing the drawing has there (a fold's line, a flower, a charm's
- * edge) ran across the elbow as stripes.
+ * A texture's unwritten texels (alpha 0) made the written ones' colours spread smoothly into them (round the ring
+ * across the seam; `w` and `h` powers of two): each takes the average of what is written near it, from as far as it
+ * takes to find any. For the elbow's own pieces, most of which no drawing shows: the nearest written texel carried
+ * along each row (`ringFill`) stood on them as bars, a row's one dark texel at the drawing's edge drawn out all round.
  */
-export function plainElbowRows(px: Uint8Array, w: number, h: number): void {
-  const row = Math.floor(ELBOW_TONE_V * h)
-  const first = Math.floor(ARM3D_ELBOW_ROWS[0] * h)
-  const last = Math.min(h, Math.ceil(ARM3D_ELBOW_ROWS[1] * h))
-  const reach = Math.max(1, Math.round(w / 12))
-  const broad = new Float32Array(w * 3)
-  for (let c = 0; c < 3; c += 1) {
-    let sum = 0
-    for (let k = -reach; k <= reach; k += 1) sum += px[(row * w + (k + w) % w) * 4 + c]
-    for (let x = 0; x < w; x += 1) {
-      broad[x * 3 + c] = sum / (2 * reach + 1)
-      sum += px[(row * w + (x + reach + 1) % w) * 4 + c] - px[(row * w + (x - reach + w) % w) * 4 + c]
+export function spreadFill(px: Uint8Array, w: number, h: number): void {
+  if ((w & (w - 1)) !== 0 || (h & (h - 1)) !== 0) throw new Error('spreadFill: a power of two each way')
+  interface Level { w: number; h: number; c: Float32Array; a: Float32Array }
+  const levels: Level[] = [{ w, h, c: new Float32Array(w * h * 3), a: new Float32Array(w * h) }]
+  for (let i = 0; i < w * h; i += 1) {
+    if (px[i * 4 + 3] === 0) continue
+    levels[0].a[i] = 1
+    for (let k = 0; k < 3; k += 1) levels[0].c[i * 3 + k] = px[i * 4 + k]
+  }
+  // Each level half the last: what is written under each texel, summed, and how much of it is.
+  while (levels[levels.length - 1].w > 1 && levels[levels.length - 1].h > 1) {
+    const from = levels[levels.length - 1]
+    const to: Level = { w: from.w >> 1, h: from.h >> 1, c: new Float32Array((from.w >> 1) * (from.h >> 1) * 3), a: new Float32Array((from.w >> 1) * (from.h >> 1)) }
+    for (let y = 0; y < to.h; y += 1) {
+      for (let x = 0; x < to.w; x += 1) {
+        const o = y * to.w + x
+        for (const i of [2 * y * from.w + 2 * x, 2 * y * from.w + 2 * x + 1, (2 * y + 1) * from.w + 2 * x, (2 * y + 1) * from.w + 2 * x + 1]) {
+          to.a[o] += from.a[i] / 4
+          for (let k = 0; k < 3; k += 1) to.c[o * 3 + k] += from.c[i * 3 + k] / 4
+        }
+      }
+    }
+    levels.push(to)
+  }
+  // The last level as plain colour where it has any.
+  const top = levels[levels.length - 1]
+  for (let i = 0; i < top.a.length; i += 1) {
+    if (top.a[i] <= 0) continue
+    for (let k = 0; k < 3; k += 1) top.c[i * 3 + k] /= top.a[i]
+    top.a[i] = 1
+  }
+  // Back down: what a level lacks, from the one above it (between its texels, so no blocks show).
+  for (let l = levels.length - 2; l >= 0; l -= 1) {
+    const to = levels[l]
+    const from = levels[l + 1]
+    for (let y = 0; y < to.h; y += 1) {
+      const fy = Math.min(from.h - 1, Math.max(0, (y - 0.5) / 2))
+      const y0 = Math.floor(fy)
+      const y1 = Math.min(from.h - 1, y0 + 1)
+      const ty = fy - y0
+      for (let x = 0; x < to.w; x += 1) {
+        const o = y * to.w + x
+        if (to.a[o] >= 1) continue
+        const fx = (x - 0.5) / 2
+        const x0 = ((Math.floor(fx) % from.w) + from.w) % from.w
+        const x1 = (x0 + 1) % from.w
+        const tx = fx - Math.floor(fx)
+        let a = 0
+        const c = [0, 0, 0]
+        for (const [i, wt] of [[y0 * from.w + x0, (1 - tx) * (1 - ty)], [y0 * from.w + x1, tx * (1 - ty)], [y1 * from.w + x0, (1 - tx) * ty], [y1 * from.w + x1, tx * ty]] as const) {
+          a += from.a[i] * wt
+          for (let k = 0; k < 3; k += 1) c[k] += from.c[i * 3 + k] * wt
+        }
+        if (a <= 0) continue
+        // (The level above is whole by now: all of what is lacking here comes from it.)
+        const lack = 1 - to.a[o]
+        for (let k = 0; k < 3; k += 1) to.c[o * 3 + k] += c[k] / a * lack
+        to.a[o] = 1
+      }
     }
   }
-  const ease = Math.max(1, (last - first) >> 2)
-  for (let y = first; y < last; y += 1) {
-    const t = Math.min(1, (y - first + 1) / ease)
-    for (let x = 0; x < w; x += 1) {
-      const at = (y * w + x) * 4
-      for (let c = 0; c < 3; c += 1) px[at + c] = Math.round(px[at + c] * (1 - t) + broad[x * 3 + c] * t)
-      px[at + 3] = 255
-    }
+  const { c, a } = levels[0]
+  for (let i = 0; i < w * h; i += 1) {
+    if (px[i * 4 + 3] > 0 || a[i] <= 0) continue
+    for (let k = 0; k < 3; k += 1) px[i * 4 + k] = Math.round(c[i * 3 + k])
+    px[i * 4 + 3] = 255
   }
 }
 
