@@ -5,6 +5,11 @@ import { add, catmull, cross, dot, HAND_CHAINS, len, lerp, mul, norm, smoothstep
 /** Rings along the sleeve (half to the upper arm, half to the forearm) and texels round it. */
 export const ARM3D_RINGS = 56
 export const ARM3D_AROUND = 36
+/**
+ * Added to the u of the elbow's own pieces (the texture repeats round the sleeve, so they wear the same place):
+ * marks them for the shader, which draws them in the cloth's plain tone there.
+ */
+export const ARM3D_ELBOW_U = 2
 /** A wrist's half-width against the hand's length (wrist to the middle knuckle). */
 const WRIST = 0.24
 
@@ -342,6 +347,28 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
       const ring = (i: number) => Math.floor((i - from) / (ARM3D_AROUND + 1))
       reachOut(d, m, from, m.pos.length / 3, (i) => pts[ring(i)], (i) => radii[ring(i)], (i) => vs[ring(i)], sub(b, a), reach)
     }
+    // Bent a little, each tube ends at the plane half way between the two (where two tubes as wide as each other
+    // cross): what of it lay past that plane was inside the other tube, the two surfaces all but one over a long
+    // stretch, and showed through each other there in shards. Not folded further (past a right angle or so): the
+    // forearm's sleeve, wider than the upper arm's along it, is not inside it there, and they cross cleanly.
+    const mid = add(norm(sub(p.e, p.s)), norm(sub(p.w, p.e)))
+    // Nor hanging: the hanging sleeve is the portrait's, point for point.
+    const slight = smoothstep(1.0, 1.5, len(mid)) * (1 - rest ** 4)
+    if (slight > 0) {
+      const n = norm(mid)
+      const way = norm(sub(b, a))
+      const along = dot(way, n) / slight
+      const most = len(sub(b, a))
+      for (let i = from; i < m.pos.length / 3; i += 1) {
+        const q = i * 3
+        const past = ((m.pos[q] - p.e[0]) * n[0] + (m.pos[q + 1] - p.e[1]) * n[1] + (m.pos[q + 2] - p.e[2]) * n[2]) * (v0 > 0 ? -1 : 1)
+        if (past <= 0) continue
+        const back = Math.min(most, past / along) * (v0 > 0 ? 1 : -1)
+        m.pos[q] += way[0] * back
+        m.pos[q + 1] += way[1] * back
+        m.pos[q + 2] += way[2] * back
+      }
+    }
   }
   // A forearm drawn bare from the elbow has no cuff on it to show the end of: the sleeve's end there stood out as
   // a white lip across the skin.
@@ -474,6 +501,17 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
   }
   // Hanging, the elbow's ball takes the tubes' outline either side of it (left round, it stood out of them).
   if (rest > 0) reachOut(d, m, ballFrom, m.pos.length / 3, () => c, () => r, () => 0.5, du, rest)
+  // The elbow's own pieces lie on the tubes' surfaces where they meet them (a ball as wide as the tube it ends):
+  // drawn at the very same depth the two showed through each other in teeth along the seam. Set back a little
+  // (in depth only), the tubes are in front wherever both are; not hanging, where it is the portrait's outline.
+  const settle = (): Arm3DMesh => {
+    const back = 0.08 * r * (1 - rest ** 4)
+    for (let i = ballFrom; i < m.pos.length / 3; i += 1) {
+      m.pos[i * 3 + 2] -= back
+      m.uv[i * 2] += ARM3D_ELBOW_U
+    }
+    return m
+  }
   // Bent, the sleeve goes on past the elbow's middle (its point, and the cloth hanging off it): rounded off at
   // the joint, a raised forearm ended its upper arm in a round knob where the drawings run the sleeve on. Not
   // a sleeve ending at the elbow: past it was the portrait's arm where it hangs, a white patch beside the skin.
@@ -492,12 +530,12 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
     // across the elbow's point.
     if (d.restFore !== undefined) {
       tube(m, [c, lerp(c, end, 0.5), end], [r, r, r], rows, ARM3D_AROUND, true, turned => worn(Math.max(PAST_FROM, 0.5 - past - (1 - rest) * Math.sin(turned) * vPast)))
-      return m
+      return settle()
     }
     tube(m, [c, lerp(c, end, 0.5), end], [r, r, r], rows, ARM3D_AROUND)
     ball(end, past)
   }
-  return m
+  return settle()
 }
 
 /** The sleeve's row a short sleeve's bare elbow wears: just past where the sleeve ends, no nearer the shoulder than the elbow. */

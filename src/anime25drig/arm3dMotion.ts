@@ -475,3 +475,15 @@ export function liftForearm(d: Arm3DShape, pose: Arm3DPose): Arm3DPose {
   if (lift <= 0) return pose
   return { s: pose.s, e: pose.e, w: [pose.w[0], pose.w[1], pose.w[2] + lift], hand: pose.hand.map((q) => [q[0], q[1], q[2] + lift] as V3) }
 }
+
+/**
+ * What a picture of the arm posed so has lying over its upper sleeve: the forearm's sleeve and the hand to the
+ * middle knuckle, a band `r` to either side of the line `from`–`to` (the picture's own pixels). From a sleeve's
+ * width past the elbow on: the elbow itself is the upper sleeve's end, in every pose.
+ */
+export function forearmOver(d: Pick<Arm3DShape, 'radius'>, pose: Arm3DPose): { from: [number, number]; to: [number, number]; r: number } {
+  const r = 1.05 * Math.max(...d.radius.slice(d.radius.length >> 1))
+  const way = sub(pose.w, pose.e)
+  const start = Math.min(1, r / Math.max(1e-6, len(way)))
+  return { from: [pose.e[0] + way[0] * start, pose.e[1] + way[1] * start], to: [pose.hand[9][0], pose.hand[9][1]], r }
+}

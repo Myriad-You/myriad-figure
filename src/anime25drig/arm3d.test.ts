@@ -6,9 +6,9 @@ import test from 'node:test'
 import { affineFit, arm3DOnBody, sleeveLineHeldOff } from './arm3dArm'
 import { arm3DMixedWear, arm3DOneLook, arm3DTurnWear, arm3DWearDrawn } from './arm3dLook'
 import { similarity2D } from './arm3dMath'
-import { ARM3D_AROUND, ARM3D_CAP_V, ARM3D_RINGS, arm3DCapReach, arm3DHandMesh, arm3DKeepWhole, arm3DPalmAsModelled, arm3DShoulderIsBare, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
-import { Arm3DMotion, arm3DShape } from './arm3dMotion'
-import { ARM3D_INK, arm3DCutSides, arm3DInk, arm3DUpperArmAlone, bareBelowSleeve, clothCuffMouth, ringFill } from './arm3dPrepare'
+import { ARM3D_AROUND, ARM3D_CAP_V, ARM3D_ELBOW_U, ARM3D_RINGS, arm3DCapReach, arm3DHandMesh, arm3DKeepWhole, arm3DPalmAsModelled, arm3DShoulderIsBare, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
+import { Arm3DMotion, arm3DShape, forearmOver } from './arm3dMotion'
+import { ARM3D_ELBOW_ROWS, ARM3D_ELBOW_V, ARM3D_INK, arm3DCutSides, arm3DInk, arm3DUpperArmAlone, bareBelowSleeve, clothCuffMouth, plainElbowRows, ringFill } from './arm3dPrepare'
 import { arm3DAimBones, arm3DAimHand, arm3DAimOf, Arm3DTransit } from './arm3dReach'
 
 // A left arm hanging from (420, 620), raised with its hand up beside the head; in a layer at (100, 50).
@@ -893,4 +893,96 @@ test('a sleeve is lined as dark as its picture lines its arm, never darker than 
   assert.equal(arm3DInk(picture(20, 220), w, h), ARM3D_INK)
   // Too little to measure: as ever.
   assert.equal(arm3DInk(new Uint8ClampedArray(w * h * 4), w, h), ARM3D_INK)
+})
+
+test('a forearm folded back up its upper sleeve lies over it from a sleeve past the elbow to the knuckle', () => {
+  const hand: V3[] = Array.from({ length: 21 }, () => [0, 0, 0] as V3)
+  hand[9] = [110, 40, 0]
+  // Upper arm down from (100, 100) to (100, 300); the forearm back up beside it to (110, 100).
+  const pose = { s: [100, 100, 0] as V3, e: [100, 300, 0] as V3, w: [110, 100, 0] as V3, hand }
+  const over = forearmOver({ radius: [30, 30, 30, 40, 40, 40] }, pose)
+  assert.equal(over.r, 42)
+  // It starts its own width up the forearm (the elbow is the upper sleeve's own end) and ends at the knuckle.
+  assert.ok(Math.abs(Math.hypot(over.from[0] - 100, over.from[1] - 300) - 42) < 1e-6)
+  assert.ok(over.from[1] < 300 && over.from[0] > 100)
+  assert.deepEqual(over.to, [110, 40])
+  // A forearm shorter than its sleeve is wide: no further than its wrist.
+  const short = forearmOver({ radius: [30, 30, 30, 40, 40, 40] }, { ...pose, w: [100, 320, 0] })
+  assert.deepEqual(short.from, [100, 320])
+})
+
+test('the elbow\'s own pieces are marked and set back behind the tubes, lifted; hanging they are where they were', () => {
+  const motion = new Arm3DMotion(shape, false)
+  const raised = motion.keyPose(1, shape.rest.s)
+  const hanging = motion.keyPose(0, shape.rest.s)
+  const tubes = 2 * (ARM3D_RINGS / 2 + 1) * (ARM3D_AROUND + 1)
+  for (const [pose, rest] of [[raised, 0], [hanging, 1]] as const) {
+    const m = arm3DSleeveMesh(shape, pose, rest, 2)
+    const n = m.pos.length / 3
+    // The two tubes keep their own u (0 to 1); every point of the elbow's sweep and what the sleeve gains past it is a turn on.
+    for (let i = 0; i < tubes; i += 1) assert.ok(m.uv[i * 2] <= 1 + 1e-9)
+    const elbowFrom = n - (m.gained === undefined ? 0 : 3 * (ARM3D_AROUND + 1) + 13 * (ARM3D_AROUND + 1)) - 13 * (ARM3D_AROUND + 1)
+    for (let i = elbowFrom; i < n; i += 1) assert.ok(m.uv[i * 2] >= ARM3D_ELBOW_U - 1e-9 && m.uv[i * 2] <= ARM3D_ELBOW_U + 1 + 1e-9)
+  }
+  // Lifted, the sweep's outer points lie on a ball about the elbow as wide as the sleeve there, set back from it by a share of that width.
+  const m = arm3DSleeveMesh(shape, raised, 0, 2)
+  const R = shape.radius
+  const x = 0.5 * (R.length - 1)
+  const r = R[Math.floor(x)] + (R[Math.min(R.length - 1, Math.floor(x) + 1)] - R[Math.floor(x)]) * (x - Math.floor(x))
+  const from = m.pos.length / 3 - (m.gained === undefined ? 0 : 16 * (ARM3D_AROUND + 1)) - 13 * (ARM3D_AROUND + 1)
+  let onBall = 0
+  for (let i = from; i < from + 13 * (ARM3D_AROUND + 1); i += 1) {
+    if (Math.abs(Math.hypot(m.pos[i * 3] - raised.e[0], m.pos[i * 3 + 1] - raised.e[1], m.pos[i * 3 + 2] + 0.08 * r - raised.e[2]) - r) < 1e-6) onBall += 1
+  }
+  assert.ok(onBall > 4 * (ARM3D_AROUND + 1))
+})
+
+test('slightly bent, neither tube reaches past the plane half way between them', () => {
+  const s: V3 = [300, 100, 0]
+  const e: V3 = [300, 300, 0]
+  // The forearm turned 40 degrees from the upper arm's line, in the picture.
+  const a = 40 * Math.PI / 180
+  const w: V3 = [300 + 180 * Math.sin(a), 300 + 180 * Math.cos(a), 0]
+  const hand: V3[] = Array.from({ length: 21 }, (_, i) => [w[0], w[1] + i, 0] as V3)
+  const m = arm3DSleeveMesh(shape, { s, e, w, hand }, 0, 2)
+  const n: V3 = [Math.sin(a / 2), Math.cos(a / 2), 0]
+  const ring = (ARM3D_RINGS / 2 + 1) * (ARM3D_AROUND + 1)
+  let cut = 0
+  for (let i = 0; i < 2 * ring; i += 1) {
+    const past = (m.pos[i * 3] - e[0]) * n[0] + (m.pos[i * 3 + 1] - e[1]) * n[1] + (m.pos[i * 3 + 2] - e[2]) * n[2]
+    // The upper tube (first) on the shoulder's side of the plane, the forearm's on the wrist's.
+    assert.ok(i < ring ? past < 1e-6 : past > -1e-6)
+    if (Math.abs(past) < 1e-6) cut += 1
+  }
+  // (Some of each were past it and are on it now.)
+  assert.ok(cut > ARM3D_AROUND)
+  // Hanging (the portrait's sleeve, point for point) nothing is cut, however it is bent: the upper tube's last ring is square across the arm.
+  const hung = arm3DSleeveMesh(shape, { s, e, w, hand }, 1, 2)
+  for (let j = 0; j <= ARM3D_AROUND; j += 1) assert.ok(Math.abs(hung.pos[((ARM3D_RINGS / 2) * (ARM3D_AROUND + 1) + j) * 3 + 1] - e[1]) < 1e-6)
+  // Folded right back, the tubes are left whole: the upper tube's last ring is square across the arm again.
+  const folded = arm3DSleeveMesh(shape, { s, e, w: [310, 120, 0], hand }, 0, 2)
+  for (let j = 0; j <= ARM3D_AROUND; j += 1) assert.ok(Math.abs(folded.pos[((ARM3D_RINGS / 2) * (ARM3D_AROUND + 1) + j) * 3 + 1] - e[1]) < 1e-6)
+})
+
+test('the rows the elbow\'s pieces wear are the cloth\'s broad tones, the rest of the texture as it was', () => {
+  const w = 48
+  const h = 200
+  const px = new Uint8Array(w * h * 4)
+  // Plain cloth (200) with a thin dark line down it and a bright mark across the rows about the elbow.
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) px.set([x === 10 ? 20 : y >= 97 && x > 30 ? 255 : 200, 100, 50, 255], (y * w + x) * 4)
+  }
+  const before = px.slice()
+  plainElbowRows(px, w, h)
+  const row = Math.floor(ARM3D_ELBOW_V * h)
+  assert.ok(row >= Math.floor(ARM3D_ELBOW_ROWS[0] * h) && row < ARM3D_ELBOW_ROWS[1] * h)
+  const at = (x: number) => px[(row * w + x) * 4]
+  // The line is spread thin (a ninth of the ring wide here) and the mark, from below where the tone is taken, is gone.
+  assert.ok(at(10) > 170 && at(10) < 200)
+  assert.equal(at(40), 200)
+  assert.deepEqual(Array.from(px.subarray(row * w * 4 + 1, row * w * 4 + 3)), [100, 50])
+  // Nothing outside those rows is touched.
+  const first = Math.floor(ARM3D_ELBOW_ROWS[0] * h) * w * 4
+  assert.deepEqual(px.subarray(0, first), before.subarray(0, first))
+  assert.deepEqual(px.subarray(h * w * 2), before.subarray(h * w * 2))
 })

@@ -424,6 +424,42 @@ export function ringFill(px: Uint8Array, w: number, h: number, inset = 0): void 
   }
 }
 
+/** The sleeve texture's rows the elbow's own pieces wear lifted (`ARM3D_ELBOW_V` is in them), and where their tone is taken. */
+export const ARM3D_ELBOW_ROWS = [0.492, 0.5] as const
+export const ARM3D_ELBOW_V = 0.497
+const ELBOW_TONE_V = 0.47
+
+/**
+ * A sleeve texture's last rows above the elbow made the cloth's broad tones just above them (each place round the
+ * ring the average of a sixth of the ring about it), eased in over the first of them: the elbow's own pieces wear
+ * one of these rows all over, and whatever fine thing the drawing has there (a fold's line, a flower, a charm's
+ * edge) ran across the elbow as stripes.
+ */
+export function plainElbowRows(px: Uint8Array, w: number, h: number): void {
+  const row = Math.floor(ELBOW_TONE_V * h)
+  const first = Math.floor(ARM3D_ELBOW_ROWS[0] * h)
+  const last = Math.min(h, Math.ceil(ARM3D_ELBOW_ROWS[1] * h))
+  const reach = Math.max(1, Math.round(w / 12))
+  const broad = new Float32Array(w * 3)
+  for (let c = 0; c < 3; c += 1) {
+    let sum = 0
+    for (let k = -reach; k <= reach; k += 1) sum += px[(row * w + (k + w) % w) * 4 + c]
+    for (let x = 0; x < w; x += 1) {
+      broad[x * 3 + c] = sum / (2 * reach + 1)
+      sum += px[(row * w + (x + reach + 1) % w) * 4 + c] - px[(row * w + (x - reach + w) % w) * 4 + c]
+    }
+  }
+  const ease = Math.max(1, (last - first) >> 2)
+  for (let y = first; y < last; y += 1) {
+    const t = Math.min(1, (y - first + 1) / ease)
+    for (let x = 0; x < w; x += 1) {
+      const at = (y * w + x) * 4
+      for (let c = 0; c < 3; c += 1) px[at + c] = Math.round(px[at + c] * (1 - t) + broad[x * 3 + c] * t)
+      px[at + 3] = 255
+    }
+  }
+}
+
 /** Where each vertex of the hand lies in its picture, and how squarely the picture saw it (less over the tips). */
 export function arm3DProject(m: Arm3DMesh, toPicture: (x: number, y: number) => [number, number]): [Float32Array, Float32Array] {
   const n = m.pos.length / 3
