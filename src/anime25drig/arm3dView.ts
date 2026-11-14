@@ -425,7 +425,7 @@ export class Arm3DView {
     gl.activeTexture(gl.TEXTURE9)
     gl.bindTexture(gl.TEXTURE_2D, bound.elbow ?? bound.sleeve)
     gl.uniform1i(this.uniform(p, 'uElbow'), 9)
-    gl.uniform1f(this.uniform(p, 'uElbowOn'), bound.elbow ? 1 : 0)
+    gl.uniform3f(this.uniform(p, 'uElbowOn'), bound.elbow ? 1 : 0, (also[0]?.bound ?? bound).elbow ? 1 : 0, (also[1]?.bound ?? bound).elbow ? 1 : 0)
     gl.uniform2f(this.uniform(p, 'uAlso'), also[0]?.weight ?? 0, also[1]?.weight ?? 0)
     gl.activeTexture(gl.TEXTURE0)
     gl.uniform4fv(this.uniform(p, 'uMaskRect'), bound.maskRect)

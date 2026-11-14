@@ -25,7 +25,7 @@ uniform float uRest; uniform vec4 uSolid; uniform float uFadeTop; uniform float 
 uniform float uUnlined; uniform float uOpen; uniform float uLined; uniform vec3 uBand; uniform sampler2D uLifted;
 // A bust's sleeve on its way from one gesture to another, or to hanging: that much (uAlso.x, then uAlso.y of what
 // that gives) another gesture's drawing of it, on the one arm.
-uniform float uInk; uniform float uElbowOn; uniform sampler2D uElbow; uniform sampler2D uElbowB; uniform sampler2D uElbowC; uniform sampler2D uTexB; uniform sampler2D uLiftedB; uniform vec3 uBandB; uniform sampler2D uTexC; uniform sampler2D uLiftedC; uniform vec3 uBandC; uniform vec2 uAlso;
+uniform float uInk; uniform vec3 uElbowOn; uniform sampler2D uElbow; uniform sampler2D uElbowB; uniform sampler2D uElbowC; uniform sampler2D uTexB; uniform sampler2D uLiftedB; uniform vec3 uBandB; uniform sampler2D uTexC; uniform sampler2D uLiftedC; uniform vec3 uBandC; uniform vec2 uAlso;
 // Held, cut away over the drawing's own ground (uGround, on uGroundRect of the canvas as drawn; uToDrawn0/1 carry
 // this frame's canvas back to it), by how near it is held (uGroundOn).
 uniform sampler2D uGround; uniform vec4 uGroundRect; uniform vec3 uToDrawn0; uniform vec3 uToDrawn1; uniform float uGroundOn;
@@ -34,21 +34,22 @@ out vec4 o;
 // there is one) is worn while the arm hangs; lifted, that stretch is the sleeve as the gestures draw it there
 // (uLifted), and the drawn cuff comes up at the wrist alone. The plain sleeve above the band stretched down over
 // it came out in streaks.
-vec3 clothOf(sampler2D tex, sampler2D lifted, sampler2D elbow, vec3 band, vec2 uv) {
+vec3 clothOf(sampler2D tex, sampler2D lifted, sampler2D elbow, float hasElbow, vec3 band, vec2 uv) {
   float off = band.z * (1.0 - smoothstep(0.55, 0.995, uRest))
     * smoothstep(band.x - 0.015, band.x, uv.y) * (1.0 - smoothstep(band.y, band.y + 0.015, uv.y));
   // The elbow's own pieces (their u past a turn) have only a few of the sleeve's rows, squeezed and turned every
   // way: what is drawn in those rows (a fold's line, a charm's edge) came out as bars and blocks about the elbow,
   // and one row's broad tones all over them as a flat patch where the drawing has the elbow's folds. Lifted, a
-  // bust's wear a texture of their own (uElbow at vOwn; uElbowOn), the gesture's drawing of the elbow laid on
-  // them as on the tubes; hanging, the portrait as it is.
-  float own = step(1.5, uv.x) * uElbowOn * (1.0 - smoothstep(0.9, 0.995, uRest));
+  // bust's wear a texture of their own (uElbow at vOwn), the gesture's drawing of the elbow laid on them as on
+  // the tubes; hanging, the portrait as it is. Each gesture's by whether it has one (uElbowOn, the three in
+  // turn): one whose picture shows nothing of its elbow keeps the sleeve's rows, whatever the others have.
+  float own = step(1.5, uv.x) * hasElbow * (1.0 - smoothstep(0.9, 0.995, uRest));
   return mix(mix(texture(tex, uv).rgb, texture(lifted, uv).rgb, off), texture(elbow, vOwn).rgb, own);
 }
 vec3 cloth(vec2 uv) {
-  vec3 c = clothOf(uTex, uLifted, uElbow, uBand, uv);
-  if (uAlso.x > 0.0) c = mix(c, clothOf(uTexB, uLiftedB, uElbowB, uBandB, uv), uAlso.x);
-  if (uAlso.y > 0.0) c = mix(c, clothOf(uTexC, uLiftedC, uElbowC, uBandC, uv), uAlso.y);
+  vec3 c = clothOf(uTex, uLifted, uElbow, uElbowOn.x, uBand, uv);
+  if (uAlso.x > 0.0) c = mix(c, clothOf(uTexB, uLiftedB, uElbowB, uElbowOn.y, uBandB, uv), uAlso.x);
+  if (uAlso.y > 0.0) c = mix(c, clothOf(uTexC, uLiftedC, uElbowC, uElbowOn.z, uBandC, uv), uAlso.y);
   return c;
 }
 // The cuff's cloth at its palest round the rim: what a standing figure's cuff is inside (the rim's average took in
