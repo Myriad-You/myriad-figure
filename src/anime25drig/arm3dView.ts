@@ -192,7 +192,7 @@ export class Arm3DView {
    * then the gesture's picture where it lies raised; first come, first kept. What none shows (the back, the
    * sides) takes the colour already on its ring.
    */
-  bakeSleeve(shape: Arm3DShape, px: number, view: { width: number; height: number }, passes: Array<{ src: WebGLTexture; rect: [number, number, number, number]; pose: Arm3DPose; rest: number; minFace: number; maskFrom: number; vmax: number }>): WebGLTexture {
+  bakeSleeve(shape: Arm3DShape, px: number, view: { width: number; height: number }, passes: Array<{ src: WebGLTexture; rect: [number, number, number, number]; pose: Arm3DPose; rest: number; minFace: number; maskFrom: number; vmax: number; over?: { from: [number, number]; to: [number, number]; r: number } }>): WebGLTexture {
     const gl = this.gl
     const p = this.bakeProgram
     const out = arm3DTexture(gl, BAKE_W, BAKE_H, null, false)
@@ -223,6 +223,9 @@ export class Arm3DView {
       gl.uniform1f(this.uniform(p, 'uMinFace'), pass.minFace)
       gl.uniform1f(this.uniform(p, 'uMaskFrom'), pass.maskFrom)
       gl.uniform1f(this.uniform(p, 'uVmax'), pass.vmax)
+      gl.uniform4f(this.uniform(p, 'uOver'), pass.over?.from[0] ?? 0, pass.over?.from[1] ?? 0, pass.over?.to[0] ?? 0, pass.over?.to[1] ?? 0)
+      gl.uniform1f(this.uniform(p, 'uOverR'), pass.over?.r ?? 0)
+      gl.uniform2f(this.uniform(p, 'uView'), view.width, view.height)
       gl.drawElements(gl.TRIANGLES, n, gl.UNSIGNED_INT, 0)
     }
     const px8 = new Uint8Array(BAKE_W * BAKE_H * 4)

@@ -115,7 +115,10 @@ void main() {
       avg += t / 8.0;
     }
     // (A standing figure's cuff is seen into from every side: warm and light, where a grey inside read as a hole.)
-    c = uLined > 0.5 ? pale() * mix(vec3(0.8, 0.7, 0.66), vec3(0.93, 0.86, 0.81), smoothstep(uOpen - 0.07, uOpen, vV)) : mix(lo, avg, 0.45) * mix(0.3, 0.68, smoothstep(uOpen - 0.07, uOpen, vV));
+    // Only toward that opening: at a bent elbow the tubes cross, and a sliver of one's back showing between them
+    // there was a dark stroke on the sleeve; it is the sleeve's own cloth.
+    vec3 into = uLined > 0.5 ? pale() * mix(vec3(0.8, 0.7, 0.66), vec3(0.93, 0.86, 0.81), smoothstep(uOpen - 0.07, uOpen, vV)) : mix(lo, avg, 0.45) * mix(0.3, 0.68, smoothstep(uOpen - 0.07, uOpen, vV));
+    c = mix(c, into, smoothstep(uOpen - 0.4, uOpen - 0.3, vV));
     a *= smoothstep(0.15, 0.3, vV);
   } else if (vV > 1.005) {
     // The cuff's end face: its cloth a little in from the edge, blurred, going into the opening's shadow.
@@ -138,8 +141,15 @@ export const BAKE_FS = `#version 300 es
 precision highp float;
 in vec2 vSrc; in float vFace; in float vV;
 uniform sampler2D uSrc; uniform vec4 uRect; uniform float uMinFace; uniform float uMaskFrom; uniform float uVmax;
+// What lies over the upper sleeve in this picture (the forearm folded back up it: uOver from one end to the
+// other, uOverR wide, in the picture's own pixels uView): the upper sleeve's texels under it are not this picture's to give.
+uniform vec4 uOver; uniform float uOverR; uniform vec2 uView;
 out vec4 o;
 void main() {
+  if (uOverR > 0.0 && vV < 0.5) {
+    vec2 p = vSrc * uView - uOver.xy, d = uOver.zw - uOver.xy;
+    if (length(p - d * clamp(dot(p, d) / max(1e-6, dot(d, d)), 0.0, 1.0)) < uOverR) discard;
+  }
   vec2 s = (vSrc - uRect.xy) / uRect.zw;
   float inside = step(0.0, s.x) * step(s.x, 1.0) * step(0.0, s.y) * step(s.y, 1.0)
     * step(0.0, vSrc.x) * step(vSrc.x, 1.0) * step(0.0, vSrc.y) * step(vSrc.y, 1.0);

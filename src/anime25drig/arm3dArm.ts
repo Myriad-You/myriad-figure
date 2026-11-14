@@ -12,7 +12,7 @@ import { Arm3DClothLayer } from './arm3dClothLayer'
 import { ARM3D_BUST_LIFTED, arm3DInLook, arm3DMixedWear, arm3DOneLook, arm3DTurnWear, arm3DWearDrawn } from './arm3dLook'
 import { add, handExactness, mul, norm, smoothstep, sub } from './arm3dMath'
 import { arm3DCapReach, arm3DHandMesh, arm3DKeepWhole, arm3DPalmAsModelled, arm3DShoulderIsBare, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
-import { Arm3DMotion, arm3DShape } from './arm3dMotion'
+import { Arm3DMotion, arm3DShape, forearmOver } from './arm3dMotion'
 import { ARM3D_INK, arm3DCutSides, arm3DGroundClip, arm3DInk, arm3DProject, arm3DUpperArmAlone, arm3DWristTone, composeArm3DPicture, splitArm3DLayer } from './arm3dPrepare'
 import { arm3DAimBones, arm3DAimHand, arm3DAimOf, arm3DCarryHand, Arm3DTransit } from './arm3dReach'
 import { armPoints, createBodyTexture, draped, swung } from './arm3dSwing'
@@ -331,10 +331,21 @@ export class Arm3DSide {
       const armMask = view.picture(armOnly, true)
       const cap = capPixels ? view.picture({ pixels: capPixels, width: armOnly.width, height: armOnly.height }, true) : undefined
       const keyTexture = view.picture({ pixels: split.arm, width: pixels.width, height: pixels.height }, false)
-      const passes = (upTo: number): Parameters<Arm3DView['bakeSleeve']>[3] => [
+      // A bust's lifted upper sleeve is the gesture's drawing of it only where that shows it: under a forearm folded
+      // back up it the drawing has the forearm, and the upper sleeve wore that (a fan of the forearm's folds, pale
+      // on the portrait's sleeve, as the forearm swung off it); there it stays the portrait's.
+      const over = forearmOver(shape, raised)
+      const passes = (upTo: number, apart = false): Parameters<Arm3DView['bakeSleeve']>[3] => [
         { src: standing ? armMask : wholeTexture, rect: share(rect), pose: hanging, rest: 1, minFace: -0.05, maskFrom: standing ? 0 : 2, vmax: Math.min(shape.restEnd, upTo) },
         { src: armMask, rect: share(rect), pose: hanging, rest: 1, minFace: -0.05, maskFrom: 0, vmax: upTo },
-        { src: keyTexture, rect: layerRect, pose: raised, rest: 0, minFace: 0.15, maskFrom: 0, vmax: 2 },
+        { src: keyTexture, rect: layerRect, pose: raised, rest: 0, minFace: 0.15, maskFrom: 0, vmax: 2, ...(apart ? { over } : {}) },
+        // (Past the portrait's own edge it has nothing to give either: what the gesture drew there after all.)
+        ...(apart
+          ? [
+              { src: wholeTexture, rect: share(rect), pose: hanging, rest: 1, minFace: -0.05, maskFrom: 2, vmax: shape.restEnd },
+              { src: keyTexture, rect: layerRect, pose: raised, rest: 0, minFace: 0.15, maskFrom: 0, vmax: 2 },
+            ]
+          : []),
       ]
       const drop = () => {
         gl.deleteTexture(wholeTexture)
@@ -425,7 +436,7 @@ export class Arm3DSide {
         // Lifted, the portrait's sleeve stops short of a band the gestures all draw at the wrist instead.
         // A bust's is the gesture's own drawing about the elbow whether or not a band was found there.
         if (!laid && !shape.restBand) shape.restBand = [...ARM3D_BUST_LIFTED]
-        made(view.bakeSleeve(shape, px, canvas, passes(2)), shape.restBand ? view.bakeSleeve(shape, px, canvas, passes(shape.restBand[0])) : undefined, tone)
+        made(view.bakeSleeve(shape, px, canvas, passes(2)), shape.restBand ? view.bakeSleeve(shape, px, canvas, passes(shape.restBand[0], !laid)) : undefined, tone)
         drop()
       }
       layer.ownTexture = createBodyTexture(gl, split.body, pixels.width, pixels.height)

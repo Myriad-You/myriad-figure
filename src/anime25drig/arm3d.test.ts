@@ -7,7 +7,7 @@ import { affineFit, arm3DOnBody, sleeveLineHeldOff } from './arm3dArm'
 import { arm3DMixedWear, arm3DOneLook, arm3DTurnWear, arm3DWearDrawn } from './arm3dLook'
 import { similarity2D } from './arm3dMath'
 import { ARM3D_AROUND, ARM3D_CAP_V, ARM3D_RINGS, arm3DCapReach, arm3DHandMesh, arm3DKeepWhole, arm3DPalmAsModelled, arm3DShoulderIsBare, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
-import { Arm3DMotion, arm3DShape } from './arm3dMotion'
+import { Arm3DMotion, arm3DShape, forearmOver } from './arm3dMotion'
 import { ARM3D_INK, arm3DCutSides, arm3DInk, arm3DUpperArmAlone, bareBelowSleeve, clothCuffMouth, ringFill } from './arm3dPrepare'
 import { arm3DAimBones, arm3DAimHand, arm3DAimOf, Arm3DTransit } from './arm3dReach'
 
@@ -893,4 +893,20 @@ test('a sleeve is lined as dark as its picture lines its arm, never darker than 
   assert.equal(arm3DInk(picture(20, 220), w, h), ARM3D_INK)
   // Too little to measure: as ever.
   assert.equal(arm3DInk(new Uint8ClampedArray(w * h * 4), w, h), ARM3D_INK)
+})
+
+test('a forearm folded back up its upper sleeve lies over it from a sleeve past the elbow to the knuckle', () => {
+  const hand: V3[] = Array.from({ length: 21 }, () => [0, 0, 0] as V3)
+  hand[9] = [110, 40, 0]
+  // Upper arm down from (100, 100) to (100, 300); the forearm back up beside it to (110, 100).
+  const pose = { s: [100, 100, 0] as V3, e: [100, 300, 0] as V3, w: [110, 100, 0] as V3, hand }
+  const over = forearmOver({ radius: [30, 30, 30, 40, 40, 40] }, pose)
+  assert.equal(over.r, 42)
+  // It starts its own width up the forearm (the elbow is the upper sleeve's own end) and ends at the knuckle.
+  assert.ok(Math.abs(Math.hypot(over.from[0] - 100, over.from[1] - 300) - 42) < 1e-6)
+  assert.ok(over.from[1] < 300 && over.from[0] > 100)
+  assert.deepEqual(over.to, [110, 40])
+  // A forearm shorter than its sleeve is wide: no further than its wrist.
+  const short = forearmOver({ radius: [30, 30, 30, 40, 40, 40] }, { ...pose, w: [100, 320, 0] })
+  assert.deepEqual(short.from, [100, 320])
 })
