@@ -416,7 +416,7 @@ export class Arm3DSide {
         hangPic,
         palm,
         wristTone,
-        ...(laid ? {} : { ink, plainElbow: true }),
+        ...(laid ? {} : { ink, plainElbow: !standing }),
         drawnHand: raised.hand.map((q) => [q[0], q[1], q[2]] as V3),
         drawnPic: [dx + layer.source.x, dy + layer.source.y, 1 / layer.source.w, 1 / layer.source.h],
         held,

@@ -956,6 +956,9 @@ test('slightly bent, neither tube reaches past the plane half way between them',
   }
   // (Some of each were past it and are on it now.)
   assert.ok(cut > ARM3D_AROUND)
+  // Hanging (the portrait's sleeve, point for point) nothing is cut, however it is bent: the upper tube's last ring is square across the arm.
+  const hung = arm3DSleeveMesh(shape, { s, e, w, hand }, 1, 2)
+  for (let j = 0; j <= ARM3D_AROUND; j += 1) assert.ok(Math.abs(hung.pos[((ARM3D_RINGS / 2) * (ARM3D_AROUND + 1) + j) * 3 + 1] - e[1]) < 1e-6)
   // Folded right back, the tubes are left whole: the upper tube's last ring is square across the arm again.
   const folded = arm3DSleeveMesh(shape, { s, e, w: [310, 120, 0], hand }, 0, 2)
   for (let j = 0; j <= ARM3D_AROUND; j += 1) assert.ok(Math.abs(folded.pos[((ARM3D_RINGS / 2) * (ARM3D_AROUND + 1) + j) * 3 + 1] - e[1]) < 1e-6)

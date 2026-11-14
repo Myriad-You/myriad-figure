@@ -42,7 +42,8 @@ vec3 clothOf(sampler2D tex, sampler2D lifted, vec3 band, vec2 uv) {
   // the one row made the cloth's broad tones for them (uElbowV; 0 for none); hanging, the portrait as it is.
   float plain = step(1.5, uv.x) * step(0.001, uElbowV) * (1.0 - smoothstep(0.9, 0.995, uRest));
   uv.y = mix(uv.y, uElbowV, plain);
-  return mix(texture(tex, uv).rgb, texture(lifted, uv).rgb, off);
+  // (That row is the lifted texture's alone.)
+  return mix(texture(tex, uv).rgb, texture(lifted, uv).rgb, max(off, plain));
 }
 vec3 cloth(vec2 uv) {
   vec3 c = clothOf(uTex, uLifted, uBand, uv);

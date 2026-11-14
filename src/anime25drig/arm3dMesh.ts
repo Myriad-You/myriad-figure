@@ -352,7 +352,8 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
     // stretch, and showed through each other there in shards. Not folded further (past a right angle or so): the
     // forearm's sleeve, wider than the upper arm's along it, is not inside it there, and they cross cleanly.
     const mid = add(norm(sub(p.e, p.s)), norm(sub(p.w, p.e)))
-    const slight = smoothstep(1.0, 1.5, len(mid))
+    // Nor hanging: the hanging sleeve is the portrait's, point for point.
+    const slight = smoothstep(1.0, 1.5, len(mid)) * (1 - rest ** 4)
     if (slight > 0) {
       const n = norm(mid)
       const way = norm(sub(b, a))
