@@ -182,7 +182,7 @@ export function buildGpuLayer(source: PlaybackLayer, context: GpuLayerBuildConte
   const standing = bindStanding(baseRole, baseRole === 'bottomwear' ? skirtSpan(playback.layers, source) : source, playback.anchors)
   const bodyTurnKeyform = bindBodyTurnKeyform(playbackBodyKeys(playback), source, rest, standingLegOf(playback))
   // A standing figure's bones carry every layer and shift its weight themselves.
-  const { figureSkin, partSways } = bindFigureLayer(baseRole, source, playback)
+  const { figureSkin, figurePitch, partSways } = bindFigureLayer(baseRole, source, playback)
   const deformationPolicy = resolveAnime25DLayerDeformationPolicy({
     standing: Boolean(standing),
     // A part on a standing leg goes with the leg, not with the body as a whole.
@@ -270,6 +270,7 @@ export function buildGpuLayer(source: PlaybackLayer, context: GpuLayerBuildConte
     bodyTurnKeyform,
     standing,
     figureSkin,
+    figurePitch,
     partSways,
     ...armBinding(source, rest),
   })

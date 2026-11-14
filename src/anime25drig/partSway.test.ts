@@ -66,3 +66,21 @@ test('moved by its bone, the region trails it, then settles', () => {
   sways.step(1 / 60, pose, false)
   assert.equal(sways.lags[0], 0, 'without physics it follows at once')
 })
+
+test('a figure\'s lean throws what hangs free as a sway does: its anchor is carried on by the lean', () => {
+  const sways = new PartSways(profile)
+  const pose = createFigurePose()
+  const lean = { dy: 0 }
+  const carry = (point: { x: number; y: number }, restX: number, restY: number) => {
+    assert.deepEqual([restX, restY], [200, 500], 'asked for where the anchor was drawn')
+    point.y += lean.dy
+  }
+  sways.step(1 / 60, pose, true, carry)
+  assert.equal(sways.lags[1], 0)
+  // The chest drops as she leans in: the cloth is left up behind it, then comes down after.
+  lean.dy = 40
+  sways.step(1 / 60, pose, true, carry)
+  assert.ok(sways.lags[1] < -5 && sways.lags[1] >= -0.02 * 400, `${sways.lags[1]}`)
+  for (let i = 0; i < 600; i++) sways.step(1 / 60, pose, true, carry)
+  assert.ok(Math.abs(sways.lags[1]) < 0.5, `it settles: ${sways.lags[1]}`)
+})

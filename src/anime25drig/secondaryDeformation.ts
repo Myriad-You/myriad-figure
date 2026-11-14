@@ -1,7 +1,7 @@
 import type { ArmRig, ArmRigMesh } from './armRig'
 import type { ChestSpatialField } from './chestPhysics'
 import type { Anime25DDriver } from './driver'
-import type { FigureFrame, FigureSkin } from './figureSkeleton'
+import type { FigureFrame, FigurePitchBinding, FigureSkin } from './figureSkeleton'
 import type { HeadTurn, HeadTurnFeature } from './headTurn'
 import type { Anime25DLayerSpringBinding } from './layerBinding'
 import type { PartSwayBinding } from './partSway'
@@ -196,8 +196,9 @@ export interface Anime25DSecondaryDeformationBinding {
   torsoShellMode: Anime25DTorsoShellMode | null
   /** How a standing figure's skirt or leg follows its stance. */
   standing: StandingBinding | null
-  /** Which of a standing figure's bones carry this layer, and the regions of it that sway on their own. */
+  /** Which of a standing figure's bones carry this layer, how it takes their lean in depth, and the regions of it that sway on their own. */
   figureSkin?: FigureSkin | null
+  figurePitch?: FigurePitchBinding | null
   partSways?: PartSwayBinding[] | null
 }
 
@@ -231,7 +232,7 @@ export function createAnime25DSecondaryDeformationBinding(input: {
   turnKeyform?: BoundTurnKeyform | null
   bodyTurnKeyform?: BoundTurnKeyform | null
   standing?: StandingBinding | null
-} & Pick<Anime25DSecondaryDeformationBinding, 'figureSkin' | 'partSways' | 'collarNeckWeights'>): Anime25DSecondaryDeformationBinding {
+} & Pick<Anime25DSecondaryDeformationBinding, 'figureSkin' | 'figurePitch' | 'partSways' | 'collarNeckWeights'>): Anime25DSecondaryDeformationBinding {
   return {
     ...input,
     head: input.source.group === 'head',

@@ -48,6 +48,18 @@ test("a skirt's trail swings it about the waist: the hem goes aside and tips up 
   assert.ok(point.x - 360 > 70 && point.x - 360 <= 0.3 * 250, `${point.x - 360}`)
 })
 
+test('a turned figure leaning toward the viewer takes its hips across the picture: the hem trails them too, then catches up', () => {
+  const standing = Anime25DStanding.of(anchors)!
+  standing.step(1 / 60, 0, true)
+  assert.equal(standing.step(1 / 60, 0, true, 0).skirtSwing, 0)
+  const first = standing.step(1 / 60, 0, true, -40).skirtSwing
+  assert.ok(first > 30, `the hips went left, the hem is still to their right: ${first}`)
+  let last = first
+  for (let i = 0; i < 600; i += 1) last = standing.step(1 / 60, 0, true, -40).skirtSwing
+  assert.ok(Math.abs(last) < 0.5, `${last}`)
+  assert.equal(standing.step(1 / 60, 0, false, -40).skirtSwing, 0, 'without physics it is on the hips at once')
+})
+
 test('a part on a lower leg goes with that leg; hands and the skirt do not', () => {
   const buckle = bindStanding('objects', { x: 260, y: 1140, w: 60, h: 40, group: 'body' }, anchors)
   assert.equal(buckle?.kind, 'leg')

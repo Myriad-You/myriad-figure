@@ -27,6 +27,7 @@ const SPEED_CAPS = {
   body: 5,
   torsoTurn: 5,
   bodyLift: 5,
+  bodyPitch: 3,
 } as const satisfies Partial<Record<keyof Anime25DDriver, number>>
 
 type CarriedKey = keyof typeof SPEED_CAPS
@@ -42,12 +43,21 @@ export class Anime25DPoseInertia {
     for (const [key, value] of this.composed) pose[key] = value
   }
 
-  /** Replaces the carried channels of `pose` with where the body has got to. */
-  step(pose: Anime25DDriver, dt: number): void {
+  /**
+   * Replaces the carried channels of `pose` with where the body has got to. `leans`: a standing figure, whose
+   * lean toward the viewer is its whole trunk's (figurePitch) and has that weight; a bust's is a nudge in its
+   * shader and stays as composed.
+   */
+  step(pose: Anime25DDriver, dt: number, leans = false): void {
     if (!(dt > 0)) return
     const steps = Math.ceil(dt / MAX_STEP - 1e-9)
     const h = dt / steps
     for (const key of CARRIED) {
+      if (key === 'bodyPitch' && !leans) {
+        // (A player keeps its inertia across packages: a figure's carried lean must not stay behind on a bust.)
+        this.composed.delete(key); this.position.delete(key); this.velocity.delete(key)
+        continue
+      }
       const target = pose[key]
       this.composed.set(key, target)
       let at = this.position.get(key)

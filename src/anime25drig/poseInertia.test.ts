@@ -69,3 +69,45 @@ test('the composition gets its own pose back, not the carried one', () => {
   assert.equal(pose.angleX, 0.8)
   assert.equal(pose.eyeX, 0.5, 'channels it does not carry are left alone')
 })
+
+test('a standing figure\'s lean has its trunk\'s weight; a bust\'s shader nudge passes as composed', () => {
+  const lean = (leans: boolean) => {
+    const inertia = new Anime25DPoseInertia()
+    const frames: number[] = []
+    for (let i = 0; i < 1.5 * FPS; i += 1) {
+      // Leaning all the way in, then at once all the way back.
+      const pose = { ...IDENTITY_DRIVER, bodyPitch: i < 6 ? 0 : i < 0.75 * FPS ? 1 : -1 }
+      inertia.step(pose, 1 / FPS, leans)
+      frames.push(pose.bodyPitch)
+    }
+    return frames
+  }
+  const bust = lean(false)
+  assert.deepEqual(bust.slice(5, 8), [0, 1, 1])
+  const figure = lean(true)
+  const fastest = Math.max(...figure.slice(1).map((value, i) => Math.abs(value - figure[i]!) * FPS))
+  assert.ok(fastest <= 3 + 1e-9 && fastest > 2, `lean speed ${fastest} units/s`)
+  assert.ok(Math.abs(figure[Math.round(0.75 * FPS) - 1]! - 1) < 0.02 && Math.abs(figure.at(-1)! + 1) < 0.02, 'and it arrives')
+})
+
+test('a player that changes a figure for a bust leaves the figure\'s carried lean behind', () => {
+  // The player keeps its inertia across packages, handing the composition its own pose back each frame.
+  const inertia = new Anime25DPoseInertia()
+  const pose = { ...IDENTITY_DRIVER }
+  const frame = (target: number, leans: boolean) => {
+    inertia.release(pose)
+    pose.bodyPitch = target
+    inertia.step(pose, 1 / FPS, leans)
+    return pose.bodyPitch
+  }
+  for (let i = 0; i < FPS; i += 1) frame(0.6, true)
+  // The bust takes what is composed for it from its first frame on, as a bust always did...
+  assert.equal(frame(0, false), 0)
+  assert.equal(frame(1, false), 1)
+  // ...and nothing of the figure is handed back to its composition.
+  pose.bodyPitch = 0.25
+  inertia.release(pose)
+  assert.equal(pose.bodyPitch, 0.25)
+  // Back on a figure, it starts from where the pose is, with no jump.
+  assert.equal(frame(1, true), 1)
+})

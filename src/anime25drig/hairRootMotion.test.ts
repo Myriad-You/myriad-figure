@@ -3,17 +3,19 @@ import type { Anime25DPlaybackLayer, Anime25DShellProfile } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { IDENTITY_DRIVER } from './driver'
+import { FIGURE_PITCH_FORWARD, FigurePitch, figurePitchRest } from './figurePitch'
+import { createFigurePose, figureRest } from './figureSkeleton'
 import { bindHairRootMotion, writeHairRootMotion } from './hairRootMotion'
 import { createAnime25DSecondaryDeformationBinding } from './secondaryDeformation'
 
-function fixture(firstRootY = 20) {
+function fixture(firstRootY = 20, figure: Pick<Parameters<typeof createAnime25DSecondaryDeformationBinding>[0], 'figureSkin' | 'figurePitch'> = {}) {
   const source = { group: 'head', role: 'back-hair', depth: 1, x: 0, y: 0, w: 200, h: 300,
     strands: [{ x: 60, rootY: firstRootY, tipY: 250 }, { x: 140, rootY: 130, tipY: 280 }] } as Anime25DPlaybackLayer
   const springs = source.strands.map(() => ({ supportX: 0, supportY: 0, stiff: { x: 0, v: 0, dx: 0 }, soft: { x: 0, v: 0, dx: 0 }, vertical: { x: 0, v: 0, dx: 0 }, phase: 0, stiffnessScale: 1, dampingScale: 1 }))
   const deformation = createAnime25DSecondaryDeformationBinding({
     source, baseRole: 'back_hair', shaderGlobalTransform: false, collarContact: false,
     frontHair: false, frontHairParallaxScale: null, chestWeights: null, bangWeights: null,
-    strandWeights: null, alongStrand: null, springs,
+    strandWeights: null, alongStrand: null, springs, ...figure,
   })
   const profile = { enabled: false } as Anime25DShellProfile
   const roots = bindHairRootMotion(source, deformation,
@@ -69,4 +71,34 @@ test('a root above a cropped lock retains the boundary triangle motion', () => {
   writeHairRootMotion(roots, frame, 100, 400, 1, 0)
   const expected = (sample.x - 100) * (Math.cos(0.2) - 1) - (sample.y - 200) * Math.sin(0.2)
   assert.ok(Math.abs(springs[0].supportX - expected) < 0.00002)
+})
+
+test('a leaning figure\'s hair is thrown by how far its head travels: every root alike, not apart as the head shows larger', () => {
+  const anchors = {
+    face: { x0: 50, y0: 40, x1: 150, y1: 160, cx: 100, cy: 100 }, neckPivot: { x: 100, y: 180 }, neckTop: 160, neckBottom: 210,
+    bodyPivot: { x: 100, y: 540 }, groundY: 1340, mouth: { x0: 80, y0: 130, x1: 120, y1: 145, cx: 100, cy: 138 }, faceScale: 1,
+  } as Parameters<typeof figureRest>[0]
+  const rest = figureRest(anchors)!
+  const torso = { enabled: true, blend: 1, centerX: 100, radiusX: 120, radiusZ: 90, neckDepth: 0.25 } as Parameters<typeof figurePitchRest>[1]
+  const pitch = new FigurePitch(figurePitchRest(rest, torso, anchors.face, 300, [{ icy: 105 }], [{ y: 240 }]))
+  const lean = (angle: number, binding: Parameters<typeof fixture>[1]) => {
+    const { roots, frame, springs } = fixture(20, binding)
+    frame.figure = { rest, pose: createFigurePose(), pitch }
+    pitch.step(angle, 0.3, Math.sqrt(1 - 0.09), { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 })
+    writeHairRootMotion(roots, frame, 100, 540, 1, 0)
+    return springs.map((spring) => [spring.supportX, spring.supportY])
+  }
+  const head = { figureSkin: { kind: 'chest' }, figurePitch: { kind: 'head' } } as const
+  const [first, second] = lean(FIGURE_PITCH_FORWARD, head)
+  assert.ok(Math.hypot(first![0]!, first![1]!) > 10, 'the head travelled')
+  assert.ok(Math.abs(first![0]! - second![0]!) < 1e-3 && Math.abs(first![1]! - second![1]!) < 1e-3, `${first} ${second}`)
+  // ...which is where its chin went.
+  const chin = { x: 100, y: 160 }
+  pitch.carryPoint(chin, { kind: 'head' }, 100, 160)
+  assert.ok(Math.abs(first![0]! - (chin.x - 100)) < 1e-3 && Math.abs(first![1]! - (chin.y - 160)) < 1e-3)
+  // A lock drawn on the body goes with the cloth it is on, each root its own way.
+  const [low, lower] = lean(FIGURE_PITCH_FORWARD, { figureSkin: { kind: 'torso' }, figurePitch: { kind: 'trunk' } })
+  assert.ok(Math.hypot(low![0]! - lower![0]!, low![1]! - lower![1]!) > 1)
+  // Upright, nothing.
+  assert.deepEqual(lean(0, head), [[0, 0], [0, 0]])
 })

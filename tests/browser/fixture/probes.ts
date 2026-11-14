@@ -357,6 +357,8 @@ async function posture(ref: PackageRef) {
       const poses = []
       const shots = []
       let neutral: Uint8Array | null = null
+      // Each layer as drawn upright: a standing figure's lean is in its layers' own vertices, not the shader's stage.
+      const upright = new Map<string, Float32Array>()
       for (const [lift, pitch] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1]] as const) {
         hold(player, { bodyLift: lift, bodyPitch: pitch, phys: false })
         const inspection = player.inspect()
@@ -365,6 +367,7 @@ async function posture(ref: PackageRef) {
         const drawnNeck = inspection.draw(neck)
         const drawnCut = inspection.draw(cut)
         let shapeRatio = Infinity
+        let uprightRatio = Infinity
         for (const layer of inspection.layers) {
           if (layer.opacity < 0.01) continue
           const drawn = new Float32Array(layer.placed.length)
@@ -372,15 +375,19 @@ async function posture(ref: PackageRef) {
             const p = inspection.draw({ x: layer.placed[i]!, y: layer.placed[i + 1]! })
             drawn[i] = p.x; drawn[i + 1] = p.y
           }
+          if (!upright.has(layer.name)) upright.set(layer.name, drawn)
+          const stood = upright.get(layer.name)!
           for (let i = 0; i < layer.indices.length; i += 3) {
             const [a, b, c] = [layer.indices[i]!, layer.indices[i + 1]!, layer.indices[i + 2]!]
             const before = signedArea(layer.placed, a, b, c)
             if (Math.abs(before) > 0.01) shapeRatio = Math.min(shapeRatio, signedArea(drawn, a, b, c) / before)
+            const standing = stood.length === drawn.length ? signedArea(stood, a, b, c) : 0
+            if (Math.abs(standing) > 0.01) uprightRatio = Math.min(uprightRatio, signedArea(drawn, a, b, c) / standing)
           }
         }
         poses.push({ lift, pitch, amount: inspection.posture.lift, pitchAmount: inspection.posture.pitch,
           neckShift: drawnNeck.y - neck.y, cutShift: drawnCut.y - cut.y, hash: hash(pixels),
-          changed: changedPixels(neutral, pixels, 12), pixels: pixels.length / 4, shapeRatio })
+          changed: changedPixels(neutral, pixels, 12), pixels: pixels.length / 4, shapeRatio, uprightRatio })
         shots.push({ name: `${lift}-${pitch}`, image: screenshot(gl) })
       }
       // Existing head performances recruit the posture without knowing about it.

@@ -810,8 +810,11 @@ export class Arm3DSide {
     }
     if (chest) {
       const turn = Math.atan2(chest.b, chest.a)
-      const c = Math.cos(turn)
-      const sn = Math.sin(turn)
+      // Leaning toward the viewer or away, the arm is nearer or further with its shoulder, and shows it (figurePitch).
+      const pitch = sway?.figure?.pitch
+      const near = pitch?.active ? pitch.hung.scale : 1
+      const c = Math.cos(turn) * near
+      const sn = Math.sin(turn) * near
       const carried = (q: V3): V3 => {
         const x = q[0] - a[0]
         const y = q[1] - a[1]
