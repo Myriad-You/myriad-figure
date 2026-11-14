@@ -79,6 +79,23 @@ test('figure torso meshes keep their density when the canvas has extra room to s
   }
 })
 
+test('a standing figure\'s limbs have cells enough across to turn as columns; a bust\'s keep theirs', () => {
+  for (const role of ['legwear', 'footwear', 'handwear']) {
+    const source = playbackLayer({ name: role, role, group: 'body', w: 120, h: 600 })
+    const input = { source, face: ANCHORS.face, layerZ: 3, canvasWidth: CANVAS_WIDTH * 4 }
+    const bust = buildAnime25DLayerBinding(input)
+    const figure = buildAnime25DLayerBinding({ ...input, figure: true })
+    assert.ok(bust.cols < 10, `${role}: ${bust.cols}`)
+    assert.equal(figure.cols, 10)
+    // Across only: its rows are as they were.
+    assert.equal(figure.rows, bust.rows)
+  }
+  // The trunk's layers are not limbs.
+  const top = playbackLayer({ name: 'bottomwear', role: 'bottomwear', group: 'body', w: 120, h: 600 })
+  const input = { source: top, face: ANCHORS.face, layerZ: 3, canvasWidth: CANVAS_WIDTH * 4 }
+  assert.equal(buildAnime25DLayerBinding({ ...input, figure: true }).cols, buildAnime25DLayerBinding(input).cols)
+})
+
 test('eye curves have feature-scaled sampling while neutral UV coverage stays intact', () => {
   for (const role of ['eyewhite', 'eyelash', 'irides', 'eye-close', 'eye-close2', 'eyebrow']) {
     for (const scale of [0.5, 1, 2]) {

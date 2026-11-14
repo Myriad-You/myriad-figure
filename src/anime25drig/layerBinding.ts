@@ -26,6 +26,13 @@ const HEAD_TURN_CELL = 0.03
  */
 const FIGURE_TORSO_FACE_WIDTH = 310
 const FIGURE_TORSO_ROLES = new Set(['topwear', 'collar-front', 'collar-back'])
+/**
+ * A standing figure's limbs turn each as a column of its own (figureColumns): what is drawn on one slides
+ * across it, most at its middle. Its canvas-sized cells left a leg three vertices across, a tent, not a
+ * column: it has at least this many cells across. (Across only: its bones move a row as one.)
+ */
+const FIGURE_LIMB_ROLES = new Set(['legwear', 'footwear', 'handwear'])
+const FIGURE_LIMB_COLS = 10
 /** A piece cut out of its host has at least this many rows to bend over. */
 const CUT_PIECE_ROWS = 10
 
@@ -140,6 +147,7 @@ export function buildAnime25DLayerBinding(
   if (source.role === 'eye-cry') extensions.push('cry-eye-mesh-density')
   const baseCols = Math.max(
     maniacMouthMesh ? 14 : sillyMouthMesh ? 10 : eyeFeature ? 8 : morphingMouth ? 6 : 2,
+    input.figure && source.group === 'body' && FIGURE_LIMB_ROLES.has(source.role) ? FIGURE_LIMB_COLS : 0,
     Math.round(source.w / cell),
   )
   // A piece cut out of its host bends from its cut by its swing: it needs rows to bend over.

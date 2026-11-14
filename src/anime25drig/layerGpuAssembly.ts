@@ -21,6 +21,7 @@ import {
 } from './deformationDependencies'
 import { bindEarwearPhysics, bindHangBend, bindHangingPhysics, earSideOf } from './earwearPhysics'
 import { resolveAnime25DExpressionDeformation } from './expressionDeformation'
+import { bindLimbColumn } from './figureColumns'
 import { bindFigureLayer } from './figureSkeleton'
 import { bindHairRootMotion } from './hairRootMotion'
 import { bindHairSurface } from './hairSurface'
@@ -268,6 +269,7 @@ export function buildGpuLayer(source: PlaybackLayer, context: GpuLayerBuildConte
     turnFeature: turnFeatures.get(source) ?? null,
     turnKeyform: bindTurnKeyform(playback.turnKeyforms, source, rest),
     bodyTurnKeyform,
+    figureColumn: figureSkin ? bindLimbColumn(rest, source, playback.layers, (layer) => readBindingPixels((layer ?? source) as Anime25DPlaybackLayer), standingLegOf(playback)) : null,
     standing,
     figureSkin,
     figurePitch,
@@ -492,8 +494,12 @@ export function bindLayerAttachments(
     for (const attachment of [layer.attachment, layer.neckwearBridge?.upper, layer.neckwearBridge?.lower]) {
       // Its host's body key, per vertex of the host, is taken at the anchor and a pixel across (vertices 0, 1).
       if (attachment?.hostSource) {
-        attachment.binding.bodyTurnKeyform = bindBodyTurnKeyform(playbackBodyKeys(playback), attachment.hostSource,
-          Float32Array.of(attachment.x, attachment.y, attachment.x + 1, attachment.y), standingLegOf(playback))
+        const points = Float32Array.of(attachment.x, attachment.y, attachment.x + 1, attachment.y)
+        attachment.binding.bodyTurnKeyform = bindBodyTurnKeyform(playbackBodyKeys(playback), attachment.hostSource, points, standingLegOf(playback))
+        // ...and its host's column in a figure's turn, which it copied per vertex of the host.
+        if (attachment.binding.figureColumn) {
+          attachment.binding.figureColumn = bindLimbColumn(points, attachment.hostSource, playback.layers, (layer) => readBindingPixels((layer ?? attachment.hostSource) as Anime25DPlaybackLayer), standingLegOf(playback))
+        }
       }
     }
   }

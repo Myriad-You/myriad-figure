@@ -1,6 +1,7 @@
 import type { ArmRig, ArmRigMesh } from './armRig'
 import type { ChestSpatialField } from './chestPhysics'
 import type { Anime25DDriver } from './driver'
+import type { FigureColumnBinding } from './figureColumns'
 import type { FigureFrame, FigurePitchBinding, FigureSkin } from './figureSkeleton'
 import type { HeadTurn, HeadTurnFeature } from './headTurn'
 import type { Anime25DLayerSpringBinding } from './layerBinding'
@@ -24,7 +25,6 @@ import type {
 } from './types'
 import { anime25DLayerUsesFaceSurface } from '../rig/anime25dLayerSemantics'
 import { ARM_CUT_BAND, ARM_SHRUG, armDrapeWeight, armSegmentShares } from './armRig'
-import { addBodyTurn } from './bodyTurnKeyforms'
 import { clamp, smoothstep } from './chestField'
 import { chestDeformationWeight } from './chestPhysics'
 import {
@@ -41,15 +41,7 @@ import { followHeadBelow } from './neckFollow'
 import { applyPoseCorrections } from './poseCorrections'
 import { bodyLeanShare } from './poseScale'
 import { deformAnime25DShellPoint, shellTurnBlend } from './shellDeformation'
-import {
-  addTorsoShellShare,
-  anime25DSleeveAnchorX,
-  anime25DTorsoShellOffsetX,
-  deformAnime25DTorsoShellPoint,
-  figureFrontDepth,
-  figureSleeveOffsetX,
-  SLEEVE_TORSO_TRANSMISSION,
-} from './torsoDeformation'
+import { turnWithTorso } from './torsoTurn'
 import { addKeyedTurn, unkeyedTurn } from './turnKeyforms'
 
 type SecondaryDeformationDriver = Pick<
@@ -174,6 +166,8 @@ export interface Anime25DSecondaryDeformationBinding {
   turnKeyform?: BoundTurnKeyform | null
   /** The part's keyed body turn per vertex; it then takes no torso cylinder. */
   bodyTurnKeyform?: BoundTurnKeyform | null
+  /** A standing figure's limb: its own column in the turn (figureColumns). */
+  figureColumn?: FigureColumnBinding | null
   /**
    * Where a neck stops going with the head, if not at the neck's bottom: the
    * top of the strip that fades into the skin drawn on the body below, which
@@ -232,7 +226,7 @@ export function createAnime25DSecondaryDeformationBinding(input: {
   turnKeyform?: BoundTurnKeyform | null
   bodyTurnKeyform?: BoundTurnKeyform | null
   standing?: StandingBinding | null
-} & Pick<Anime25DSecondaryDeformationBinding, 'figureSkin' | 'figurePitch' | 'partSways' | 'collarNeckWeights'>): Anime25DSecondaryDeformationBinding {
+} & Pick<Anime25DSecondaryDeformationBinding, 'figureSkin' | 'figurePitch' | 'partSways' | 'collarNeckWeights' | 'figureColumn'>): Anime25DSecondaryDeformationBinding {
   return {
     ...input,
     head: input.source.group === 'head',
@@ -472,25 +466,7 @@ export function deformAnime25DSecondaryPoint(
       point.y += (restY - frame.chestMotionCenterY) * (scale - 1)
     }
   }
-  // The neck and collar take the body's share of the torso's turn.
-  const torsoWeight = binding.torsoShellMode === 'collar' || binding.torsoShellMode === 'neck' ? collarBodyWeight : 1
-  const frontDepth = binding.torsoShellMode ? figureFrontDepth(frame.torsoProfile, restY, frame.neckBottom, frame.chestRegionCenterY) : 1
-  if (binding.bodyTurnKeyform) {
-    // Measured, not projected; but a leg's top, inside the skirt, turns with it.
-    const cylinder = addTorsoShellShare(point, binding.bodyTurnKeyform.cylinder?.[vertex] ?? 0, frame, restY)
-    addBodyTurn(point, binding.bodyTurnKeyform, vertex, (frame.bodyTurn ?? 0) * torsoWeight * (1 - cylinder))
-  } else if (binding.torsoShellMode === 'sleeve') {
-    // A bust's sleeve is one rigid drawing hanging beside the cylinder, not a
-    // patch of its surface; a figure's hangs at the side but lies on the body it covers.
-    point.x += frame.figure
-      ? figureSleeveOffsetX(restX, binding.handwearAnchorX, frame.torsoProfile, frame.torsoShellRotation, frame.torsoShellBlend, frontDepth)
-      : anime25DTorsoShellOffsetX(anime25DSleeveAnchorX(binding.handwearAnchorX, frame.torsoProfile),
-        frame.torsoProfile, frame.torsoShellRotation, frame.torsoShellBlend * SLEEVE_TORSO_TRANSMISSION)
-  } else if (binding.torsoShellMode) {
-    deformAnime25DTorsoShellPoint(point, frame.torsoProfile, frame.torsoShellRotation, frame.torsoShellBlend * torsoWeight,
-      binding.topwear ? frame.torsoChestShape : null, binding.topwear ? (binding.chestWeights?.[vertex] ?? 1) : 1,
-      frame.chestVolumeScale, frontDepth)
-  }
+  turnWithTorso(point, restX, restY, vertex, binding, frame, collarBodyWeight)
   if (binding.handwear) {
     // Lifting rolls the shoulder up a little; the rest of the lift is rotation.
     const shrug = frame.expression.armY * ARM_SHRUG * frame.faceScale

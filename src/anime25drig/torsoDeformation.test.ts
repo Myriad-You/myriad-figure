@@ -453,7 +453,7 @@ test('the compiled follow and the audition are one value, not two', () => {
   }
 })
 
-test("a figure's trunk turns deep while its neck and its hanging sleeves stay near the axis", () => {
+test("a figure's trunk turns deep while its neck stays near the axis; its sleeve lies on it over the body and is the arm's column beyond", () => {
   const shell = { version: 1, source: 'anchor-derived', enabled: true, blend: 0.5, torso: profile } as never
   const figure = figureShellProfile(shell).torso
   assert.ok(figure.radiusZ > profile.radiusZ, 'deeper than the face-derived guess')
@@ -463,23 +463,67 @@ test("a figure's trunk turns deep while its neck and its hanging sleeves stay ne
   assert.ok(neck > 0 && neck < front * 0.5, `neck ${neck} of the chest's ${front}`)
   // A bust profile carries the neck on the front, as before.
   assert.equal(anime25DTorsoNeckOffsetX(profile.centerX, profile, turned, 1), anime25DTorsoShellOffsetX(profile.centerX, profile, turned, 1))
-  const anchor = figure.centerX - figure.radiusX * 1.1
+  // What the arm's own column gives this point (figureColumns), here a made-up amount.
+  const column = 7
   // Over the body the sleeve lies on the surface under it: their seam holds.
   const over = figure.centerX - figure.radiusX * 0.5
-  assert.equal(figureSleeveOffsetX(over, anchor, figure, turned, 1), anime25DTorsoShellOffsetX(over, figure, turned, 1))
-  // Clear of the body it hangs at the side, travelling a fraction of a bust's rigid sleeve.
+  assert.equal(figureSleeveOffsetX(over, column, figure, turned, 1), anime25DTorsoShellOffsetX(over, figure, turned, 1))
+  // Clear of the body it is the column, nothing of the trunk's.
   const clear = figure.centerX - figure.radiusX * 1.4
-  const hanging = figureSleeveOffsetX(clear, anchor, figure, turned, 1)
-  const rigid = anime25DTorsoShellOffsetX(anime25DSleeveAnchorX(anchor, figure), figure, turned, 0.85)
-  assert.ok(Math.abs(hanging) < Math.abs(rigid) * 0.3, `hanging ${hanging} vs rigid ${rigid}`)
-  // And in between it lets go without a step (the cylinder's own edge is steep, not broken).
-  let previous = figureSleeveOffsetX(over, anchor, figure, turned, 1)
+  assert.equal(figureSleeveOffsetX(clear, column, figure, turned, 1), column)
+  // And in between it lets go without a step.
+  let previous = figureSleeveOffsetX(over, column, figure, turned, 1)
   for (let k = 0.5; k <= 1.4; k += 0.0005) {
-    const x = figure.centerX - figure.radiusX * k
-    const offset = figureSleeveOffsetX(x, anchor, figure, turned, 1)
+    const offset = figureSleeveOffsetX(figure.centerX - figure.radiusX * k, column, figure, turned, 1)
     assert.ok(Math.abs(offset - previous) < front * 0.05, `step at ${k.toFixed(4)}`)
     previous = offset
   }
+  // Drawn behind the body's clothing, it is held to the body only on the side turned toward the viewer (here
+  // the picture's left, the body's front drawing away from it); on the far side the front comes over it.
+  const nearArm = figure.centerX - figure.radiusX
+  const farArm = figure.centerX + figure.radiusX
+  assert.equal(figureSleeveOffsetX(over, column, figure, turned, 1, 1, nearArm), anime25DTorsoShellOffsetX(over, figure, turned, 1))
+  const far = figure.centerX + figure.radiusX * 0.5
+  assert.equal(figureSleeveOffsetX(far, column, figure, turned, 1, 1, farArm), column)
+  assert.notEqual(figureSleeveOffsetX(far, column, figure, turned, 1), column)
+  // The whole arm by the side it is on: where its sleeve reaches across the body's middle, nothing tears.
+  for (const arm of [nearArm, farArm]) {
+    const left = figureSleeveOffsetX(figure.centerX - 5, column, figure, turned, 1, 1, arm)
+    const right = figureSleeveOffsetX(figure.centerX + 5, column, figure, turned, 1, 1, arm)
+    assert.ok(Math.abs(right - left) < 5, `${left} ${right}`)
+  }
+  // And it comes in with the turn: turning through the front, a point of the far sleeve does not snap.
+  let last = 0
+  for (let yaw = -0.1; yaw <= 0.1; yaw += 0.002) {
+    const rotation = { active: true, yawCosine: Math.cos(yaw), yawSine: Math.sin(yaw) }
+    const own = (far - figure.centerX) * (Math.cos(yaw) - 1)
+    const now = figureSleeveOffsetX(far, own, figure, rotation, 1, 1, farArm)
+    if (yaw > -0.1) assert.ok(Math.abs(now - last) < figure.radiusX * 0.004, `at ${yaw.toFixed(3)}: ${now - last}`)
+    last = now
+  }
+})
+
+test("a figure's cylinder does not fold the clothing at its far edge; a bust's is the circle it was", () => {
+  const shell = { version: 1, source: 'anchor-derived', enabled: true, blend: 0.5, torso: profile } as never
+  const figure = figureShellProfile(shell).torso
+  // The most a figure's torso is turned.
+  const turned = { active: true, yawCosine: Math.cos(0.45), yawSine: Math.sin(0.45) }
+  let last = -Infinity
+  for (let k = -1.3; k <= 1.3; k += 0.002) {
+    const x = figure.centerX + figure.radiusX * k
+    const placed = x + anime25DTorsoShellOffsetX(x, figure, turned, 1)
+    assert.ok(placed > last, `folded at ${k.toFixed(3)}`)
+    last = placed
+  }
+  // Away from its edges it is the same round front.
+  const middle = figure.centerX + figure.radiusX * 0.3
+  const round = Math.sqrt(1 - 0.09) * figure.radiusZ
+  const expected = figure.radiusX * 0.3 * turned.yawCosine + round * turned.yawSine
+  assert.ok(Math.abs(middle + anime25DTorsoShellOffsetX(middle, figure, turned, 1) - figure.centerX - expected) < figure.radiusX * 0.05)
+  // A bust's profile (no neck depth of its own) keeps its circle to the edge: nothing past it has any depth,
+  // where the same profile as a figure's still stands a little out there.
+  const edge = profile.centerX + profile.radiusX * 1.05
+  assert.ok(anime25DTorsoShellOffsetX(edge, profile, turned, 1) < anime25DTorsoShellOffsetX(edge, { ...profile, neckDepth: 0.25 }, turned, 1))
 })
 
 test("a figure's front comes out from the neck's depth at the neck's foot to the whole trunk's at the chest", () => {
