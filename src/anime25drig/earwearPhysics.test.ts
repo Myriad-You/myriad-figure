@@ -127,6 +127,24 @@ test('depth changes foreshorten without flipping; pause resets energy and repeat
   assert.deepEqual(m, matrix())
 })
 
+test('a head carried toward the viewer swings its earring in depth behind it; carried nowhere, nothing changes', () => {
+  const still = new EarwearPhysics(100, 450, 1)
+  const held = new EarwearPhysics(100, 450, 1)
+  const carried = new EarwearPhysics(100, 450, 1)
+  let minimum = 1
+  for (let i = 0; i < 120; i++) {
+    const [a, b, c] = [matrix(), matrix(), matrix()]
+    still.apply(anchor, a, i / 60, 0, 0, true)
+    held.apply(anchor, b, i / 60, 0, 0, true, null, 0)
+    // The head goes 120 px toward the viewer over a third of a second, and stays.
+    carried.apply(anchor, c, i / 60, 0, 0, true, null, 120 * Math.min(1, Math.max(0, (i - 20) / 20)))
+    assert.deepEqual(b, a)
+    minimum = Math.min(minimum, c[0] * c[4] - c[1] * c[3])
+    if (i === 119) assert.ok(Math.abs(c[0] * c[4] - c[1] * c[3] - 1) < 0.01, 'and it comes to hang straight again')
+  }
+  assert.ok(minimum < 0.99, `it swung back in depth as the head went: ${minimum}`)
+})
+
 test('a keyed earring held still hangs in its keyed pose: the key rotation it took off comes back, unsqueezed', () => {
   // The host carries only its key, turned 0.3 rad at the anchor; the head is held turned.
   const p = new EarwearPhysics(100, 450, -1)

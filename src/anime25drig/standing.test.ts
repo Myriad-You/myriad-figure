@@ -48,6 +48,41 @@ test("a skirt's trail swings it about the waist: the hem goes aside and tips up 
   assert.ok(point.x - 360 > 70 && point.x - 360 <= 0.3 * 250, `${point.x - 360}`)
 })
 
+test('a turned figure leaning toward the viewer takes its hips across the picture: the hem trails them too, then catches up', () => {
+  const standing = Anime25DStanding.of(anchors)!
+  standing.step(1 / 60, 0, true)
+  assert.equal(standing.step(1 / 60, 0, true, 0).skirtSwing, 0)
+  const first = standing.step(1 / 60, 0, true, -40).skirtSwing
+  assert.ok(first > 30, `the hips went left, the hem is still to their right: ${first}`)
+  let last = first
+  for (let i = 0; i < 600; i += 1) last = standing.step(1 / 60, 0, true, -40).skirtSwing
+  assert.ok(Math.abs(last) < 0.5, `${last}`)
+  assert.equal(standing.step(1 / 60, 0, false, -40).skirtSwing, 0, 'without physics it is on the hips at once')
+})
+
+test('hips that drop leave the hem up over them, belled out, then it falls after and hangs straight again', () => {
+  const standing = Anime25DStanding.of(anchors)!
+  standing.step(1 / 60, 0, true)
+  const first = standing.step(1 / 60, 0, true, 0, 30).skirtLift!
+  assert.ok(first > 20, `${first}`)
+  const skirt = bindStanding('bottomwear', { x: 200, y: 450, w: 320, h: 250, group: 'body' }, anchors)!
+  const moved = (x: number, y: number, skirtLift: number) => {
+    const point = { x, y }
+    applySkirtTrail(point, skirt, x, y, { skirtSwing: 0, skirtLift, pelvisTilt: 0, bendL: 0, bendR: 0 })
+    return { dx: point.x - x, dy: point.y - y }
+  }
+  assert.deepEqual(moved(300, 450, 15), { dx: 0, dy: 0 })
+  const right = moved(500, 700, 15)
+  const left = moved(220, 700, 15)
+  assert.ok(right.dy < -10 && right.dy >= -0.08 * 250 && Math.abs(left.dy - right.dy) < 1e-9, `the hem is up: ${right.dy}`)
+  assert.ok(right.dx > 2 && left.dx < -2, `and wider: ${left.dx} ${right.dx}`)
+  assert.ok(moved(500, 700, 600).dy >= -0.08 * 250 - 1e-9, 'never lifted off more than a little of its length')
+  let last = first
+  for (let i = 0; i < 600; i += 1) last = standing.step(1 / 60, 0, true, 0, 30).skirtLift!
+  assert.ok(Math.abs(last) < 0.5, `${last}`)
+  assert.equal(standing.step(1 / 60, 0, false, 0, 30).skirtLift, 0)
+})
+
 test('a part on a lower leg goes with that leg; hands and the skirt do not', () => {
   const buckle = bindStanding('objects', { x: 260, y: 1140, w: 60, h: 40, group: 'body' }, anchors)
   assert.equal(buckle?.kind, 'leg')

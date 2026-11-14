@@ -480,7 +480,7 @@ export class Anime25DPlayer {
   /** What was drawn this frame, copied out for tests and inspectors. */
   inspect(): Anime25DInspection {
     const { current, layers, collarClip, renderFrame } = this
-    return inspectAnime25DFrame({ current, layers, collarClip, renderFrame, torsoYaw: this.body.torsoTurn() })
+    return inspectAnime25DFrame({ current, layers, collarClip, renderFrame, torsoYaw: this.body.torsoTurn(), figurePitch: this.body.secondaryDeformationFrame.figure?.pitch?.angle })
   }
 
   debugSnapshot(): Anime25DDebugSnapshot {
@@ -615,7 +615,7 @@ export class Anime25DPlayer {
     this.poseInertia.release(this.current)
     this.motion.step(dt, input)
     this.body.stepPosture(dt, this.time)
-    this.poseInertia.step(this.current, dt)
+    this.poseInertia.step(this.current, dt, Boolean(this.body.secondaryDeformationFrame.figure?.pitch))
   }
 
   /**

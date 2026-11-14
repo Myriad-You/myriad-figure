@@ -82,10 +82,13 @@ for (const pkg of packages) {
         if (pose.pitch || pose.lift) expect(pose.changed).toBeGreaterThan(pose.pixels * 0.01)
         expect(pose.cutShift).toBe(0)
         expect(pose.shapeRatio).toBeGreaterThan(0.65)
+        // A standing figure's lean is in its layers' own vertices: against itself upright, nothing folds
+        // (the neck under a chin come down over it is pressed shortest).
+        expect(pose.uprightRatio).toBeGreaterThan(0.3)
       }
-      // Head performances recruit the posture without knowing about it.
+      // Head performances recruit the posture without knowing about it (a standing figure leans back as it looks up).
       expect(result.recruited.lift).toBeGreaterThan(result.reach * 0.15)
-      expect(result.recruited.pitch).toBeGreaterThan(0.04)
+      expect(Math.abs(result.recruited.pitch)).toBeGreaterThan(0.04)
     })
 
     test('a short head turn reaches the torso within the cue and the torso returns to rest', async ({ page }, testInfo) => {
