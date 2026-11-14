@@ -6,7 +6,7 @@ import type { Arm3DTarget } from './arm3dTarget'
 import { handExactness, len, similarity2D, smoothstep, sub } from './arm3dMath'
 import { ARM3D_AROUND, ARM3D_RINGS, arm3DBareElbowRow, arm3DBareFromElbow, arm3DHandMesh, arm3DSleeveMesh, arm3DWristMesh } from './arm3dMesh'
 import { liftForearm, wristOverUpper } from './arm3dMotion'
-import { ARM3D_INK, bareBelowSleeve, clothCuffMouth, ringFill } from './arm3dPrepare'
+import { ARM3D_ELBOW_V, ARM3D_INK, bareBelowSleeve, clothCuffMouth, plainElbowRows, ringFill } from './arm3dPrepare'
 import { BAKE_FS, BAKE_VS, COMPOSITE_FS, FULL_VS, GAP2_FS, GAP_FS, HAND_FS, HAND_VS, HELD_FS, HELD_VS, SLEEVE_FS, SLEEVE_VS, WHOLE_FS } from './arm3dShaders'
 import { arm3DTexture, createArm3DTarget, dropArm3DTarget, setArm3DGround } from './arm3dTarget'
 
@@ -57,6 +57,8 @@ export interface Arm3DBound {
   wristTone: [number, number, number]
   /** How dark the sleeve's outline is, of its cloth (`arm3DInk`); as ever (`ARM3D_INK`) where not given. */
   ink?: number
+  /** A bust's: its lifted sleeve has the rows its elbow's own pieces wear (`plainElbowRows`). */
+  plainElbow?: boolean
   /** The drawn pose's hand, for how near the hand is to it. */
   drawnHand: V3[]
   /** The gesture's drawing of its upper arm and elbow alone (in the gesture layer's texture space), laid under the arm held there. Null (as the three below) for a bust, whose arm is the modelled one alone (its hand still wears the whole drawn hand, `full`). */
@@ -192,7 +194,7 @@ export class Arm3DView {
    * then the gesture's picture where it lies raised; first come, first kept. What none shows (the back, the
    * sides) takes the colour already on its ring.
    */
-  bakeSleeve(shape: Arm3DShape, px: number, view: { width: number; height: number }, passes: Array<{ src: WebGLTexture; rect: [number, number, number, number]; pose: Arm3DPose; rest: number; minFace: number; maskFrom: number; vmax: number; over?: { from: [number, number]; to: [number, number]; r: number } }>): WebGLTexture {
+  bakeSleeve(shape: Arm3DShape, px: number, view: { width: number; height: number }, passes: Array<{ src: WebGLTexture; rect: [number, number, number, number]; pose: Arm3DPose; rest: number; minFace: number; maskFrom: number; vmax: number; over?: { from: [number, number]; to: [number, number]; r: number } }>, plainElbow = false): WebGLTexture {
     const gl = this.gl
     const p = this.bakeProgram
     const out = arm3DTexture(gl, BAKE_W, BAKE_H, null, false)
@@ -234,6 +236,7 @@ export class Arm3DView {
     gl.deleteFramebuffer(fb)
     // About 11° round the ring in from where a picture saw the sleeve last: past the outline it draws there.
     ringFill(px8, BAKE_W, BAKE_H, BAKE_W >> 5)
+    if (plainElbow) plainElbowRows(px8, BAKE_W, BAKE_H)
     if (shape.restCuff !== undefined) clothCuffMouth(px8, BAKE_W, BAKE_H)
     if (shape.shortSleeve !== undefined) bareBelowSleeve(px8, BAKE_W, BAKE_H, shape.shortSleeve, arm3DBareElbowRow(shape.shortSleeve), shape.skin, shape.shade)
     gl.bindTexture(gl.TEXTURE_2D, out)
@@ -404,6 +407,7 @@ export class Arm3DView {
     gl.uniform1f(this.uniform(p, 'uFadeTop'), 0.26)
     gl.uniform3fv(this.uniform(p, 'uLine'), line)
     gl.uniform1f(this.uniform(p, 'uInk'), bound.ink ?? ARM3D_INK)
+    gl.uniform1f(this.uniform(p, 'uElbowV'), bound.plainElbow ? ARM3D_ELBOW_V : 0)
     // Its outline first (back faces pushed out), then itself.
     gl.enable(gl.CULL_FACE)
     gl.cullFace(gl.FRONT)

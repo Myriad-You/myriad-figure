@@ -25,7 +25,7 @@ uniform float uRest; uniform vec4 uSolid; uniform float uFadeTop; uniform float 
 uniform float uUnlined; uniform float uOpen; uniform float uLined; uniform vec3 uBand; uniform sampler2D uLifted;
 // A bust's sleeve on its way from one gesture to another, or to hanging: that much (uAlso.x, then uAlso.y of what
 // that gives) another gesture's drawing of it, on the one arm.
-uniform float uInk; uniform sampler2D uTexB; uniform sampler2D uLiftedB; uniform vec3 uBandB; uniform sampler2D uTexC; uniform sampler2D uLiftedC; uniform vec3 uBandC; uniform vec2 uAlso;
+uniform float uInk; uniform float uElbowV; uniform sampler2D uTexB; uniform sampler2D uLiftedB; uniform vec3 uBandB; uniform sampler2D uTexC; uniform sampler2D uLiftedC; uniform vec3 uBandC; uniform vec2 uAlso;
 // Held, cut away over the drawing's own ground (uGround, on uGroundRect of the canvas as drawn; uToDrawn0/1 carry
 // this frame's canvas back to it), by how near it is held (uGroundOn).
 uniform sampler2D uGround; uniform vec4 uGroundRect; uniform vec3 uToDrawn0; uniform vec3 uToDrawn1; uniform float uGroundOn;
@@ -37,6 +37,11 @@ out vec4 o;
 vec3 clothOf(sampler2D tex, sampler2D lifted, vec3 band, vec2 uv) {
   float off = band.z * (1.0 - smoothstep(0.55, 0.995, uRest))
     * smoothstep(band.x - 0.015, band.x, uv.y) * (1.0 - smoothstep(band.y, band.y + 0.015, uv.y));
+  // The elbow's own pieces (their u past a turn) wear a few rows squeezed and turned every way: what is drawn in
+  // those rows (a fold's line, a charm's edge) came out as bars and blocks about the elbow. Lifted, a bust's wear
+  // the one row made the cloth's broad tones for them (uElbowV; 0 for none); hanging, the portrait as it is.
+  float plain = step(1.5, uv.x) * step(0.001, uElbowV) * (1.0 - smoothstep(0.9, 0.995, uRest));
+  uv.y = mix(uv.y, uElbowV, plain);
   return mix(texture(tex, uv).rgb, texture(lifted, uv).rgb, off);
 }
 vec3 cloth(vec2 uv) {

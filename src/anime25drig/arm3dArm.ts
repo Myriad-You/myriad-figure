@@ -416,7 +416,7 @@ export class Arm3DSide {
         hangPic,
         palm,
         wristTone,
-        ...(laid ? {} : { ink }),
+        ...(laid ? {} : { ink, plainElbow: true }),
         drawnHand: raised.hand.map((q) => [q[0], q[1], q[2]] as V3),
         drawnPic: [dx + layer.source.x, dy + layer.source.y, 1 / layer.source.w, 1 / layer.source.h],
         held,
@@ -436,7 +436,7 @@ export class Arm3DSide {
         // Lifted, the portrait's sleeve stops short of a band the gestures all draw at the wrist instead.
         // A bust's is the gesture's own drawing about the elbow whether or not a band was found there.
         if (!laid && !shape.restBand) shape.restBand = [...ARM3D_BUST_LIFTED]
-        made(view.bakeSleeve(shape, px, canvas, passes(2)), shape.restBand ? view.bakeSleeve(shape, px, canvas, passes(shape.restBand[0], !laid)) : undefined, tone)
+        made(view.bakeSleeve(shape, px, canvas, passes(2)), shape.restBand ? view.bakeSleeve(shape, px, canvas, passes(shape.restBand[0], !laid), !laid) : undefined, tone)
         drop()
       }
       layer.ownTexture = createBodyTexture(gl, split.body, pixels.width, pixels.height)
