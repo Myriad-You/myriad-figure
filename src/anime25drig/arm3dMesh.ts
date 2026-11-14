@@ -10,8 +10,15 @@ export const ARM3D_AROUND = 36
  * marks them for the shader, which draws them in the cloth's plain tone there.
  */
 export const ARM3D_ELBOW_U = 2
+/**
+ * The elbow's own pieces laid out in a texture of their own, u round each as the mesh has it: the rows (v from,
+ * to) of the ring swept about the hinge, of the short tube past a bent elbow, and of the ball ending that.
+ */
+export const ARM3D_ELBOW_CHART = { sweep: [0.02, 0.46], past: [0.52, 0.6], end: [0.66, 0.98] } as const
 /** A wrist's half-width against the hand's length (wrist to the middle knuckle). */
 const WRIST = 0.24
+/** How many strips the elbow's swept ring has from the upper arm's way to the forearm's. */
+const ELBOW_SWEEP = 12
 
 export interface Arm3DMesh {
   pos: number[]
@@ -32,6 +39,9 @@ export interface Arm3DMesh {
   twist?: number
   /** Where its two tubes' triangles start in idx: after a standing figure's shoulder cap. */
   tubes?: number
+  /** Sleeve only: where in `idx` the elbow's own pieces start, and each vertex's place in their own texture (`ARM3D_ELBOW_CHART`; 0, 0 off them). */
+  elbow?: number
+  own?: number[]
 }
 
 function emptyMesh(): Arm3DMesh {
@@ -425,12 +435,13 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
   }
   const c = p.e
   const ballFrom = m.pos.length / 3
+  m.elbow = m.idx.length
   // The elbow itself: the sleeve's ring turned about the hinge from the upper arm's way to the forearm's, its u
   // starting where the upper tube has it and ending where the forearm's does, turned evenly between. (As a ball
   // with its poles along the two ways' middle, a forearm folded back up the upper arm had that middle toward the
   // viewer: a pole in front, the elbow's rows drawn round it as a pale disc with stripes out from its centre.)
   {
-    const SWEEP = 12
+    const SWEEP = ELBOW_SWEEP
     let hinge = cross(du, df)
     if (len(hinge) < 1e-3) hinge = cross(du, Math.abs(du[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0])
     hinge = norm(hinge)
@@ -506,10 +517,26 @@ export function arm3DSleeveMesh(d: Arm3DShape, p: Arm3DPose, rest: number, px: n
   // (in depth only), the tubes are in front wherever both are; not hanging, where it is the portrait's outline.
   const settle = (): Arm3DMesh => {
     const back = 0.08 * r * (1 - rest ** 4)
-    for (let i = ballFrom; i < m.pos.length / 3; i += 1) {
+    const n = m.pos.length / 3
+    const own: number[] = Array.from({ length: n * 2 }, () => 0)
+    // Ring by ring: the sweep's, then (a bust's, bent) the tube's three and the ball's.
+    const perRing = ARM3D_AROUND + 1
+    const sweepRings = ELBOW_SWEEP + 1
+    const pastRings = 3
+    const endRings = (n - ballFrom) / perRing - sweepRings - pastRings
+    for (let i = ballFrom; i < n; i += 1) {
       m.pos[i * 3 + 2] -= back
+      const ring = Math.floor((i - ballFrom) / perRing)
+      const [from, to, t] = ring < sweepRings
+        ? [...ARM3D_ELBOW_CHART.sweep, ring / ELBOW_SWEEP]
+        : ring < sweepRings + pastRings
+          ? [...ARM3D_ELBOW_CHART.past, (ring - sweepRings) / (pastRings - 1)]
+          : [...ARM3D_ELBOW_CHART.end, (ring - sweepRings - pastRings) / Math.max(1, endRings - 1)]
+      own[i * 2] = m.uv[i * 2]
+      own[i * 2 + 1] = from + (to - from) * t
       m.uv[i * 2] += ARM3D_ELBOW_U
     }
+    m.own = own
     return m
   }
   // Bent, the sleeve goes on past the elbow's middle (its point, and the cloth hanging off it): rounded off at

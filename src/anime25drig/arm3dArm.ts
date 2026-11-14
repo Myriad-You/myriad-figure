@@ -15,6 +15,7 @@ import { arm3DCapReach, arm3DHandMesh, arm3DKeepWhole, arm3DPalmAsModelled, arm3
 import { Arm3DMotion, arm3DShape, forearmOver } from './arm3dMotion'
 import { ARM3D_INK, arm3DCutSides, arm3DGroundClip, arm3DInk, arm3DProject, arm3DUpperArmAlone, arm3DWristTone, composeArm3DPicture, splitArm3DLayer } from './arm3dPrepare'
 import { arm3DAimBones, arm3DAimHand, arm3DAimOf, arm3DCarryHand, Arm3DTransit } from './arm3dReach'
+import { arm3DOneSleeve } from './arm3dSleeveFit'
 import { armPoints, createBodyTexture, draped, swung } from './arm3dSwing'
 import { armDrapeWeight } from './armRig'
 import { applyBodyLift } from './bodyLift'
@@ -193,7 +194,13 @@ export class Arm3DSide {
     const { view, bases, canvas } = this
     const bustPixel = trialPixel(canvas)
     const still = layers.filter((layer) => layer.source.role !== 'arm-variant' && !layer.source.fade)
-    const arm = (layer: Anime25DGpuLayer) => layer.source.armVariant?.model
+    // (A bust's gestures as wide in the forearm as the one sleeve they all wear.)
+    const drawnArms = layers.filter((layer) => layer.source.role === 'arm-variant' && layer.source.armVariant?.model && layer.source.side === bases[0]?.source.side)
+    const fitted = new Map<Anime25DGpuLayer, NonNullable<NonNullable<Anime25DGpuLayer['source']['armVariant']>['model']>>()
+    if (drawnArms.every((layer) => layer.source.armVariant!.model!.restFore === undefined)) {
+      arm3DOneSleeve(drawnArms.map((layer) => layer.source.armVariant!.model!)).forEach((model, i) => fitted.set(drawnArms[i], model))
+    }
+    const arm = (layer: Anime25DGpuLayer) => fitted.get(layer) ?? layer.source.armVariant?.model
     const baseAt = Math.max(...bases.map((b) => layers.indexOf(b)))
     this.front = layers.filter((layer, i) => layer.source.role !== 'arm-variant' && layer.source.role !== 'arm-variant-hand' && layer.source.role !== 'handwear' && !this.pieces.includes(layer)
       && layer.source.role !== 'back-hair' && layer.renderKind === 'ordinary' && (i > baseAt || layer.source.role.includes('hair')))
@@ -393,7 +400,7 @@ export class Arm3DSide {
       const order = layers.indexOf(layer)
       // (A bust's sleeve is lined as dark as its own picture lines its arm.)
       const ink = laid ? ARM3D_INK : arm3DInk(split.arm, pixels.width, pixels.height)
-      const made = (sleeve: WebGLTexture, lifted: WebGLTexture | undefined, wristTone: Arm3DBound['wristTone']) => {
+      const made = (sleeve: WebGLTexture, lifted: WebGLTexture | undefined, wristTone: Arm3DBound['wristTone'], elbow?: WebGLTexture) => {
       const bound: Arm3DBound = {
         shape,
         px,
@@ -416,7 +423,8 @@ export class Arm3DSide {
         hangPic,
         palm,
         wristTone,
-        ...(laid ? {} : { ink, plainElbow: !standing }),
+        ...(laid ? {} : { ink }),
+        ...(elbow ? { elbow } : {}),
         drawnHand: raised.hand.map((q) => [q[0], q[1], q[2]] as V3),
         drawnPic: [dx + layer.source.x, dy + layer.source.y, 1 / layer.source.w, 1 / layer.source.h],
         held,
@@ -436,7 +444,15 @@ export class Arm3DSide {
         // Lifted, the portrait's sleeve stops short of a band the gestures all draw at the wrist instead.
         // A bust's is the gesture's own drawing about the elbow whether or not a band was found there.
         if (!laid && !shape.restBand) shape.restBand = [...ARM3D_BUST_LIFTED]
-        made(view.bakeSleeve(shape, px, canvas, passes(2)), shape.restBand ? view.bakeSleeve(shape, px, canvas, passes(shape.restBand[0], !laid), !laid) : undefined, tone)
+        // Its elbow's own pieces wear the gesture's drawing of the elbow, what the forearm leaves of it: seen through
+        // to their far side too (as the elbow turns it is this one drawing all round, not its edge drawn out), and
+        // short of the drawing's outline (carried round with the cloth, it crossed the elbow as a dark stroke).
+        made(
+          view.bakeSleeve(shape, px, canvas, passes(2)),
+          shape.restBand ? view.bakeSleeve(shape, px, canvas, passes(shape.restBand[0], !laid)) : undefined,
+          tone,
+          laid ? undefined : view.bakeSleeve(shape, px, canvas, [{ src: keyTexture, rect: layerRect, pose: raised, rest: 0, minFace: -2, maskFrom: 0, vmax: 2, over, inset: 6 * px }], true),
+        )
         drop()
       }
       layer.ownTexture = createBodyTexture(gl, split.body, pixels.width, pixels.height)

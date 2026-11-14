@@ -7,25 +7,25 @@ vec4 project(vec3 p) {
 }`
 
 export const SLEEVE_VS = `#version 300 es
-in vec3 aPos; in vec3 aNrm; in vec2 aUv; in vec2 aPic;
+in vec3 aPos; in vec3 aNrm; in vec2 aUv; in vec2 aPic; in vec2 aOwn;
 uniform vec2 uSize; uniform float uPush; uniform float uDepth; uniform float uBack; uniform float uFold;
-out vec2 vUv; out vec3 vNrm; out float vV; out vec2 vPic; out vec2 vAt;
+out vec2 vUv; out vec3 vNrm; out float vV; out vec2 vPic; out vec2 vAt; out vec2 vOwn;
 ${PROJECT}
 void main() {
   // The upper arm set back (in depth only) under a forearm folded over it, into the elbow.
   gl_Position = project(aPos + aNrm * uPush - vec3(0.0, 0.0, uFold * (1.0 - smoothstep(0.42, 0.5, aUv.y))));
-  vUv = aUv; vNrm = aNrm; vV = aUv.y; vPic = aPic; vAt = (aPos + aNrm * uPush).xy;
+  vUv = aUv; vNrm = aNrm; vV = aUv.y; vPic = aPic; vAt = (aPos + aNrm * uPush).xy; vOwn = aOwn;
 }`
 
 export const SLEEVE_FS = `#version 300 es
 precision highp float;
-in vec2 vUv; in vec3 vNrm; in float vV; in vec2 vPic; in vec2 vAt;
+in vec2 vUv; in vec3 vNrm; in float vV; in vec2 vPic; in vec2 vAt; in vec2 vOwn;
 uniform sampler2D uTex; uniform sampler2D uArmMask; uniform sampler2D uCap; uniform vec4 uMaskRect;
 uniform float uRest; uniform vec4 uSolid; uniform float uFadeTop; uniform float uRestEnd; uniform vec3 uLine;
 uniform float uUnlined; uniform float uOpen; uniform float uLined; uniform vec3 uBand; uniform sampler2D uLifted;
 // A bust's sleeve on its way from one gesture to another, or to hanging: that much (uAlso.x, then uAlso.y of what
 // that gives) another gesture's drawing of it, on the one arm.
-uniform float uInk; uniform float uElbowV; uniform sampler2D uTexB; uniform sampler2D uLiftedB; uniform vec3 uBandB; uniform sampler2D uTexC; uniform sampler2D uLiftedC; uniform vec3 uBandC; uniform vec2 uAlso;
+uniform float uInk; uniform float uElbowOn; uniform sampler2D uElbow; uniform sampler2D uElbowB; uniform sampler2D uElbowC; uniform sampler2D uTexB; uniform sampler2D uLiftedB; uniform vec3 uBandB; uniform sampler2D uTexC; uniform sampler2D uLiftedC; uniform vec3 uBandC; uniform vec2 uAlso;
 // Held, cut away over the drawing's own ground (uGround, on uGroundRect of the canvas as drawn; uToDrawn0/1 carry
 // this frame's canvas back to it), by how near it is held (uGroundOn).
 uniform sampler2D uGround; uniform vec4 uGroundRect; uniform vec3 uToDrawn0; uniform vec3 uToDrawn1; uniform float uGroundOn;
@@ -34,21 +34,21 @@ out vec4 o;
 // there is one) is worn while the arm hangs; lifted, that stretch is the sleeve as the gestures draw it there
 // (uLifted), and the drawn cuff comes up at the wrist alone. The plain sleeve above the band stretched down over
 // it came out in streaks.
-vec3 clothOf(sampler2D tex, sampler2D lifted, vec3 band, vec2 uv) {
+vec3 clothOf(sampler2D tex, sampler2D lifted, sampler2D elbow, vec3 band, vec2 uv) {
   float off = band.z * (1.0 - smoothstep(0.55, 0.995, uRest))
     * smoothstep(band.x - 0.015, band.x, uv.y) * (1.0 - smoothstep(band.y, band.y + 0.015, uv.y));
-  // The elbow's own pieces (their u past a turn) wear a few rows squeezed and turned every way: what is drawn in
-  // those rows (a fold's line, a charm's edge) came out as bars and blocks about the elbow. Lifted, a bust's wear
-  // the one row made the cloth's broad tones for them (uElbowV; 0 for none); hanging, the portrait as it is.
-  float plain = step(1.5, uv.x) * step(0.001, uElbowV) * (1.0 - smoothstep(0.9, 0.995, uRest));
-  uv.y = mix(uv.y, uElbowV, plain);
-  // (That row is the lifted texture's alone.)
-  return mix(texture(tex, uv).rgb, texture(lifted, uv).rgb, max(off, plain));
+  // The elbow's own pieces (their u past a turn) have only a few of the sleeve's rows, squeezed and turned every
+  // way: what is drawn in those rows (a fold's line, a charm's edge) came out as bars and blocks about the elbow,
+  // and one row's broad tones all over them as a flat patch where the drawing has the elbow's folds. Lifted, a
+  // bust's wear a texture of their own (uElbow at vOwn; uElbowOn), the gesture's drawing of the elbow laid on
+  // them as on the tubes; hanging, the portrait as it is.
+  float own = step(1.5, uv.x) * uElbowOn * (1.0 - smoothstep(0.9, 0.995, uRest));
+  return mix(mix(texture(tex, uv).rgb, texture(lifted, uv).rgb, off), texture(elbow, vOwn).rgb, own);
 }
 vec3 cloth(vec2 uv) {
-  vec3 c = clothOf(uTex, uLifted, uBand, uv);
-  if (uAlso.x > 0.0) c = mix(c, clothOf(uTexB, uLiftedB, uBandB, uv), uAlso.x);
-  if (uAlso.y > 0.0) c = mix(c, clothOf(uTexC, uLiftedC, uBandC, uv), uAlso.y);
+  vec3 c = clothOf(uTex, uLifted, uElbow, uBand, uv);
+  if (uAlso.x > 0.0) c = mix(c, clothOf(uTexB, uLiftedB, uElbowB, uBandB, uv), uAlso.x);
+  if (uAlso.y > 0.0) c = mix(c, clothOf(uTexC, uLiftedC, uElbowC, uBandC, uv), uAlso.y);
   return c;
 }
 // The cuff's cloth at its palest round the rim: what a standing figure's cuff is inside (the rim's average took in
@@ -149,10 +149,13 @@ in vec2 vSrc; in float vFace; in float vV;
 uniform sampler2D uSrc; uniform vec4 uRect; uniform float uMinFace; uniform float uMaskFrom; uniform float uVmax;
 // What lies over the upper sleeve in this picture (the forearm folded back up it: uOver from one end to the
 // other, uOverR wide, in the picture's own pixels uView): the upper sleeve's texels under it are not this picture's to give.
-uniform vec4 uOver; uniform float uOverR; uniform vec2 uView;
+// (Of the rows uOverRows.x to .y: the upper sleeve's, or of the elbow's own texture what goes on past the elbow.)
+uniform vec4 uOver; uniform float uOverR; uniform vec2 uView; uniform vec2 uOverRows;
+// Only this far (uInset, the picture's pixels) inside what the picture draws of the arm: its outline left out.
+uniform float uInset;
 out vec4 o;
 void main() {
-  if (uOverR > 0.0 && vV < 0.5) {
+  if (uOverR > 0.0 && vV >= uOverRows.x && vV < uOverRows.y) {
     vec2 p = vSrc * uView - uOver.xy, d = uOver.zw - uOver.xy;
     if (length(p - d * clamp(dot(p, d) / max(1e-6, dot(d, d)), 0.0, 1.0)) < uOverR) discard;
   }
@@ -162,6 +165,14 @@ void main() {
   vec4 q = texture(uSrc, s);
   // The picture's arm only from uMaskFrom along it; as far round as uMinFace.
   float drew = vV < uMaskFrom ? 1.0 : step(0.5, q.a);
+  if (uInset > 0.0) {
+    vec2 d = uInset / (uView * uRect.zw);
+    for (int i = 0; i < 8; i++) {
+      float t = float(i) * 0.7853982;
+      drew *= step(0.5, texture(uSrc, s + d * vec2(cos(t), sin(t))).a);
+      drew *= step(0.5, texture(uSrc, s + 0.5 * d * vec2(cos(t), sin(t))).a);
+    }
+  }
   if (vFace < uMinFace || drew < 0.5 || inside < 0.5 || vV > uVmax) discard;
   o = vec4(q.rgb, 1.0);
 }`
