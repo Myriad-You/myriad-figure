@@ -27,6 +27,15 @@ test('the free leg comes over the other, and nothing between them moves', () => 
   assert.deepEqual(names(legs.order(stack)), ['back hair', 'legwear-L', 'footwear-L', 'charm', 'lining', 'legwear-R', 'footwear-R', 'skirt'])
 })
 
+test('a piece that stands with its shoe without hanging from it is still drawn with that leg', () => {
+  const riding = stack.map((l) => (l.source.name === 'charm' ? { ...l, attachment: null, rides: 'footwear-L' } : l))
+  const legs = LegOrder.of(riding)!
+  legs.step(0.8, 0)
+  assert.deepEqual(names(legs.order(riding)), ['back hair', 'legwear-R', 'footwear-R', 'legwear-L', 'lining', 'footwear-L', 'charm', 'skirt'])
+  legs.step(0, 0.8)
+  assert.deepEqual(names(legs.order(riding)), ['back hair', 'legwear-L', 'footwear-L', 'charm', 'lining', 'legwear-R', 'footwear-R', 'skirt'])
+})
+
 test('the lead passes as soon as the other leg is freer, but not on a jitter between two alike', () => {
   const legs = LegOrder.of(stack)!
   legs.step(0.8, 0)

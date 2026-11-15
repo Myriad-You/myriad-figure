@@ -697,9 +697,13 @@ function skirtSpan(layers: readonly Anime25DPlaybackLayer[], source: Anime25DPla
  * A piece drawn on a standing figure's lower leg or shoe (laces, a buckle) stands with that leg's own bones,
  * point by point (bindStanding). Carried by an anchor on the leg as well, it went twice as far as what it is
  * drawn on: in a sway the laces left the shoe. Unless it swings from that anchor, it lets it go and is a patch
- * of its limb, turning as the limb's column does under it.
+ * of its limb, turning as the limb's column does under it, and drawn with that leg still (`rides`).
  */
-function standOnLimb(layer: Anime25DGpuLayer, playback: Readonly<Anime25DPlayback>, readBindingPixels: ReadPixels): void {
+export function standOnLimb(
+  layer: Pick<Anime25DGpuLayer, 'attachment' | 'secondaryDeformation' | 'earwearPhysics' | 'attachmentTurn' | 'rest' | 'rides'>,
+  playback: Pick<Anime25DPlayback, 'layers' | 'anchors'>,
+  readBindingPixels: ReadPixels,
+): void {
   const host = layer.attachment?.hostSource
   const own = layer.secondaryDeformation
   if (!host || !own.standing || !own.figureSkin || layer.earwearPhysics || layer.attachmentTurn) return
@@ -711,5 +715,6 @@ function standOnLimb(layer: Anime25DGpuLayer, playback: Readonly<Anime25DPlaybac
   own.figurePitch = limb.figurePitch
   own.standing = limb.standing
   own.figureColumn = column
+  layer.rides = host.name
   layer.attachment = null
 }

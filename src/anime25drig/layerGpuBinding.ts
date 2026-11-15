@@ -84,6 +84,8 @@ export interface Anime25DGpuLayer extends Anime25DRenderableLayer {
   attachmentTurn?: AttachmentTurn | null
   /** A pinned head ornament's own keys, vertex by vertex, under the swing of its chains; `keyed` is its rest so keyed. */
   pinnedTurn?: { turn: AttachmentTurn; keyed: Float32Array } | null
+  /** The leg or shoe a piece drawn on it stands with, having let go of its anchor there (standOnLimb): it is drawn with that leg (legOrder). */
+  rides?: string | null
   earwearPhysics?: EarwearPhysics | null
   /** An earring's side of the head, +1 on the right of the picture; it goes behind the face as the head turns that side away. */
   earSide?: number

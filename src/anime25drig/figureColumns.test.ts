@@ -233,15 +233,24 @@ test('a leg is all its own column by the hem it shows from under, found on that 
   const far = bindLimbColumn(lattice({ ...legBox, x: 500 }, 12, 20), { ...leg, x: 500 }, [{ ...leg, x: 500 }, garment], (layer) => (!layer || layer.name === leg.name ? legArt : painted(400, 80, 230, slanted)), stance)!
   const handedOver = (column: typeof near) => { let v = 0; while (column.trunk![v * 13]! > 0) v += 1; return v }
   assert.ok(handedOver(far) > handedOver(near), `${handedOver(near)} ${handedOver(far)}`)
-  // A trousers' seat was cut out of the leg's own drawing: the same pixels over it. Its leg hands over as a bare one does.
+  // A trousers' seat was cut out of the leg's own drawing: the same pixels over it. Its leg hands over as a bare one does...
   assert.deepEqual(Array.from(bound(painted(400, 80, 40)).trunk!), Array.from(bare.trunk!))
-  // Under a long top, trouser legs come out joined to each other: what shows there is still the seat.
+  // ...under a shirt's hem too, whichever of the two is listed first.
+  const shirt = { ...garment, name: 'topwear', role: 'topwear', z: 3 }
+  for (const layers of [[leg, garment, shirt], [leg, shirt, garment]]) {
+    assert.deepEqual(Array.from(bound(null, layers, { bottomwear: painted(400, 80, 40), topwear: painted(400, 80, 230) }).trunk!), Array.from(bare.trunk!))
+  }
+  // A skirt nearly the colour of the tights under it is still a skirt: alike, not the same pixels.
+  assert.deepEqual(Array.from(bound(painted(400, 80, 32)).trunk!), Array.from(skirted.trunk!))
+  // Thighs together under a skirt long enough to hand over under are thighs...
   const other = { ...leg, name: 'legwear-R', x: 360 }
-  const joined = bound(painted(400, 80, 230), [leg, other, garment], { 'legwear-R': painted(120, 200, 40) })
+  const together = bound(painted(400, 80, 230), [leg, other, garment], { 'legwear-R': painted(120, 200, 40) })
+  assert.deepEqual(Array.from(together.trunk!), Array.from(skirted.trunk!))
+  // ...but legs joined just under a top that stops at the hips are trousers, still their seat there: slowly.
+  const short = { ...garment, h: 50 }
+  assert.ok(bound(painted(400, 50, 230), [leg, short]).trunk![row(0.2)] === 0, 'clear of the other leg, a thigh')
+  const joined = bound(painted(400, 50, 230), [leg, other, short], { 'legwear-R': painted(120, 200, 40) })
   assert.deepEqual(Array.from(joined.trunk!), Array.from(bare.trunk!))
-  // ...and thighs standing clear of each other are thighs.
-  const apart = bound(painted(400, 80, 230), [leg, { ...other, x: 460 }, garment], { 'legwear-R': painted(120, 200, 40) })
-  assert.deepEqual(Array.from(apart.trunk!), Array.from(skirted.trunk!))
   // A lining piece put behind the legs covers nothing; nor does what is drawn behind the leg.
   assert.deepEqual(Array.from(bound(painted(400, 80, 230), [leg, { ...garment, name: 'bottomwear-lining' }]).trunk!), Array.from(bare.trunk!))
   assert.deepEqual(Array.from(bound(painted(400, 80, 230), [leg, { ...garment, z: 0 }]).trunk!), Array.from(bare.trunk!))

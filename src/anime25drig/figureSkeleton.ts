@@ -729,7 +729,8 @@ export class FigureBody {
    * make (−1…1, torsoTurn), which is of that rotation what its hips, arms and hem come after (figureTurn).
    */
   step(body: number, stance: Readonly<Anime25DStandingFrame> | undefined, bodyPitch = 0, recruited = 0, turn?: Readonly<{ active: boolean; yawSine: number }>, blend = 0, directedTurn = 0): void {
-    this.turn?.step(Math.max(-1, Math.min(1, Number.isFinite(directedTurn) ? directedTurn : 0)) * HEAD_YAW_SHARE * blend)
+    // (As asked, not as shown yet: a package coming in on a held turn has nothing to come after.)
+    this.turn?.step(Math.max(-1, Math.min(1, Number.isFinite(directedTurn) ? directedTurn : 0)) * HEAD_YAW_SHARE)
     if (this.float) {
       this.float.pose(body * this.reach, this.pose)
     } else {
