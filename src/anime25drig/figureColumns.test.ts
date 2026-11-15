@@ -255,11 +255,20 @@ test('a leg is all its own column by the hem it shows from under, found on that 
   const longShirt = { ...garment, name: 'topwear', role: 'topwear', z: 3, h: 100 }
   assert.deepEqual(Array.from(bound(null, [leg, { ...garment, h: 60 }, longShirt], { bottomwear: painted(400, 60, 40), topwear: painted(400, 100, 230) }).trunk!), Array.from(bare.trunk!))
   // Settled for the pair as one: under a hem on a slant, high enough over one joined leg to make it a trouser leg, the other is one too.
-  const tilted = painted(400, 80, 230, (x, y) => y < 44 + (x - 60) * 0.25)
+  const tilted = painted(400, 80, 230, (x, y) => y < 44 + (x - 60) * 0.4)
   const pair = (of: typeof leg) => bindLimbColumn(lattice(of, 12, 20), of, [leg, other, garment], (layer) => (!layer || layer.role === 'legwear' ? painted(120, 200, 40) : tilted), stance)!
   assert.deepEqual(Array.from(pair(leg).trunk!), Array.from(bare.trunk!))
   assert.deepEqual(Array.from(pair(other).trunk!), Array.from(bare.trunk!), 'though its own hem is low enough')
   assert.ok(bindLimbColumn(lattice(other, 12, 20), other, [other, garment], (layer) => (!layer || layer.role === 'legwear' ? painted(120, 200, 40) : tilted), stance)!.trunk![row(0.3)] === 0, 'which alone would make it a thigh')
+  // ...and when that leg's top just shows (the hem a little higher still), or it is under a seat of its own.
+  const higher = painted(400, 80, 230, (x, y) => y < 36 + (x - 60) * 0.6)
+  assert.deepEqual(Array.from(bindLimbColumn(lattice(other, 12, 20), other, [leg, other, garment], (layer) => (!layer || layer.role === 'legwear' ? painted(120, 200, 40) : higher), stance)!.trunk!), Array.from(bare.trunk!))
+  // (A garment the leg's own grey over the first leg, light over a second leg standing clear of it.)
+  const twoTone = painted(400, 80, 230)
+  for (let i = 0; i < twoTone.pixels.length; i += 4) { if ((i / 4) % 400 < 200) twoTone.pixels.fill(40, i, i + 3) }
+  const clear = { ...other, x: 460 }
+  const seated = bindLimbColumn(lattice(clear, 12, 20), clear, [leg, clear, garment], (layer) => (!layer || layer.role === 'legwear' ? painted(120, 200, 40) : twoTone), stance)!
+  assert.deepEqual(Array.from(seated.trunk!), Array.from(bare.trunk!), 'clear of the other leg and under cloth of another colour, but the other is a trouser leg')
   // A lining piece put behind the legs covers nothing; nor does what is drawn behind the leg.
   assert.deepEqual(Array.from(bound(painted(400, 80, 230), [leg, { ...garment, name: 'bottomwear-lining' }]).trunk!), Array.from(bare.trunk!))
   assert.deepEqual(Array.from(bound(painted(400, 80, 230), [leg, { ...garment, z: 0 }]).trunk!), Array.from(bare.trunk!))

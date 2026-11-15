@@ -244,10 +244,10 @@ const SAME_DRAWING = [4, 0.7, 3] as const
 /**
  * The hem a leg comes out from under, canvas y: down to it the garments of the trunk drawn in front of the leg
  * (a skirt, shorts, a coat's tails, a long top) cover it. Read down the leg's own drawing row by row, so a hem
- * cut on a slant, slit or scalloped is found where it is on this leg. None for a leg whose top shows, and none
- * for a leg whose top shows. 'seat' for a trouser leg under its seat: the seat was cut out of the leg's
- * drawing, the same pixels, and the leg's outline runs on out of the seat's. `joined`: just below that hem the
- * leg is not clear of the other one (thighs together; or trousers, still their seat there).
+ * cut on a slant, slit or scalloped is found where it is on this leg. None for a leg whose top shows. 'seat'
+ * for a trouser leg under its seat: the seat was cut out of the leg's drawing, the same pixels, and the leg's
+ * outline runs on out of the seat's. `joined`: just below that hem the leg is not clear of the other one
+ * (thighs together; or trousers, still their seat there).
  */
 export function legHem(
   leg: Readonly<LimbLayer>,
@@ -354,7 +354,9 @@ function pairHem(
   if (trousers(own, leg)) return undefined
   for (const other of layers) {
     if (other.role !== 'legwear' || other.name === leg.name || isAnime25DLiningPiece(other.name) || !(other.w > 1 && other.h > 1)) continue
-    if (trousers(legHem(other, layers, art), other)) return undefined
+    const its = legHem(other, layers, art)
+    // (Joined to a leg whose top shows, which hands over slowly, this one does as it does.)
+    if (trousers(its, other) || (its === undefined && own.joined)) return undefined
   }
   return own.y
 }
