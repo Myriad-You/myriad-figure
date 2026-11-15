@@ -337,8 +337,8 @@ export function legHem(
  * The hem a leg hands its top over by (legHem), settled for the pair of legs as one: trouser legs hand over
  * slowly, both of them, or the seam between them is sheared where one does and the other does not. Trousers
  * are legs any of which is under its own seat, or joined to the other where it comes out from under a hem too
- * high for the handing over to be done under it (trousers under a top, still their seat there). Thighs
- * together under a skirt long enough are thighs.
+ * high for the handing over to be done under it (trousers under a top, still their seat there); and a leg
+ * joined to one whose top shows does as that one does. Thighs together under a skirt long enough are thighs.
  */
 function pairHem(
   leg: Readonly<LimbLayer>,

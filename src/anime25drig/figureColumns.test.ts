@@ -269,6 +269,10 @@ test('a leg is all its own column by the hem it shows from under, found on that 
   const clear = { ...other, x: 460 }
   const seated = bindLimbColumn(lattice(clear, 12, 20), clear, [leg, clear, garment], (layer) => (!layer || layer.role === 'legwear' ? painted(120, 200, 40) : twoTone), stance)!
   assert.deepEqual(Array.from(seated.trunk!), Array.from(bare.trunk!), 'clear of the other leg and under cloth of another colour, but the other is a trouser leg')
+  // But standing clear of a leg whose top shows, a leg under a skirt keeps to its own hem.
+  const halfSkirt = painted(400, 80, 230, (x) => x < 200)
+  const beside = bindLimbColumn(rest, leg, [leg, clear, garment], (layer) => (!layer || layer.role === 'legwear' ? legArt : halfSkirt), stance)!
+  assert.deepEqual(Array.from(beside.trunk!), Array.from(skirted.trunk!))
   // A lining piece put behind the legs covers nothing; nor does what is drawn behind the leg.
   assert.deepEqual(Array.from(bound(painted(400, 80, 230), [leg, { ...garment, name: 'bottomwear-lining' }]).trunk!), Array.from(bare.trunk!))
   assert.deepEqual(Array.from(bound(painted(400, 80, 230), [leg, { ...garment, z: 0 }]).trunk!), Array.from(bare.trunk!))
