@@ -235,24 +235,25 @@ const HEM_COVER = 0.85
 const JOINED = 0.03
 /**
  * A trouser leg's drawing is the seat's own where the seat is over it: pixel for pixel no further from it than
- * the first, of 255, over at least the second share of what is covered. (Not by how alike they are on the
- * whole: a black skirt over black tights is as alike, and is a skirt.)
+ * the first, of 255, over at least the second share of what is covered of the leg's top rows (the third: a
+ * shirt's hem hanging lower than the seat is not the seat). Not by how alike they are on the whole: a black
+ * skirt over black tights is as alike, and is a skirt.
  */
-const SAME_DRAWING = [4, 0.7] as const
+const SAME_DRAWING = [4, 0.7, 3] as const
 
 /**
  * The hem a leg comes out from under, canvas y: down to it the garments of the trunk drawn in front of the leg
  * (a skirt, shorts, a coat's tails, a long top) cover it. Read down the leg's own drawing row by row, so a hem
  * cut on a slant, slit or scalloped is found where it is on this leg. None for a leg whose top shows, and none
- * for a trouser leg under its seat: the seat was cut out of the leg's drawing, the same pixels, and the leg's
- * outline runs on out of the seat's. `joined`: just below that hem the leg is not clear of the other one
- * (thighs together; or trousers, still their seat there).
+ * for a leg whose top shows. 'seat' for a trouser leg under its seat: the seat was cut out of the leg's
+ * drawing, the same pixels, and the leg's outline runs on out of the seat's. `joined`: just below that hem the
+ * leg is not clear of the other one (thighs together; or trousers, still their seat there).
  */
 export function legHem(
   leg: Readonly<LimbLayer>,
   layers: readonly Readonly<LimbLayer>[],
   art: (layer: Readonly<LimbLayer>) => Parameters<typeof bindFigureColumn>[2],
-): { y: number; joined: boolean } | undefined {
+): { y: number; joined: boolean } | 'seat' | undefined {
   const own = art(leg)
   if (!own || !(own.width > 0 && own.height > 0) || !(leg.w > 1 && leg.h > 1)) return undefined
   const order = (layer: Readonly<LimbLayer>) => layer.z ?? layers.findIndex((other) => other.name === layer.name)
@@ -265,6 +266,7 @@ export function legHem(
   let hemRow = -1
   let same = 0
   let covered = 0
+  let rowsRead = 0
   for (let row = 0; row < ROWS; row += 1) {
     const py = Math.min(own.height - 1, Math.floor(((row + 0.5) / ROWS) * own.height))
     const y = leg.y + ((py + 0.5) / own.height) * leg.h
@@ -294,10 +296,14 @@ export function legHem(
     if (drawn === 0) continue
     if (under < drawn * HEM_COVER) break
     hemRow = row
-    covered += under
-    same += alike
+    if (rowsRead < SAME_DRAWING[2]) {
+      rowsRead += 1
+      covered += under
+      same += alike
+    }
   }
-  if (hemRow < 0 || same >= covered * SAME_DRAWING[1]) return undefined
+  if (hemRow < 0) return undefined
+  if (same >= covered * SAME_DRAWING[1]) return 'seat'
   // Whether what shows below the hem stands clear of the other leg there.
   const extent = (layer: Readonly<LimbLayer>, pixels: NonNullable<ReturnType<typeof art>>, y: number): [number, number] | null => {
     const py = Math.floor(((y - layer.y) / layer.h) * pixels.height)
@@ -327,6 +333,32 @@ export function legHem(
   return { y: leg.y + ((hemRow + 1) / ROWS) * leg.h, joined }
 }
 
+/**
+ * The hem a leg hands its top over by (legHem), settled for the pair of legs as one: trouser legs hand over
+ * slowly, both of them, or the seam between them is sheared where one does and the other does not. Trousers
+ * are legs any of which is under its own seat, or joined to the other where it comes out from under a hem too
+ * high for the handing over to be done under it (trousers under a top, still their seat there). Thighs
+ * together under a skirt long enough are thighs.
+ */
+function pairHem(
+  leg: Readonly<LimbLayer>,
+  layers: readonly Readonly<LimbLayer>[],
+  art: (layer: Readonly<LimbLayer>) => Parameters<typeof bindFigureColumn>[2],
+  ground: Readonly<{ hipY: number; groundY: number }>,
+): number | undefined {
+  const own = legHem(leg, layers, art)
+  if (!own || own === 'seat') return undefined
+  const span = Math.max(1, ground.groundY - ground.hipY)
+  const trousers = (hem: ReturnType<typeof legHem>, of: Readonly<LimbLayer>) =>
+    hem === 'seat' || (hem !== undefined && hem.joined && (hem.y - of.h / FIGURE_LEG_ROWS - ground.hipY) / span < LEG_TOP[2])
+  if (trousers(own, leg)) return undefined
+  for (const other of layers) {
+    if (other.role !== 'legwear' || other.name === leg.name || isAnime25DLiningPiece(other.name) || !(other.w > 1 && other.h > 1)) continue
+    if (trousers(legHem(other, layers, art), other)) return undefined
+  }
+  return own.y
+}
+
 /** The roles of a standing figure's layers that are limbs. */
 const LIMB_ROLES = new Set(['legwear', 'footwear', 'handwear'])
 
@@ -344,11 +376,7 @@ export function bindLimbColumn(
 ): FigureColumnBinding | null {
   if (!LIMB_ROLES.has(source.role)) return null
   const arm = source.role === 'handwear'
-  const hem = source.role === 'legwear' && ground ? legHem(source, layers, art) : undefined
-  // Legs joined where they come out from under a hem too high for the handing over to be done under it are
-  // trousers under a top, still their seat there: its seam down the middle was sheared in plain view. They
-  // hand over slowly, as under a seat of their own. (Thighs together under a skirt long enough are thighs.)
-  const hemY = hem && !(hem.joined && (hem.y - ground!.hipY) / Math.max(1, ground!.groundY - ground!.hipY) < LEG_TOP[2]) ? hem.y : undefined
+  const hemY = source.role === 'legwear' && ground ? pairHem(source, layers, art, ground) : undefined
   return bindFigureColumn(rest, source, art(), arm ? undefined : ground && { ...ground, hemY }, arm && drawnBehind(layers, source, 'topwear'), source.role === 'footwear')
 }
 

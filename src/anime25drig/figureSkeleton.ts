@@ -673,6 +673,8 @@ export class FigureBody {
   pitch: FigurePitch | null = null
   /** Its directed turn, taken part after part; none until its trunk is bound. */
   turn: FigureTurn | null = null
+  /** How much of the torso's turn shows (its shell's blend, 0…1). */
+  private turnShown = 0
 
   private constructor(
     readonly rest: FigureRest,
@@ -719,7 +721,8 @@ export class FigureBody {
     // What hangs free is thrown by a lean as by a sway: its anchor goes where the trunk's lean has it too.
     this.sways.step(dt, this.pose, dynamic, this.pitch?.thrown ? this.leanAnchor : null)
     this.turn?.follow(dt, dynamic)
-    this.pitch?.follow(dt, dynamic, this.turn?.hipsSpeed)
+    // (The knees give under a turn as far as it shows: a figure whose trunk does not turn does not dip for one.)
+    this.pitch?.follow(dt, dynamic, (this.turn?.hipsSpeed ?? 0) * this.turnShown)
   }
 
   /**
@@ -729,6 +732,7 @@ export class FigureBody {
    * make (−1…1, torsoTurn), which is of that rotation what its hips, arms and hem come after (figureTurn).
    */
   step(body: number, stance: Readonly<Anime25DStandingFrame> | undefined, bodyPitch = 0, recruited = 0, turn?: Readonly<{ active: boolean; yawSine: number }>, blend = 0, directedTurn = 0): void {
+    this.turnShown = Number.isFinite(blend) ? Math.max(0, Math.min(1, blend)) : 0
     // (As asked, not as shown yet: a package coming in on a held turn has nothing to come after.)
     this.turn?.step(Math.max(-1, Math.min(1, Number.isFinite(directedTurn) ? directedTurn : 0)) * HEAD_YAW_SHARE)
     if (this.float) {

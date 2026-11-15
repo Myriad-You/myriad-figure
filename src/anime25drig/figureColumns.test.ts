@@ -251,6 +251,15 @@ test('a leg is all its own column by the hem it shows from under, found on that 
   assert.ok(bound(painted(400, 50, 230), [leg, short]).trunk![row(0.2)] === 0, 'clear of the other leg, a thigh')
   const joined = bound(painted(400, 50, 230), [leg, other, short], { 'legwear-R': painted(120, 200, 40) })
   assert.deepEqual(Array.from(joined.trunk!), Array.from(bare.trunk!))
+  // A shirt's hem hanging lower than the seat does not make the seat a skirt: the leg's top is the seat's own.
+  const longShirt = { ...garment, name: 'topwear', role: 'topwear', z: 3, h: 100 }
+  assert.deepEqual(Array.from(bound(null, [leg, { ...garment, h: 60 }, longShirt], { bottomwear: painted(400, 60, 40), topwear: painted(400, 100, 230) }).trunk!), Array.from(bare.trunk!))
+  // Settled for the pair as one: under a hem on a slant, high enough over one joined leg to make it a trouser leg, the other is one too.
+  const tilted = painted(400, 80, 230, (x, y) => y < 44 + (x - 60) * 0.25)
+  const pair = (of: typeof leg) => bindLimbColumn(lattice(of, 12, 20), of, [leg, other, garment], (layer) => (!layer || layer.role === 'legwear' ? painted(120, 200, 40) : tilted), stance)!
+  assert.deepEqual(Array.from(pair(leg).trunk!), Array.from(bare.trunk!))
+  assert.deepEqual(Array.from(pair(other).trunk!), Array.from(bare.trunk!), 'though its own hem is low enough')
+  assert.ok(bindLimbColumn(lattice(other, 12, 20), other, [other, garment], (layer) => (!layer || layer.role === 'legwear' ? painted(120, 200, 40) : tilted), stance)!.trunk![row(0.3)] === 0, 'which alone would make it a thigh')
   // A lining piece put behind the legs covers nothing; nor does what is drawn behind the leg.
   assert.deepEqual(Array.from(bound(painted(400, 80, 230), [leg, { ...garment, name: 'bottomwear-lining' }]).trunk!), Array.from(bare.trunk!))
   assert.deepEqual(Array.from(bound(painted(400, 80, 230), [leg, { ...garment, z: 0 }]).trunk!), Array.from(bare.trunk!))
