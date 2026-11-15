@@ -21,6 +21,7 @@ import {
 } from './deformationDependencies'
 import { bindEarwearPhysics, bindHangBend, bindHangingPhysics, earSideOf } from './earwearPhysics'
 import { resolveAnime25DExpressionDeformation } from './expressionDeformation'
+import { bindLimbColumn } from './figureColumns'
 import { bindFigureLayer } from './figureSkeleton'
 import { bindHairRootMotion } from './hairRootMotion'
 import { bindHairSurface } from './hairSurface'
@@ -268,6 +269,7 @@ export function buildGpuLayer(source: PlaybackLayer, context: GpuLayerBuildConte
     turnFeature: turnFeatures.get(source) ?? null,
     turnKeyform: bindTurnKeyform(playback.turnKeyforms, source, rest),
     bodyTurnKeyform,
+    figureColumn: figureSkin ? bindLimbColumn(rest, source, playback.layers, (layer) => readBindingPixels((layer ?? source) as Anime25DPlaybackLayer), standingLegOf(playback)) : null,
     standing,
     figureSkin,
     figurePitch,
@@ -489,11 +491,16 @@ export function bindLayerAttachments(
       const pinned = layer.earwearPhysics?.from && bindAttachmentTurn(playback.turnKeyforms, layer.source, layer.rest, hostSource, layer.attachment)
       if (pinned) layer.pinnedTurn = { turn: pinned, keyed: layer.rest.slice() }
     }
+    standOnLimb(layer, playback, readBindingPixels)
     for (const attachment of [layer.attachment, layer.neckwearBridge?.upper, layer.neckwearBridge?.lower]) {
       // Its host's body key, per vertex of the host, is taken at the anchor and a pixel across (vertices 0, 1).
       if (attachment?.hostSource) {
-        attachment.binding.bodyTurnKeyform = bindBodyTurnKeyform(playbackBodyKeys(playback), attachment.hostSource,
-          Float32Array.of(attachment.x, attachment.y, attachment.x + 1, attachment.y), standingLegOf(playback))
+        const points = Float32Array.of(attachment.x, attachment.y, attachment.x + 1, attachment.y)
+        attachment.binding.bodyTurnKeyform = bindBodyTurnKeyform(playbackBodyKeys(playback), attachment.hostSource, points, standingLegOf(playback))
+        // ...and its host's column in a figure's turn, which it copied per vertex of the host.
+        if (attachment.binding.figureColumn) {
+          attachment.binding.figureColumn = bindLimbColumn(points, attachment.hostSource, playback.layers, (layer) => readBindingPixels((layer ?? attachment.hostSource) as Anime25DPlaybackLayer), standingLegOf(playback))
+        }
       }
     }
   }
@@ -684,4 +691,30 @@ function skirtSpan(layers: readonly Anime25DPlaybackLayer[], source: Anime25DPla
     bottom = Math.max(bottom, layer.y + layer.h)
   }
   return top === source.y && bottom === source.y + source.h ? source : { ...source, y: top, h: bottom - top }
+}
+
+/**
+ * A piece drawn on a standing figure's lower leg or shoe (laces, a buckle) stands with that leg's own bones,
+ * point by point (bindStanding). Carried by an anchor on the leg as well, it went twice as far as what it is
+ * drawn on: in a sway the laces left the shoe. Unless it swings from that anchor, it lets it go and is a patch
+ * of its limb, turning as the limb's column does under it, and drawn with that leg still (`rides`).
+ */
+export function standOnLimb(
+  layer: Pick<Anime25DGpuLayer, 'attachment' | 'secondaryDeformation' | 'earwearPhysics' | 'attachmentTurn' | 'rest' | 'rides'>,
+  playback: Pick<Anime25DPlayback, 'layers' | 'anchors'>,
+  readBindingPixels: ReadPixels,
+): void {
+  const host = layer.attachment?.hostSource
+  const own = layer.secondaryDeformation
+  if (!host || !own.standing || !own.figureSkin || layer.earwearPhysics || layer.attachmentTurn) return
+  const column = bindLimbColumn(layer.rest, host, playback.layers, (other) => readBindingPixels((other ?? host) as Anime25DPlaybackLayer), standingLegOf(playback))
+  if (!column) return
+  // (By the limb's own bones and stance, not the ones its own box would give it: a point of it goes where the limb's there does.)
+  const limb = layer.attachment!.binding
+  own.figureSkin = limb.figureSkin
+  own.figurePitch = limb.figurePitch
+  own.standing = limb.standing
+  own.figureColumn = column
+  layer.rides = host.name
+  layer.attachment = null
 }

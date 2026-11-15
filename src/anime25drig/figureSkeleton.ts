@@ -5,9 +5,10 @@ import type { Anime25DChestProfile, Anime25DPartProfile, Anime25DPlaybackAnchors
 import { resolveChestDeformationRegion } from './chestPhysics'
 import { FigureFloat } from './figureFloat'
 import { bindFigurePitch, figurePitchAngle, figurePitchOf } from './figurePitch'
+import { FigureTurn } from './figureTurn'
 import { applyPartSways, bindPartSways, PartSways } from './partSway'
 import { applySkirtTrail } from './standing'
-import { figureShellProfile } from './torsoDeformation'
+import { figureShellProfile, HEAD_YAW_SHARE } from './torsoDeformation'
 
 /**
  * A standing figure's bones, as a Live2D rig nests its rotation deformers:
@@ -599,6 +600,8 @@ export interface FigureFrame {
   sways?: { readonly lags: Readonly<Float32Array> }
   /** Its lean toward the viewer or away (figurePitch), once bound. */
   pitch?: FigurePitch | null
+  /** Its directed turn as its hips, arms and hem come after its chest (figureTurn), once bound. */
+  turn?: FigureTurn | null
 }
 
 /**
@@ -668,6 +671,10 @@ export class FigureBody {
   readonly pose = createFigurePose()
   /** Its lean toward the viewer or away; none until its trunk's depth is bound. */
   pitch: FigurePitch | null = null
+  /** Its directed turn, taken part after part; none until its trunk is bound. */
+  turn: FigureTurn | null = null
+  /** How much of the torso's turn shows (its shell's blend, 0…1). */
+  private turnShown = 0
 
   private constructor(
     readonly rest: FigureRest,
@@ -691,7 +698,9 @@ export class FigureBody {
     const reach = canvas ? figureSwayReach(rest, canvas) : 1
     const body = new FigureBody(rest, new PartSways(parts), stance === 'float' ? new FigureFloat(rest) : null, reach)
     if (canvas?.shellProfile && canvas.chestProfile) {
-      body.pitch = figurePitchOf(rest, anchors, figureShellProfile(canvas.shellProfile).torso, resolveChestDeformationRegion(canvas.chestProfile).centerY, stance !== 'float')
+      const chestY = resolveChestDeformationRegion(canvas.chestProfile).centerY
+      body.pitch = figurePitchOf(rest, anchors, figureShellProfile(canvas.shellProfile).torso, chestY, stance !== 'float')
+      body.turn = new FigureTurn(chestY, rest.hips.y, rest.legSpan)
     }
     return body
   }
@@ -711,15 +720,21 @@ export class FigureBody {
     this.float?.step(dt, body, dynamic)
     // What hangs free is thrown by a lean as by a sway: its anchor goes where the trunk's lean has it too.
     this.sways.step(dt, this.pose, dynamic, this.pitch?.thrown ? this.leanAnchor : null)
-    this.pitch?.follow(dt, dynamic)
+    this.turn?.follow(dt, dynamic)
+    // (The knees give under a turn as far as it shows: a figure whose trunk does not turn does not dip for one.)
+    this.pitch?.follow(dt, dynamic, (this.turn?.hipsSpeed ?? 0) * this.turnShown)
   }
 
   /**
    * Poses the bones for a sway of `body`: floating, or standing on the stance's legs. Then leans them toward
    * the viewer as directed (`bodyPitch`, −1…1) and as its head's nod recruits (`recruited`), the way the
-   * torso's turn has it facing (a rotation shown by `blend`).
+   * torso's turn has it facing (a rotation shown by `blend`). `directedTurn`: the turn it is directed to
+   * make (−1…1, torsoTurn), which is of that rotation what its hips, arms and hem come after (figureTurn).
    */
-  step(body: number, stance: Readonly<Anime25DStandingFrame> | undefined, bodyPitch = 0, recruited = 0, turn?: Readonly<{ active: boolean; yawSine: number }>, blend = 0): void {
+  step(body: number, stance: Readonly<Anime25DStandingFrame> | undefined, bodyPitch = 0, recruited = 0, turn?: Readonly<{ active: boolean; yawSine: number }>, blend = 0, directedTurn = 0): void {
+    this.turnShown = Number.isFinite(blend) ? Math.max(0, Math.min(1, blend)) : 0
+    // (As asked, not as shown yet: a package coming in on a held turn has nothing to come after.)
+    this.turn?.step(Math.max(-1, Math.min(1, Number.isFinite(directedTurn) ? directedTurn : 0)) * HEAD_YAW_SHARE)
     if (this.float) {
       this.float.pose(body * this.reach, this.pose)
     } else {

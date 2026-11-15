@@ -10,7 +10,7 @@ import {
   figurePitchAngle,
   figurePitchRest,
 } from './figurePitch'
-import { figureRest } from './figureSkeleton'
+import { FigureBody, figureRest } from './figureSkeleton'
 import { leanAnime25DAttachment } from './layerAttachment'
 
 // A figure 1400 tall: face 100–220, neck's foot 270, waist 451.5, hips 600, ground 1400.
@@ -251,6 +251,57 @@ test('a lean is taken in turn: the hips as asked, the chest after them and a lit
   pitch.step(0, 0, 1, UPRIGHT)
   assert.equal(pitch.active, false)
   assert.deepEqual(carried(pitch, 'arm', 360, 600), { x: 360, y: 600 })
+})
+
+test('the knees give under hips coming round in a directed turn too, and stand up again', () => {
+  const pitch = leaning(0)
+  const hipsY = () => carried(pitch, 'trunk', 500, 640).y
+  let sunk = 0
+  for (let i = 0; i < 240; i += 1) {
+    // (The hips coming round at two radians a second for a fifth of a second, then still.)
+    pitch.step(0, 0, 1, UPRIGHT)
+    pitch.follow(1 / 60, true, i > 6 && i < 18 ? 2 : 0)
+    pitch.step(0, 0, 1, UPRIGHT)
+    sunk = Math.max(sunk, hipsY() - 640)
+  }
+  const legs = pitch.rest.ankleY - pitch.rest.hipsY
+  assert.ok(sunk > 0.003 * legs && sunk < 0.02 * legs, `${sunk / legs}`)
+  assert.equal(pitch.active, false)
+  assert.equal(hipsY(), 640)
+})
+
+test('a figure coming in on a held turn has nothing to come after, and does not dip for a turn that does not show', () => {
+  const canvas = { layers: [], pixelCanvas: { width: 1000, height: 1000 }, shellProfile: { torso } as never, chestProfile: { centerX: 500, centerY: 360, radiusX: 80, radiusY: 60 } as never }
+  const facing = { active: true, yawSine: Math.sin(0.45) }
+  // Its shell comes in over its first frames (blend 0 to 1) while the turn is held.
+  const body = FigureBody.of(anchors, undefined, 'ground', canvas)!
+  for (let i = 0; i < 40; i += 1) {
+    const blend = Math.min(1, i / 8)
+    body.step(0, undefined, 0, 0, facing, blend, 1)
+    body.stepParts(1 / 60, 0, true)
+    body.step(0, undefined, 0, 0, facing, blend, 1)
+    assert.equal(body.turn!.active, false, `frame ${i}`)
+  }
+  // Asked to turn while none of it shows (a trunk with no shell), its hips come round unseen: the knees do not give.
+  const flat = FigureBody.of(anchors, undefined, 'ground', canvas)!
+  for (let i = 0; i < 40; i += 1) {
+    const asked = i < 4 ? 0 : 1
+    flat.step(0, undefined, 0, 0, facing, 0, asked)
+    flat.stepParts(1 / 60, 0, true)
+    flat.step(0, undefined, 0, 0, facing, 0, asked)
+    assert.equal(flat.pitch!.active, false, `frame ${i}`)
+  }
+  // ...and shown, they do.
+  const shown = FigureBody.of(anchors, undefined, 'ground', canvas)!
+  let dipped = false
+  for (let i = 0; i < 40; i += 1) {
+    const asked = i < 4 ? 0 : 1
+    shown.step(0, undefined, 0, 0, facing, 1, asked)
+    shown.stepParts(1 / 60, 0, true)
+    shown.step(0, undefined, 0, 0, facing, 1, asked)
+    dipped ||= shown.pitch!.active
+  }
+  assert.ok(dipped)
 })
 
 test('with no physics the whole body is where the lean is asked, at once; and every frame rate moves alike', () => {

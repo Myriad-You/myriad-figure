@@ -10,6 +10,8 @@
 interface LegLayer {
   source: { name: string; role: string; side?: 'L' | 'R' | null }
   attachment?: { hostName?: string } | null
+  /** A piece drawn on a leg or a shoe that stands with it without hanging from it (standOnLimb): that layer's name. */
+  rides?: string | null
 }
 
 /**
@@ -42,7 +44,7 @@ export class LegOrder<T> {
     const slots: number[] = []
     const sides: ('L' | 'R')[] = []
     layers.forEach((layer, index) => {
-      const side = legSide.get(layer.source.name) ?? legSide.get(layer.attachment?.hostName ?? '')
+      const side = legSide.get(layer.source.name) ?? legSide.get(layer.attachment?.hostName ?? layer.rides ?? '')
       if (!side) return
       slots.push(index)
       sides.push(side)

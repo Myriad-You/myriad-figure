@@ -11,9 +11,12 @@ import { bindTurnKey, turnKeyformOffset } from './turnKeyforms'
  * shape it takes with the whole figure turned BODY_KEY_YAW either way, its
  * feet where they stood, as a lattice like the head's turn keys ('plus'
  * toward +x). A turn in between mixes rest and key linearly by the torso's
- * yaw. Only the shoes keep their keys (playbackBodyKeys): the legs lean from
- * their soles (fromSole), the rest turns on the torso's cylinder, and the
- * head keeps its own turn keys.
+ * yaw. Of a standing figure's, none is drawn any more: its trunk turns on the
+ * torso's cylinder and its legs, arms and shoes each as a column of their own
+ * (figureColumns), which take a layer before its key here does. Its legs' and
+ * shoes' keys are still bound (playbackBodyKeys): that there are any is what
+ * has the head go round with the body (bodyKeyShare), and they carry a layer
+ * whose column could not be read.
  */
 export const BODY_KEY_YAW = (20 * Math.PI) / 180
 /**

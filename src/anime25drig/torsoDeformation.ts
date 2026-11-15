@@ -34,13 +34,12 @@ export const SLEEVE_TORSO_TRANSMISSION = 0.85
  * the legs hold near the turn's axis, the way an anime three-quarter view
  * draws the body's middle line over toward its far side. Its cylinder is this
  * deep for its half-width (a bust's guess from the face is shallower); the
- * neck stands this share of the way out to the chest's front; a sleeve clear
- * of the body keeps this share of its anchor's travel. Measured on a drawn
- * 28° turn: chest and skirt +69 px, arms, head and legs +8 to +28.
+ * neck stands this share of the way out to the chest's front. Measured on a
+ * drawn 28° turn: chest and skirt +69 px, arms, head and legs +8 to +28.
+ * (Its arms and legs are columns of their own about that axis: figureColumns.)
  */
 const FIGURE_TORSO_DEPTH = 0.75
 const FIGURE_NECK_DEPTH = 0.25
-const FIGURE_SLEEVE_HANG = 0.2
 /** A sleeve lies over the body out to this many half-widths, letting go over the last share of it. */
 const FIGURE_BODY_EDGE = 1.25
 const FIGURE_BODY_EDGE_FADE = 0.3
@@ -244,26 +243,38 @@ export function addTorsoShellShare(
   return share
 }
 
+/** A sleeve drawn behind the body's clothing gives up the body's surface for its own column over this much of the turn's sine. */
+const FIGURE_SLEEVE_BEHIND = 0.12
+
 /**
- * A standing figure's sleeve, horizontally: over the body it lies on the
- * cylinder like the garment under it, so their seam holds; clear of the body
- * it hangs at the side, near the turn's axis, with FIGURE_SLEEVE_HANG of a
- * bust sleeve's rigid travel.
+ * A standing figure's sleeve, horizontally: clear of the body it is the arm's
+ * own column going round with its shoulder (`column`, how far that takes
+ * this point: figureColumns). Over the body it lies on the cylinder like the
+ * garment under it, so their seam holds and nothing never drawn shows at its
+ * inner edge. But drawn behind the body's clothing (`behindAt`: the middle of
+ * such an arm, which says the side it is on), it does so only on the side
+ * turned toward the viewer, where the body's front draws away from it: on the
+ * far side the front comes over it, and held to that the sleeve was squeezed
+ * to half its width instead of going behind.
  */
 export function figureSleeveOffsetX(
   restX: number,
-  anchorX: number,
+  column: number,
   profile: Readonly<Anime25DTorsoShellProfile>,
   rotation: Readonly<Anime25DTorsoShellRotation>,
   blend: number,
   depthScale = 1,
+  behindAt?: number,
 ): number {
   const out = Math.abs(restX - profile.centerX) / Math.max(1, profile.radiusX)
   const clear = clamp((out - (FIGURE_BODY_EDGE - FIGURE_BODY_EDGE_FADE)) / FIGURE_BODY_EDGE_FADE, 0, 1)
+  // (The whole arm by the side it is on, not each point by its own: a sleeve reaching across the middle
+  // would be torn there. And eased in with the turn, so nothing snaps as the figure turns through the front.)
+  const behind = behindAt === undefined ? 0 : smoothstep((Math.sign(behindAt - profile.centerX) * rotation.yawSine) / FIGURE_SLEEVE_BEHIND)
+  const own = Math.max(clear, behind)
+  if (own >= 1) return column
   const onBody = torsoShellOffsetX(restX, 0, profile, rotation, blend, null, 1, 1, depthScale)
-  const hanging = torsoShellOffsetX(anime25DSleeveAnchorX(anchorX, profile), 0, profile, rotation,
-    blend * SLEEVE_TORSO_TRANSMISSION * FIGURE_SLEEVE_HANG, null)
-  return onBody + (hanging - onBody) * clear
+  return onBody + (column - onBody) * own
 }
 
 export function anime25DTorsoShellOffsetX(
@@ -312,9 +323,9 @@ function torsoShellOffsetX(
   if (!profile.enabled || blend <= 0 || !rotation.active) return 0
   const x = pointX - profile.centerX
   const normalizedX = x / profile.radiusX
-  let z =
-    Math.sqrt(Math.max(0, 1 - Math.min(1, normalizedX * normalizedX))) *
-    profile.radiusZ * depthScale
+  let z = (profile.neckDepth === undefined
+    ? Math.sqrt(Math.max(0, 1 - Math.min(1, normalizedX * normalizedX)))
+    : figureRound(Math.abs(normalizedX))) * profile.radiusZ * depthScale
   let silhouetteOffset = 0
   if (chestShape) {
     const normalizedChestX = (pointX - chestShape.centerX) / chestShape.radiusX
@@ -363,12 +374,52 @@ function torsoShellOffsetX(
         edge
     }
   }
+  return (turnedX(x, z, profile, rotation) + silhouetteOffset) * blend
+}
+
+/**
+ * A standing figure's cylinder falls away to its edge no steeper than it does at FIGURE_EDGE_FROM of its
+ * half-width, and on at that slope a little past the edge. A circle's side is upright at its edge: turned
+ * the full way of a figure's turn, the clothing drawn there on the far side was carried across faster than
+ * it is wide, and folded over itself.
+ */
+const FIGURE_EDGE_FROM = 0.86
+function figureRound(across: number): number {
+  const height = Math.sqrt(1 - FIGURE_EDGE_FROM * FIGURE_EDGE_FROM)
+  if (across <= FIGURE_EDGE_FROM) return Math.sqrt(1 - across * across)
+  return Math.max(0, height - (across - FIGURE_EDGE_FROM) * (FIGURE_EDGE_FROM / height))
+}
+
+/** How far across a point `x` from the turn's axis and `z` out toward the viewer shows once turned. */
+function turnedX(x: number, z: number, profile: Readonly<Anime25DTorsoShellProfile>, rotation: Readonly<Anime25DTorsoShellRotation>): number {
   const rotatedX = x * rotation.yawCosine + z * rotation.yawSine
   const rotatedZ = -x * rotation.yawSine + z * rotation.yawCosine
   const focalLength = Math.max(1, profile.radiusZ * 6)
   const rotatedScale = focalLength / Math.max(1, focalLength - rotatedZ * 0.5)
   const restScale = focalLength / Math.max(1, focalLength - z * 0.5)
-  return (rotatedX * rotatedScale - x * restScale + silhouetteOffset) * blend
+  return rotatedX * rotatedScale - x * restScale
+}
+
+/** How much larger (or smaller) what is `x` from the turn's axis shows once turned, for being nearer (or further). */
+export function anime25DTurnedScale(x: number, profile: Readonly<Anime25DTorsoShellProfile>, rotation: Readonly<Anime25DTorsoShellRotation>): number {
+  if (!profile.enabled || !rotation.active) return 1
+  const focalLength = Math.max(1, profile.radiusZ * 6)
+  return focalLength / Math.max(1, focalLength + x * rotation.yawSine * 0.5)
+}
+
+/**
+ * The same for what is not on the torso's cylinder but turns about its axis with it (a limb's column,
+ * figureColumns): `x` from the axis, standing `z` out toward the viewer.
+ */
+export function anime25DTurnedOffsetX(
+  x: number,
+  z: number,
+  profile: Readonly<Anime25DTorsoShellProfile>,
+  rotation: Readonly<Anime25DTorsoShellRotation>,
+  blend: number,
+): number {
+  if (!profile.enabled || blend <= 0 || !rotation.active) return 0
+  return turnedX(x, z, profile, rotation) * blend
 }
 
 function smoothstep(value: number): number {
