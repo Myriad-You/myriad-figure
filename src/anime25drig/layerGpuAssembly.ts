@@ -491,6 +491,7 @@ export function bindLayerAttachments(
       const pinned = layer.earwearPhysics?.from && bindAttachmentTurn(playback.turnKeyforms, layer.source, layer.rest, hostSource, layer.attachment)
       if (pinned) layer.pinnedTurn = { turn: pinned, keyed: layer.rest.slice() }
     }
+    standOnLimb(layer, playback, readBindingPixels)
     for (const attachment of [layer.attachment, layer.neckwearBridge?.upper, layer.neckwearBridge?.lower]) {
       // Its host's body key, per vertex of the host, is taken at the anchor and a pixel across (vertices 0, 1).
       if (attachment?.hostSource) {
@@ -690,4 +691,25 @@ function skirtSpan(layers: readonly Anime25DPlaybackLayer[], source: Anime25DPla
     bottom = Math.max(bottom, layer.y + layer.h)
   }
   return top === source.y && bottom === source.y + source.h ? source : { ...source, y: top, h: bottom - top }
+}
+
+/**
+ * A piece drawn on a standing figure's lower leg or shoe (laces, a buckle) stands with that leg's own bones,
+ * point by point (bindStanding). Carried by an anchor on the leg as well, it went twice as far as what it is
+ * drawn on: in a sway the laces left the shoe. Unless it swings from that anchor, it lets it go and is a patch
+ * of its limb, turning as the limb's column does under it.
+ */
+function standOnLimb(layer: Anime25DGpuLayer, playback: Readonly<Anime25DPlayback>, readBindingPixels: ReadPixels): void {
+  const host = layer.attachment?.hostSource
+  const own = layer.secondaryDeformation
+  if (!host || !own.standing || !own.figureSkin || layer.earwearPhysics || layer.attachmentTurn) return
+  const column = bindLimbColumn(layer.rest, host, playback.layers, (other) => readBindingPixels((other ?? host) as Anime25DPlaybackLayer), standingLegOf(playback))
+  if (!column) return
+  // (By the limb's own bones and stance, not the ones its own box would give it: a point of it goes where the limb's there does.)
+  const limb = layer.attachment!.binding
+  own.figureSkin = limb.figureSkin
+  own.figurePitch = limb.figurePitch
+  own.standing = limb.standing
+  own.figureColumn = column
+  layer.attachment = null
 }

@@ -5,6 +5,7 @@ import type {
   Anime25DShellProfile,
 } from './types'
 import { localToAtlasUv } from './atlasUv'
+import { FIGURE_LEG_ROWS } from './figureColumns'
 import { createHairChain } from './hairChain'
 import {
   frontHairUpperParallaxScale,
@@ -29,10 +30,21 @@ const FIGURE_TORSO_ROLES = new Set(['topwear', 'collar-front', 'collar-back'])
 /**
  * A standing figure's limbs turn each as a column of its own (figureColumns): what is drawn on one slides
  * across it, most at its middle. Its canvas-sized cells left a leg three vertices across, a tent, not a
- * column: it has at least this many cells across. (Across only: its bones move a row as one.)
+ * column: it has at least this many cells across. (And a leg FIGURE_LEG_ROWS down, for its top's handing over.)
  */
 const FIGURE_LIMB_ROLES = new Set(['legwear', 'footwear', 'handwear'])
 const FIGURE_LIMB_COLS = 10
+/**
+ * What is drawn on a leg or a shoe in a layer of its own (laces, a buckle, a charm) stands and turns as that
+ * limb does under it, point by point (layerGpuAssembly's standOnLimb): it has this many cells each way to
+ * take that shape with, where its canvas-sized cells left it two.
+ */
+const FIGURE_RIDER_CELLS = 12
+/**
+ * A shoe has this many rows: its ankle's bones blend and its toe swings out within its height, and with the
+ * three rows its canvas-sized cells gave it, what is drawn on it in a layer of its own did neither where it did.
+ */
+const FIGURE_SHOE_ROWS = 16
 /** A piece cut out of its host has at least this many rows to bend over. */
 const CUT_PIECE_ROWS = 10
 
@@ -145,15 +157,20 @@ export function buildAnime25DLayerBinding(
   const sillyMouthMesh = source.fade === 'mouthSilly'
   if (morphingMouth) extensions.push('mouth-mesh-density')
   if (source.role === 'eye-cry') extensions.push('cry-eye-mesh-density')
+  const figureRider = Boolean(input.figure) && source.group === 'body' && source.role === 'objects'
   const baseCols = Math.max(
     maniacMouthMesh ? 14 : sillyMouthMesh ? 10 : eyeFeature ? 8 : morphingMouth ? 6 : 2,
     input.figure && source.group === 'body' && FIGURE_LIMB_ROLES.has(source.role) ? FIGURE_LIMB_COLS : 0,
+    figureRider ? FIGURE_RIDER_CELLS : 0,
     Math.round(source.w / cell),
   )
   // A piece cut out of its host bends from its cut by its swing: it needs rows to bend over.
   const cutPiece = cutFrom(source) !== undefined
   const baseRows = Math.max(
     cutPiece ? CUT_PIECE_ROWS : 0,
+    input.figure && source.group === 'body' && source.role === 'legwear' ? FIGURE_LEG_ROWS : 0,
+    figureRider ? FIGURE_RIDER_CELLS : 0,
+    input.figure && source.group === 'body' && source.role === 'footwear' ? FIGURE_SHOE_ROWS : 0,
     maniacMouthMesh
       ? 10
       : sillyMouthMesh

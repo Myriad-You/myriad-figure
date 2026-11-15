@@ -471,7 +471,7 @@ export class Anime25DBodyFrames {
     this.renderFrame.bodyBendHeight = frame.bodyBendHeight ?? 0
     // With bones, they sway the figure as each layer's own deformation ends.
     // ...and lean it in depth: as directed, and a little as its head nods (looking down, in).
-    this.figure?.step(e.body, this.standing?.frame, e.bodyPitch, -recruited, this.torsoShellRotation, frame.torsoShellBlend)
+    this.figure?.step(e.body, this.standing?.frame, e.bodyPitch, -recruited, this.torsoShellRotation, frame.torsoShellBlend, e.torsoTurn)
     const lean = this.figure ? 0 : e.body * BODY_ROLL_RADIANS
     this.renderFrame.bodyRotationCosine = Math.cos(lean)
     this.renderFrame.bodyRotationSine = Math.sin(lean)

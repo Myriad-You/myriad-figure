@@ -64,12 +64,12 @@ test('unextended player mesh and atlas UVs preserve upstream binding values', ()
 })
 
 test('figure torso meshes keep their density when the canvas has extra room to sway', () => {
-  for (const role of ['topwear', 'collar-front', 'collar-back', 'legwear']) {
+  for (const role of ['topwear', 'collar-front', 'collar-back', 'bottomwear']) {
     const source = playbackLayer({ name: role, role, group: 'body', w: 360, h: 300 })
     const input = { source, face: ANCHORS.face, layerZ: 3, figure: true }
     const fitted = buildAnime25DLayerBinding({ ...input, canvasWidth: CANVAS_WIDTH })
     const padded = buildAnime25DLayerBinding({ ...input, canvasWidth: CANVAS_WIDTH * 3 })
-    if (role === 'legwear') {
+    if (role === 'bottomwear') {
       assert.ok(padded.rest.length < fitted.rest.length, 'other body layers retain their existing density')
     } else {
       assert.deepEqual(padded.rest, fitted.rest, `${role} keeps the same sampling`)
@@ -87,9 +87,15 @@ test('a standing figure\'s limbs have cells enough across to turn as columns; a 
     const figure = buildAnime25DLayerBinding({ ...input, figure: true })
     assert.ok(bust.cols < 10, `${role}: ${bust.cols}`)
     assert.equal(figure.cols, 10)
-    // Across only: its rows are as they were.
-    assert.equal(figure.rows, bust.rows)
+    // A leg has rows for its top's handing over to the trunk, a shoe for its ankle and toe; an arm's are as they were.
+    assert.equal(figure.rows, role === 'legwear' ? 40 : role === 'footwear' ? 16 : bust.rows)
   }
+  // What is drawn on a limb in a layer of its own has cells to take the limb's shape with.
+  const charm = playbackLayer({ name: 'recovered-objects', role: 'objects', group: 'body', w: 60, h: 60 })
+  const small = { source: charm, face: ANCHORS.face, layerZ: 3, canvasWidth: CANVAS_WIDTH * 4 }
+  assert.equal(buildAnime25DLayerBinding({ ...small, figure: true }).cols, 12)
+  assert.equal(buildAnime25DLayerBinding({ ...small, figure: true }).rows, 12)
+  assert.ok(buildAnime25DLayerBinding(small).cols < 12)
   // The trunk's layers are not limbs.
   const top = playbackLayer({ name: 'bottomwear', role: 'bottomwear', group: 'body', w: 120, h: 600 })
   const input = { source: top, face: ANCHORS.face, layerZ: 3, canvasWidth: CANVAS_WIDTH * 4 }

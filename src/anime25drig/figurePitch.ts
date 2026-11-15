@@ -96,6 +96,9 @@ const ARM_FOLLOW = { frequency: 1.25, damping: 0.42 } as const
 const KNEE_GIVE = 0.022
 const KNEE_GIVE_SPEED = 1.3
 const KNEE_FOLLOW = { frequency: 2.4, damping: 0.6 } as const
+/** Turning on its feet, the hips coming round at TURN_GIVE_SPEED (radians a second), they give this share as far. */
+const TURN_GIVE = 0.6
+const TURN_GIVE_SPEED = 2
 /**
  * The hair is thrown by a lean this many times as far as the head travels in it: a head carried a tenth of
  * the figure's height in half a second, slowly as a whole body moves, hardly stirred the locks hung on it.
@@ -317,9 +320,10 @@ export class FigurePitch {
   /**
    * Lets the trunk, the chest and the arms come after the lean last asked: once each step of the physics,
    * after it is posed (the frame drawn is posed again after this). Not `dynamic` (physics off), they are held
-   * where it is asked.
+   * where it is asked. `turning`: how fast its hips are coming round in a directed turn (figureTurn), radians
+   * a second, which the knees give under too.
    */
-  follow(dt: number, dynamic: boolean): void {
+  follow(dt: number, dynamic: boolean, turning = 0): void {
     const springs = [this.hipLean, this.chestLean, this.armLean] as const
     const give = this.give
     if (!dynamic || !(dt > 0) || !this.loose) {
@@ -336,7 +340,7 @@ export class FigurePitch {
       chase(this.hipLean, this.asked, HIP_FOLLOW, h)
       chase(this.chestLean, this.hipLean.value, CHEST_FOLLOW, h)
       chase(this.armLean, this.chestLean.value, ARM_FOLLOW, h)
-      chase(give, deepest * Math.min(1, Math.abs(this.hipLean.velocity) / KNEE_GIVE_SPEED), KNEE_FOLLOW, h)
+      chase(give, deepest * Math.min(1, Math.abs(this.hipLean.velocity) / KNEE_GIVE_SPEED + TURN_GIVE * Math.abs(turning) / TURN_GIVE_SPEED), KNEE_FOLLOW, h)
     }
     if (this.asked === 0 && springs.every((spring) => Math.abs(spring.value) < FOLLOW_REST && Math.abs(spring.velocity) < FOLLOW_REST)
       && Math.abs(give.value) < FOLLOW_REST && Math.abs(give.velocity) < FOLLOW_REST) {

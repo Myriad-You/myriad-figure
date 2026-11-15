@@ -2,6 +2,7 @@ import type { Anime25DSecondaryDeformationBinding, Anime25DSecondaryDeformationF
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { bindFigureColumn, bindLimbColumn, drawnBehind, figureColumnOffsetX } from './figureColumns'
+import { FigureTurn } from './figureTurn'
 import { anime25DTorsoShellOffsetX } from './torsoDeformation'
 import { turnWithTorso } from './torsoTurn'
 
@@ -197,34 +198,93 @@ test('a leg\'s top goes with the trunk\'s cylinder, like the skirt or the trouse
   assert.equal(moved(13 * 6 + 4, { ...binding, figureColumn: null }), 0)
 })
 
-test('under a skirt a leg is all its own column by the hem; a trouser leg, whose side shows from the hips, hands over slowly', () => {
+/** Pixels all of one colour: drawn where `drawn(x, y)`. */
+function painted(width: number, height: number, grey: number, drawn: (x: number, y: number) => boolean = () => true) {
+  const pixels = new Uint8ClampedArray(width * height * 4)
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (drawn(x, y)) pixels.set([grey, grey, grey, 255], (y * width + x) * 4)
+    }
+  }
+  return { width, height, pixels }
+}
+
+test('a leg is all its own column by the hem it shows from under, found on that leg; a trouser leg under its seat hands over slowly', () => {
   const rest = lattice(legBox, 12, 20)
   const leg = { name: 'legwear-L', role: 'legwear', z: 1, ...legBox }
-  // A skirt 80 long from the hips, drawn right across; and a trousers' seat, a point between the legs.
+  // A skirt 80 long, 40 of it below the hips, drawn right across; the leg dark under it, the skirt light.
   const garment = { name: 'bottomwear', role: 'bottomwear', z: 2, x: 260, y: 560, w: 400, h: 80 }
-  const full = { width: 400, height: 80, pixels: new Uint8ClampedArray(400 * 80 * 4).fill(255) }
-  const seat = { width: 400, height: 80, pixels: new Uint8ClampedArray(400 * 80 * 4) }
-  for (let y = 0; y < 80; y += 1) {
-    for (let x = 0; x < 400; x += 1) { if (Math.abs(x - 200) < 200 - y * 2.4) seat.pixels[(y * 400 + x) * 4 + 3] = 255
-}
-  }
-  const bound = (art: typeof full | null, layers = [leg, garment]) =>
-    bindLimbColumn(rest, leg, layers, (layer) => (layer ? art : leaningLeg()), stance)!
-  const skirted = bound(full)
-  const trousered = bound(seat)
+  const legArt = painted(120, 200, 40, (x, y) => x >= 20 + Math.round((20 * y) / 199) && x < 80 + Math.round((20 * y) / 199))
+  const bound = (art: ReturnType<typeof painted> | null, layers: { name: string; role: string; z: number; x: number; y: number; w: number; h: number }[] = [leg, garment], others: Record<string, ReturnType<typeof painted>> = {}) =>
+    bindLimbColumn(rest, leg, layers, (layer) => (!layer || layer.name === leg.name ? legArt : others[layer.name] ?? art), stance)!
+  const skirted = bound(painted(400, 80, 230))
   const bare = bound(null, [leg])
-  // The skirt's hem is 40 below the hips, a fifth of this leg: from there down the leg is its own.
   const row = (share: number) => 13 * Math.round(share * 20)
+  // The skirt's hem is a fifth of the way down this leg: from there down the leg is its own.
   assert.equal(skirted.trunk![row(0.2)], 0)
-  assert.ok(trousered.trunk![row(0.2)]! > 0.4, `${trousered.trunk![row(0.2)]}`)
-  assert.deepEqual(Array.from(bare.trunk!), Array.from(trousered.trunk!))
-  for (const column of [skirted, trousered]) {
+  assert.ok(bare.trunk![row(0.2)]! > 0.4, `${bare.trunk![row(0.2)]}`)
+  for (const column of [skirted, bare]) {
     assert.equal(column.trunk![0], 1)
     assert.equal(column.trunk![row(0.4)], 0, 'above the knee both are')
   }
-  // A lining piece put behind the legs is no skirt.
-  const lining = bound(full, [leg, { ...garment, name: 'bottomwear-lining' }])
-  assert.deepEqual(Array.from(lining.trunk!), Array.from(bare.trunk!))
+  // A hem cut on a slant, longer toward the picture's right, is lower on a leg further that way.
+  const slanted = (x: number, y: number) => y < 50 + x * 0.07
+  const near = bound(painted(400, 80, 230, slanted))
+  const far = bindLimbColumn(lattice({ ...legBox, x: 500 }, 12, 20), { ...leg, x: 500 }, [{ ...leg, x: 500 }, garment], (layer) => (!layer || layer.name === leg.name ? legArt : painted(400, 80, 230, slanted)), stance)!
+  const handedOver = (column: typeof near) => { let v = 0; while (column.trunk![v * 13]! > 0) v += 1; return v }
+  assert.ok(handedOver(far) > handedOver(near), `${handedOver(near)} ${handedOver(far)}`)
+  // A trousers' seat was cut out of the leg's own drawing: the same pixels over it. Its leg hands over as a bare one does.
+  assert.deepEqual(Array.from(bound(painted(400, 80, 40)).trunk!), Array.from(bare.trunk!))
+  // Under a long top, trouser legs come out joined to each other: what shows there is still the seat.
+  const other = { ...leg, name: 'legwear-R', x: 360 }
+  const joined = bound(painted(400, 80, 230), [leg, other, garment], { 'legwear-R': painted(120, 200, 40) })
+  assert.deepEqual(Array.from(joined.trunk!), Array.from(bare.trunk!))
+  // ...and thighs standing clear of each other are thighs.
+  const apart = bound(painted(400, 80, 230), [leg, { ...other, x: 460 }, garment], { 'legwear-R': painted(120, 200, 40) })
+  assert.deepEqual(Array.from(apart.trunk!), Array.from(skirted.trunk!))
+  // A lining piece put behind the legs covers nothing; nor does what is drawn behind the leg.
+  assert.deepEqual(Array.from(bound(painted(400, 80, 230), [leg, { ...garment, name: 'bottomwear-lining' }]).trunk!), Array.from(bare.trunk!))
+  assert.deepEqual(Array.from(bound(painted(400, 80, 230), [leg, { ...garment, z: 0 }]).trunk!), Array.from(bare.trunk!))
+})
+
+test('a strap drawn above a limb and on down beside it is not followed in the limb\'s place', () => {
+  const box = { x: 0, y: 0, w: 200, h: 200 }
+  // A strap 10 wide at x = 20 all the way down; from a tenth of the way down, a limb 80 wide at x = 100, touching nothing.
+  const art = painted(200, 200, 40, (x, y) => (x >= 20 && x < 30) || (y >= 20 && x >= 100 && x < 180))
+  const rest = lattice(box, 4, 10)
+  const column = bindFigureColumn(rest, box, art)!
+  assert.ok(Math.abs(column.axis[5 * 5]! - 140) < 2, `${column.axis[5 * 5]}`)
+  assert.ok(Math.abs(column.axis[5 * 9]! - 140) < 2)
+})
+
+test('in a directed turn still under way, a leg and the trunk by the hips are as far round as the hips have come, the chest as far as asked', () => {
+  const rest = lattice(legBox, 12, 10)
+  const column = bindFigureColumn(rest, legBox, leaningLeg(), stance)!
+  const turn = new FigureTurn(300, 600, 200)
+  const frame = { figure: { turn }, torsoProfile: profile, torsoShellRotation: turned, torsoShellBlend: 1, neckBottom: 100, chestRegionCenterY: 300, chestVolumeScale: 1 } as unknown as Anime25DSecondaryDeformationFrame
+  const leg = { figureColumn: column, torsoShellMode: null, bodyTurnKeyform: null } as unknown as Anime25DSecondaryDeformationBinding
+  const trunk = { figureColumn: null, torsoShellMode: 'full', bodyTurnKeyform: null } as unknown as Anime25DSecondaryDeformationBinding
+  const moved = (layer: typeof leg, x: number, y: number, vertex = 0) => {
+    const point = { x, y }
+    turnWithTorso(point, x, y, vertex, layer, frame, 1)
+    return point.x - x
+  }
+  const knee = 13 * 6 + 4
+  const at = () => ({ leg: moved(leg, rest[knee * 2]!, rest[knee * 2 + 1]!, knee), chest: moved(trunk, 520, 250), hips: moved(trunk, 520, 600) })
+  // Held (no physics yet), every part is where the turn has it.
+  turn.step(0.45)
+  const held = at()
+  // A tenth of a second into a turn asked at once: the chest there already, the hips and the leg under them not yet.
+  for (let i = 0; i < 6; i += 1) { turn.step(i === 0 ? 0 : 0.45); turn.follow(1 / 60, true) }
+  turn.step(0.45)
+  const under = at()
+  assert.equal(under.chest, held.chest)
+  assert.ok(under.hips > 0 && under.hips < held.hips * 0.8, `${under.hips} of ${held.hips}`)
+  assert.ok(Math.abs(under.leg) < Math.abs(held.leg) * 0.8, `${under.leg} of ${held.leg}`)
+  // Settled, it is exactly the held turn again.
+  for (let i = 0; i < 480; i += 1) { turn.step(0.45); turn.follow(1 / 60, true) }
+  turn.step(0.45)
+  assert.deepEqual(at(), held)
 })
 
 test('which layers are limbs, and which arm is drawn behind the body\'s clothing (its lining does not say)', () => {

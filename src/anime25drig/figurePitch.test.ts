@@ -253,6 +253,23 @@ test('a lean is taken in turn: the hips as asked, the chest after them and a lit
   assert.deepEqual(carried(pitch, 'arm', 360, 600), { x: 360, y: 600 })
 })
 
+test('the knees give under hips coming round in a directed turn too, and stand up again', () => {
+  const pitch = leaning(0)
+  const hipsY = () => carried(pitch, 'trunk', 500, 640).y
+  let sunk = 0
+  for (let i = 0; i < 240; i += 1) {
+    // (The hips coming round at two radians a second for a fifth of a second, then still.)
+    pitch.step(0, 0, 1, UPRIGHT)
+    pitch.follow(1 / 60, true, i > 6 && i < 18 ? 2 : 0)
+    pitch.step(0, 0, 1, UPRIGHT)
+    sunk = Math.max(sunk, hipsY() - 640)
+  }
+  const legs = pitch.rest.ankleY - pitch.rest.hipsY
+  assert.ok(sunk > 0.003 * legs && sunk < 0.02 * legs, `${sunk / legs}`)
+  assert.equal(pitch.active, false)
+  assert.equal(hipsY(), 640)
+})
+
 test('with no physics the whole body is where the lean is asked, at once; and every frame rate moves alike', () => {
   const held = leaning(FIGURE_PITCH_FORWARD)
   const stiff = leaning(0)

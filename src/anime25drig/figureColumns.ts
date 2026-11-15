@@ -50,10 +50,15 @@ const TOE_HEIGHT = 1
  * all its own column, not squeezed for being on the far side.
  */
 const LEG_TOP = [0.04, 0.36, 0.1] as const
-/** A skirt covers a leg if, this share of the way down it, it is drawn across the middle half of the leg. */
-const SKIRT_ROW = 0.9
+/**
+ * A leg's mesh has this many rows of cells: enough for that handing over to be done where it is meant to be,
+ * not a canvas cell further down, on the thigh in view. (Its canvas-sized cells were a dozen down a leg.)
+ */
+export const FIGURE_LEG_ROWS = 40
 /** Its width is read in this many rows down its drawing. */
 const ROWS = 48
+/** The limb's own drawing starts at the first row at least this share as wide as its widest. */
+const START_WIDTH = 0.35
 /** A pixel at least this opaque is the limb's drawing. */
 const DRAWN_ALPHA = 48
 
@@ -97,12 +102,10 @@ export function bindFigureColumn(
   const left = new Float64Array(rows).fill(Infinity)
   const right = new Float64Array(rows).fill(-Infinity)
   if (art && art.width > 0 && art.height > 0) {
-    // The run of each pixel row that carries on the one above (the widest, where none does): a strap or a
+    // The run of each pixel row that carries on its neighbour's (the widest, where none does): a strap or a
     // forearm folded back beside the limb is not part of its column. Taken with it, the gap between them was
     // the column's middle and both were squeezed across it; taken by width alone, two alike swapped row by row.
-    let keptFrom = -1
-    let keptTo = -1
-    for (let py = 0; py < art.height; py += 1) {
+    const run = (py: number, keptFrom: number, keptTo: number): [number, number] => {
       let first = -1
       let last = -1
       let most = 0
@@ -111,19 +114,41 @@ export function bindFigureColumn(
         const drawn = px < art.width && art.pixels[(py * art.width + px) * 4 + 3] >= DRAWN_ALPHA
         if (drawn && from < 0) from = px
         if (!drawn && from >= 0) {
-          // (Its overlap with the run kept above counts before its width.)
+          // (Its overlap with the run kept counts before its width.)
           const shared = keptFrom < 0 ? 0 : Math.max(0, Math.min(px, keptTo) - Math.max(from, keptFrom))
           const worth = shared * art.width + (px - from)
           if (worth > most) { most = worth; first = from; last = px }
           from = -1
         }
       }
-      if (first < 0) continue
-      keptFrom = first
-      keptTo = last
+      return [first, last]
+    }
+    // Followed down from the first row the limb itself is in, and up from there: a strap drawn above its top
+    // (thinner than START_WIDTH of its widest) and on down beside it would be followed in its place.
+    let widest = 0
+    const widths = new Float64Array(art.height)
+    for (let py = 0; py < art.height; py += 1) {
+      const [first, last] = run(py, -1, -1)
+      widths[py] = last - first
+      widest = Math.max(widest, widths[py])
+    }
+    let start = 0
+    while (start < art.height - 1 && widths[start] < widest * START_WIDTH) start += 1
+    const keep = (py: number, first: number, last: number) => {
       const row = Math.min(rows - 1, Math.floor((py / art.height) * rows))
       left[row] = Math.min(left[row], box.x + (first / art.width) * box.w)
       right[row] = Math.max(right[row], box.x + (last / art.width) * box.w)
+    }
+    for (const step of [1, -1]) {
+      let keptFrom = -1
+      let keptTo = -1
+      for (let py = start; py >= 0 && py < art.height; py += step) {
+        const [first, last] = run(py, keptFrom, keptTo)
+        if (first < 0) continue
+        keptFrom = first
+        keptTo = last
+        if (step > 0 || py !== start) keep(py, first, last)
+      }
     }
   }
   // A row with nothing drawn in it takes its neighbours'; a layer that cannot be read, its box.
@@ -153,6 +178,10 @@ export function bindFigureColumn(
   let widest = 0
   for (let row = 0; row < rows; row += 1) widest = Math.max(widest, half[row])
   const span = ground ? Math.max(1, ground.groundY - ground.hipY) : 1
+  // (Done a row of its mesh above the hem: the cells from that row to the next would carry it on below.)
+  const own = !ground || ground.hemY === undefined
+    ? LEG_TOP[1]
+    : Math.max(LEG_TOP[2], Math.min(LEG_TOP[1], (ground.hemY - height / FIGURE_LEG_ROWS - ground.hipY) / span))
   for (let v = 0; v < count; v += 1) {
     const x = rest[v * 2]
     const y = rest[v * 2 + 1]
@@ -172,7 +201,6 @@ export function bindFigureColumn(
       reach[v] = down * down * (3 - 2 * down) * widest * TOE_REACH
     }
     if (trunk && ground) {
-      const own = ground.hemY === undefined ? LEG_TOP[1] : Math.max(LEG_TOP[2], Math.min(LEG_TOP[1], (ground.hemY - ground.hipY) / span))
       const below = Math.max(0, Math.min(1, ((y - ground.hipY) / span - LEG_TOP[0]) / (own - LEG_TOP[0])))
       trunk[v] = 1 - below * below * (3 - 2 * below)
     }
@@ -201,32 +229,96 @@ export function figureColumnOffsetX(
 
 interface LimbLayer { name: string; role: string; x: number; y: number; w: number; h: number; z?: number }
 
+/** A leg is under the trunk's garments down to the first row of it that less than this share of is covered. */
+const HEM_COVER = 0.85
+/** Two legs are joined where the gap between them is no more than this share of one's width. */
+const JOINED = 0.03
+/** A trouser leg's drawing is the seat's own where the seat is over it: no further from it than this, of 255, a pixel. */
+const SAME_DRAWING = 16
+
 /**
- * The hem of the skirt over a leg, canvas y; none where the leg's sides show from the hips down (trousers,
- * whose seat comes to a point between the legs; nothing worn on the hips). The lowest lower garment that is
- * drawn across the middle half of the leg near its own foot (SKIRT_ROW).
+ * The hem a leg comes out from under, canvas y: down to it the garments of the trunk drawn in front of the leg
+ * (a skirt, shorts, a coat's tails, a long top) cover it. Read down the leg's own drawing row by row, so a hem
+ * cut on a slant, slit or scalloped is found where it is on this leg. None for a leg whose top shows, and none
+ * for a trouser leg under its seat: the seat was cut out of the leg's drawing, the same pixels, and the leg's
+ * outline runs on out of the seat's.
  */
-function skirtHem(
+export function legHem(
   leg: Readonly<LimbLayer>,
   layers: readonly Readonly<LimbLayer>[],
   art: (layer: Readonly<LimbLayer>) => Parameters<typeof bindFigureColumn>[2],
 ): number | undefined {
-  let hem: number | undefined
-  for (const layer of layers) {
-    if (layer.role !== 'bottomwear' || isAnime25DLiningPiece(layer.name) || !(layer.w > 1 && layer.h > 1)) continue
-    const pixels = art(layer)
-    if (!pixels || !(pixels.width > 0 && pixels.height > 0)) continue
-    const py = Math.min(pixels.height - 1, Math.floor(pixels.height * SKIRT_ROW))
-    const from = Math.floor(((leg.x + leg.w * 0.25 - layer.x) / layer.w) * pixels.width)
-    const to = Math.ceil(((leg.x + leg.w * 0.75 - layer.x) / layer.w) * pixels.width)
-    if (from < 0 || to > pixels.width || to <= from) continue
+  const own = art(leg)
+  if (!own || !(own.width > 0 && own.height > 0) || !(leg.w > 1 && leg.h > 1)) return undefined
+  const order = (layer: Readonly<LimbLayer>) => layer.z ?? layers.findIndex((other) => other.name === layer.name)
+  const over = layers
+    .filter((layer) => (layer.role === 'bottomwear' || layer.role === 'topwear') && !isAnime25DLiningPiece(layer.name)
+      && layer.w > 1 && layer.h > 1 && order(layer) > order(leg))
+    .map((layer) => ({ layer, pixels: art(layer) }))
+    .filter((entry) => entry.pixels && entry.pixels.width > 0 && entry.pixels.height > 0)
+  if (!over.length) return undefined
+  let hemRow = -1
+  let apart = 0
+  let covered = 0
+  for (let row = 0; row < ROWS; row += 1) {
+    const py = Math.min(own.height - 1, Math.floor(((row + 0.5) / ROWS) * own.height))
+    const y = leg.y + ((py + 0.5) / own.height) * leg.h
     let drawn = 0
-    for (let px = from; px < to; px += 1) { if (pixels.pixels[(py * pixels.width + px) * 4 + 3] >= DRAWN_ALPHA) drawn += 1
-}
-    if (drawn < (to - from) * 0.9) continue
-    hem = Math.max(hem ?? -Infinity, layer.y + layer.h)
+    let under = 0
+    let differs = 0
+    for (let px = 0; px < own.width; px += 1) {
+      const at = (py * own.width + px) * 4
+      if (own.pixels[at + 3] < DRAWN_ALPHA) continue
+      drawn += 1
+      const x = leg.x + ((px + 0.5) / own.width) * leg.w
+      for (const { layer, pixels } of over) {
+        const qx = Math.floor(((x - layer.x) / layer.w) * pixels!.width)
+        const qy = Math.floor(((y - layer.y) / layer.h) * pixels!.height)
+        if (qx < 0 || qy < 0 || qx >= pixels!.width || qy >= pixels!.height) continue
+        const q = (qy * pixels!.width + qx) * 4
+        const cloth = pixels!.pixels
+        if (cloth[q + 3] < DRAWN_ALPHA) continue
+        under += 1
+        differs += Math.max(Math.abs(cloth[q] - own.pixels[at]), Math.abs(cloth[q + 1] - own.pixels[at + 1]), Math.abs(cloth[q + 2] - own.pixels[at + 2]))
+        break
+      }
+    }
+    if (drawn === 0) continue
+    if (under < drawn * HEM_COVER) break
+    hemRow = row
+    covered += under
+    apart += differs
   }
-  return hem
+  if (hemRow < 0 || apart < covered * SAME_DRAWING) return undefined
+  // What shows below the hem is a thigh if it stands clear of the other leg there; joined to it (trousers
+  // under a long top), it is still the seat, the hips' own, and its seam down the middle turns with them.
+  const extent = (layer: Readonly<LimbLayer>, pixels: NonNullable<ReturnType<typeof art>>, y: number): [number, number] | null => {
+    const py = Math.floor(((y - layer.y) / layer.h) * pixels.height)
+    if (py < 0 || py >= pixels.height) return null
+    let first = -1
+    let last = -1
+    for (let px = 0; px < pixels.width; px += 1) {
+      if (pixels.pixels[(py * pixels.width + px) * 4 + 3] < DRAWN_ALPHA) continue
+      if (first < 0) first = px
+      last = px + 1
+    }
+    return first < 0 ? null : [layer.x + (first / pixels.width) * layer.w, layer.x + (last / pixels.width) * layer.w]
+  }
+  const others = layers
+    .filter((layer) => layer.role === 'legwear' && layer.name !== leg.name && !isAnime25DLiningPiece(layer.name) && layer.w > 1 && layer.h > 1)
+    .map((layer) => ({ layer, pixels: art(layer) }))
+  for (let row = hemRow + 1; row <= Math.min(ROWS - 1, hemRow + 2); row += 1) {
+    const y = leg.y + ((row + 0.5) / ROWS) * leg.h
+    const mine = extent(leg, own, y)
+    if (!mine) continue
+    for (const { layer, pixels } of others) {
+      const its = pixels && pixels.width > 0 && pixels.height > 0 ? extent(layer, pixels, y) : null
+      if (!its) continue
+      const gap = Math.max(its[0] - mine[1], mine[0] - its[1])
+      if (gap <= (mine[1] - mine[0]) * JOINED) return undefined
+    }
+  }
+  return leg.y + ((hemRow + 1) / ROWS) * leg.h
 }
 
 /** The roles of a standing figure's layers that are limbs. */
@@ -246,7 +338,7 @@ export function bindLimbColumn(
 ): FigureColumnBinding | null {
   if (!LIMB_ROLES.has(source.role)) return null
   const arm = source.role === 'handwear'
-  const hemY = source.role === 'legwear' && ground ? skirtHem(source, layers, art) : undefined
+  const hemY = source.role === 'legwear' && ground ? legHem(source, layers, art) : undefined
   return bindFigureColumn(rest, source, art(), arm ? undefined : ground && { ...ground, hemY }, arm && drawnBehind(layers, source, 'topwear'), source.role === 'footwear')
 }
 
