@@ -652,3 +652,47 @@ test('a PSD split from another illustration is left untouched', () => {
   assert.deepEqual(result.layers, layers)
   assert.equal(result.reconciliation?.status, 'reference-mismatch')
 })
+
+function withHole(base: RasterLayer, [left, top, width, height]: Box): RasterLayer {
+  for (let y = top; y < top + height; y += 1) {
+    for (let x = left; x < left + width; x += 1) {
+      base.data[((y - base.top) * base.width + (x - base.left)) * 4 + 3] = 0
+    }
+  }
+  return base
+}
+
+const PANEL: Box = [70, 120, 40, 40]
+
+test('a white panel the decomposition left out of a garment on a white page is filled into it', () => {
+  // Off-white, near enough the page to pass for it pixel by pixel, tinted off it as a whole.
+  const white: Rgb = [238, 236, 244]
+  const top = withHole(layer('topwear', TORSO, CLOTH), PANEL)
+  const result = repairAnime25DPsd(
+    [layer('face', FACE, SKIN, 'head'), top],
+    allVisible,
+    reference((fill) => {
+      portrait(fill)
+      fill(PANEL, white)
+    }),
+    2,
+  )
+  const filled = result.layers.find((candidate) => candidate.role === 'topwear')!
+  assert.deepEqual(pixel(filled, 90, 140), [...white, 255])
+  assert.equal(result.layers.filter((candidate) => candidate.id.startsWith('recovered-')).length, 0)
+})
+
+test('the page showing through a gap in the outfit is left a gap', () => {
+  const top = withHole(layer('topwear', TORSO, CLOTH), PANEL)
+  const result = repairAnime25DPsd(
+    [layer('face', FACE, SKIN, 'head'), top],
+    allVisible,
+    reference((fill) => {
+      portrait(fill)
+      fill(PANEL, BACKDROP)
+    }),
+    2,
+  )
+  const kept = result.layers.find((candidate) => candidate.role === 'topwear')!
+  assert.equal(pixel(kept, 90, 140)[3], 0)
+})

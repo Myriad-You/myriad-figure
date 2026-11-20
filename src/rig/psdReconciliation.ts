@@ -55,6 +55,8 @@ export const ANIME25D_PSD_REPAIRED_COLOR = [34, 197, 94] as const
 export const MATCH_DISTANCE = 70
 const MISMATCH_DISTANCE = 98
 const BACKGROUND_DISTANCE = 28
+const BACKDROP_SEED_DISTANCE = 6
+const BACKDROP_SEED_REACH = 3
 /** Below this the PSD was not decomposed from this illustration. */
 const MIN_AGREEMENT = 0.8
 const MAX_BACKGROUND_SPREAD = 20
@@ -368,7 +370,11 @@ function estimateBackground(
 
 /**
  * Background is what connects to the open backdrop. Pale skin or white hair
- * matches the backdrop colour too, but line art encloses it.
+ * matches the backdrop colour too, but line art encloses it. A gap no layer
+ * covers inside the figure (between an arm and the body) is backdrop too when
+ * it is the backdrop's own flat colour all around (BACKDROP_SEED_DISTANCE over
+ * a BACKDROP_SEED_REACH box); a white garment the decomposition left out is
+ * tinted and shaded off it, and is not taken for a gap.
  */
 function floodBackground(
   bounds: ContentBounds,
@@ -389,12 +395,30 @@ function floodBackground(
       rgbDistance(reference.data, offset, color) < BACKGROUND_DISTANCE
     )
   }
+  // Each pixel's distance from the backdrop, summed so a box's mean is read at once.
+  const sum = new Float64Array((width + 1) * (height + 1))
+  for (let y = 0; y < height; y += 1) {
+    let row = 0
+    for (let x = 0; x < width; x += 1) {
+      const offset = ((bounds.y0 + y) * reference.width + bounds.x0 + x) * 4
+      row += reference.data[offset + 3] >= 250 ? rgbDistance(reference.data, offset, color) : BACKGROUND_DISTANCE
+      sum[(y + 1) * (width + 1) + x + 1] = sum[y * (width + 1) + x + 1] + row
+    }
+  }
+  const flatBackdrop = (x: number, y: number) => {
+    const xa = Math.max(0, x - BACKDROP_SEED_REACH)
+    const xb = Math.min(width, x + BACKDROP_SEED_REACH + 1)
+    const ya = Math.max(0, y - BACKDROP_SEED_REACH)
+    const yb = Math.min(height, y + BACKDROP_SEED_REACH + 1)
+    const total = sum[yb * (width + 1) + xb] - sum[ya * (width + 1) + xb] - sum[yb * (width + 1) + xa] + sum[ya * (width + 1) + xa]
+    return total / ((xb - xa) * (yb - ya)) < BACKDROP_SEED_DISTANCE
+  }
   const stack: number[] = []
   for (let target = 0; target < outside.length; target += 1) {
     const x = target % width
     const y = Math.floor(target / width)
     const edge = x === 0 || y === 0 || x === width - 1 || y === height - 1
-    if ((edge || alpha[target] === 0) && backgroundLike(target)) {
+    if ((edge || (alpha[target] === 0 && flatBackdrop(x, y))) && backgroundLike(target)) {
       outside[target] = 1
       stack.push(target)
     }

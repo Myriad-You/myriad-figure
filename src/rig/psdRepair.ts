@@ -2,7 +2,7 @@ import type { Anime25DSourceReference, RasterLayer } from './anime25dImportTypes
 import type { Anime25DPsdReconciliation } from './psdReconciliation'
 import type { RecoveredPiece } from './psdRepairLayers'
 import { analyzeAnime25DPsd, regionFloor, reportAnime25DPsdAnalysis } from './psdReconciliation'
-import { closeGarmentGaps, droppedGarment, garmentEdge } from './psdRepairGarment'
+import { closeGarmentGaps, droppedGarment, enclosedGarments, garmentEdge } from './psdRepairGarment'
 import { hairHolder, hasExpressionVariants, joinBuriedSpecks, mergeByGroup, mountFor, overlayLayer, revealableBelow, withPixels } from './psdRepairLayers'
 import { addAntialiasedRim, alphaAt, closeMask, components, fillSmallHoles, meanCoveredDistance } from './psdRepairMasks'
 
@@ -207,6 +207,18 @@ export function repairAnime25DPsd(
       }
     }
     revealed += 1
+  }
+
+  // White garments the decomposition left out on a white page, enclosed by the outfit.
+  const faceBottom = Math.max(-1, ...visible.filter((layer) => layer.role === 'face').map((layer) => layer.top + layer.height))
+  const enclosed = enclosedGarments(before, visible, reference, faceBottom)
+  for (const [index, pixels] of enclosed.pixels) {
+    copies.set(visible[index], withPixels(writable(index), pixels, reference.width))
+    for (const key of pixels.keys()) repaired[key] = 1
+  }
+  for (const target of enclosed.filled) {
+    support[target] = 0
+    seeds[target] = 0
   }
 
   const pieces: RecoveredPiece[] = []
