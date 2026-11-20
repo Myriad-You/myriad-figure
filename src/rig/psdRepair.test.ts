@@ -665,20 +665,21 @@ function withHole(base: RasterLayer, [left, top, width, height]: Box): RasterLay
 const PANEL: Box = [70, 120, 40, 40]
 
 test('a white panel the decomposition left out of a garment on a white page is filled into it', () => {
-  // Off-white, near enough the page to pass for it pixel by pixel, tinted off it as a whole.
-  const white: Rgb = [238, 236, 244]
+  // Off-white, near enough the page to pass for it pixel by pixel, tinted off it
+  // as a whole and shaded across, as cloth is.
+  const shade = (column: number): Rgb => [246 - (column >> 2), 244 - (column >> 2), 250 - (column >> 2)]
   const top = withHole(layer('topwear', TORSO, CLOTH), PANEL)
   const result = repairAnime25DPsd(
     [layer('face', FACE, SKIN, 'head'), top],
     allVisible,
     reference((fill) => {
       portrait(fill)
-      fill(PANEL, white)
+      for (let column = 0; column < PANEL[2]; column += 1) fill([PANEL[0] + column, PANEL[1], 1, PANEL[3]], shade(column))
     }),
     2,
   )
   const filled = result.layers.find((candidate) => candidate.role === 'topwear')!
-  assert.deepEqual(pixel(filled, 90, 140), [...white, 255])
+  assert.deepEqual(pixel(filled, 90, 140), [...shade(20), 255])
   assert.equal(result.layers.filter((candidate) => candidate.id.startsWith('recovered-')).length, 0)
 })
 
@@ -690,6 +691,39 @@ test('the page showing through a gap in the outfit is left a gap', () => {
     reference((fill) => {
       portrait(fill)
       fill(PANEL, BACKDROP)
+    }),
+    2,
+  )
+  const kept = result.layers.find((candidate) => candidate.role === 'topwear')!
+  assert.equal(pixel(kept, 90, 140)[3], 0)
+})
+
+test('a narrow gap between the arm and the body, its line art anti-aliased, is left a gap', () => {
+  const gap: Box = [90, 110, 6, 60]
+  const top = withHole(layer('topwear', TORSO, CLOTH), gap)
+  const result = repairAnime25DPsd(
+    [layer('face', FACE, SKIN, 'head'), top],
+    allVisible,
+    reference((fill) => {
+      portrait(fill)
+      fill(gap, BACKDROP)
+      fill([90, 110, 1, 60], [215, 215, 215])
+      fill([95, 110, 1, 60], [215, 215, 215])
+    }),
+    2,
+  )
+  const kept = result.layers.find((candidate) => candidate.role === 'topwear')!
+  assert.equal(pixel(kept, 92, 140)[3], 0)
+})
+
+test('the page showing through a gap, shaded a few steps off its border, is left a gap', () => {
+  const top = withHole(layer('topwear', TORSO, CLOTH), PANEL)
+  const result = repairAnime25DPsd(
+    [layer('face', FACE, SKIN, 'head'), top],
+    allVisible,
+    reference((fill) => {
+      portrait(fill)
+      fill(PANEL, [244, 244, 244])
     }),
     2,
   )

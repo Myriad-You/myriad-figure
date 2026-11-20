@@ -6,8 +6,8 @@ import {
   HAIR_CHAIN_LINKS,
   hairHangShare,
   hairLockCharacter,
-  rearStrandCharacters,
   hairStrandDynamics,
+  rearStrandCharacters,
   stepAnime25DHairLayerSprings,
 } from './hairPhysics'
 

@@ -11,8 +11,8 @@ import {
   frontHairUpperParallaxScale,
   HAIR_CHAIN_LINKS,
   hairLockCharacter,
-  rearStrandCharacters,
   hairStrandDynamics,
+  rearStrandCharacters,
 } from './hairPhysics'
 import { cutFrom } from './partSplit'
 

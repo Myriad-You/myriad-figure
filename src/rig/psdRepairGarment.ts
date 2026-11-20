@@ -220,8 +220,21 @@ function fillFromNeighbours(
   }
 }
 
-/** A hole this far off the backdrop's colour on average (RGB) is drawn art, not a gap showing the page. */
+/**
+ * A hole is read this far in from its edge, past the line art's anti-aliasing:
+ * a narrow gap between an arm and the body has no inside, so it stays a gap.
+ */
+const ENCLOSED_INSET = 2
+/**
+ * Inside, a hole this far off the backdrop's colour on average (RGB) is drawn
+ * art, not a gap showing the page, when it is shaded: neighbouring pixels
+ * differ by ENCLOSED_GRAIN (summed over RGB) on average. A page shaded a few
+ * steps off its border, or running in a gradient, is flat; at ENCLOSED_CLEAR_TINT
+ * the tint alone tells it.
+ */
 const ENCLOSED_TINT = 6
+const ENCLOSED_GRAIN = 0.3
+const ENCLOSED_CLEAR_TINT = 20
 /** Of a hole's rim, at least this share is the garment it is filled into. */
 const ENCLOSED_RIM_SHARE = 0.4
 /** A garment drawn under the one filled, along this share of the hole's rim, is filled beneath it too. */
@@ -271,13 +284,26 @@ export function enclosedGarments(
   }
   for (const members of components(mask, width, height)) {
     if (members.length < analysis.minArea) continue
-    let tint = 0
     let rows = 0
-    for (const target of members) {
-      tint += rgbDistance(reference.data, shownAt(target), background.color)
-      rows += Math.floor(target / width)
+    for (const target of members) rows += Math.floor(target / width)
+    if (bounds.y0 + rows / members.length < chin) continue
+    let inside = members
+    for (let step = 0; step < ENCLOSED_INSET; step += 1) {
+      const kept = new Set(inside)
+      inside = inside.filter((target) => neighbours(target).every((next) => next >= 0 && kept.has(next)))
     }
-    if (tint / members.length < ENCLOSED_TINT || bounds.y0 + rows / members.length < chin) continue
+    if (inside.length === 0) continue
+    let tint = 0
+    let grain = 0
+    for (const target of inside) {
+      const offset = shownAt(target)
+      tint += rgbDistance(reference.data, offset, background.color)
+      // Its right-hand neighbour is in the hole too: it is inside.
+      for (let channel = 0; channel < 3; channel += 1) grain += Math.abs(reference.data[offset + channel] - reference.data[offset + 4 + channel])
+    }
+    tint /= inside.length
+    grain /= inside.length
+    if (tint < ENCLOSED_TINT || (tint < ENCLOSED_CLEAR_TINT && grain < ENCLOSED_GRAIN)) continue
     const rim = new Map<number, number>()
     let around = 0
     for (const target of members) {
@@ -289,7 +315,9 @@ export function enclosedGarments(
       }
     }
     let owner = -1
-    for (const [index, n] of rim) if (owner < 0 || n > rim.get(owner)!) owner = index
+    for (const [index, n] of rim) {
+      if (owner < 0 || n > rim.get(owner)!) owner = index
+    }
     if (owner < 0 || rim.get(owner)! < ENCLOSED_RIM_SHARE * around) continue
     const garment = visible[owner]
     const into = pixels.get(owner) ?? new Map<number, readonly [number, number, number, number]>()

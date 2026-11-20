@@ -395,32 +395,43 @@ function floodBackground(
       rgbDistance(reference.data, offset, color) < BACKGROUND_DISTANCE
     )
   }
-  // Each pixel's distance from the backdrop, summed so a box's mean is read at once.
-  const sum = new Float64Array((width + 1) * (height + 1))
-  for (let y = 0; y < height; y += 1) {
-    let row = 0
+  // Each pixel's distance from the backdrop, summed down a window of rows that
+  // follows the scan, then across, so a box's mean is read at once.
+  const SPAN = 2 * BACKDROP_SEED_REACH + 1
+  const rows = new Float64Array(SPAN * width)
+  const down = new Float64Array(width)
+  const across = new Float64Array(width + 1)
+  const distances = (y: number, sign: number) => {
+    const slot = (y % SPAN) * width
     for (let x = 0; x < width; x += 1) {
-      const offset = ((bounds.y0 + y) * reference.width + bounds.x0 + x) * 4
-      row += reference.data[offset + 3] >= 250 ? rgbDistance(reference.data, offset, color) : BACKGROUND_DISTANCE
-      sum[(y + 1) * (width + 1) + x + 1] = sum[y * (width + 1) + x + 1] + row
+      if (sign > 0) {
+        const offset = ((bounds.y0 + y) * reference.width + bounds.x0 + x) * 4
+        rows[slot + x] = reference.data[offset + 3] >= 250 ? rgbDistance(reference.data, offset, color) : BACKGROUND_DISTANCE
+      }
+      down[x] += sign * rows[slot + x]
     }
   }
-  const flatBackdrop = (x: number, y: number) => {
-    const xa = Math.max(0, x - BACKDROP_SEED_REACH)
-    const xb = Math.min(width, x + BACKDROP_SEED_REACH + 1)
-    const ya = Math.max(0, y - BACKDROP_SEED_REACH)
-    const yb = Math.min(height, y + BACKDROP_SEED_REACH + 1)
-    const total = sum[yb * (width + 1) + xb] - sum[ya * (width + 1) + xb] - sum[yb * (width + 1) + xa] + sum[ya * (width + 1) + xa]
-    return total / ((xb - xa) * (yb - ya)) < BACKDROP_SEED_DISTANCE
-  }
+  for (let y = 0; y < Math.min(height, BACKDROP_SEED_REACH); y += 1) distances(y, 1)
   const stack: number[] = []
-  for (let target = 0; target < outside.length; target += 1) {
-    const x = target % width
-    const y = Math.floor(target / width)
-    const edge = x === 0 || y === 0 || x === width - 1 || y === height - 1
-    if ((edge || (alpha[target] === 0 && flatBackdrop(x, y))) && backgroundLike(target)) {
-      outside[target] = 1
-      stack.push(target)
+  for (let y = 0; y < height; y += 1) {
+    // The row leaving shares its slot with the one coming in.
+    if (y - BACKDROP_SEED_REACH - 1 >= 0) distances(y - BACKDROP_SEED_REACH - 1, -1)
+    if (y + BACKDROP_SEED_REACH < height) distances(y + BACKDROP_SEED_REACH, 1)
+    for (let x = 0; x < width; x += 1) across[x + 1] = across[x] + down[x]
+    const span = Math.min(height, y + BACKDROP_SEED_REACH + 1) - Math.max(0, y - BACKDROP_SEED_REACH)
+    for (let x = 0; x < width; x += 1) {
+      const target = y * width + x
+      const edge = x === 0 || y === 0 || x === width - 1 || y === height - 1
+      if (!edge && alpha[target] !== 0) continue
+      if (!edge) {
+        const xa = Math.max(0, x - BACKDROP_SEED_REACH)
+        const xb = Math.min(width, x + BACKDROP_SEED_REACH + 1)
+        if ((across[xb] - across[xa]) / ((xb - xa) * span) >= BACKDROP_SEED_DISTANCE) continue
+      }
+      if (backgroundLike(target)) {
+        outside[target] = 1
+        stack.push(target)
+      }
     }
   }
   while (stack.length > 0) {
