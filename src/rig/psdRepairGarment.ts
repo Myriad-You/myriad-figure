@@ -2,7 +2,7 @@ import type { Anime25DSourceReference, RasterLayer } from './anime25dImportTypes
 import type { Anime25DPsdAnalysis } from './psdReconciliation'
 import type { RecoveredPiece } from './psdRepairLayers'
 import { MATCH_DISTANCE, rgbDistance } from './psdReconciliation'
-import { closeMask, fringe } from './psdRepairMasks'
+import { alphaAt, closeMask, components, fringe } from './psdRepairMasks'
 
 type GarmentRole = 'bottomwear' | 'legwear'
 
@@ -218,4 +218,147 @@ function fillFromNeighbours(
     for (const [key, rgba] of ring) pixels.set(key, rgba)
     left = rest
   }
+}
+
+/**
+ * A hole is read this far in from its edge, past the line art's anti-aliasing:
+ * a narrow gap between an arm and the body has no inside, so it stays a gap.
+ */
+const ENCLOSED_INSET = 2
+/**
+ * Inside, a hole this far off the backdrop's colour on average (RGB) is drawn
+ * art, not a gap showing the page, when it is shaded: neighbouring pixels
+ * differ by ENCLOSED_GRAIN (summed over RGB) on average. A page shaded a few
+ * steps off its border, or running in a gradient, is flat; at ENCLOSED_CLEAR_TINT
+ * the tint alone tells it.
+ */
+const ENCLOSED_TINT = 6
+const ENCLOSED_GRAIN = 0.3
+const ENCLOSED_CLEAR_TINT = 20
+/** Of a hole's rim, at least this share is the garment it is filled into. */
+const ENCLOSED_RIM_SHARE = 0.4
+/** A garment drawn under the one filled, along this share of the hole's rim, is filled beneath it too. */
+const ENCLOSED_SEAM_SHARE = 0.1
+const ENCLOSED_OPAQUE = 0.5
+/**
+ * The filled garment runs on this far under what covers its rim (the neck
+ * over an open hood's chest), its colour carried on from the hole, so a part
+ * moving off it on a turn uncovers garment, not the page. Under the body's
+ * other layers it runs on only where they are drawn over it.
+ */
+const ENCLOSED_UNDER = 32
+
+/**
+ * White drawn on a white page a decomposition left out whole (a sleeve's
+ * white panel, the chest in an open hood): a hole no layer covers, enclosed by
+ * the outfit (not the open backdrop), below the chin, where the portrait is
+ * near enough the backdrop to pass for it pixel by pixel (art standing off it
+ * is recovered as missing) but tinted off it as a whole. It is taken from the
+ * portrait into the garment that holds most of its rim. Returns the pixels per
+ * garment (keyed y * reference width + x) and the targets the portrait gave.
+ */
+export function enclosedGarments(
+  analysis: Readonly<Anime25DPsdAnalysis>,
+  visible: readonly RasterLayer[],
+  reference: Readonly<Anime25DSourceReference>,
+  chin: number,
+): { pixels: Map<number, Map<number, readonly [number, number, number, number]>>; filled: Set<number> } {
+  const pixels = new Map<number, Map<number, readonly [number, number, number, number]>>()
+  const filled = new Set<number>()
+  const { bounds, alpha, outside, top, background } = analysis
+  if (!outside) return { pixels, filled }
+  const { width, height } = bounds
+  const shownAt = (target: number) =>
+    ((bounds.y0 + Math.floor(target / width)) * reference.width + bounds.x0 + (target % width)) * 4
+  const keyOf = (target: number) => (bounds.y0 + Math.floor(target / width)) * reference.width + bounds.x0 + (target % width)
+  const neighbours = (target: number) => {
+    const x = target % width
+    const y = Math.floor(target / width)
+    return [x > 0 ? target - 1 : -1, x < width - 1 ? target + 1 : -1, y > 0 ? target - width : -1, y < height - 1 ? target + width : -1]
+  }
+  const mask = new Uint8Array(width * height)
+  for (let target = 0; target < mask.length; target += 1) {
+    const offset = shownAt(target)
+    // Only what passes for the page (art standing off it is recovered as missing).
+    if (alpha[target] < ENCLOSED_OPAQUE && !outside[target] && reference.data[offset + 3] >= 250 && rgbDistance(reference.data, offset, background.color) < MATCH_DISTANCE) mask[target] = 1
+  }
+  for (const members of components(mask, width, height)) {
+    if (members.length < analysis.minArea) continue
+    let rows = 0
+    for (const target of members) rows += Math.floor(target / width)
+    if (bounds.y0 + rows / members.length < chin) continue
+    let inside = members
+    for (let step = 0; step < ENCLOSED_INSET; step += 1) {
+      const kept = new Set(inside)
+      inside = inside.filter((target) => neighbours(target).every((next) => next >= 0 && kept.has(next)))
+    }
+    if (inside.length === 0) continue
+    let tint = 0
+    let grain = 0
+    for (const target of inside) {
+      const offset = shownAt(target)
+      tint += rgbDistance(reference.data, offset, background.color)
+      // Its right-hand neighbour is in the hole too: it is inside.
+      for (let channel = 0; channel < 3; channel += 1) grain += Math.abs(reference.data[offset + channel] - reference.data[offset + 4 + channel])
+    }
+    tint /= inside.length
+    grain /= inside.length
+    if (tint < ENCLOSED_TINT || (tint < ENCLOSED_CLEAR_TINT && grain < ENCLOSED_GRAIN)) continue
+    const rim = new Map<number, number>()
+    let around = 0
+    for (const target of members) {
+      for (const next of neighbours(target)) {
+        if (next < 0 || mask[next] || alpha[next] < ENCLOSED_OPAQUE) continue
+        around += 1
+        const index = top[next]
+        if (index >= 0 && WORN.has(visible[index].role)) rim.set(index, (rim.get(index) ?? 0) + 1)
+      }
+    }
+    let owner = -1
+    for (const [index, n] of rim) {
+      if (owner < 0 || n > rim.get(owner)!) owner = index
+    }
+    if (owner < 0 || rim.get(owner)! < ENCLOSED_RIM_SHARE * around) continue
+    const garment = visible[owner]
+    const into = pixels.get(owner) ?? new Map<number, readonly [number, number, number, number]>()
+    pixels.set(owner, into)
+    const colour = new Map<number, readonly [number, number, number, number]>()
+    for (const target of members) {
+      const offset = shownAt(target)
+      const rgba = [reference.data[offset], reference.data[offset + 1], reference.data[offset + 2], 255] as const
+      colour.set(target, rgba)
+      into.set(keyOf(target), rgba)
+      filled.add(target)
+    }
+    // A garment drawn under it along its rim runs on beneath it too: hidden at rest, it
+    // keeps the seam closed when the two move apart (a sleeve's panel off the torso on a turn).
+    for (const [index, n] of rim) {
+      if (index >= owner || n < ENCLOSED_SEAM_SHARE * around) continue
+      const under = pixels.get(index) ?? new Map<number, readonly [number, number, number, number]>()
+      pixels.set(index, under)
+      for (const target of members) under.set(keyOf(target), colour.get(target)!)
+    }
+    // On under what covers the rim, carrying the nearest colour.
+    let front = [...members]
+    for (let step = 0; step < ENCLOSED_UNDER && front.length > 0; step += 1) {
+      const next: number[] = []
+      for (const target of front) {
+        for (const beside of neighbours(target)) {
+          // Under the head's parts (they move off it on a turn), and under what is drawn over
+          // the garment; not over the rest of the body drawn under it, where it would show.
+          const cover = beside < 0 ? -1 : top[beside]
+          if (beside < 0 || cover < 0 || colour.has(beside) || alpha[beside] < ENCLOSED_OPAQUE || cover === owner) continue
+          if (cover < owner && visible[cover].group !== 'head' && visible[cover].role !== 'neck') continue
+          const x = bounds.x0 + (beside % width)
+          const y = bounds.y0 + Math.floor(beside / width)
+          if (alphaAt(garment, x, y) > 0) continue
+          colour.set(beside, colour.get(target)!)
+          into.set(keyOf(beside), colour.get(target)!)
+          next.push(beside)
+        }
+      }
+      front = next
+    }
+  }
+  return { pixels, filled }
 }

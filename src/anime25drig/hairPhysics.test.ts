@@ -7,6 +7,7 @@ import {
   hairHangShare,
   hairLockCharacter,
   hairStrandDynamics,
+  rearStrandCharacters,
   stepAnime25DHairLayerSprings,
 } from './hairPhysics'
 
@@ -214,4 +215,19 @@ test('a lock longer than the face hangs back from a tilt, a bang goes round with
   // back by its share of the tilt: 300 px * sin(0.4 * 0.7).
   assert.ok(Math.abs(tip(bang).x) < 0.01)
   assert.ok(Math.abs(tip(lock).x - 300 * Math.sin(0.4 * hairHangShare(2, false))) < 1, `tip ${tip(lock).x}`)
+})
+
+test('a pair of twin tails swings looser than hair falling from the crown', () => {
+  const face = { x0: 350, x1: 710, y0: 215, y1: 600 }
+  const crown = [{ x: 366, rootY: 177 }, { x: 492, rootY: 79 }, { x: 876, rootY: 248 }]
+  const tails = [{ x: 243, rootY: 444 }, { x: 999, rootY: 420 }]
+  const tuned = rearStrandCharacters([tails[0], ...crown, tails[1]], face)
+  for (const tail of [tuned[0], tuned[4]]) assert.ok(tail && tail.dampingRatioScale < 0.5 && tail.frequencyScale < 1, JSON.stringify(tail))
+  assert.deepEqual(tuned.slice(1, 4), [null, null, null])
+  // One side alone (a side braid): not a pair.
+  assert.deepEqual(rearStrandCharacters([tails[0], ...crown], face), [null, null, null, null])
+  // Long hair spreading out below the chin on both sides: not tied.
+  assert.deepEqual(rearStrandCharacters([{ x: 59, rootY: 841 }, ...crown, { x: 1086, rootY: 900 }], face), [null, null, null, null, null])
+  // Rooted at heights far apart: not a pair.
+  assert.deepEqual(rearStrandCharacters([{ x: 120, rootY: 380 }, { x: 963, rootY: 588 }], face), [null, null])
 })

@@ -15,6 +15,20 @@ const LOCK_DETUNE = 0.12
 /** A tuft standing above the head (an ahoge) is light and springy: quicker, and it bounces. */
 const TUFT_FREQUENCY = 1.5
 const TUFT_DAMPING = 0.8
+/**
+ * Twin tails swing from their ties, not from the scalp: looser, and they
+ * swing past and back once before they settle.
+ */
+const TIED_FREQUENCY = 0.85
+const TIED_DAMPING = 0.4
+/**
+ * A twin tail is rooted beside the face, below this share of its height and
+ * above its chin, with one on the other side rooted within TIED_PAIR_SPREAD
+ * of the face's height of it. Hair spreading out below the chin, or a braid
+ * on one side, is not.
+ */
+const TIED_ROOT_DROP = 0.3
+const TIED_PAIR_SPREAD = 0.25
 
 interface LayerVerticalBounds {
   y: number
@@ -121,6 +135,28 @@ export function hairLockCharacter(
     frequencyScale: detune * (tuft ? TUFT_FREQUENCY : 1),
     dampingRatioScale: tuft ? TUFT_DAMPING : 1,
   }
+}
+
+/**
+ * How each strand of rear hair is tuned apart from its length: a pair of
+ * twin tails (tiedStrand) swings looser than hair falling from the crown.
+ */
+export function rearStrandCharacters(
+  strands: readonly { x: number; rootY: number }[],
+  face: { x0: number; x1: number; y0: number; y1: number },
+): ({ frequencyScale: number; dampingRatioScale: number } | null)[] {
+  const height = face.y1 - face.y0
+  const tied = (strand: { x: number; rootY: number }) =>
+    (strand.x < face.x0 || strand.x > face.x1) &&
+    strand.rootY > face.y0 + height * TIED_ROOT_DROP &&
+    strand.rootY < face.y1
+  const left = strands.filter((strand) => tied(strand) && strand.x < face.x0)
+  const right = strands.filter((strand) => tied(strand) && strand.x > face.x1)
+  const paired = (strand: { x: number; rootY: number }) =>
+    (strand.x < face.x0 ? right : left).some((other) => Math.abs(other.rootY - strand.rootY) <= height * TIED_PAIR_SPREAD)
+  return strands.map((strand) =>
+    tied(strand) && paired(strand) ? { frequencyScale: TIED_FREQUENCY, dampingRatioScale: TIED_DAMPING } : null,
+  )
 }
 
 export function hairStrandDynamics(
