@@ -11,6 +11,7 @@ import {
   frontHairUpperParallaxScale,
   HAIR_CHAIN_LINKS,
   hairLockCharacter,
+  rearStrandCharacters,
   hairStrandDynamics,
 } from './hairPhysics'
 import { cutFrom } from './partSplit'
@@ -327,6 +328,7 @@ function bindHair(
     hairStrandDynamics(strand.rootY, strand.tipY, referenceHeight),
   )
   const character = frontHair ? hairLockCharacter(source, face) : null
+  const tied = frontHair ? null : rearStrandCharacters(strands, face)
   const vertexCount = rest.length / 2
   const frontHairParallaxScale = frontHair
     ? new Float32Array(vertexCount)
@@ -410,7 +412,7 @@ function bindHair(
       amplitudeScale: dynamics[index].amplitudeScale,
       stiffnessScale: dynamics[index].stiffnessScale,
       dampingScale: dynamics[index].dampingScale,
-      ...(character ?? {}),
+      ...(character ?? tied?.[index] ?? {}),
     })),
   }
 }
