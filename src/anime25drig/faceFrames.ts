@@ -123,6 +123,11 @@ export class Anime25DFaceFrames {
     this.continuousMouth = mouth
   }
 
+  /** The live speaking mouth; null when the portrait has none. */
+  get mouth(): ContinuousMouthTexture | null {
+    return this.continuousMouth
+  }
+
   dispose(): void {
     this.continuousMouth?.dispose()
     this.continuousMouth = null

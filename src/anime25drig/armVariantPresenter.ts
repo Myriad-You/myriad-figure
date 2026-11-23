@@ -1,6 +1,9 @@
 import type { ArmVariantGesture } from '../rig/armVariants'
 import type { Arm3DBodyFrame } from './arm3dArm'
+import type { Arm3DClothFold, Arm3DClothLayer } from './arm3dClothLayer'
+import type { Arm3DFrame } from './arm3dMotion'
 import type { Anime25DArmAim } from './arm3dReach'
+import type { Arm3DBound } from './arm3dView'
 import type { Anime25DDriver } from './driver'
 import type { Anime25DGpuLayer } from './layerGpuBinding'
 import type { Anime25DRenderableLayer } from './renderer'
@@ -74,6 +77,22 @@ export interface Anime25DArmGpu {
   /** The atlas as uploaded and the layers' program: with them a figure's cloth over its arm is a piece of its own. */
   texture?: WebGLTexture
   program?: WebGLProgram
+}
+
+/** A modelled arm to draw: drawing turns the bound arm's elbow on from `twist`. */
+export interface DrawnArm {
+  bound: Arm3DBound
+  frame: Arm3DFrame
+  twist: number | undefined
+}
+
+/** A side's modelled arm to draw this frame, with what is drawn again over it and its cloths away from their layers. */
+export interface DrawnArms {
+  side: Anime25DArmSide
+  leaving: DrawnArm | null
+  now: DrawnArm | null
+  front: readonly Anime25DRenderableLayer[]
+  cloths: readonly { cloth: Arm3DClothLayer; fold: Arm3DClothFold; host: Anime25DRenderableLayer; over: readonly Anime25DRenderableLayer[] }[]
 }
 
 /** Gesture arms readied for a package, not yet the ones shown. */
@@ -286,40 +305,55 @@ export class Anime25DArmVariants {
     }
   }
 
+  /** The sides whose arm is a modelled one. */
+  modelledArms(): { side: Anime25DArmSide; arm: Arm3DSide; canvas: { width: number; height: number } }[] {
+    return (['L', 'R'] as const).flatMap((side) => {
+      const arm = this.modelled[side]
+      return arm ? [{ side, arm, canvas: arm.canvas }] : []
+    })
+  }
+
+  /** This frame's modelled arms, to draw. */
+  drawnArms(): DrawnArms[] {
+    const drawn = (arm: { bound: Arm3DBound; frame: Arm3DFrame } | null): DrawnArm | null => arm && { ...arm, twist: arm.bound.elbowTwist }
+    return this.modelledArms().map(({ side, arm }) => {
+      const leaving = drawn(arm.leavingFrame())
+      const now = drawn(arm.frame())
+      const cloths = now ? arm.cloths.filter((cloth) => cloth.awake).map((cloth) => ({ cloth, fold: cloth.fold(), host: cloth.host, over: cloth.over })) : []
+      return { side, leaving, now, front: arm.front, cloths }
+    })
+  }
+
   /**
    * The modelled arms over the drawn frame (the figure's buffer bound, `width` × `height`), then
    * `redraw` of what the portrait draws in front of each upper arm, within the stencil marked for it
    * (`cut`: only where it is that opaque).
    */
-  drawModelled(width: number, height: number, redraw: (layers: readonly Anime25DRenderableLayer[], cut?: number) => void): void {
+  drawModelled(arms: readonly DrawnArms[], width: number, height: number, redraw: (layers: readonly Anime25DRenderableLayer[], cut?: number) => void): void {
     const view = this.view
     if (!view) return
-    for (const side of ['L', 'R'] as const) {
-      const modelled = this.modelled[side]
-      const leaving = modelled?.leavingFrame()
+    for (const { leaving, now, front: over, cloths } of arms) {
       if (leaving) view.draw(leaving.bound, leaving.frame, width, height)
-      const now = modelled?.frame()
-      if (!modelled || !now) continue
+      if (!now) continue
       view.draw(now.bound, now.frame, width, height)
-      if (modelled.front.length) {
+      if (over.length) {
         view.markUpperArm(now.bound, now.frame)
-        redraw(modelled.front)
+        redraw(over)
         view.endUpperArm()
       }
       // The arm's cloth over it: what of it lies under the forearm, but for the forearm and hand come in front, then
       // what lies over them; and over the cloth, where it is, what the portrait draws over its layer.
-      for (const cloth of modelled.cloths) {
-        if (!cloth.awake) continue
-        const { under, front } = cloth.drawn()
+      for (const { cloth, fold, host, over: above } of cloths) {
+        const { under, front } = cloth.drawn(fold, host)
         if (under.indexCount) {
           view.markUpperArm(now.bound, now.frame, () => redraw([under], CLOTH_DRAWN))
           redraw([under])
           view.endUpperArm()
         }
         if (front) redraw([front])
-        if (cloth.over.length) {
+        if (above.length) {
           view.markUpperArm(now.bound, now.frame, () => redraw([under], CLOTH_DRAWN), front ? () => redraw([front], CLOTH_DRAWN) : undefined)
-          redraw(cloth.over)
+          redraw(above)
           view.endUpperArm()
         }
       }

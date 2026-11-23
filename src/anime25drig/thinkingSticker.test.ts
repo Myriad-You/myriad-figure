@@ -53,8 +53,10 @@ test('thinking sticker fades, rotates, reuses GPU resources and releases them', 
   } as unknown as WebGL2RenderingContext
   const sticker = new ThinkingSticker()
   sticker.setLinePixels(new Uint8ClampedArray([72, 41, 32, 255, 255, 255, 255, 0]))
-  const draw = (t: number, active: number) =>
-    sticker.draw(gl, t, active, 100, 100, 20, 500, 500)
+  const draw = (t: number, active: number) => {
+    const shown = sticker.shown(t, active, 100, 100, 20)
+    if (shown) sticker.paint(gl, shown, 500, 500)
+  }
   draw(0, 0)
   assert.equal(programs, 0)
   draw(0.05, 1)

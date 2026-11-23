@@ -125,6 +125,19 @@ export class ContinuousMouthTexture {
     ) {
       return false
     }
+    this.show(shape)
+    return true
+  }
+
+  /** The shape it is painted in. */
+  get shape(): Readonly<ContinuousMouthShape> {
+    return this.last
+  }
+
+  /** Paints this very shape, however near the one before. */
+  show(shape: Readonly<ContinuousMouthShape>): void {
+    const { last } = this
+    if (shape.wide === last.wide && shape.round === last.round && shape.narrow === last.narrow) return
     last.wide = shape.wide
     last.round = shape.round
     last.narrow = shape.narrow
@@ -155,7 +168,6 @@ export class ContinuousMouthTexture {
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1)
     }
     gl.generateMipmap(gl.TEXTURE_2D)
-    return true
   }
 
   dispose(): void {

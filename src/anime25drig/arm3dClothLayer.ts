@@ -31,6 +31,13 @@ const OFF = 1.08
 /** Back where it was drawn, it is the layer's again after this long still (seconds), brought there over the last of it. */
 const STILL = 0.6
 
+/** A cloth's nodes on the canvas, and its triangles under the forearm and over it. */
+export interface Arm3DClothFold {
+  nodes: Float32Array
+  under: Uint16Array
+  front: Uint16Array
+}
+
 /**
  * A cloth cut out of a layer (`host`) and drawn as a piece of its own while the arm under it is away from where
  * it hangs: the layer wears its picture without the cloth meanwhile. With the arm hanging and the cloth come to
@@ -60,7 +67,7 @@ export class Arm3DClothLayer {
     /** Each node on the layer's own mesh: three of its vertices and their shares. */
     private on: { at: Uint32Array; share: Float32Array },
     private piece: Anime25DOwnTexture,
-    private without: Anime25DOwnTexture,
+    readonly without: Anime25DOwnTexture,
     private arm: Arm3DClothArm,
   ) {
     this.to = Float32Array.from(rest)
@@ -205,12 +212,23 @@ export class Arm3DClothLayer {
     this.awake = false
   }
 
+  /** How many numbers its nodes are. */
+  get nodes(): number {
+    return this.count * 2
+  }
+
+  /** Whether a fold is one of this cloth's: its nodes, and triangles of them. */
+  fits(fold: Readonly<Arm3DClothFold>): boolean {
+    const own = (indices: unknown) => indices instanceof Uint16Array && indices.length % 3 === 0 && indices.length <= this.idx.length && indices.every((at) => at < this.count)
+    return fold.nodes instanceof Float32Array && fold.nodes.length === this.nodes && fold.nodes.every(Number.isFinite) && own(fold.under) && own(fold.front)
+  }
+
   /**
-   * The cloth as layers to draw this frame, its vertices where they now are: what of it lies under the forearm
-   * (nearer the body than the forearm's middle there), and what lies over it (null with none).
+   * The cloth as it lies this frame: what of it lies under the forearm (nearer the body than the forearm's middle
+   * there), and what lies over it. Read before the next one's.
    */
-  drawn(): { under: Anime25DRenderableLayer; front: Anime25DRenderableLayer | null } {
-    const { gl, xy, sim, count, idx, fore } = this
+  fold(): Arm3DClothFold {
+    const { xy, sim, count, idx, fore } = this
     for (let i = 0; i < count; i += 1) {
       xy[i * 2] = sim.x[i * 3]
       xy[i * 2 + 1] = sim.x[i * 3 + 1]
@@ -232,19 +250,26 @@ export class Arm3DClothLayer {
         under += 3
       }
     }
-    const upload = (mesh: IndexedDeformableMesh, indices: Uint16Array, n: number) => {
+    return { nodes: xy, under: this.under.subarray(0, under), front: this.front.subarray(0, front) }
+  }
+
+  /** A fold of it as layers to draw, carried as `host` (its layer, or the layer's shadow) is: what lies under, and over (null with none). */
+  drawn(fold: Readonly<Arm3DClothFold>, host: Anime25DRenderableLayer): { under: Anime25DRenderableLayer; front: Anime25DRenderableLayer | null } {
+    const { gl } = this
+    const upload = (mesh: IndexedDeformableMesh, indices: Uint16Array) => {
       gl.bindVertexArray(mesh.vao)
       gl.bindBuffer(gl.ARRAY_BUFFER, mesh.positionBuffer)
-      gl.bufferSubData(gl.ARRAY_BUFFER, 0, xy)
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, fold.nodes)
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.indexBuffer)
-      gl.bufferSubData(gl.ELEMENT_ARRAY_BUFFER, 0, indices, 0, n)
+      // (No length is all of it: none to send is not sent.)
+      if (indices.length) gl.bufferSubData(gl.ELEMENT_ARRAY_BUFFER, 0, indices)
     }
-    upload(this.mesh, this.under, under)
-    upload(this.above, this.front, front)
+    upload(this.mesh, fold.under)
+    upload(this.above, fold.front)
     gl.bindVertexArray(null)
     // As its layer is this frame (how much it shows, how it is carried), with its own picture and vertices.
-    const as = (mesh: IndexedDeformableMesh, indexCount: number): Anime25DRenderableLayer => ({ ...this.host, vao: mesh.vao, indexCount, ownTexture: this.piece, followers: undefined, crownOccluders: undefined })
-    return { under: as(this.mesh, under), front: front ? as(this.above, front) : null }
+    const as = (mesh: IndexedDeformableMesh, indexCount: number): Anime25DRenderableLayer => ({ ...host, vao: mesh.vao, indexCount, ownTexture: this.piece, followers: undefined, crownOccluders: undefined })
+    return { under: as(this.mesh, fold.under.length), front: fold.front.length ? as(this.above, fold.front.length) : null }
   }
 
   dispose(): void {

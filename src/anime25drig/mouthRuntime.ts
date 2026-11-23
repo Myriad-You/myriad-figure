@@ -497,12 +497,15 @@ export function fadeOpacityFromFrame(
   return 1
 }
 
+/** Below this a layer is not shown, and stays where it was when last seen. */
+export const HIDDEN_OPACITY = 0.004
+
 /** Invisible generated variants do not need CPU deformation or GPU uploads. */
 export function shouldDeformLayer(
   layer: Pick<Anime25DPlaybackLayer, 'name'>,
   opacity: number,
 ): boolean {
-  return opacity >= 0.004 || layer.name.startsWith('eyewhite')
+  return opacity >= HIDDEN_OPACITY || layer.name.startsWith('eyewhite')
 }
 
 function isSpeakingMaterial(material: SpeechMouthMaterial): boolean {

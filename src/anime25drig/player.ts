@@ -11,6 +11,7 @@ import type { Anime25DArmSide } from './armVariantPresenter'
 import type { Anime25DMotionUnit } from './behaviorMotion'
 
 import type { CollarClipMesh } from './collarRuntime'
+import type { DrawnFrame } from './drawnFrame'
 import type { Anime25DDriver } from './driver'
 import type { FaceFrameInput } from './faceFrames'
 import type { LayerDeformationContext } from './layerFrameDeformation'
@@ -24,8 +25,10 @@ import type {
 import type { Anime25DDebugSnapshot } from './playerDebug'
 import type { Anime25DInspection } from './playerInspection'
 import type { PackageState, PreparedSwap, SwapParts } from './playerSwap'
+import type { Anime25DPose } from './pose'
 import type { PoseCorrection } from './poseCorrections'
 import type { PoseCorrectionStageSource } from './poseCorrectionStage'
+import type { PresentedFigure } from './posePresenter'
 
 import type { Anime25DRendererBindings, Anime25DRenderFrame } from './renderer'
 import type {
@@ -47,6 +50,7 @@ import {
   deformCollarClipMesh,
   uploadCollarClipMesh,
 } from './collarRuntime'
+import { drawFrame } from './drawnFrame'
 import { IDENTITY_DRIVER, sanitizeDriverPatch } from './driver'
 import { ThinkingExpressionOwnership } from './expressionPresets'
 
@@ -80,11 +84,10 @@ import { measurePackage, prepareSwap, releaseSwap } from './playerSwap'
 import { bindPoseCorrections, isPoseCorrections } from './poseCorrections'
 
 import { Anime25DPoseInertia } from './poseInertia'
+import { PosePresenter } from './posePresenter'
 import {
   createAnime25DRendererBindings,
   disposeAnime25DRendererBindings,
-  drawAnime25DFrame,
-  redrawAnime25DLayers,
 } from './renderer'
 import {
   resolveAnime25DRenderSurface,
@@ -108,6 +111,9 @@ export class Anime25DPlayer {
   /** What an outfit swap measures against (playerSwap). */
   private readonly parts: SwapParts
   private readonly rendererBindings: Anime25DRendererBindings
+  private readonly poses: PosePresenter
+  /** The frame drawn last; null before the first, and for another outfit. */
+  private drawn: DrawnFrame | null = null
   private readonly renderFrame: Anime25DRenderFrame = {
     viewWidth: 1,
     viewHeight: 1,
@@ -224,6 +230,7 @@ export class Anime25DPlayer {
     try {
       bindings = createAnime25DRendererBindings(gl, this.program)
       this.rendererBindings = bindings
+      this.poses = new PosePresenter({ gl, program: this.program, bindings, armVariants: this.armVariants, sticker: this.thinkingSticker })
       this.adoptPackage(measurePackage(this.parts, playback, rigManifest))
     } catch (error) {
       // A failed constructor has no owner that can call dispose().
@@ -272,6 +279,8 @@ export class Anime25DPlayer {
     this.touchAtlas = prepared.touchAtlas
     this.thinkingSticker.setTint(next.tint)
     this.touchLayers = next.touchLayers
+    this.drawn = null
+    this.poses.reset()
   }
 
   async loadAtlas(url: string): Promise<void> {
@@ -292,7 +301,7 @@ export class Anime25DPlayer {
 
   /** Workbench-only: what correction picking reads of the live frame; null once disposed. */
   poseStage(): PoseCorrectionStageSource | null {
-    return this.disposed ? null : { canvas: this.gl.canvas, frame: this.renderFrame, layers: this.layers,
+    return this.disposed || this.poses.showing ? null : { canvas: this.gl.canvas, frame: this.renderFrame, layers: this.layers,
       head: this.playback.shellProfile.head, atlas: this.touchAtlas, gain: this.body.poseCorrectionGain(), driver: this.body.poseCorrectionDriver() }
   }
 
@@ -300,6 +309,7 @@ export class Anime25DPlayer {
     const canvas = this.gl.canvas
     if (
       this.disposed ||
+      this.poses.showing ||
       !this.touchAtlas ||
       !(canvas instanceof HTMLCanvasElement)
     ) {
@@ -502,11 +512,35 @@ export class Anime25DPlayer {
     this.renderFrame.viewHeight = pixelHeight
     this.gl.viewport(0, 0, surface.bufferWidth, surface.bufferHeight)
     // 改缓冲区会清空画布；ResizeObserver 跑在本帧 rAF 之后、绘制之前，不当场补画就空一帧。
-    if (cleared && !this.disposed && this.layers.length > 0) this.draw()
+    if (!cleared || this.disposed || this.layers.length === 0) return
+    if (this.poses.showing) this.poses.redraw(this.presented())
+    else this.draw()
+  }
+
+  /**
+   * Her own frame drawn last, as data (pose.ts), also while another is shown: drawn again it is the same picture to
+   * the pixel. Null until one is drawn, and for another outfit until its own.
+   */
+  getPose(): Anime25DPose | null {
+    return this.disposed || !this.drawn ? null : this.poses.take(this.presented(), this.drawn, this.time, this.current)
+  }
+
+  /**
+   * Draws a pose in place of the figure, which does not move by it: the next tick goes on from where it was. False,
+   * and nothing drawn, for a pose that is not of this outfit. Meanwhile nothing is touched (hitTestTouch) or
+   * corrected; inspect() is of her own frame.
+   */
+  renderPose(pose: Readonly<Anime25DPose>): boolean {
+    return !this.disposed && this.layers.length > 0 && this.poses.show(this.presented(), pose)
+  }
+
+  private presented(): PresentedFigure {
+    return { layers: this.layers, collarClip: this.collarClip, armVariants: this.armVariants, atlas: this.atlasTexture, mouth: this.face.mouth }
   }
 
   tick(deltaSeconds: number): void {
     if (this.disposed || this.layers.length === 0) return
+    this.poses.leave(this.presented())
     const elapsed = animationElapsedSeconds(deltaSeconds)
     const catchup = animationCatchupSeconds(elapsed)
     const substeps = animationSubstepCount(catchup)
@@ -683,35 +717,29 @@ export class Anime25DPlayer {
     }
   }
 
+  /** What drawing the figure as it now is takes. */
+  private frameNow(): DrawnFrame {
+    const { renderFrame, playback: { anchors: a } } = this
+    const faceWidth = a.face.x1 - a.face.x0
+    const point = this.body.headPointNow(a.face.x1 - faceWidth * 0.04, a.face.y0 + (a.face.y1 - a.face.y0) * 0.08)
+    return {
+      layers: drawOrder(this.layers, this.body.secondaryDeformationFrame.standing),
+      collarClip: this.collarClip,
+      renderFrame,
+      arms: this.atlasTexture ? this.armVariants.drawnArms() : [],
+      sticker: this.atlasTexture
+        ? this.thinkingSticker.shown(this.time, this.speechActive || this.target.talk ? 0 : this.target.thinking ? 1 : this.motion.performanceExpression.getThinkingLevel(), point.x, point.y, faceWidth * 0.155)
+        : null,
+    }
+  }
+
   private draw(work?: Anime25DFrameWork): void {
     this.renderFrame.time = this.time
     this.renderFrame.eyeCry = this.current.eyeCry
-    drawAnime25DFrame(
-      this.gl,
-      this.program,
-      this.rendererBindings,
-      drawOrder(this.layers, this.body.secondaryDeformationFrame.standing),
-      this.atlasTexture,
-      this.collarClip,
-      this.renderFrame,
-      work,
-    )
-    const atlas = this.atlasTexture
-    if (atlas) {
-      const { gl, program, rendererBindings, renderFrame } = this
-      this.armVariants.drawModelled(gl.drawingBufferWidth, gl.drawingBufferHeight,
-        (layers, cut) => redrawAnime25DLayers(gl, program, rendererBindings, layers, atlas, renderFrame, cut))
-    }
+    const frame = this.frameNow()
+    this.drawn = frame
+    drawFrame({ gl: this.gl, program: this.program, bindings: this.rendererBindings, armVariants: this.armVariants, sticker: this.thinkingSticker }, this.atlasTexture, frame, work)
     const sampled = this.motion.performanceExpression.getSampledTouch()
-    if (this.atlasTexture) {
-      const a = this.playback.anchors
-      const faceWidth = a.face.x1 - a.face.x0
-      const point = this.body.headPointNow(a.face.x1 - faceWidth * 0.04, a.face.y0 + (a.face.y1 - a.face.y0) * 0.08)
-      const frame = this.renderFrame
-      this.thinkingSticker.draw(this.gl, this.time,
-        this.speechActive || this.target.talk ? 0 : this.target.thinking ? 1 : this.motion.performanceExpression.getThinkingLevel(),
-        point.x, point.y, faceWidth * 0.155, frame.viewWidth, frame.viewHeight)
-    }
     this.presentedTouch = sampled
       ? { ...sampled, atMs: performance.now() }
       : null
