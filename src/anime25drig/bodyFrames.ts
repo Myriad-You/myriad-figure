@@ -1,3 +1,4 @@
+import type { BodyBinding, JellyPart } from './bodyBinding'
 import type {
   ChestDeformationRegion,
   ChestDynamicsTuning,
@@ -6,6 +7,7 @@ import type {
 } from './chestPhysics'
 import type { CollarMotionPose } from './collarRuntime'
 import type { Anime25DDriver } from './driver'
+import type { FigureBody } from './figureSkeleton'
 import type { Anime25DHairSpringFrame } from './hairPhysics'
 import type { HeadSilhouette, HeadTurn } from './headTurn'
 import type { JellyElement } from './jellyVolume'
@@ -16,6 +18,7 @@ import type { Anime25DMotionEnvelopeProfile } from './motionEnvelope'
 import type { Anime25DRenderFrame } from './renderer'
 import type { Anime25DSecondaryDeformationFrame } from './secondaryDeformation'
 import type { Anime25DShellRotation } from './shellDeformation'
+import type { Anime25DStanding } from './standing'
 import type {
   Anime25DTorsoShellRotation,
   Anime25DTorsoYawState,
@@ -23,8 +26,9 @@ import type {
 import type { Anime25DPlayback, Anime25DShellProfile } from './types'
 import { ArmChoreography, HANGING_ARM, resolveDirectedArmIntent } from './armChoreography'
 import { ArmDrape, ArmPendulum, ArmSegment, BUST_ARM_SWING, FIGURE_ARM_SWING, FOREARM, HAND, REACH } from './armPendulum'
+import { measureBody, measureBodyLayers } from './bodyBinding'
 import { applyBodyLift, BodyLiftResponse } from './bodyLift'
-import { bodyKeyShare, bodyTurnAmount, headRidesBody } from './bodyTurnKeyforms'
+import { bodyTurnAmount, headRidesBody } from './bodyTurnKeyforms'
 import {
   chestBodyExcitationY,
   chestBreathResidual,
@@ -33,46 +37,29 @@ import {
   chestMotionTarget,
   chestResponseMix,
   createChestSpringState,
-  resolveChestDeformationRegion,
-  resolveChestDynamics,
-  resolveChestSpatialField,
   stepChestSpring,
   topwearMotionAtChest,
 } from './chestPhysics'
 import { writeCollarMotion } from './collarRuntime'
-import { FigureBody } from './figureSkeleton'
 import { stepAnime25DHairLayerSprings } from './hairPhysics'
 import { writeHairRootMotion } from './hairRootMotion'
-import { createHeadTurn, headTurnRadians, updateHeadTurn } from './headTurn'
+import { createHeadTurn, updateHeadTurn } from './headTurn'
 import {
   createJawMotionState,
   jawMotionTarget,
-  jawTravelPixels,
   stepJawMotion,
 } from './jawMotion'
 import {
   chestVolumeStretch,
   HEAD_JELLY,
   JellyVolume,
-  SLEEVE_JELLY,
 } from './jellyVolume'
 import { writeAnime25DLayerGlobalTransform } from './layerTransform'
-import { movingPartIn, skirtTuning } from './partPhysics'
 import { writePoseCorrectionWeights } from './poseCorrections'
 import { BODY_ROLL_RADIANS, headRollRadians } from './poseScale'
 import { deformAnime25DSecondaryPoint, shellTurnBlend } from './secondaryDeformation'
 import { writeAnime25DShellRotation } from './shellDeformation'
-import { Anime25DStanding } from './standing'
-import { anime25DTorsoNeckOffsetX, anime25DTorsoYawFollow, FIGURE_BODY_YAW, figureShellProfile, resolveAnime25DTorsoChestShape, stepAnime25DTorsoShellRotation } from './torsoDeformation'
-
-/** Share of an arm with a bare forearm that is sleeve: only that much of it is soft. */
-const SLEEVE_SOFT_REACH = 0.55
-
-interface JellyPart extends LayerJelly {
-  volume: JellyVolume
-  /** The shoulder the sleeve hangs from. */
-  side: 'L' | 'R'
-}
+import { anime25DTorsoNeckOffsetX, anime25DTorsoYawFollow, FIGURE_BODY_YAW, stepAnime25DTorsoShellRotation } from './torsoDeformation'
 
 /**
  * Her body between the composed driver and the drawn layers: head, torso and
@@ -166,141 +153,43 @@ export class Anime25DBodyFrames {
     private readonly motion: Anime25DMotionComposer,
   ) {}
 
-  /** Measure a new package: anchors, chest, jaw travel and the frames built on them. */
-  bind(
-    playback: Anime25DPlayback,
-    motionEnvelopeProfile: Anime25DMotionEnvelopeProfile,
-  ): void {
-    this.anchors = playback.anchors
-    this.figure = FigureBody.of(playback.anchors, playback.partProfile, playback.figureStance, playback)
-    this.shellProfile = this.figure ? figureShellProfile(playback.shellProfile) : playback.shellProfile
-    this.bodyKeyShare = bodyKeyShare(playback)
-    this.chestProfile = playback.chestProfile
-    this.neckDepth =
-      playback.layers.find((layer) => layer.role === 'neck')?.depth ?? 0.95
-    this.jawTravel = jawTravelPixels(playback)
-    this.chestField = resolveChestSpatialField(playback.chestProfile)
-    this.chestDynamics = resolveChestDynamics(
-      playback.chestProfile,
-      this.chestField,
-    )
-    const anchors = playback.anchors
-    this.chestRegion = resolveChestDeformationRegion(playback.chestProfile)
-    this.chestGeometry = {
-      faceScale: anchors.faceScale,
-      faceCenterY: anchors.face.cy,
-      neckX: anchors.neckPivot.x,
-      neckY: anchors.neckPivot.y,
-      centerX: this.chestRegion.centerX,
-      centerY: this.chestRegion.centerY,
-      depth:
-        playback.layers.find((layer) => layer.role === 'topwear')?.depth ?? 0.9,
-    }
-    const neckFollowTop = Math.min(
-      anchors.neckBottom - 1,
-      Math.max(anchors.neckTop, anchors.face.y1 + anchors.faceScale * 5),
-    )
-    this.secondaryDeformationFrame = {
-      bodyRotationCosine: 1,
-      bodyRotationSine: 0,
-      expression: this.current,
-      faceScale: anchors.faceScale,
-      headAngleY: 0,
-      headRotationCosine: 1,
-      headRotationSine: 0,
-      headRoll: 0,
-      hairDrapeLength: (anchors.face.y1 - anchors.face.y0) * 1.5,
-      bodyPivotY: anchors.bodyPivot.y,
-      bodyBendHeight: Math.max(1, anchors.bodyPivot.y - anchors.neckBottom),
-      neckPivotX: anchors.neckPivot.x,
-      neckPivotY: anchors.neckPivot.y,
-      neckBottom: anchors.neckBottom,
-      neckFollowTop,
-      neckFollowSpan: Math.max(1, anchors.neckBottom - neckFollowTop),
-      faceCenterY: anchors.face.cy,
-      bodyBreathOffset: 0,
-      headBreathOffset: 0,
-      torsoProfile: this.shellProfile.torso,
-      torsoChestShape: resolveAnime25DTorsoChestShape(
-        playback.chestProfile,
-        this.chestField,
-      ),
-      torsoShellRotation: this.torsoShellRotation,
-      torsoShellBlend: 0,
-      torsoNeckOffsetX: 0,
-      specialHeadOffset: 0,
-      highCollar: motionEnvelopeProfile.highCollar,
-      breath: 0,
-      armAngleL: 0,
-      armAngleR: 0,
-      armDrapeL: 0,
-      armDrapeR: 0,
-      forearmL: 0,
-      forearmR: 0,
-      handL: 0,
-      handR: 0,
-      reachL: 0,
-      reachR: 0,
-      chestCenterX: this.chestRegion.centerX,
-      chestRegionCenterY: this.chestRegion.centerY,
-      chestMotionCenterY: this.chestRegion.centerY,
-      chestRadiusY: this.chestRegion.radiusY,
-      inverseChestRadiusX: 1 / this.chestRegion.radiusX,
-      inverseChestRadiusY: 1 / this.chestRegion.radiusY,
-      chestOffsetX: 0,
-      chestOffsetY: 0,
-      chestField: this.chestField,
-      chestVolumeScale: 1,
-      shellProfile: this.shellProfile,
-      shellBlend: 0,
-      shellActivation: 0,
-      shellRotation: this.shellRotation,
-      standing: null,
-      figure: this.figure,
-    }
-    // With bones the figure sways from its feet, hips and shoulders together.
-    this.standing = Anime25DStanding.of(anchors, Boolean(this.figure), skirtTuning(movingPartIn(playback.partProfile, 'bottomwear')), this.figure?.hipShift)
-    this.collarMotion = {
-      neckPivotX: anchors.neckPivot.x,
-      neckPivotY: anchors.neckPivot.y,
-      neckFollowTop,
-      neckFollowSpan: Math.max(1, anchors.neckBottom - neckFollowTop),
-      faceCenterY: anchors.face.cy,
-      faceScale: anchors.faceScale,
-      angleX: 0,
-      angleY: 0,
-      headRotationCosine: 1,
-      headRotationSine: 0,
-      bodyBreathOffset: 0,
-      headBreathOffset: 0,
-      torsoProfile: this.shellProfile.torso,
-      torsoShellBlend: 0,
-      torsoNeckOffsetX: 0,
-      neckBottom: anchors.neckBottom,
-      chestRegionCenterY: this.chestRegion.centerY,
-      torsoShellRotation: this.torsoShellRotation,
-      headTurn: null,
-      keyedHead: false,
-    }
-    this.hairSpringFrame = {
-      enabled: true,
-      idle: true,
-      faceScale: anchors.faceScale,
-      time: 0,
-      frontSoft: 0,
-      rearSoft: 0,
-      tilt: 0,
-    }
+  /**
+   * Measures a new package: anchors, chest, jaw travel and the frames built on them. The body keeps the package it
+   * has until bind() takes this one.
+   */
+  measure(playback: Anime25DPlayback, motionEnvelopeProfile: Anime25DMotionEnvelopeProfile): BodyBinding {
+    return measureBody({ current: this.current, shellRotation: this.shellRotation, torsoShellRotation: this.torsoShellRotation }, playback, motionEnvelopeProfile)
   }
 
-  /** Bind the new package's layers: the head turn's silhouette and the soft volumes. */
-  bindLayers(layers: readonly Anime25DGpuLayer[], headSilhouette: HeadSilhouette | null, keyedHead = false): void {
-    this.headTurn = createHeadTurn(headSilhouette, headTurnRadians(keyedHead))
-    this.secondaryDeformationFrame.headTurn = this.headTurn
-    this.secondaryDeformationFrame.keyedHead = keyedHead
-    this.collarMotion.headTurn = this.headTurn
-    this.collarMotion.keyedHead = keyedHead
-    this.bindJelly(layers)
+  /** Takes a measured package: from here on the body moves it. */
+  bind(binding: BodyBinding): void {
+    this.anchors = binding.anchors
+    this.figure = binding.figure
+    this.shellProfile = binding.shellProfile
+    this.bodyKeyShare = binding.bodyKeyShare
+    this.chestProfile = binding.chestProfile
+    this.neckDepth = binding.neckDepth
+    this.jawTravel = binding.jawTravel
+    this.chestField = binding.chestField
+    this.chestDynamics = binding.chestDynamics
+    this.chestRegion = binding.chestRegion
+    this.chestGeometry = binding.chestGeometry
+    this.secondaryDeformationFrame = binding.secondaryDeformationFrame
+    this.standing = binding.standing
+    this.collarMotion = binding.collarMotion
+    this.hairSpringFrame = binding.hairSpringFrame
+    const layers = binding.layers
+    if (!layers) return
+    this.headTurn = layers.headTurn
+    this.bodyLiftResponse = layers.bodyLiftResponse
+    this.bodyPitchResponse = layers.bodyPitchResponse
+    this.jellyParts = layers.jellyParts
+    this.headJellyElement = layers.headJellyElement
+  }
+
+  /** Measures the package's compiled layers into its binding: the head turn's silhouette and the soft volumes. */
+  measureLayers(binding: BodyBinding, layers: readonly Anime25DGpuLayer[], headSilhouette: HeadSilhouette | null, keyedHead = false): void {
+    measureBodyLayers(binding, layers, headSilhouette, keyedHead)
   }
 
   /** The pose corrections are weighed against this frame. */
@@ -528,35 +417,6 @@ export class Anime25DBodyFrames {
     this.writeHeadWorldTransform(this.headWorldTransform)
     this.headWorldPoint(x, y, this.jellyAnchor)
     return this.jellyAnchor
-  }
-
-  private bindJelly(layers: readonly Anime25DGpuLayer[]): void {
-    this.bodyLiftResponse = new BodyLiftResponse()
-    this.bodyPitchResponse = new BodyLiftResponse()
-    const anchors = this.anchors
-    const face = anchors.face
-    const faceHeight = face.y1 - face.y0
-    this.jellyParts = new Map()
-    this.headJellyElement = faceHeight > 0
-      ? { anchorX: face.cx, anchorY: face.y1, axisX: 0, axisY: -1, length: faceHeight * 1.5, cutY: null }
-      : null
-    if (!this.headJellyElement) return
-    for (const layer of layers) {
-      const binding = layer.secondaryDeformation
-      if (binding.handwear && binding.arm && binding.arm.scale === 1 && binding.handwearSide) {
-        // A hanging sleeve's cloth hangs from the shoulder joint.
-        const arm = binding.arm
-        this.jellyParts.set(layer, {
-          element: {
-            anchorX: arm.pivotX, anchorY: arm.pivotY, axisX: 0, axisY: 1, length: arm.length, cutY: arm.cutY,
-            // Cloth all the way down is soft all the way; a bare forearm and hand are not.
-            softReach: arm.drape ? 1 : SLEEVE_SOFT_REACH,
-          },
-          volume: new JellyVolume(SLEEVE_JELLY),
-          side: binding.handwearSide === 'L' ? 'L' : 'R',
-        })
-      }
-    }
   }
 
   private stepJelly(dt: number): void {

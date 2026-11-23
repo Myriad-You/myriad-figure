@@ -9,7 +9,12 @@ export class ThinkingSticker {
   private tint = sampleDizzyEyeTint(undefined)
 
   setLinePixels(pixels: Uint8ClampedArray | undefined): void {
-    this.tint = sampleDizzyEyeTint(pixels)
+    this.setTint(sampleDizzyEyeTint(pixels))
+  }
+
+  /** Takes a tint sampled with sampleDizzyEyeTint from the eyelash's line art. */
+  setTint(tint: ReturnType<typeof sampleDizzyEyeTint>): void {
+    this.tint = tint
   }
 
   update(time: number, target: number): void {

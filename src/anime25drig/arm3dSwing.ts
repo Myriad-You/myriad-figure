@@ -1,5 +1,6 @@
 import type { V3 } from './arm3dMath'
 import type { Arm3DPose } from './arm3dMotion'
+import { createPixelTexture } from './pixelTexture'
 
 /** `q` turned by `angle` about `c` in the picture's plane (as the drawn arms are turned), its depth kept. */
 function turned(q: V3, c: V3, angle: number): V3 {
@@ -31,22 +32,13 @@ export function draped(pose: Arm3DPose, atElbow: number, atWrist: number): Arm3D
 
 /** The body the portrait's arm leaves bare, premultiplied as the atlas is. */
 export function createBodyTexture(gl: WebGL2RenderingContext, pixels: Uint8ClampedArray, width: number, height: number) {
-  const texture = gl.createTexture()
   const data = new Uint8Array(pixels.length)
   for (let i = 0; i < data.length; i += 4) {
     const a = pixels[i + 3]
     for (let c = 0; c < 3; c += 1) data[i + c] = Math.round(pixels[i + c] * a / 255)
     data[i + 3] = a
   }
-  gl.bindTexture(gl.TEXTURE_2D, texture)
-  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, data)
-  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1)
-  return { texture, uv: [0, 0, 1, 1] as const }
+  return { texture: createPixelTexture(gl, width, height, data), uv: [0, 0, 1, 1] as const }
 }
 
 /** The arm's points (shoulder, elbow, wrist, hand) as x, y pairs on the canvas. */

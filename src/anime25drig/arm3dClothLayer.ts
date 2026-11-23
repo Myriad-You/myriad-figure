@@ -4,6 +4,7 @@ import type { Anime25DOwnTexture, Anime25DRenderableLayer } from './renderer'
 import type { IndexedDeformableMesh } from './webglRuntime'
 import { arm3DClothMesh, arm3DClothOver, arm3DClothPin, Arm3DClothSim, cutArm3DCloth } from './arm3dCloth'
 import { smoothstep } from './arm3dMath'
+import { createFilledTexture, uploadPixels } from './pixelTexture'
 import { ANIME25D_ATLAS_MIP_GUTTER_PX, anime25DAtlasMaxLod, anime25DAtlasMaxMipLevel, createIndexedDeformableMesh, disposeIndexedDeformableMesh } from './webglRuntime'
 
 /** What a cloth needs of the figure to be cut out of a layer and drawn as one more: its atlas as uploaded, and the layers' program. */
@@ -338,21 +339,17 @@ function readTexture(gl: WebGL2RenderingContext, texture: WebGLTexture, x: numbe
 
 /** A picture of its own, premultiplied as read, sampled as the atlas is. */
 function createTexture(gl: WebGL2RenderingContext, pixels: Uint8Array, width: number, height: number): WebGLTexture {
-  const texture = gl.createTexture()
-  if (!texture) throw new Error('cloth texture')
   const maxLevel = anime25DAtlasMaxMipLevel(ANIME25D_ATLAS_MIP_GUTTER_PX)
-  gl.bindTexture(gl.TEXTURE_2D, texture)
-  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, maxLevel > 0 ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR)
-  if (maxLevel > 0) {
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, maxLevel)
-    gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAX_LOD, anime25DAtlasMaxLod(ANIME25D_ATLAS_MIP_GUTTER_PX))
-  }
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
-  if (maxLevel > 0) gl.generateMipmap(gl.TEXTURE_2D)
-  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1)
-  return texture
+  return createFilledTexture(gl, () => {
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, maxLevel > 0 ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR)
+    if (maxLevel > 0) {
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, maxLevel)
+      gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MAX_LOD, anime25DAtlasMaxLod(ANIME25D_ATLAS_MIP_GUTTER_PX))
+    }
+    uploadPixels(gl, width, height, pixels)
+    if (maxLevel > 0) gl.generateMipmap(gl.TEXTURE_2D)
+  })
 }

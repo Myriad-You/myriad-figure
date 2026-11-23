@@ -16,13 +16,14 @@ import type { FaceFrameInput } from './faceFrames'
 import type { LayerDeformationContext } from './layerFrameDeformation'
 import type { Anime25DGpuLayer } from './layerGpuBinding'
 import type { MotionComposerInput } from './motionComposer'
+import type { Anime25DMotionEnvelopeProfile } from './motionEnvelope'
 
-import type { Anime25DHandPose, Anime25DMotionEnvelopeProfile } from './motionEnvelope'
 import type {
   Anime25DFrameWork,
 } from './performanceTelemetry'
 import type { Anime25DDebugSnapshot } from './playerDebug'
 import type { Anime25DInspection } from './playerInspection'
+import type { PackageState, PreparedSwap, SwapParts } from './playerSwap'
 import type { PoseCorrection } from './poseCorrections'
 import type { PoseCorrectionStageSource } from './poseCorrectionStage'
 
@@ -35,8 +36,6 @@ import type {
 import type { Anime25DPlayback } from './types'
 import { FigureError } from '../errors'
 import { IDLE_MOTION_POLICY } from '../motion/policy'
-import { boundRigCapabilities } from '../motion/rigStateSummary'
-import { resolveAnime25DLayerSemantics } from '../rig/anime25dLayerSemantics'
 import { NO_TRACE } from '../trace'
 import { Anime25DArmVariants } from './armVariantPresenter'
 import { Anime25DBodyFrames } from './bodyFrames'
@@ -63,7 +62,6 @@ import { deformLayers, settleDependentLayers } from './layerFrameDeformation'
 import { drawOrder } from './legOrder'
 import { Anime25DMotionComposer } from './motionComposer'
 
-import { deriveAnime25DMotionEnvelopeProfile } from './motionEnvelope'
 import {
   bearingDriverPatch,
 } from './performanceExpression'
@@ -75,14 +73,13 @@ import {
 import { describeAnime25DPlayback } from './playerDebug'
 import { inspectAnime25DFrame } from './playerInspection'
 import {
-  prepareLivePackage,
   releaseCompiledGpu,
-  touchLayersFor,
 } from './playerPackage'
 
+import { measurePackage, prepareSwap, releaseSwap } from './playerSwap'
 import { bindPoseCorrections, isPoseCorrections } from './poseCorrections'
-import { Anime25DPoseInertia } from './poseInertia'
 
+import { Anime25DPoseInertia } from './poseInertia'
 import {
   createAnime25DRendererBindings,
   disposeAnime25DRendererBindings,
@@ -93,7 +90,6 @@ import {
   resolveAnime25DRenderSurface,
   shouldApplyAnime25DResize,
 } from './runtimePolicy'
-import { isStandingFigure } from './standing'
 import { ThinkingSticker } from './thinkingSticker'
 
 import { touchPointInView } from './touchHitTest'
@@ -109,6 +105,8 @@ export class Anime25DPlayer {
   private playback!: Anime25DPlayback
   private rigManifest: MeropeRigManifest | undefined
   private readonly program: WebGLProgram
+  /** What an outfit swap measures against (playerSwap). */
+  private readonly parts: SwapParts
   private readonly rendererBindings: Anime25DRendererBindings
   private readonly renderFrame: Anime25DRenderFrame = {
     viewWidth: 1,
@@ -221,17 +219,25 @@ export class Anime25DPlayer {
     if (!gl) throw new FigureError('anime25dWebglFailed')
     this.gl = gl
     this.program = compileProgram(gl)
+    this.parts = { gl, program: this.program, current: this.current, body: this.body, face: this.face, armVariants: this.armVariants }
+    let bindings: Anime25DRendererBindings | null = null
     try {
-      this.rendererBindings = createAnime25DRendererBindings(gl, this.program)
-      this.applyPackage(playback, rigManifest)
+      bindings = createAnime25DRendererBindings(gl, this.program)
+      this.rendererBindings = bindings
+      this.adoptPackage(measurePackage(this.parts, playback, rigManifest))
     } catch (error) {
       // A failed constructor has no owner that can call dispose().
+      if (bindings) disposeAnime25DRendererBindings(gl, bindings)
       gl.deleteProgram(this.program)
       throw error
     }
   }
 
-  /** The last outfit keeps drawing until the next atlas is bound. */
+  /**
+   * The last outfit keeps drawing until the next one is ready, and stays exactly as it was if the next one fails:
+   * everything the new outfit needs is measured and made on the GPU first, touching nothing on screen, and only
+   * then taken in one step that cannot fail.
+   */
   async replaceLivePackage(
     playback: Anime25DPlayback,
     rigManifest: MeropeRigManifest | undefined,
@@ -242,43 +248,30 @@ export class Anime25DPlayer {
     this.atlasAbort = atlasAbort
     const image = await loadImage(atlasUrl, atlasAbort.signal)
     if (this.disposed || atlasAbort.signal.aborted) return
-    const prepared = prepareLivePackage(this.gl, this.program, playback, rigManifest, image, this.current)
-    const { resolved, compiled } = prepared
-    try {
-      if (this.disposed || atlasAbort.signal.aborted) {
-        releaseCompiledGpu(this.gl, compiled.layers, compiled.collarClip, prepared.texture)
-        return
-      }
-      this.applyPackage(playback, rigManifest, {
-        linked: compiled.armsLinked,
-        touchingHead: compiled.handTouchesHead,
-      })
-    } catch (error) {
-      // Keep the live outfit; the not-yet-owned replacement must be released.
-      releaseCompiledGpu(this.gl, compiled.layers, compiled.collarClip, prepared.texture)
-      throw error
+    const next = prepareSwap(this.parts, playback, rigManifest, image)
+    if (this.disposed || atlasAbort.signal.aborted) {
+      releaseSwap(this.parts, next)
+      return
     }
+    this.commitSwap(next)
+  }
+
+  /** Takes a prepared outfit in place of the live one, whose GPU resources go. Only assigns and releases. */
+  private commitSwap(next: PreparedSwap): void {
+    const { prepared } = next
+    const { compiled } = prepared
+    this.adoptPackage(next.state)
     releaseCompiledGpu(this.gl, this.layers, this.collarClip, this.atlasTexture)
     this.atlasTexture = prepared.texture
     this.layers = compiled.layers
-    this.armVariants.bind(this.layers, resolved.pixelCanvas.height, { gl: this.gl, atlas: image, canvasWidth: resolved.pixelCanvas.width, texture: prepared.texture ?? undefined, program: this.program })
+    this.armVariants.adopt(next.arms)
     this.collarClip = compiled.collarClip
-    this.face.bindAtlas(this.gl, resolved, image, this.layers)
-    this.body.bindLayers(this.layers, compiled.headSilhouette ?? null, Boolean(playback.turnKeyforms))
-    const shell = resolved.shellProfile
-    this.motionCapabilities = boundRigCapabilities(rigManifest, {
-      torsoVolume: shell.enabled && shell.blend > 0 && shell.torso.enabled && shell.torso.blend > 0,
-      arms: this.motionEnvelopeProfile.rigidArm.limit > 0 && !isStandingFigure(playback.anchors)
-        ? this.layers.flatMap(layer => {
-            const binding = layer.secondaryDeformation
-            return binding.arm && binding.armMesh && (binding.handwearSide === 'L' || binding.handwearSide === 'R')
-              ? [binding.handwearSide] : []
-          }) : [],
-    })
+    this.face.bindAtlas(next.mouth)
+    this.motionCapabilities = next.capabilities
     this.motion.directedPose.setCapabilities(this.motionCapabilities)
     this.touchAtlas = prepared.touchAtlas
-    this.thinkingSticker.setLinePixels(prepared.linePixels)
-    this.touchLayers = touchLayersFor(this.layers, this.collarClip)
+    this.thinkingSticker.setTint(next.tint)
+    this.touchLayers = next.touchLayers
   }
 
   async loadAtlas(url: string): Promise<void> {
@@ -332,29 +325,18 @@ export class Anime25DPlayer {
       : null
   }
 
-  private applyPackage(
-    playback: Anime25DPlayback,
-    rigManifest?: MeropeRigManifest,
-    hands: Anime25DHandPose = {},
-  ): void {
-    playback = {
-      ...playback,
-      layers: playback.layers.map(resolveAnime25DLayerSemantics),
-    }
+  private adoptPackage(state: PackageState): void {
+    const { playback, motionEnvelopeProfile } = state
     this.playback = playback
     this.closedEyes.bind(playback.layers)
-    this.rigManifest = rigManifest
-    this.motionEnvelopeProfile = deriveAnime25DMotionEnvelopeProfile(
-      playback,
-      rigManifest,
-      hands,
-    )
+    this.rigManifest = state.rigManifest
+    this.motionEnvelopeProfile = motionEnvelopeProfile
     this.motion.singingGroove.setArmMotion(
-      this.motionEnvelopeProfile.armMotion && this.motionEnvelopeProfile.rigidArm.limit > 0,
+      motionEnvelopeProfile.armMotion && motionEnvelopeProfile.rigidArm.limit > 0,
     )
-    this.motion.setFigure(playback)
-    this.body.bind(playback, this.motionEnvelopeProfile)
-    this.face.bind(playback)
+    this.motion.bindFigure(state.figure)
+    this.body.bind(state.body)
+    this.face.bind(state.face)
   }
 
   getMotionCapabilities(): readonly string[] { return this.motionCapabilities }

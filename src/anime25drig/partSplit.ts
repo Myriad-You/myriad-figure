@@ -1,6 +1,7 @@
 import type { Anime25DOwnTexture } from './renderer'
 import type { Anime25DPart, Anime25DPartProfile, Anime25DPlaybackLayer } from './types'
 import type { CroppedLayerPixels } from './webglRuntime'
+import { createPixelTexture } from './pixelTexture'
 
 /**
  * A hanging piece drawn into a layer it shares (a pendant on the choker, a
@@ -743,9 +744,7 @@ export function splitHangingParts(
 }
 
 /** A cut piece's pixels as a texture of its own, which its layer draws whole. */
-export function createCutTexture(gl: WebGL2RenderingContext, image: Readonly<CroppedLayerPixels>): Anime25DOwnTexture | null {
-  const texture = gl.createTexture()
-  if (!texture) return null
+export function createCutTexture(gl: WebGL2RenderingContext, image: Readonly<CroppedLayerPixels>): Anime25DOwnTexture {
   // Typed-array uploads are premultiplied here, as the atlas's patches are.
   const pixels = new Uint8Array(image.pixels.length)
   for (let i = 0; i < pixels.length; i += 4) {
@@ -753,13 +752,5 @@ export function createCutTexture(gl: WebGL2RenderingContext, image: Readonly<Cro
     for (let c = 0; c < 3; c++) pixels[i + c] = Math.round((image.pixels[i + c] * alpha) / 255)
     pixels[i + 3] = alpha
   }
-  gl.bindTexture(gl.TEXTURE_2D, texture)
-  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, image.width, image.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
-  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1)
-  return { texture, uv: [0, 0, 1, 1] }
+  return { texture: createPixelTexture(gl, image.width, image.height, pixels), uv: [0, 0, 1, 1] }
 }

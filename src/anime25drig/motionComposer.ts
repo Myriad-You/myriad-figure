@@ -81,6 +81,16 @@ export interface MotionComposerInput {
  */
 const PAUSE_BLINK_CHANCE = 0.6
 
+/** What the motion needs of a package's figure, measured before the package is taken. */
+export interface MotionFigure {
+  standing: boolean
+  headRidesBody: number
+}
+
+export function measureMotionFigure(playback: Pick<Anime25DPlayback, 'anchors' | 'bodyTurnKeyforms' | 'turnKeyforms'>): MotionFigure {
+  return { standing: isStandingFigure(playback.anchors), headRidesBody: headRidesBody(bodyKeyShare(playback), Boolean(playback.turnKeyforms)) }
+}
+
 /**
  * Everything she does, composed into one driver. Speech, song, directed
  * performances, stylized faces, idle and random motion each propose an
@@ -189,9 +199,14 @@ export class Anime25DMotionComposer {
    * (headRidesBody).
    */
   setFigure(playback: Pick<Anime25DPlayback, 'anchors' | 'bodyTurnKeyforms' | 'turnKeyforms'>): void {
-    this.standing = isStandingFigure(playback.anchors)
+    this.bindFigure(measureMotionFigure(playback))
+  }
+
+  /** Takes a figure measured with measureMotionFigure. */
+  bindFigure(figure: Readonly<MotionFigure>): void {
+    this.standing = figure.standing
     this.directedPose.setStanding(this.standing)
-    this.headRidesBody = headRidesBody(bodyKeyShare(playback), Boolean(playback.turnKeyforms))
+    this.headRidesBody = figure.headRidesBody
   }
 
   directedBodyWeight(control: IndependentBodyControl): number {

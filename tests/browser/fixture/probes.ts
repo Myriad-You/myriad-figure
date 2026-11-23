@@ -5,7 +5,7 @@
 import type { Anime25DDriver } from '../../../src/anime25drig/driver'
 import type { Anime25DInspection, Anime25DLayerView, Anime25DPoint } from '../../../src/anime25drig/playerInspection'
 import type { PoseCorrection } from '../../../src/anime25drig/poseCorrections'
-import type { Anime25DPlayback } from '../../../src/anime25drig/types'
+import type { Anime25DArmModel, Anime25DPlayback } from '../../../src/anime25drig/types'
 import type { MotionChannelPolicy } from '../../../src/motion/policy'
 import type { MeropeRigManifest } from '../../../src/rig/types'
 import { writePsd } from 'ag-psd'
@@ -19,7 +19,7 @@ import { musicSignalAt } from '../../../src/singing/musicSignal.test-support'
 import { fixture, importPsd } from './synthetic'
 
 /** A synthetic kind built in the page, or a real package the test serves. */
-export type PackageRef = { synthetic: string } | { manifest: MeropeRigManifest, atlasUrl: string }
+export type PackageRef = { synthetic: string, armed?: boolean } | { manifest: MeropeRigManifest, atlasUrl: string }
 
 interface FigurePackage {
   playback: Anime25DPlayback
@@ -42,7 +42,32 @@ async function resolvePackage(ref: PackageRef): Promise<FigurePackage> {
       .then(prepared => ({ playback: prepared.source.anime25dPlayback!, atlasUrl: URL.createObjectURL(prepared.atlas) }))
     synthetic.set(ref.synthetic, built)
   }
-  return built
+  if (!ref.armed) return built
+  const { playback, ...rest } = await built
+  return { ...rest, playback: withModelledArm(playback) }
+}
+
+/** The package with a gesture arm modelled on one of its drawn ones, so what is made for modelled arms is made here too. */
+function withModelledArm(playback: Anime25DPlayback): Anime25DPlayback {
+  const base = playback.layers.find(layer => layer.role === 'handwear' && layer.side)
+  if (!base) throw new Error('no drawn arm to model')
+  const { w, h } = base
+  const at = (x: number, y: number, z = 0): [number, number, number] => [x * w, y * h, z * w]
+  const hand: [number, number][] = [[0.5 * w, 0.42 * h]]
+  for (const [finger, dx] of [-0.2, -0.1, 0, 0.1, 0.2].entries()) {
+    for (let joint = 1; joint <= 4; joint++) hand.push([(0.5 + dx) * w, (0.36 - (finger === 0 ? 0 : 0.03) - 0.04 * joint) * h])
+  }
+  const box = (x0: number, y0: number, x1: number, y1: number): [number, number][] => [[x0 * w, y0 * h], [x1 * w, y0 * h], [x1 * w, y1 * h], [x0 * w, y1 * h]]
+  const model: Anime25DArmModel = {
+    upper: 0.4 * h, fore: 0.5 * h, radius: Array.from({ length: 24 }, (_, i) => (0.3 - 0.006 * i) * w), cuff: 0.6, bare: 0.12 * w, bareShift: 0,
+    restEnd: 0.4, restReach: Array.from({ length: 24 }, () => [0.3 * w, 0.3 * w] as [number, number]),
+    rest: { shoulder: at(0.5, 0.05), elbow: at(0.5, 0.45), wrist: at(0.5, 0.95) },
+    raised: { shoulder: at(0.5, 0.05), elbow: at(0.2, 0.45, 0.2), wrist: at(0.5, 0.42, 0.3) },
+    hand, fingers: [0.04, 0.04, 0.04, 0.04, 0.03].map(share => share * w), fingerProfile: [], keyProfile: [], palmOutline: null, hiddenFingers: [],
+    skin: [240, 210, 196], shade: [210, 170, 160], line: [90, 60, 60], handOutline: [box(0.2, 0.1, 0.8, 0.45)], armOutline: [box(0, 0, 1, 1)],
+  }
+  const gesture = { ...base, name: `arm-variant-wave-${base.side}`, role: 'arm-variant', strands: [], armVariant: { gesture: 'wave', lift: 'whole' as const, model } }
+  return { ...playback, layers: [...playback.layers, gesture] }
 }
 
 let seed = 1749
@@ -977,5 +1002,274 @@ async function sharedCut(ref: PackageRef) {
   })
 }
 
-export const probes = { features, bodyStageProjection, posture, torsoTurn, turns, corners, correction, collar, shoulder, earrings, hair, musicExit, thoughtToSpeech, sharedCut }
+/** Counts the steps of a swap, remembers where each was taken, and makes a chosen one fail. */
+interface Faults {
+  /** Steps taken since the last reset. */
+  steps: number
+  /** The step to fail, counted from the last reset; 0 for none. */
+  failAt: number
+  /** Where each step was taken, while recording. */
+  sites: string[] | null
+}
+
+/** The nearest source lines on the stack: what makes one failure point different from another. */
+function site(name: string): string {
+  Error.stackTraceLimit = 24
+  const places = [...(new Error('site').stack ?? '').matchAll(/\/src\/(?:[\w-]+\/)*([\w-]+)\.ts[^:]*:(\d+)/g)]
+    // Whoever asked for the texture, not what makes every one of them.
+    .filter(([, file]) => file !== 'pixelTexture' && file !== 'arm3dTarget')
+  return [name, ...places.slice(0, 4).map(([, file, line]) => `${file}:${line}`)].join(' < ')
+}
+
+/** Takes a step: true when it is the one to fail. */
+function step(faults: Faults, name: string): boolean {
+  faults.steps++
+  faults.sites?.push(site(name))
+  return faults.failAt > 0 && faults.steps === faults.failAt
+}
+
+/** GPU calls that make something or fill it. */
+const GPU_MAKES: Record<string, string> = { createBuffer: 'deleteBuffer', createTexture: 'deleteTexture', createVertexArray: 'deleteVertexArray',
+  createFramebuffer: 'deleteFramebuffer', createRenderbuffer: 'deleteRenderbuffer', createProgram: 'deleteProgram', createShader: 'deleteShader' }
+const GPU_STEPS = [...Object.keys(GPU_MAKES), 'bufferData', 'texImage2D', 'texSubImage2D', 'texStorage2D']
+
+/**
+ * Watches a context's objects and fails its steps. A create gives null, which is what a lost context gives; an upload
+ * throws, which a real one does only for an image it may not read. Out of memory is a GL error instead, not simulated.
+ */
+function watchGpu(gl: WebGL2RenderingContext, faults: Faults): Set<object> {
+  const live = new Set<object>()
+  const calls = gl as unknown as Record<string, (...args: unknown[]) => unknown>
+  for (const name of GPU_STEPS) {
+    const original = calls[name]!.bind(gl)
+    calls[name] = (...args: unknown[]) => {
+      if (step(faults, name)) {
+        if (name in GPU_MAKES) return null
+        throw new Error(`injected failure at ${name}`)
+      }
+      const made = original(...args)
+      if (name in GPU_MAKES && made) live.add(made as object)
+      return made
+    }
+  }
+  for (const name of Object.values(GPU_MAKES)) {
+    const original = calls[name]!.bind(gl)
+    calls[name] = (object: unknown) => {
+      if (object) live.delete(object as object)
+      return original(object)
+    }
+  }
+  return live
+}
+
+/** A package whose reads are steps: whatever measures it can fail there. Layers and arrays are handed over as they are. */
+function readWatched<T extends object>(value: T, faults: Faults, seen = new WeakMap<object, object>()): T {
+  const known = seen.get(value)
+  if (known) return known as T
+  const proxy = new Proxy(value, {
+    get(target, key, receiver) {
+      const read = Reflect.get(target, key, receiver)
+      if (typeof key === 'symbol') return read
+      if (step(faults, `read ${key}`)) throw new Error(`injected failure reading ${key}`)
+      return read && typeof read === 'object' && Object.getPrototypeOf(read) === Object.prototype ? readWatched(read, faults, seen) : read
+    },
+  })
+  seen.set(value, proxy)
+  return proxy
+}
+
+function frameHash(player: Anime25DPlayer, gl: WebGL2RenderingContext): number {
+  let h = hash(readPixels(gl))
+  for (const layer of player.inspect().layers)
+    h = (Math.imul(h, 31) + hash(new Uint8Array(layer.placed.buffer, layer.placed.byteOffset, layer.placed.byteLength))) | 0
+  return (Math.imul(h, 31) + hash(new TextEncoder().encode(JSON.stringify(player.getCurrent())))) | 0
+}
+
+const SWAP_POSE: Partial<Anime25DDriver> = { phys: true, angleX: 0.3, angleY: -0.2, angleZ: 0.2, body: 0.3, armY: 0.3 }
+const AFTER_POSE: Partial<Anime25DDriver> = { phys: true, angleX: -0.3, angleY: 0.25, body: -0.3, armY: -0.2 }
+
+/** A player on a watched context, with its own stream of Math.random so two of them can run side by side. */
+interface Watched {
+  player: Anime25DPlayer
+  gl: WebGL2RenderingContext
+  gpu: Faults
+  /** Every GPU object made and not yet deleted. */
+  live: Set<object>
+  seed: number
+  close: () => void
+}
+
+async function watched(pkg: FigurePackage): Promise<Watched> {
+  seed = 1749
+  const canvas = document.createElement('canvas')
+  // Both twins at the page's corner: a touch falls on the same fraction of each.
+  canvas.style.cssText = 'position: absolute; left: 0; top: 0'
+  document.body.append(canvas)
+  // The player asks this canvas for its context and is handed this one, watched.
+  const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, stencil: true, antialias: true,
+    preserveDrawingBuffer: true, powerPreference: 'low-power' })!
+  const gpu: Faults = { steps: 0, failAt: 0, sites: null }
+  const live = watchGpu(gl, gpu)
+  const player = new Anime25DPlayer(canvas, pkg.playback, pkg.manifest)
+  // Out of the page first, so the player gives its context up and the runs never pile up contexts.
+  const close = () => { canvas.remove(); player.dispose() }
+  try {
+    await player.replaceLivePackage(pkg.playback, pkg.manifest, pkg.atlasUrl)
+    player.resize(192, 256, 1)
+    player.setMotionPolicy(PREVIEW)
+    hold(player, SWAP_POSE, 20)
+  }
+  catch (error) {
+    close()
+    throw error
+  }
+  return { player, gl, gpu, live, seed, close }
+}
+
+/** What the page can ask of the figure besides its pixels: what it can do, its gestures, what a touch lands on. */
+function answers(w: Watched): string {
+  const { left, top, width, height } = (w.gl.canvas as HTMLCanvasElement).getBoundingClientRect()
+  const touches = [0.2, 0.35, 0.5, 0.65, 0.8].flatMap(x => [0.15, 0.3, 0.45, 0.6, 0.75].map(y =>
+    w.player.hitTestTouch(left + x * width, top + y * height)))
+  return JSON.stringify([w.player.getMotionCapabilities(), w.player.armVariantGestures(), touches])
+}
+
+/** Moves the figure on, on this player's own random stream, and hashes what it shows from the very next frame on. */
+function moveOn(w: Watched): string {
+  seed = w.seed
+  const frames = Array.from({ length: 8 }, () => {
+    hold(w.player, AFTER_POSE, 1)
+    return frameHash(w.player, w.gl)
+  })
+  w.seed = seed
+  return `${frames.join()} ${answers(w)}`
+}
+
+async function pairOf(pkg: FigurePackage): Promise<[Watched, Watched]> {
+  const control = await watched(pkg)
+  try {
+    return [control, await watched(pkg)]
+  }
+  catch (error) {
+    control.close()
+    throw error
+  }
+}
+
+interface SwapRun {
+  kind: 'gpu' | 'read'
+  /** Where the swap failed, and whether the failure was really put there. */
+  site: string
+  fired: boolean
+  outcome: 'swapped' | 'refused'
+  /** GPU objects alive that were not before the swap, and ones from before it that are gone. */
+  leaked: number
+  lost: number
+  /** The frames after it match the figure's that never swapped. */
+  same: boolean
+  error: number
+}
+
+export interface SwapRequest {
+  shown: PackageRef
+  next: PackageRef
+  kinds?: ('gpu' | 'read')[]
+}
+
+/**
+ * An outfit swap that fails, wherever it fails (a GPU step, or a read of the package), leaves the figure on screen
+ * exactly as it was: frame for frame a twin that never swapped, not one GPU object more or fewer. Each place in the
+ * code is failed once, at its last visit, where the most has been made.
+ */
+async function swapFaults({ shown: shownRef, next: nextRef, kinds = ['gpu', 'read'] }: SwapRequest) {
+  const shown = await resolvePackage(shownRef)
+  const next = await resolvePackage(nextRef)
+  return seeded(async () => {
+    const swap = async (w: Watched, pkg: FigurePackage, playback = pkg.playback) => {
+      seed = w.seed
+      await w.player.replaceLivePackage(playback, pkg.manifest, pkg.atlasUrl)
+      w.seed = seed
+    }
+    /** A swap that goes through, and the resize the page follows it with; one that failed is not followed by any. */
+    const take = async (w: Watched, pkg: FigurePackage) => {
+      await swap(w, pkg)
+      w.player.resize(192, 256, 1)
+    }
+    const places: { kind: SwapRun['kind'], failAt: number, site: string }[] = []
+    for (const kind of kinds) {
+      const w = await watched(shown)
+      const faults: Faults = kind === 'gpu' ? w.gpu : { steps: 0, failAt: 0, sites: null }
+      faults.steps = 0
+      faults.sites = []
+      await swap(w, next, kind === 'read' ? readWatched(next.playback, faults) : undefined)
+      const last = new Map(faults.sites.map((at, index) => [at, index + 1]))
+      w.close()
+      for (const [at, failAt] of last) places.push({ kind, failAt, site: at })
+    }
+    let [control, subject] = await pairOf(shown)
+    const runs: SwapRun[] = []
+    try {
+      for (const { kind, failAt, site: at } of places) {
+        const faults: Faults = kind === 'gpu' ? subject.gpu : { steps: 0, failAt: 0, sites: null }
+        const playback = kind === 'read' ? readWatched(next.playback, faults) : next.playback
+        const before = new Set(subject.live)
+        faults.steps = 0
+        faults.failAt = failAt
+        let outcome: SwapRun['outcome'] = 'swapped'
+        try {
+          await swap(subject, next, playback)
+        }
+        catch {
+          outcome = 'refused'
+        }
+        faults.failAt = 0
+        const fired = faults.steps >= failAt
+        let same = true
+        try {
+          if (outcome === 'swapped') {
+            // A failure the swap gets round (a modelled arm drawn flat): that outfit draws, and back in the one before
+            // the figure is a twin's whose swap went through whole.
+            subject.player.resize(192, 256, 1)
+            await take(control, next)
+            moveOn(control)
+            moveOn(subject)
+            await take(control, shown)
+            await take(subject, shown)
+            subject.seed = control.seed
+          }
+          same = moveOn(control) === moveOn(subject)
+        }
+        catch {
+          same = false
+        }
+        if (outcome === 'swapped') {
+          // What modelled arms are made and drawn with is made once and kept: once more, whole and drawn, on both.
+          for (const w of [subject, control]) {
+            await take(w, next)
+            moveOn(w)
+            await take(w, shown)
+          }
+        }
+        const leaked = outcome === 'swapped' ? Math.max(0, subject.live.size - control.live.size) : [...subject.live].filter(object => !before.has(object)).length
+        const lost = outcome === 'swapped' ? Math.max(0, control.live.size - subject.live.size) : [...before].filter(object => !subject.live.has(object)).length
+        runs.push({ kind, site: at, fired, outcome, leaked, lost, same, error: subject.gl.getError() })
+        if (outcome === 'refused' && same && !leaked && !lost) continue
+        // Broken, or swapped, from here on: a new pair, so every place is judged on its own.
+        control.close()
+        subject.close();
+        [control, subject] = await pairOf(shown)
+      }
+      await take(subject, next)
+      const recovered = moveOn(subject).length > 0 && readPixels(subject.gl).some((value, index) => index % 4 === 3 && value > 0)
+        && subject.gl.getError() === subject.gl.NO_ERROR
+      return { runs, recovered }
+    }
+    finally {
+      control.close()
+      subject.close()
+    }
+  })
+}
+
+export const probes = { features, bodyStageProjection, posture, torsoTurn, turns, corners, correction, collar, shoulder, earrings, hair, musicExit, thoughtToSpeech, sharedCut, swapFaults }
 Object.assign(window, { figureProbes: probes })
