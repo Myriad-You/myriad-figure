@@ -35,6 +35,7 @@ function poseOf(at: number, gesture = 'wave'): Anime25DPose {
 
 test('a pose is itself again from JSON, to the bit', () => {
   const pose = poseOf(0.7)
+  pose.frame.bodyPivotY = -0
   assert.deepEqual(poseFromJSON(poseToJSON(pose)), pose)
 })
 
@@ -46,10 +47,11 @@ test('vertices that are a view of a longer buffer are written as their own', () 
 
 test('between two poses, numbers are between and what cannot be is the nearer one\'s', () => {
   const [a, b] = [poseOf(0), poseOf(1)]
+  a.layers[0]!.opacity = 0.5
   const near = blendPoses(a, b, 0.25)
   assert.equal(near.time, 0.25)
   assert.equal(near.layers[0]!.transform[6], 0.25)
-  assert.equal(near.layers[0]!.opacity, 0.25)
+  assert.equal(near.layers[0]!.opacity, 0.625)
   assert.equal(near.layers[0]!.vertices![0], Math.fround(Math.fround(0.1) + (Math.fround(1.1) - Math.fround(0.1)) * 0.25))
   assert.deepEqual(near.order, a.order)
   assert.equal(near.sticker, null)
@@ -71,6 +73,13 @@ test('an arm between two gestures is in one picture or the other, and never betw
   const other = { ...b, figure: '2-def' }
   assert.equal(blendPoses(a, other, 0.25), a)
   assert.equal(blendPoses(a, other, 0.75), other)
+})
+
+test('a layer hidden in one of the two is the nearer one\'s, not halfway from where it was last seen', () => {
+  const [a, b] = [poseOf(0), poseOf(1)]
+  assert.equal(a.layers[0]!.opacity, 0)
+  assert.deepEqual(blendPoses(a, b, 0.4).layers[0], a.layers[0])
+  assert.deepEqual(blendPoses(a, b, 0.6).layers[0], b.layers[0])
 })
 
 test('at either end it is the pose itself, and neither is changed', () => {

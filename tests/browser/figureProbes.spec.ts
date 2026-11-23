@@ -304,7 +304,7 @@ for (const { name, root, refs } of swaps) {
 const posed: { name: string, root?: string, ref?: PackageRef }[] = [
   { name: 'synthetic', ref: synthetic('ordinary') },
   { name: 'synthetic collar', ref: synthetic('collar') },
-  { name: 'synthetic with a modelled arm', ref: synthetic('ordinary', true) },
+  { name: 'synthetic with a modelled arm and a mouth painted as she speaks', ref: synthetic('closed-mouth', true) },
   ...real.map(root => ({ name: `real ${basename(root).slice(0, 8)}`, root })),
 ]
 
@@ -322,15 +322,22 @@ for (const { name, root, ref } of posed) {
     expect(result.resized).toBe(true)
     expect(result.gone, 'no frame of the outfit put on again yet').toBe(true)
     expect(result.again).toBe(true)
+    expect(result.went).toBe(true)
     expect(result.damaged).toBeGreaterThan(0)
     expect(result.taking, 'damaged in what is drawn, yet drawn').toEqual([])
+    expect(result.spoilt, 'refused, it changes nothing').toBe(0)
     expect(result.drifted, 'drawing poses leaves her as she was').toBe(0)
     expect(result.settled, 'a pose shown while she is still leaves nothing of it').toBe(true)
     expect(result.refused).toBe(0)
     expect(result.shown).toBeGreaterThan(0)
     expect(result.returned, 'and her own frame again on top').toBe(result.shown)
     expect(result.between, 'a pose between two is another picture').toBeGreaterThan(0)
-    if (result.gestures.includes('wave') && name.includes('modelled arm')) expect(result.armed).toBeGreaterThan(0)
+    // What the package has is in the poses.
+    expect(result.stickers).toBeGreaterThan(0)
+    if (result.parts.mouth) expect(result.mouths).toBeGreaterThan(1)
+    if (result.parts.arm) expect(result.armed).toBeGreaterThan(0)
+    if (result.parts.cloth) expect(result.cloths).toBeGreaterThan(0)
+    if (name.includes('modelled arm')) expect(result.parts).toEqual({ mouth: true, cloth: false, arm: true })
     expect(result.wrong).toEqual({ other: false, short: false, nothing: false, bad: false })
   })
 }

@@ -1304,9 +1304,10 @@ async function poses(ref: PackageRef, frames = 24) {
         hold(w.player, pose, 1)
         w.seed = seed
       }
-      let drawn = 0; let replayed = 0; let drifted = 0; let shown = 0; let returned = 0; let lagging = 0; let bytes = 0; let refused = 0; let between = 0; let armed = 0; let cloths = 0; let stickers = 0; const mouths = new Set<string>(); let sized = 0; let damaged = 0; const taking: string[] = []
+      let drawn = 0; let replayed = 0; let drifted = 0; let shown = 0; let returned = 0; let lagging = 0; let bytes = 0; let refused = 0; let between = 0; let armed = 0; let cloths = 0; let stickers = 0; const mouths = new Set<string>(); let sized = 0; let damaged = 0; let spoilt = 0; const taking: string[] = []
       let first: Anime25DPose | null = null
       let previous: Anime25DPose | null = null
+      let raised: Anime25DPose | null = null
       for (const pose of POSED) {
         for (let i = 0; i < frames; i++) {
           step(subject, pose)
@@ -1333,6 +1334,7 @@ async function poses(ref: PackageRef, frames = 24) {
               damaged++
               if (replay.player.renderPose(bad) && !/^(?:time|driver)(?:\.|$)/.test(place)) taking.push(place)
             }
+            if (hash(readPixels(replay.gl)) !== live) spoilt++
           }
           // Her own player draws an earlier pose now and then, and one between two.
           if (first && previous && i % 3 === 0) {
@@ -1344,9 +1346,10 @@ async function poses(ref: PackageRef, frames = 24) {
             if (!subject.player.renderPose(taken)) refused++
             if (hash(readPixels(subject.gl)) === live) returned++
             // Left showing another pose at times: her next frame is hers all the same.
-            if (i % 2) subject.player.renderPose(first)
+            if (i % 2) subject.player.renderPose(i % 4 === 1 ? first : blendPoses(previous, taken, 0.9))
           }
           first ??= taken
+          if (drawn === frames * 2) raised = taken
           previous = taken
         }
       }
@@ -1360,16 +1363,21 @@ async function poses(ref: PackageRef, frames = 24) {
       const settled = stirred && hash(readPixels(subject.gl)) === hash(readPixels(twin.gl)) && gpuDiffers(subject, twin.player.getPose()!) === 0
       const wrong = { other: stranger.player.renderPose(first!), short: replay.player.renderPose({ ...first!, layers: first!.layers.slice(1) }),
         nothing: replay.player.renderPose({} as Anime25DPose), bad: replay.player.renderPose({ ...first!, layers: first!.layers.map(layer => ({ ...layer, transform: layer.transform.map(() => Number.NaN) })) }) }
-      // Shown while the canvas is resized, it is drawn again as large; while the outfit is put on again, it is gone.
-      replay.player.renderPose(first!)
+      // Shown while the canvas is resized, it is drawn again as large; while the outfit is put on again, it is gone,
+      // and shown again on a figure that has not moved yet.
+      replay.player.renderPose(raised!)
       replay.player.resize(288, 384, 2)
-      enlarged.player.renderPose(first!)
-      const resized = hash(readPixels(replay.gl)) === hash(readPixels(enlarged.gl))
+      enlarged.player.renderPose(raised!)
+      const as = hash(readPixels(enlarged.gl))
+      const resized = hash(readPixels(replay.gl)) === as
       await replay.player.replaceLivePackage(pkg.playback, pkg.manifest, pkg.atlasUrl)
       const gone = replay.player.getPose() === null
+      const again = replay.player.renderPose(raised!) && hash(readPixels(replay.gl)) === as
       hold(replay.player, {}, 1)
-      const again = replay.player.getPose() !== null && replay.player.renderPose(first!) && hash(readPixels(replay.gl)) === hash(readPixels(enlarged.gl))
-      return { drawn, sized, damaged, taking, resized, gone, again, settled, replayed, drifted, shown, returned, lagging, bytes, refused, between, armed, cloths, stickers, mouths: mouths.size, gestures, wrong, error: subject.gl.getError() || replay.gl.getError() }
+      const went = replay.player.getPose() !== null && hash(readPixels(replay.gl)) !== as
+      const figure = first!
+      const parts = { mouth: figure.mouth !== null, cloth: figure.arms.some(arm => arm.cloths.length > 0), arm: figure.arms.length > 0 }
+      return { drawn, sized, damaged, taking, spoilt, resized, gone, again, went, parts, settled, replayed, drifted, shown, returned, lagging, bytes, refused, between, armed, cloths, stickers, mouths: mouths.size, gestures, wrong, error: subject.gl.getError() || replay.gl.getError() }
     }
     finally {
       for (const w of [subject, twin, replay, stranger, large, enlarged]) w.close()
@@ -1377,23 +1385,42 @@ async function poses(ref: PackageRef, frames = 24) {
   })
 }
 
-/** The pose with one of its places spoilt: each place of it, the first few of a list. */
+/** What a pose may leave out or have none of, and how many of a list it may. */
+const OPTIONAL = /^frame\.bodyLift(?:\.(?:pitch|depth|shoulderY))?$/
+const NULLABLE = /^(?:sticker|layers\.\d+\.multiply|arms\.\d+\.(?:now|leaving|cloths\.\d+)|arms\.\d+\.(?:now|leaving)\.(?:twist|ink|held|rest|also|held\.toDrawn))$/
+const ANY_LENGTH = /\.foot$/
+
+/** The pose with one of its places spoilt, each place of it (the first few of a list, the first and last of numbers). */
 function* damages(pose: Anime25DPose): Generator<[string, Anime25DPose]> {
   const places = function* (value: unknown, path: (string | number)[]): Generator<(string | number)[]> {
     if (path.length) yield path
     if (typeof value !== 'object' || value === null) return
-    for (const key of ArrayBuffer.isView(value) ? ['0'] : Array.isArray(value) ? Object.keys(value).slice(0, 3) : Object.keys(value)) yield* places((value as Record<string, unknown>)[key], [...path, key])
+    const keys = ArrayBuffer.isView(value) ? [0, (value as Float32Array).length - 1].filter(at => at >= 0) : Array.isArray(value) ? Object.keys(value).slice(0, 3) : Object.keys(value)
+    for (const key of keys) yield* places((value as Record<string | number, unknown>)[key], [...path, key])
   }
+  const text = poseToJSON(pose)
   for (const path of places(pose, [])) {
-    for (const bad of [Number.NaN, 'x', {}]) {
-      const copy = poseFromJSON(poseToJSON(pose))
-      let at = copy as unknown as Record<string | number, unknown>
-      for (const key of path.slice(0, -1)) at = at[key] as typeof at
-      const last = path.at(-1)!
-      // A typed list holds numbers whatever is put there.
-      if (at instanceof Uint16Array) at[last as never] = 65535 as never
+    const name = path.join('.')
+    const last = path.at(-1)!
+    const within = (copy: Anime25DPose) => path.slice(0, -1).reduce<Record<string | number, unknown>>((at, key) => at[key] as typeof at, copy as unknown as Record<string | number, unknown>)
+    const place = within(pose)[last]
+    const spoil = function* (): Generator<unknown> {
+      yield Number.NaN
+      yield 'x'
+      yield {}
+      if (place !== null && !NULLABLE.test(name)) yield null
+      if (!OPTIONAL.test(name)) yield undefined
+      if ((Array.isArray(place) || ArrayBuffer.isView(place)) && (place as Float32Array).length && !ANY_LENGTH.test(name)) yield (place as Float32Array).slice(0, -1)
+    }
+    for (const bad of spoil()) {
+      const copy = poseFromJSON(text)
+      const at = within(copy)
+      // A typed list holds numbers whatever is put there; a list may hold nothing at all.
+      if (at instanceof Uint16Array) at[last as number] = 65535
+      else if (at instanceof Float32Array) at[last as number] = Number.NaN
+      else if (bad === undefined) delete at[last]
       else at[last] = bad
-      yield [path.join('.'), copy]
+      yield [name, copy]
     }
   }
 }

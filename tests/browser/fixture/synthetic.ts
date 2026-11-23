@@ -21,6 +21,9 @@ export function fixture(kind: string): Psd {
       imageData: { ...closed.imageData!, data },
     })
   }
+  // Only the closed mouth drawn: the speaking ones are made, and painted as she speaks.
+  if (kind === 'closed-mouth')
+    psd.children = psd.children!.filter((l) => l.name !== 'mouth')
   if (kind === 'missing-face')
     psd.children = psd.children!.filter((l) => l.name !== 'face')
   if (kind === 'collar' || kind === 'necklace') {

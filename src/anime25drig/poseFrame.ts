@@ -5,10 +5,11 @@ import type { Anime25DArmVariants, DrawnArm, DrawnArms } from './armVariantPrese
 import type { BodyLift } from './bodyLift'
 import type { CollarClipMesh } from './collarRuntime'
 import type { ContinuousMouthShape } from './continuousMouth'
+import type { ContinuousMouthTexture } from './continuousMouthTexture'
 import type { DrawnFrame } from './drawnFrame'
 import type { Anime25DDriver } from './driver'
 import type { Anime25DGpuLayer } from './layerGpuBinding'
-import type { Anime25DArmPose, Anime25DDrawnArmPose, Anime25DLayerPose, Anime25DPose } from './pose'
+import type { Anime25DArmPose, Anime25DClothPose, Anime25DDrawnArmPose, Anime25DLayerPose, Anime25DPose } from './pose'
 import type { Anime25DRenderableLayer, Anime25DRenderFrame } from './renderer'
 import type { ThinkingStickerFrame } from './thinkingSticker'
 
@@ -20,14 +21,17 @@ export interface PoseFigure {
   layers: readonly Anime25DGpuLayer[]
   collarClip: CollarClipMesh | null
   armVariants: Anime25DArmVariants
+  mouth: ContinuousMouthTexture | null
 }
 
-/** What tells one package's poses from another's: its layers, their meshes and its modelled arms. */
-export function figureKey({ layers, collarClip, armVariants }: PoseFigure): string {
-  const parts = layers.map(({ source, rest, indexCount }) =>
-    `${source.name}:${Math.round(source.x)},${Math.round(source.y)},${Math.round(source.w)},${Math.round(source.h)}:${rest.length}:${indexCount}`)
-  for (const { side, arm } of armVariants.modelledArms()) parts.push(`${side}:${arm.gestures.map(g => g.gesture).join()}:${arm.cloths.map(cloth => cloth.nodes).join()}`)
-  parts.push(`collar:${collarClip?.deformed.length ?? 0}`)
+/**
+ * What tells one package's poses from another's: its layers as it says them (their modelled arms too), and how many
+ * vertices came of them. Not where those lie: that is worked out on each device, and may differ in its last place.
+ */
+export function figureKey({ layers, collarClip, armVariants, mouth }: PoseFigure): string {
+  const parts = layers.map(({ source, rest, indexCount }) => `${JSON.stringify(source)}:${rest.length}:${indexCount}`)
+  for (const { side, arm } of armVariants.modelledArms()) parts.push(`${side}:${arm.gestures.map(g => g.gesture).join()}`)
+  parts.push(`collar:${collarClip?.deformed.length ?? 0}`, `mouth:${mouth !== null}`)
   let hash = 0x811C9DC5
   for (const char of parts.join('|')) hash = Math.imul(hash ^ char.codePointAt(0)!, 0x01000193) >>> 0
   return `${layers.length}-${hash.toString(16)}`
@@ -103,7 +107,9 @@ function captureArm(arm: Arm3DSide, { bound, frame, twist }: DrawnArm): Anime25D
 
 const finite = (value: unknown): value is number => Number.isFinite(value)
 const floats = (value: unknown, length: number) => value instanceof Float32Array && value.length === length && value.every(finite)
-const list = (value: unknown, length: number) => Array.isArray(value) && value.length === length && value.every(finite)
+/** A list of that many (a hole in it is something that is not one of them). */
+const each = (value: unknown, length: number, is: (it: unknown, i: number) => boolean) => Array.isArray(value) && value.length === length && Array.from<unknown>(value).every(is)
+const list = (value: unknown, length: number) => each(value, length, finite)
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 /** Every one of `like`'s numbers is a number of the value's. */
 const has = (value: unknown, like: object): boolean => record(value) && Object.keys(like).every(key => finite(value[key]))
@@ -111,19 +117,20 @@ const has = (value: unknown, like: object): boolean => record(value) && Object.k
 /** Whether a pose is of this figure, whole: every layer, vertex and arm it is drawn with. Anything may be asked. */
 export function poseFits(figure: PoseFigure, key: string, pose: Readonly<Anime25DPose>): boolean {
   const { layers, collarClip } = figure
-  if (!record(pose) || pose.version !== 1 || pose.figure !== key || !Array.isArray(pose.layers) || pose.layers.length !== layers.length) return false
+  if (!record(pose) || pose.version !== 1 || pose.figure !== key) return false
   if (!(pose.order instanceof Uint16Array) || pose.order.length !== layers.length || new Set(pose.order).size !== layers.length || pose.order.some(at => at >= layers.length)) return false
   if (!has(pose.frame, FRAME) || (pose.frame.bodyLift !== undefined && !liftFits(pose.frame.bodyLift))) return false
-  if (!pose.layers.every((own, i) => layerFits(layers[i]!, own))) return false
+  if (!each(pose.layers, layers.length, (own, i) => layerFits(layers[i]!, own))) return false
   if (collarClip ? !floats(pose.collar, collarClip.deformed.length) : pose.collar !== null) return false
-  if (pose.mouth !== null && !has(pose.mouth, MOUTH)) return false
+  if (figure.mouth ? !has(pose.mouth, MOUTH) : pose.mouth !== null) return false
   if (pose.sticker !== null && !has(pose.sticker, STICKER)) return false
   const arms = figure.armVariants.modelledArms()
-  return Array.isArray(pose.arms) && pose.arms.length === arms.length && pose.arms.every((own, i) => armFits(arms[i]!.side, arms[i]!.arm, own))
+  return each(pose.arms, arms.length, (own, i) => armFits(arms[i]!.side, arms[i]!.arm, own))
 }
 
-function layerFits(layer: Anime25DGpuLayer, own: Readonly<Anime25DLayerPose>): boolean {
-  return record(own) && floats(own.transform, 9) && finite(own.opacity) && finite(own.behindFace)
+function layerFits(layer: Anime25DGpuLayer, value: unknown): boolean {
+  const own = value as Readonly<Anime25DLayerPose>
+  return record(value) && floats(own.transform, 9) && finite(own.opacity) && finite(own.behindFace)
     && (own.multiply === null || floats(own.multiply, 3))
     && (moves(layer) ? floats(own.vertices, layer.rest.length) : own.vertices === null)
 }
@@ -135,10 +142,10 @@ const FRAME: Omit<Anime25DRenderFrame, 'bodyLift'> = { viewWidth: 0, viewHeight:
 const MOUTH: ContinuousMouthShape = { wide: 0, round: 0, narrow: 0 }
 const STICKER: ThinkingStickerFrame = { time: 0, amount: 0, x: 0, y: 0, size: 0 }
 
-function armFits(side: string, arm: Arm3DSide, own: Readonly<Anime25DArmPose>): boolean {
-  return record(own) && own.side === side && [own.now, own.leaving].every(it => it === null || drawnFits(arm, it))
-    && Array.isArray(own.cloths) && own.cloths.length === arm.cloths.length
-    && own.cloths.every((cloth, i) => cloth === null || (record(cloth) && arm.cloths[i]!.fits(cloth)))
+function armFits(side: string, arm: Arm3DSide, value: unknown): boolean {
+  const own = value as Readonly<Anime25DArmPose>
+  return record(value) && own.side === side && [own.now, own.leaving].every(it => it === null || drawnFits(arm, it))
+    && each(own.cloths, arm.cloths.length, (cloth, i) => cloth === null || (record(cloth) && arm.cloths[i]!.fits(cloth as unknown as Anime25DClothPose)))
 }
 
 function drawnFits(arm: Arm3DSide, it: Readonly<Anime25DDrawnArmPose>): boolean {
@@ -147,17 +154,18 @@ function drawnFits(arm: Arm3DSide, it: Readonly<Anime25DDrawnArmPose>): boolean 
   const { joints, held, rest, also } = it
   return (it.twist === null || finite(it.twist)) && (it.ink === null || finite(it.ink))
     && [it.cuff, it.restEnd, it.presence, it.handRest, it.hanging, it.restNear, it.unlined].every(finite)
-    && list(it.radius, gesture.bound.shape.radius.length)
+    // (A bust's arm between gestures wears the sleeve of another of them.)
+    && arm.gestures.some(g => list(it.radius, g.own.radius.length))
     && record(joints) && [joints.s, joints.e, joints.w].every(at => list(at, 3))
-    && Array.isArray(joints.hand) && joints.hand.length === gesture.bound.shape.hand.length && joints.hand.every(at => list(at, 3))
-    && Array.isArray(it.foot) && it.foot.length <= 16 && it.foot.every(at => list(at, 2))
-    && Array.isArray(it.sides) && it.sides.length === 2 && it.sides.every(at => typeof at === 'number' && !Number.isNaN(at))
+    && each(joints.hand, gesture.bound.shape.hand.length, at => list(at, 3))
+    && Array.isArray(it.foot) && it.foot.length <= 16 && each(it.foot, it.foot.length, at => list(at, 2))
+    && each(it.sides, 2, at => typeof at === 'number' && !Number.isNaN(at))
     && (held === null || (record(held) && floats(held.pos, gesture.layer.rest.length) && finite(held.near) && finite(held.exact) && (held.toDrawn === null || list(held.toDrawn, 6))))
     && (rest === null || (record(rest) && list(rest.corners, 8) && finite(rest.alpha)))
-    && (also === null || (Array.isArray(also) && also.length === 2 && also.every(other => record(other) && finite(other.weight) && arm.gestures.some(g => g.gesture === other.gesture))))
+    && (also === null || each(also, 2, other => record(other) && finite(other.weight) && arm.gestures.some(g => g.gesture === other.gesture)))
 }
 
-/** The frame that draws a pose that fits. */
+/** The frame that draws a pose that fits: it holds nothing of the pose's own. */
 export function poseFrame(figure: PoseFigure, pose: Readonly<Anime25DPose>): DrawnFrame {
   const { layers } = figure
   const arms = figure.armVariants.modelledArms()
@@ -168,9 +176,9 @@ export function poseFrame(figure: PoseFigure, pose: Readonly<Anime25DPose>): Dra
     const own = pose.layers[i]!
     return [layer, {
       ...layer,
-      layerTransform: own.transform,
+      layerTransform: own.transform.slice(),
       frameOpacity: own.opacity,
-      frameMultiply: own.multiply ?? undefined,
+      frameMultiply: own.multiply?.slice(),
       behindFace: own.behindFace,
       ...(worn.has(layer) ? { ownTexture: without.get(layer) ?? null } : {}),
     }]
@@ -183,7 +191,7 @@ export function poseFrame(figure: PoseFigure, pose: Readonly<Anime25DPose>): Dra
   return {
     layers: Array.from(pose.order, at => shadow(layers[at]!)),
     collarClip: figure.collarClip,
-    renderFrame: { ...pose.frame },
+    renderFrame: { ...pose.frame, ...(pose.frame.bodyLift ? { bodyLift: { ...pose.frame.bodyLift } } : {}) },
     arms: arms.map(({ side, arm, canvas }, i) => {
       const own = pose.arms[i]!
       return {
@@ -193,11 +201,11 @@ export function poseFrame(figure: PoseFigure, pose: Readonly<Anime25DPose>): Dra
         front: arm.front.map(shadow),
         cloths: arm.cloths.flatMap((cloth, at) => {
           const fold = own.cloths[at]
-          return fold ? [{ cloth, fold, host: shadow(cloth.host), over: cloth.over.map(shadow) }] : []
+          return fold ? [{ cloth, fold: { nodes: fold.nodes.slice(), under: fold.under.slice(), front: fold.front.slice() }, host: shadow(cloth.host), over: cloth.over.map(shadow) }] : []
         }),
       }
     }),
-    sticker: pose.sticker,
+    sticker: pose.sticker && { ...pose.sticker },
   }
 }
 
@@ -208,7 +216,7 @@ function drawnArm(arm: Arm3DSide, canvas: { width: number, height: number }, own
   const twist = own.twist ?? undefined
   const bound: Arm3DBound = {
     ...base,
-    shape: { ...base.shape, cuff: own.cuff, radius: own.radius, restEnd: own.restEnd },
+    shape: { ...base.shape, cuff: own.cuff, radius: [...own.radius], restEnd: own.restEnd },
     ink: own.ink ?? undefined,
     elbowTwist: twist,
   }
@@ -226,8 +234,8 @@ function drawnArm(arm: Arm3DSide, canvas: { width: number, height: number }, own
       view: canvas,
       foot: own.foot.map(at => [at[0], at[1]] as [number, number]),
       sides: [own.sides[0]!, own.sides[1]!],
-      held: own.held ? { ...arm.heldPicture(layer), pos: own.held.pos, near: own.held.near, exact: own.held.exact, toDrawn: own.held.toDrawn as [number, number, number, number, number, number] | null } : undefined,
-      rest: own.rest,
+      held: own.held ? { ...arm.heldPicture(layer), pos: own.held.pos.slice(), near: own.held.near, exact: own.held.exact, toDrawn: own.held.toDrawn && [...own.held.toDrawn] as [number, number, number, number, number, number] } : undefined,
+      rest: own.rest && { corners: [...own.rest.corners], alpha: own.rest.alpha },
       ...(own.also ? { also: own.also.map(other => ({ bound: of(other.gesture).bound, weight: other.weight })) } : {}),
     },
   }

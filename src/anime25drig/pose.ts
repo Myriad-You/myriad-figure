@@ -3,6 +3,7 @@ import type { ContinuousMouthShape } from './continuousMouth'
 import type { Anime25DDriver } from './driver'
 import type { Anime25DRenderFrame } from './renderer'
 import type { ThinkingStickerFrame } from './thinkingSticker'
+import { HIDDEN_OPACITY } from './mouthRuntime'
 
 // One drawn frame of the figure as plain data: everything its drawing reads that changes from frame to frame, taken
 // after the figure has moved and before it is drawn. Drawn again (Anime25DPlayer.renderPose), by this player or
@@ -73,17 +74,18 @@ export interface Anime25DPose {
   arms: Anime25DArmPose[]
 }
 
-/** The pose as JSON: exact, its vertices as base64. */
+/** The pose as JSON: exact to the bit, its vertices as base64. */
 export function poseToJSON(pose: Readonly<Anime25DPose>): string {
   return JSON.stringify(pose, (_key, value: unknown) => {
     if (value instanceof Float32Array) return { f32: toBase64(value) }
     if (value instanceof Uint16Array) return { u16: toBase64(value) }
-    if (typeof value === 'number' && !Number.isFinite(value)) return { number: String(value) }
+    // (What JSON has no word for.)
+    if (typeof value === 'number' && (!Number.isFinite(value) || Object.is(value, -0))) return { number: Object.is(value, -0) ? '-0' : String(value) }
     return value
   })
 }
 
-/** What poseToJSON wrote, back. Throws on what is not JSON; whether it is a pose of her, renderPose says. */
+/** What poseToJSON wrote, back. Throws on what it never writes (no JSON, no base64); whether it is a pose of her, renderPose says. */
 export function poseFromJSON(text: string): Anime25DPose {
   return JSON.parse(text, (_key, value: unknown) => {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return value
@@ -100,14 +102,16 @@ export function poseFromJSON(text: string): Anime25DPose {
 
 /**
  * Between two poses of one package, `share` of the way from `a` to `b`: for frames between two neighbouring ones
- * (slow motion, another frame rate). What cannot be between (the order, whether an arm is there) is the nearer one's;
- * so are two poses of different packages.
+ * (slow motion, another frame rate). What cannot be between (the order, whether an arm is there, a layer hidden in one
+ * of them) is the nearer one's; so are two poses of different packages. It may hold parts of either.
  */
 export function blendPoses(a: Anime25DPose, b: Anime25DPose, share: number): Anime25DPose {
   if (share <= 0 || a.figure !== b.figure) return share < 0.5 || share <= 0 ? a : b
   if (share >= 1) return b
   return blend(a, b, share) as Anime25DPose
 }
+
+const hidden = (opacity: unknown) => (opacity as number) < HIDDEN_OPACITY
 
 function blend(a: unknown, b: unknown, share: number): unknown {
   const nearer = share < 0.5 ? a : b
@@ -124,6 +128,8 @@ function blend(a: unknown, b: unknown, share: number): unknown {
   }
   const from = a as Record<string, unknown>
   const to = b as Record<string, unknown>
+  // A hidden layer is wherever it was when last seen.
+  if ('opacity' in from && 'vertices' in from && hidden(from.opacity) !== hidden(to.opacity)) return nearer
   // An arm on its way between two gestures is in one picture or the other.
   if ('gesture' in from && from.gesture !== to.gesture) return nearer
   return Object.fromEntries(Object.keys(nearer as object).map(key =>

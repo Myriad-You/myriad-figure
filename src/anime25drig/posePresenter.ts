@@ -1,5 +1,4 @@
 import type { ContinuousMouthShape } from './continuousMouth'
-import type { ContinuousMouthTexture } from './continuousMouthTexture'
 import type { DrawingParts, DrawnFrame } from './drawnFrame'
 import type { Anime25DDriver } from './driver'
 import type { Anime25DPose } from './pose'
@@ -11,7 +10,6 @@ import { capturePose, figureKey, moves, poseFits, poseFrame } from './poseFrame'
 /** The live figure a pose is taken of and shown in place of. */
 export interface PresentedFigure extends PoseFigure {
   atlas: WebGLTexture | null
-  mouth: ContinuousMouthTexture | null
 }
 
 /**
@@ -43,14 +41,14 @@ export class PosePresenter {
   show(figure: PresentedFigure, pose: Readonly<Anime25DPose>): boolean {
     if (!figure.atlas || !poseFits(figure, this.keyOf(figure), pose)) return false
     const { gl } = this.parts
-    const mouth = this.shown ? this.shown.mouth : figure.mouth ? { ...figure.mouth.shape } : null
+    // Shown from here on: whatever is written below, the next tick puts back.
+    this.shown = { pose: poseFrame(figure, pose), mouth: this.shown ? this.shown.mouth : figure.mouth ? { ...figure.mouth.shape } : null }
     figure.layers.forEach((layer, i) => {
       const { vertices } = pose.layers[i]!
       if (vertices) upload(gl, layer.vertexBuffer, vertices)
     })
     if (figure.collarClip && pose.collar) upload(gl, figure.collarClip.vertexBuffer, pose.collar)
     if (figure.mouth && pose.mouth) figure.mouth.show(pose.mouth)
-    this.shown = { pose: poseFrame(figure, pose), mouth }
     this.redraw(figure)
     return true
   }

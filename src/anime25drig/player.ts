@@ -518,8 +518,8 @@ export class Anime25DPlayer {
   }
 
   /**
-   * The frame drawn last, as data (pose.ts): drawn again it is the same picture to the pixel. Null before a first
-   * tick, and for another outfit until its own.
+   * Her own frame drawn last, as data (pose.ts), also while another is shown: drawn again it is the same picture to
+   * the pixel. Null until one is drawn, and for another outfit until its own.
    */
   getPose(): Anime25DPose | null {
     return this.disposed || !this.drawn ? null : this.poses.take(this.presented(), this.drawn, this.time, this.current)
@@ -527,7 +527,8 @@ export class Anime25DPlayer {
 
   /**
    * Draws a pose in place of the figure, which does not move by it: the next tick goes on from where it was. False,
-   * and nothing drawn, for a pose that is not of this outfit. Meanwhile nothing is touched (hitTestTouch) or corrected.
+   * and nothing drawn, for a pose that is not of this outfit. Meanwhile nothing is touched (hitTestTouch) or
+   * corrected; inspect() is of her own frame.
    */
   renderPose(pose: Readonly<Anime25DPose>): boolean {
     return !this.disposed && this.layers.length > 0 && this.poses.show(this.presented(), pose)
