@@ -1,5 +1,6 @@
 import type { HeadTurn } from './headTurn'
 import type { Anime25DPlaybackLayer } from './types'
+import { everyItem } from '../rig/lists'
 
 /**
  * A head turn drawn, not computed: as a Live2D rigger keys a warp deformer at
@@ -644,10 +645,10 @@ export function isAnime25DTurnKeyforms(value: unknown): value is Anime25DTurnKey
 function isLattice(value: unknown): value is Anime25DTurnLattice {
   if (!value || typeof value !== 'object') return false
   const { box, grid, back, multiply } = value as Record<string, unknown>
-  if (!Array.isArray(box) || box.length !== 4 || !box.every(isKeyCoordinate) || !(box[2] > box[0] && box[3] > box[1])) return false
+  if (!Array.isArray(box) || box.length !== 4 || !everyItem(box, isKeyCoordinate) || !(box[2] > box[0] && box[3] > box[1])) return false
   if (typeof grid !== 'number' || !Number.isInteger(grid) || grid < 2 || grid > 64) return false
-  if (multiply !== undefined && !(Array.isArray(multiply) && multiply.length === 3 && multiply.every((c: unknown) => typeof c === 'number' && c >= 0 && c <= 16))) return false
-  return Array.isArray(back) && back.length === grid * grid * 2 && back.every(isKeyCoordinate)
+  if (multiply !== undefined && !(Array.isArray(multiply) && multiply.length === 3 && everyItem(multiply, (c) => typeof c === 'number' && c >= 0 && c <= 16))) return false
+  return Array.isArray(back) && back.length === grid * grid * 2 && everyItem(back, isKeyCoordinate)
 }
 
 function isKeyCoordinate(value: unknown): value is number {

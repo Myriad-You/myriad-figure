@@ -1,18 +1,23 @@
 import type { MeropeRigManifest } from '../rig/types'
+import { mulberry32 } from '../rig/rigFuzz.fixture'
 import { Anime25DPlayer } from './player'
 import { resetCachedAtlasImagesForTests } from './webglRuntime'
 
-/** What a run of the player in Node showed: the first number it gave the GPU that is not one. */
+/** What a run of the player in Node showed. */
 export interface PlayerRun {
+  /** The first number it gave the GPU that is not one. */
   nonFinite: string | null
+  /** Of every number it gave the GPU, in order: the same for two runs that drew the same. */
+  drawn: number
 }
 
 /**
- * Builds the real player on a manifest, loads its package, plays it through its ranges and swaps it in again, with
- * the GPU and the DOM stood in for. Everything the manifest reaches on the CPU runs as it does on a page.
+ * Builds the real player on a manifest, loads its package, plays it through its ranges and (`swap`) swaps it in again,
+ * with the GPU, the DOM and chance stood in for: the same manifest draws the same, every time. Everything the manifest
+ * reaches on the CPU runs as it does on a page.
  */
-export async function playManifest(manifest: MeropeRigManifest, frames = 6): Promise<PlayerRun> {
-  const run: PlayerRun = { nonFinite: null }
+export async function playManifest(manifest: MeropeRigManifest, frames = 4, swap = true): Promise<PlayerRun> {
+  const run: PlayerRun = { nonFinite: null, drawn: 0x811C9DC5 }
   const restore = installFakeDom()
   try {
     const player = new Anime25DPlayer(fakeCanvas(run) as unknown as HTMLCanvasElement, manifest.anime25dPlayback!, manifest)
@@ -20,8 +25,10 @@ export async function playManifest(manifest: MeropeRigManifest, frames = 6): Pro
       await player.loadAtlas(manifest.textures[0].url)
       player.resize(300, 400, 1)
       play(player, frames)
-      await player.replaceLivePackage(manifest.anime25dPlayback!, manifest, manifest.textures[0].url)
-      play(player, frames)
+      if (swap) {
+        await player.replaceLivePackage(manifest.anime25dPlayback!, manifest, manifest.textures[0].url)
+        play(player, frames)
+      }
       player.inspect()
       player.debugSnapshot()
       player.hitTestTouch(150, 120)
@@ -57,13 +64,14 @@ function fakeCanvas(run: PlayerRun) {
 function fakeGl(run: PlayerRun, canvas: unknown): unknown {
   const constants = new Map<string, number>()
   const methods = new Map<string, (...args: unknown[]) => unknown>()
+  const bits = new DataView(new ArrayBuffer(4))
   const note = (name: string, values: Iterable<unknown>) => {
-    if (run.nonFinite) return
     let index = 0
     for (const value of values) {
-      if (typeof value === 'number' && !Number.isFinite(value)) {
-        run.nonFinite = `${name}[${index}] = ${value}`
-        return
+      if (typeof value === 'number') {
+        if (!Number.isFinite(value)) run.nonFinite ??= `${name}[${index}] = ${value}`
+        bits.setFloat32(0, value)
+        run.drawn = Math.imul(run.drawn ^ bits.getUint32(0), 0x01000193) >>> 0
       }
       index += 1
     }
@@ -137,11 +145,14 @@ function installFakeDom(): () => void {
       queueMicrotask(() => this.onload?.())
     }
   }
+  const { random } = Math
+  Math.random = mulberry32(1)
   set('HTMLCanvasElement', Canvas)
   set('Image', FakeImage)
   set('document', { createElement: () => new Canvas() })
   resetCachedAtlasImagesForTests()
   return () => {
+    Math.random = random
     resetCachedAtlasImagesForTests()
     for (const [name, value] of previous) {
       if (value === undefined) delete (globalThis as Record<string, unknown>)[name]

@@ -1,4 +1,5 @@
 import type { Anime25DPlaybackAnchors, Anime25DPlaybackLayer, Anime25DShellProfile } from './types'
+import { MAX_CONTACT_LINES } from './collarContact'
 
 const NECK_MESH_CELL = 28
 const FRONT_COLLAR_MESH_CELL = 22
@@ -72,10 +73,14 @@ export interface Anime25DLayerGrid {
   extensions: Anime25DLayerBindingExtension[]
 }
 
-/** The most vertices a layer's mesh can come to: what validation holds a package to before anything is built. */
-export function layerMeshVertexBound(input: Readonly<Anime25DLayerBindingInput>): number {
-  const { baseCols, baseRows, gridX, gridY } = resolveLayerGrid(input, false)
-  return (baseCols + 1 + (gridX?.length ?? 0)) * (baseRows + 1 + (gridY?.length ?? 0))
+/**
+ * The most vertices a layer's mesh can come to: what validation holds a package to before anything is built. Lines
+ * laid where others already are come to fewer; what a front collar's own pixels add is counted at its most.
+ */
+export function layerMeshVertexBound(input: Readonly<Anime25DLayerBindingInput>, cutPiece = false): number {
+  const { baseCols, baseRows, gridX, gridY } = resolveLayerGrid(input, cutPiece)
+  const contact = input.source.role === 'collar-front' ? MAX_CONTACT_LINES : { x: 0, y: 0 }
+  return (baseCols + 1 + (gridX?.length ?? 0) + contact.x) * (baseRows + 1 + (gridY?.length ?? 0) + contact.y)
 }
 
 /** `cutPiece`: the layer is a piece cut out of its host (partSplit). */

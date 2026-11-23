@@ -88,19 +88,40 @@ export function cutsOut(part: Readonly<Anime25DPart>, canvas: { width: number; h
 }
 
 /**
- * Each hanging piece as large as it could come out, before any pixel is looked at: all of a layer it may be cut
- * from. What validation holds its mesh to.
+ * Each hanging piece as large as it could come out, before any pixel is looked at, in each layer it may be cut from:
+ * what findPiece looks through there. What validation holds its mesh to. (Its layer is taken to be drawn at one
+ * scale both ways, a pixel to a canvas pixel or finer, as the importer draws them.)
  */
-export function largestPieces(layers: readonly Anime25DPlaybackLayer[], profile: Anime25DPartProfile | undefined, canvas: { width: number; height: number }): Anime25DPlaybackLayer[] {
-  return (profile?.parts ?? []).flatMap((part) => cutsOut(part, canvas)
-    ? layers.filter((layer) => mayHost(part, layer)).map((host) => pieceLayer(host, host))
-    : [])
+export function largestPieces(
+  layers: readonly Anime25DPlaybackLayer[],
+  profile: Anime25DPartProfile | undefined,
+  canvas: { width: number; height: number },
+): Anime25DPlaybackLayer[][] {
+  return (profile?.parts ?? []).filter((part) => cutsOut(part, canvas)).map((part) => {
+    const window = aroundWindow(searchWindow(part.box, part.anchor[1]))
+    return layers.filter((layer) => mayHost(part, layer, layers)).flatMap((host) => {
+      const x = Math.max(host.x, window[0])
+      const y = Math.max(host.y, window[1])
+      const w = Math.min(host.x + host.w, window[2]) - x
+      const h = Math.min(host.y + host.h, window[3]) - y
+      return w > 0 && h > 0 ? [pieceLayer(host, { x, y, w, h, atlas: host.atlas })] : []
+    })
+  })
 }
 
-/** Whether a piece may be cut from a layer: the one it names, or else any it could be drawn in. */
-function mayHost(part: Readonly<Anime25DPart>, layer: Readonly<Anime25DPlaybackLayer>): boolean {
+/** Whether a piece may be cut from a layer: hostOf's answer, as far as it goes without looking at pixels. */
+function mayHost(part: Readonly<Anime25DPart>, layer: Readonly<Anime25DPlaybackLayer>, layers: readonly Anime25DPlaybackLayer[]): boolean {
   if (!HOST_ROLES.has(layer.role) || (part.bone === 'head') !== HEAD_ROLES.has(layer.role)) return false
-  return part.layer ? layer.name === part.layer : !layer.fade
+  return part.layer
+    ? layer === layers.find((each) => each.name === part.layer && HOST_ROLES.has(each.role))
+    : !layer.fade && liesOn(part, layer)
+}
+
+/** Whether a part's middle lies on a layer. */
+function liesOn(part: Readonly<Anime25DPart>, layer: Readonly<Anime25DPlaybackLayer>): boolean {
+  const cx = (part.box[0] + part.box[2]) / 2
+  const cy = (part.box[1] + part.box[3]) / 2
+  return cx >= layer.x && cx < layer.x + layer.w && cy >= layer.y && cy < layer.y + layer.h
 }
 
 /** A piece's own layer, `size` of its host: a thing of its own, with none of what the host does. */
@@ -120,8 +141,7 @@ function hostOf(
   const cy = (part.box[1] + part.box[3]) / 2
   for (let i = layers.length - 1; i >= 0; i--) {
     const layer = layers[i]
-    if (!HOST_ROLES.has(layer.role) || layer.fade) continue
-    if (cx < layer.x || cx >= layer.x + layer.w || cy < layer.y || cy >= layer.y + layer.h) continue
+    if (!HOST_ROLES.has(layer.role) || layer.fade || !liesOn(part, layer)) continue
     const art = read(layer)
     if (!art) continue
     const px = Math.floor(((cx - layer.x) / layer.w) * art.width)
@@ -163,6 +183,21 @@ interface CutPiece {
   host: CroppedLayerPixels
 }
 
+type Box = readonly [number, number, number, number]
+
+/** Where a piece is looked for: around the inventory's box, and above where it hangs only just. */
+function searchWindow([x0, y0, x1, y1]: Box, anchorY: number): Box {
+  const padX = BOX_SLACK * (x1 - x0)
+  const padY = BOX_SLACK * (y1 - y0)
+  return [x0 - padX, Math.max(y0 - padY, Math.min(y0, anchorY) - ABOVE_ANCHOR * (y1 - y0)), x1 + padX, y1 + padY]
+}
+
+/** A little around a box: the inventory's are loose. */
+function aroundWindow([x0, y0, x1, y1]: Box): Box {
+  const margin = Math.max(2, 0.1 * Math.max(x1 - x0, y1 - y0))
+  return [Math.floor(x0 - margin), Math.floor(y0 - margin), Math.ceil(x1 + margin), Math.ceil(y1 + margin)]
+}
+
 /** Which of a box's pixels are a piece hanging from row `anchorY`; null when none can be told apart. */
 function pieceMask(
   art: Readonly<CroppedLayerPixels>,
@@ -173,12 +208,8 @@ function pieceMask(
   /** The piece's own box's area, when `box` is a wider window around it. */
   area = (box[2] - box[0]) * (box[3] - box[1]),
 ): PieceMask | null {
-  // The inventory's boxes are loose: look a little around it.
-  const margin = Math.max(2, 0.1 * Math.max(box[2] - box[0], box[3] - box[1]))
-  const [x0, y0, x1, y1] = [
-    Math.max(0, Math.floor(box[0] - margin)), Math.max(0, Math.floor(box[1] - margin)),
-    Math.min(art.width, Math.ceil(box[2] + margin)), Math.min(art.height, Math.ceil(box[3] + margin)),
-  ]
+  const around = aroundWindow(box)
+  const [x0, y0, x1, y1] = [Math.max(0, around[0]), Math.max(0, around[1]), Math.min(art.width, around[2]), Math.min(art.height, around[3])]
   const w = x1 - x0
   const h = y1 - y0
   if (w < 3 || h < 3) return null
@@ -195,7 +226,7 @@ function pieceMask(
     }
   }
   const median = (values: number[]) => values.sort((a, b) => a - b)[values.length >> 1] ?? 0
-  const around = rim[0].length ? rim.map(median) : null
+  const rimColour = rim[0].length ? rim.map(median) : null
   const mask = new Uint8Array(w * h)
   const solid = new Uint8Array(w * h)
   const plain = new Uint8Array(w * h)
@@ -209,7 +240,7 @@ function pieceMask(
       // Hanging over nothing, all of it is the piece; over the host, what
       // differs from it there and from its cloth as a whole (a box's rim may
       // be mostly a frill, and then a lit edge of the cloth differs from that).
-      const differs = (!around || distance(px, i, around) > PIECE_DISTANCE) && (!cloth || distance(px, i, cloth) > PIECE_DISTANCE)
+      const differs = (!rimColour || distance(px, i, rimColour) > PIECE_DISTANCE) && (!cloth || distance(px, i, cloth) > PIECE_DISTANCE)
       if (!differs) plain[y * w + x] = 1
       // What is above where it hangs from is what it hangs from.
       else if (y0 + y >= anchorY) mask[y * w + x] = 1
@@ -247,7 +278,7 @@ function pieceMask(
     count += mask[k]
   }
   // All of it differing from what is around it is a misread, unless nothing is around it.
-  if (!opaque || count < PIECE_SHARE[0] * area || (around && count > PIECE_SHARE[1] * opaque)) return null
+  if (!opaque || count < PIECE_SHARE[0] * area || (rimColour && count > PIECE_SHARE[1] * opaque)) return null
   return { mask, x0, y0, w, h, size: count }
 }
 
@@ -639,13 +670,12 @@ function keepEnclosed(mask: Uint8Array, w: number, h: number, edges: { left: boo
  * it wins.
  */
 function findPiece(art: Readonly<CroppedLayerPixels>, part: Readonly<Anime25DPart>, toX: (x: number) => number, toY: (y: number) => number) {
-  const [x0, y0, x1, y1] = [toX(part.box[0]), toY(part.box[1]), toX(part.box[2]), toY(part.box[3])]
-  const padX = BOX_SLACK * (x1 - x0)
-  const padY = BOX_SLACK * (y1 - y0)
+  const box = [toX(part.box[0]), toY(part.box[1]), toX(part.box[2]), toY(part.box[3])] as const
+  const [x0, y0, x1, y1] = box
   const anchorY = toY(part.anchor[1])
   // Above where it hangs is only what it hangs from: the window starts just over it.
-  const window = [x0 - padX, Math.max(y0 - padY, Math.min(y0, anchorY) - ABOVE_ANCHOR * (y1 - y0)), x1 + padX, y1 + padY] as const
-  const cloth = colourOf(art, [x0, y0, x1, y1])
+  const window = searchWindow(box, anchorY)
+  const cloth = colourOf(art, box)
   let best: PieceMask | null = null
   for (const drop of ANCHOR_DROPS) {
     const found = pieceMask(art, window, anchorY + drop * (y1 - y0), cloth, y1 - y0, (x1 - x0) * (y1 - y0))

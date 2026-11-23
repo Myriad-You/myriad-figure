@@ -1,5 +1,6 @@
 import type { Anime25DDriver } from './driver'
 import type { Anime25DShellEllipsoid } from './types'
+import { everyItem } from '../rig/lists'
 
 export type PoseCorrectionAxis =
   'angleX' | 'angleY' | 'eyeCloseL' | 'eyeCloseR' | 'mouthOpen'
@@ -41,7 +42,8 @@ export function poseCorrectionCornerKey(correction: Pick<PoseCorrection, 'surfac
 export function isPoseCorrections(value: unknown): value is PoseCorrection[] {
   if (!Array.isArray(value) || value.length > 16) return false
   const corners = new Set<string>()
-  return value.every((correction) => {
+  return everyItem(value, (item) => {
+    const correction = item as PoseCorrection
     if (
       !correction ||
       typeof correction !== 'object' ||
@@ -67,10 +69,10 @@ export function isPoseCorrections(value: unknown): value is PoseCorrection[] {
       !keys.every(
         (k) =>
           AXES.includes(k as PoseCorrectionAxis) &&
-          finite(correction.at[k], -1, 1) &&
+          finite(correction.at[k as PoseCorrectionAxis], -1, 1) &&
           (k === 'angleX' || k === 'angleY'
-            ? Math.abs(correction.at[k]) >= 0.05
-            : correction.at[k] >= 0.05),
+            ? Math.abs(correction.at[k as PoseCorrectionAxis]!) >= 0.05
+            : correction.at[k as PoseCorrectionAxis]! >= 0.05),
       )
     ) {
       return false
@@ -78,15 +80,18 @@ export function isPoseCorrections(value: unknown): value is PoseCorrection[] {
     const corner = poseCorrectionCornerKey(correction)
     if (corners.has(corner)) return false
     corners.add(corner)
-    return correction.patches.every(
-      (p: PoseCorrection['patches'][number]) =>
-        p &&
+    return everyItem(
+      correction.patches,
+      (patch) => {
+        const p = patch as PoseCorrection['patches'][number]
+        return Boolean(p) &&
         finite(p.x, -2, 2) &&
         finite(p.y, -2, 2) &&
         finite(p.radiusX, 0.1, 2) &&
         finite(p.radiusY, 0.1, 2) &&
         finite(p.dx, -0.25, 0.25) &&
-        finite(p.dy, -0.25, 0.25),
+        finite(p.dy, -0.25, 0.25)
+      },
     )
   })
 }

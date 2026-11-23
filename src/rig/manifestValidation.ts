@@ -1,6 +1,7 @@
 import type { MeropeRigManifest, RigBone, RigMotionProfile, RigOutfitProfile, RigOutfitTopology, RigPoint, RigSemantics, RigSize, RigSpatialProfile, RigVertex } from './types'
 import { isAnime25DPlayback } from '../anime25drig/types'
 import { CHARACTER_ASSET_PROFILES, characterAssetProfileOf, isCharacterAssetProfile, MAX_RIG_BONES, MAX_RIG_COLLISION_VOLUMES, MAX_RIG_PARTS, MAX_RIG_TEXTURES, MAX_RIG_TOTAL_VERTICES, MAX_RIG_VERTICES_PER_PART, MIN_SUPPORTED_RIG_IR_VERSION, RIG_IR_VERSION, RIG_PRESENTATION_SLOTS, RIG_SCHEMA_VERSION, RIG_SEMANTIC_BONE_ROLES, RIG_SEMANTIC_CHAIN_ROLES } from './contract'
+import { everyItem } from './lists'
 import { RIG_OUTFIT_TOPOLOGIES } from './types'
 
 /** Ids come from a PSD's layer names, which hold 255 characters, with a few put before and after. */
@@ -231,10 +232,11 @@ export function isRigManifest(value: unknown): value is MeropeRigManifest {
     totalVertices += vertices.length
     if (totalVertices > MAX_RIG_TOTAL_VERTICES) return false
     if (
-      !vertices.every((vertex) => isVertex(vertex, bones.length)) ||
-      !indices.every(
+      !everyItem(vertices, (vertex) => isVertex(vertex, bones.length)) ||
+      !everyItem(
+        indices,
         (index) =>
-          Number.isInteger(index) && index >= 0 && index < vertices.length,
+          typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < vertices.length,
       )
     ) {
       return false
@@ -314,15 +316,17 @@ function isRigSemantics(
         chain.length < 2 ||
         chain.length > bones.length ||
         new Set(chain).size !== chain.length ||
-        chain.some(
-          (boneId) => typeof boneId !== 'string' || !boneIds.has(boneId),
+        !everyItem(
+          chain,
+          (boneId) => typeof boneId === 'string' && boneIds.has(boneId),
         ) ||
         !isConnectedBoneChain(chain as string[], bones),
     ) ||
     value.secondaryBoneIds.length > bones.length ||
     new Set(value.secondaryBoneIds).size !== value.secondaryBoneIds.length ||
-    value.secondaryBoneIds.some(
-      (boneId) => typeof boneId !== 'string' || !boneIds.has(boneId),
+    !everyItem(
+      value.secondaryBoneIds,
+      (boneId) => typeof boneId === 'string' && boneIds.has(boneId),
     )
   ) {
     return false
@@ -346,7 +350,8 @@ function isSpatialProfile(
   if (!isRecord(value) || !Array.isArray(value.collisionVolumes)) return false
   if (value.collisionVolumes.length > MAX_RIG_COLLISION_VOLUMES) return false
   const ids = new Set<string>()
-  return value.collisionVolumes.every(
+  return everyItem(
+    value.collisionVolumes,
     (volume) =>
       isRecord(volume) &&
       addIdentifier(ids, volume.id) &&
@@ -380,7 +385,8 @@ function isOutfitProfile(
     value.topologies.length > 0 &&
     value.topologies.length <= topologies.size &&
     new Set(value.topologies).size === value.topologies.length &&
-    value.topologies.every(
+    everyItem(
+      value.topologies,
       (topology) =>
         typeof topology === 'string' &&
         topologies.has(topology as RigOutfitTopology),
@@ -388,7 +394,8 @@ function isOutfitProfile(
     Array.isArray(value.secondaryPartIds) &&
     value.secondaryPartIds.length <= MAX_RIG_PARTS &&
     new Set(value.secondaryPartIds).size === value.secondaryPartIds.length &&
-    value.secondaryPartIds.every(
+    everyItem(
+      value.secondaryPartIds,
       (partId) => typeof partId === 'string' && partIds.has(partId),
     ) &&
     (value.torsoTwistScale === undefined ||
@@ -492,7 +499,7 @@ function isCoordinate(value: unknown): value is number {
 
 function isTuple4(value: unknown): value is [number, number, number, number] {
   return (
-    Array.isArray(value) && value.length === 4 && value.every(isFiniteNumber)
+    Array.isArray(value) && value.length === 4 && everyItem(value, isFiniteNumber)
   )
 }
 

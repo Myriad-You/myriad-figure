@@ -237,11 +237,31 @@ export function mutate(root: unknown, random: () => number): Mutation[] {
   return done
 }
 
+/** A number or two of a manifest (or a part of one) changed for others a field may be given: its ends, mostly. In place. */
+export function mutateNumbers(root: unknown, random: () => number): Mutation[] {
+  const count = random() < 0.7 ? 1 : 2
+  const done: Mutation[] = []
+  while (done.length < count) {
+    const path = pickPath(root, random, 0)
+    const holder = path.slice(0, -1).reduce<unknown>((at, step) => (at as Record<string | number, unknown>)[step], root) as Record<string | number, unknown>
+    const key = path[path.length - 1]
+    const held = holder[key]
+    // A version is one number or the package is refused: nothing to play.
+    if (typeof held !== 'number' || key === 'version') continue
+    const others = [0, 0, 1e-3, 1, -1, 255, 8192, 16_384, -16_384, 1e308, -held, held * 0.01, held * 0.5, held * 2, held * 20, held + 1, held + (random() - 0.5) * 400]
+    const value = others[Math.floor(random() * others.length)]
+    if (value === held) continue
+    holder[key] = value
+    done.push({ path, what: `${held} → ${value}` })
+  }
+  return done
+}
+
 /**
  * Walks down from the root, stopping sooner or later: every block of a manifest is reached about as often as any
  * other, however many numbers another one holds.
  */
-function pickPath(root: unknown, random: () => number): Path {
+function pickPath(root: unknown, random: () => number, stop = 0.12): Path {
   const path: Path = []
   let at = root
   while (at !== null && typeof at === 'object') {
@@ -250,7 +270,7 @@ function pickPath(root: unknown, random: () => number): Path {
     const key = keys[Math.floor(random() * keys.length)]
     path.push(key)
     at = (at as Record<string | number, unknown>)[key]
-    if (random() < 0.12) break
+    if (random() < stop) break
   }
   return path
 }
@@ -265,7 +285,8 @@ function mutateAt(root: unknown, path: Path, random: () => number): string {
   const held = holder[key]
   const roll = random()
   if (roll < 0.15) {
-    if (Array.isArray(holder)) holder.splice(Number(key), 1)
+    // A list's item goes, or only leaves its place empty.
+    if (Array.isArray(holder) && random() < 0.5) holder.splice(Number(key), 1)
     else delete holder[key]
     return 'removed'
   }
