@@ -1105,8 +1105,9 @@ interface Watched {
   close: () => void
 }
 
-async function watched(pkg: FigurePackage): Promise<Watched> {
+async function watched(pkg: FigurePackage, onContext?: (gl: WebGL2RenderingContext) => void): Promise<Watched> {
   const { gl, gpu, live, canvas } = watchedCanvas()
+  onContext?.(gl)
   const player = new Anime25DPlayer(canvas, pkg.playback, pkg.manifest)
   // Out of the page first, so the player gives its context up and the runs never pile up contexts.
   const close = () => { canvas.remove(); player.dispose() }
@@ -1282,29 +1283,82 @@ async function swapFaults({ shown: shownRef, next: nextRef, kinds = ['gpu', 'rea
   })
 }
 
-/** The textures alive while an outfit is put on: before, at the most, after. */
+/** Bytes of the textures and renderbuffers in a context, by the sizes asked of it (not what a driver takes): now, and the most since `restart`. */
+function gpuBytes(gl: WebGL2RenderingContext) {
+  const sizes = new Map<object, number>()
+  /** A texture's own picture, without the smaller ones made of it. */
+  const pictures = new Map<object, number>()
+  const bound: { texture: object | null, renderbuffer: object | null } = { texture: null, renderbuffer: null }
+  let now = 0
+  let peak = 0
+  const size = (object: object | null, bytes: number) => {
+    if (!object) return
+    now += bytes - (sizes.get(object) ?? 0)
+    if (bytes) sizes.set(object, bytes)
+    else sizes.delete(object)
+    peak = Math.max(peak, now)
+  }
+  // Every texture is bound and filled within one unit's turn, and is RGBA8.
+  const after = (name: 'bindTexture' | 'bindRenderbuffer' | 'texImage2D' | 'generateMipmap' | 'renderbufferStorageMultisample' | 'deleteTexture' | 'deleteRenderbuffer', then: (...args: any[]) => void) => {
+    const calls = gl as unknown as Record<string, (...args: unknown[]) => unknown>
+    const original = calls[name]!.bind(gl)
+    calls[name] = (...args: unknown[]) => {
+      const result = original(...args)
+      then(...args)
+      return result
+    }
+  }
+  after('bindTexture', (_, texture) => { bound.texture = texture })
+  after('bindRenderbuffer', (_, renderbuffer) => { bound.renderbuffer = renderbuffer })
+  after('texImage2D', (...args) => {
+    if (args[0] !== gl.TEXTURE_2D || args[1] !== 0 || (args[2] !== gl.RGBA && args[2] !== gl.RGBA8)) throw new Error('a picture of another kind is not counted')
+    const [width, height] = args.length > 6 ? [args[3], args[4]] : [args[5].naturalWidth ?? args[5].width, args[5].naturalHeight ?? args[5].height]
+    if (bound.texture) pictures.set(bound.texture, width * height * 4)
+    size(bound.texture, width * height * 4)
+  })
+  after('generateMipmap', () => { if (bound.texture) size(bound.texture, Math.round((pictures.get(bound.texture) ?? 0) * 4 / 3)) })
+  after('renderbufferStorageMultisample', (_, samples, _format, width, height) => { size(bound.renderbuffer, width * height * 4 * samples) })
+  after('deleteTexture', (texture) => {
+    if (bound.texture === texture) bound.texture = null
+    if (texture) pictures.delete(texture)
+    size(texture, 0)
+  })
+  after('deleteRenderbuffer', renderbuffer => { size(renderbuffer, 0) })
+  for (const name of ['texStorage2D', 'texStorage3D', 'texImage3D', 'compressedTexImage2D', 'compressedTexImage3D', 'copyTexImage2D', 'renderbufferStorage'])
+    (gl as unknown as Record<string, () => void>)[name] = () => { throw new Error(`${name} is not counted`) }
+  return { now: () => now, peak: () => peak, restart: () => { peak = now } }
+}
+
+/** The textures alive while an outfit is put on, and the bytes of all that is drawn from or to: before, at the most, after. */
 async function swapPeak({ shown: shownRef, next: nextRef }: Pick<SwapRequest, 'shown' | 'next'>) {
   const shown = await resolvePackage(shownRef)
   const next = await resolvePackage(nextRef)
   return seeded(async () => {
-    const w = await watched(shown)
+    let memory: ReturnType<typeof gpuBytes> | null = null
+    const w = await watched(shown, (gl) => { memory = gpuBytes(gl) })
     try {
+      const bytes = memory!
       const textures = () => [...w.live].filter(object => object instanceof WebGLTexture).length
-      const before = textures()
-      let peak = before
+      const before = { textures: textures(), bytes: bytes.now() }
+      const peak = { textures: before.textures, bytes: 0 }
       const make = w.gl.createTexture.bind(w.gl)
       w.gl.createTexture = () => {
         const made = make()
-        peak = Math.max(peak, textures())
+        peak.textures = Math.max(peak.textures, textures())
         return made
       }
+      bytes.restart()
       await w.player.replaceLivePackage(next.playback, next.manifest, next.atlasUrl)
       w.player.resize(192, 256, 1)
       hold(w.player, AFTER_POSE, 4)
-      return { before, peak, after: textures() }
-    }
-    finally {
+      peak.bytes = bytes.peak()
+      const after = { textures: textures(), bytes: bytes.now() }
       w.close()
+      return { before, peak, after, left: bytes.now() }
+    }
+    catch (error) {
+      w.close()
+      throw error
     }
   })
 }

@@ -106,8 +106,8 @@ What the probes hold, and what they do not:
 - Outfit swaps: one that fails anywhere (a GPU step, a read of the package)
   leaves the figure as it was, frame for frame a twin that never swapped, and
   no GPU object more or fewer. Two outfits' modelled arms are never made at
-  once: that is counted in textures, not in bytes, and out of memory itself is
-  a GL error and not simulated.
+  once: that is counted in textures and in the bytes asked for, not in what a
+  driver takes, and out of memory itself is a GL error and not simulated.
 - A lost context, while she plays and at each place in the code of a swap and
   of a first load: a tick, a resize, a touch, a pose and letting her go do not
   throw (the swap or the load itself may be refused), and everything made is
