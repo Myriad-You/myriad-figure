@@ -95,12 +95,14 @@ export interface DrawnArms {
   cloths: readonly { cloth: Arm3DClothLayer; fold: Arm3DClothFold; host: Anime25DRenderableLayer; over: readonly Anime25DRenderableLayer[] }[]
 }
 
-/** Gesture arms readied for a package, not yet the ones shown. */
+/** Gesture arms readied for a package, not yet the ones shown. Holds nothing on the GPU: it can just be let go. */
 export interface ArmVariantBinding {
+  layers: readonly Anime25DGpuLayer[]
+  canvasHeight: number
+  /** Each side's arms raised flat. */
   sides: Record<Anime25DArmSide, SideState>
-  modelled: Partial<Record<Anime25DArmSide, Arm3DSide>>
-  /** The view made for these arms when none was there yet. */
-  view: Arm3DView | null
+  /** Sides whose arm is to be a modelled one, made when shown. */
+  modelled: Partial<Record<Anime25DArmSide, Anime25DArmGpu>>
 }
 
 export class Anime25DArmVariants {
@@ -114,64 +116,49 @@ export class Anime25DArmVariants {
     this.adopt(this.measure(layers, canvasHeight, gpu))
   }
 
-  /**
-   * Readies the new layers' gesture arms (a modelled arm's GPU resources too) while the arms shown stay as they are;
-   * adopt() shows them, release() lets them go. Fails having released what it made.
-   */
+  /** Readies the new layers' gesture arms while the arms shown stay as they are; adopt() shows them. */
   measure(layers: readonly Anime25DGpuLayer[], canvasHeight: number, gpu?: Anime25DArmGpu): ArmVariantBinding {
-    const binding: ArmVariantBinding = { sides: { L: emptySide(), R: emptySide() }, modelled: {}, view: null }
-    try {
-      for (const side of ['L', 'R'] as const) {
-        const bases = layers.filter((layer) => layer.source.role === 'handwear' && layer.source.side === side)
-        const modelled = gpu ? this.measureModelled(binding, side, bases, layers, canvasHeight, gpu) : null
-        if (modelled) {
-          binding.modelled[side] = modelled
-          continue
-        }
-        const variants = layers.flatMap((layer) => {
-          const variant = layer.source.armVariant
-          if (layer.source.role !== 'arm-variant' || !variant || layer.source.side !== side) return []
-          if (layer.deformed === layer.rest) layer.deformed = layer.rest.slice()
-          return [{
-            layer,
-            gesture: variant.gesture,
-            rise: RISE_SHARE * Math.max(0, canvasHeight - minY(layer.rest)),
-            weights: liftWeights(variant.lift, layer.rest, bases),
-          }]
-        })
-        binding.sides[side] = { ...emptySide(), bases, variants }
+    const binding: ArmVariantBinding = { layers, canvasHeight, sides: { L: emptySide(), R: emptySide() }, modelled: {} }
+    for (const side of ['L', 'R'] as const) {
+      const bases = layers.filter((layer) => layer.source.role === 'handwear' && layer.source.side === side)
+      const drawn = layers.filter((layer) => layer.source.role === 'arm-variant' && layer.source.armVariant && layer.source.side === side)
+      const variants = drawn.map((layer) => {
+        const { gesture, lift } = layer.source.armVariant!
+        return { layer, gesture, rise: RISE_SHARE * Math.max(0, canvasHeight - minY(layer.rest)), weights: liftWeights(lift, layer.rest, bases) }
+      })
+      binding.sides[side] = { ...emptySide(), bases, variants }
+      if (gpu && bases.length > 0 && drawn.some((layer) => layer.source.armVariant?.model)) binding.modelled[side] = gpu
+    }
+    return binding
+  }
+
+  /**
+   * Shows measured arms in place of the ones before. Their modelled arms are made only now, the ones before gone: two
+   * figures' at once came to hundreds of MB. One that cannot be made is raised flat, so this does not fail.
+   */
+  adopt(binding: ArmVariantBinding): void {
+    this.dropModelled()
+    for (const side of ['L', 'R'] as const) {
+      const gpu = binding.modelled[side]
+      const modelled = gpu ? this.makeModelled(side, binding, gpu) : null
+      if (modelled) {
+        this.modelled[side] = modelled
+        this.sides[side] = emptySide()
+        continue
       }
-      return binding
-    } catch (error) {
-      this.release(binding)
-      throw error
+      this.sides[side] = binding.sides[side]
+      for (const { layer } of this.sides[side].variants) {
+        if (layer.deformed === layer.rest) layer.deformed = layer.rest.slice()
+      }
     }
   }
 
-  /** Shows measured arms in place of the ones before, whose GPU resources go. */
-  adopt(binding: ArmVariantBinding): void {
-    this.dropModelled()
-    this.sides = binding.sides
-    this.modelled = binding.modelled
-    if (binding.view) this.view = binding.view
-  }
-
-  /** Lets measured arms go without showing them. */
-  release(binding: ArmVariantBinding): void {
-    for (const side of ['L', 'R'] as const) binding.modelled[side]?.dispose()
-    binding.modelled = {}
-    binding.view?.dispose()
-    binding.view = null
-  }
-
-  /** A side's arm as a 3D model, if its gesture arms have one and it can be drawn here; null raises them flat. */
-  private measureModelled(binding: ArmVariantBinding, side: Anime25DArmSide, bases: Anime25DGpuLayer[], layers: readonly Anime25DGpuLayer[], canvasHeight: number, gpu: Anime25DArmGpu): Arm3DSide | null {
-    const has = layers.some((layer) => layer.source.role === 'arm-variant' && layer.source.side === side && layer.source.armVariant?.model)
-    if (!has || bases.length === 0) return null
+  /** A side's arm as a 3D model, if it can be drawn here; null raises its gestures flat. */
+  private makeModelled(side: Anime25DArmSide, { layers, canvasHeight, sides }: ArmVariantBinding, gpu: Anime25DArmGpu): Arm3DSide | null {
+    const { bases } = sides[side]
     let modelled: Arm3DSide | null = null
     try {
-      // The view the arms shown draw with serves the new ones too; a first one is the binding's until it is adopted.
-      const view = this.view ?? (binding.view ??= new Arm3DView(gpu.gl))
+      const view = (this.view ??= new Arm3DView(gpu.gl))
       const names = new Set(bases.map((base) => base.source.name))
       // A standing figure's arm pieces (a charm cut out of the sleeve) go with its drawn arm; a bust keeps its own.
       const figure = layers.some((layer) => layer.source.role === 'arm-variant' && layer.source.side === side && layer.source.armVariant?.model?.restFore !== undefined)

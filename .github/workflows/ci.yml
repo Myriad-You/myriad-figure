@@ -38,9 +38,9 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       # Real Worker imports, the player under real WebGL, touch and outfit swaps.
       # Probes that need real portraits skip without them.
-      # The sweep over every place an outfit swap can fail builds an outfit for each; software
-      # WebGL takes a quarter of an hour for it. It runs on WebKit below.
-      - run: pnpm test:browser --grep-invert "swap that fails"
+      # The sweeps over every place an outfit swap can fail or the context be lost build an outfit
+      # for each; software WebGL takes a quarter of an hour for one. They run on WebKit below.
+      - run: pnpm test:browser --grep-invert "swap that fails|context lost"
 
   # Safari, and every browser on an iPhone, is WebKit; a macOS runner is as close to
   # Safari as CI gets. Firefox gets no WebGL2 at all on the Linux runners.
@@ -52,7 +52,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Everything: it takes five or six minutes here.
+          # Everything: it takes some twenty minutes here.
           - engine: webkit
           # Firefox takes 38 minutes for everything here. It runs what an engine can
           # do differently: the import Worker with its OffscreenCanvas and PNGs,
@@ -61,11 +61,11 @@ jobs:
           # is mostly the player's own arithmetic, frame after frame, which WebKit and
           # Chromium run: turns, hair, corrections and handovers over time, and the
           # touch handoffs and petting replayed against a control; and the outfit swap
-          # failing everywhere it can, and poses of a modelled arm and a speaking mouth, minutes
-          # of each. A test renamed out of this list runs.
+          # failing everywhere it can, the context lost everywhere it can be, and poses of a modelled
+          # arm and a speaking mouth, minutes of each. A test renamed out of this list runs.
           - engine: firefox
             args: >-
-              --grep-invert "short head turn|continuous turns|every frame rate|authored correction|hair follows|music hands over|speech during a thought|touch handoff|petting|swap that fails|a mouth painted as she speaks"
+              --grep-invert "short head turn|continuous turns|every frame rate|authored correction|hair follows|music hands over|speech during a thought|touch handoff|petting|swap that fails|context lost|a mouth painted as she speaks"
     env:
       FIGURE_BROWSER_ENGINES: ${{ matrix.engine }}
     steps:

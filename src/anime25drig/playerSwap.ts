@@ -8,18 +8,17 @@ import type { Anime25DFaceFrames, FaceBinding } from './faceFrames'
 import type { MotionFigure } from './motionComposer'
 import type { Anime25DHandPose, Anime25DMotionEnvelopeProfile } from './motionEnvelope'
 import type { PreparedLivePackage } from './playerPackage'
-import type { TouchPaintLayer } from './touchVisibility'
 import type { Anime25DPlayback } from './types'
 import { sampleDizzyEyeTint } from '../expressionShapes/dizzyEye'
 import { boundRigCapabilities } from '../motion/rigStateSummary'
 import { resolveAnime25DLayerSemantics } from '../rig/anime25dLayerSemantics'
 import { measureMotionFigure } from './motionComposer'
 import { deriveAnime25DMotionEnvelopeProfile } from './motionEnvelope'
-import { createContinuousMouth, prepareLivePackage, releaseCompiledGpu, touchLayersFor } from './playerPackage'
+import { createContinuousMouth, prepareLivePackage, releaseCompiledGpu } from './playerPackage'
 import { isStandingFigure } from './standing'
 
 // An outfit swap in two halves: everything the next outfit needs is measured and made here, beside the live one
-// and touching nothing of it; the player then takes it in a step that only assigns. A swap that fails here leaves
+// and touching nothing of it; the player then takes it in a step that cannot fail. A swap that fails here leaves
 // the figure on screen exactly as it was.
 
 /** A package measured for the motion, the body and the face, not yet the live one. */
@@ -32,7 +31,7 @@ export interface PackageState {
   face: FaceBinding
 }
 
-/** The next outfit, ready to take: compiled, its arms and mouth made, what touch and the motion read of it. */
+/** The next outfit, ready to take: compiled, its arms measured and mouth made, what the motion reads of it. */
 export interface PreparedSwap {
   prepared: PreparedLivePackage
   state: PackageState
@@ -40,7 +39,6 @@ export interface PreparedSwap {
   mouth: ContinuousMouthTexture | null
   capabilities: readonly string[]
   tint: ReturnType<typeof sampleDizzyEyeTint>
-  touchLayers: TouchPaintLayer[]
 }
 
 /** The player's parts a swap measures against; it reads them and changes none of what they show. */
@@ -89,14 +87,13 @@ export function prepareSwap(
   const { gl, program } = parts
   const prepared = prepareLivePackage(gl, program, playback, rigManifest, image, parts.current)
   const { resolved, compiled } = prepared
-  let arms: ArmVariantBinding | null = null
   let mouth: ContinuousMouthTexture | null = null
   try {
     const state = measurePackage(parts, playback, rigManifest, {
       linked: compiled.armsLinked,
       touchingHead: compiled.handTouchesHead,
     })
-    arms = parts.armVariants.measure(compiled.layers, resolved.pixelCanvas.height, { gl, atlas: image, canvasWidth: resolved.pixelCanvas.width, texture: prepared.texture ?? undefined, program })
+    const arms = parts.armVariants.measure(compiled.layers, resolved.pixelCanvas.height, { gl, atlas: image, canvasWidth: resolved.pixelCanvas.width, texture: prepared.texture ?? undefined, program })
     mouth = createContinuousMouth(gl, resolved, image, compiled.layers)
     parts.body.measureLayers(state.body, compiled.layers, compiled.headSilhouette ?? null, Boolean(playback.turnKeyforms))
     const shell = resolved.shellProfile
@@ -112,21 +109,18 @@ export function prepareSwap(
     return {
       prepared, state, arms, mouth, capabilities,
       tint: sampleDizzyEyeTint(prepared.linePixels),
-      touchLayers: touchLayersFor(compiled.layers, compiled.collarClip),
     }
   } catch (error) {
     // Keep the live outfit; the not-yet-owned replacement must be released.
     mouth?.dispose()
-    if (arms) parts.armVariants.release(arms)
     releaseCompiledGpu(gl, compiled.layers, compiled.collarClip, prepared.texture)
     throw error
   }
 }
 
 /** Lets a prepared outfit go without taking it. */
-export function releaseSwap(parts: Pick<SwapParts, 'gl' | 'armVariants'>, next: PreparedSwap): void {
+export function releaseSwap(parts: Pick<SwapParts, 'gl'>, next: PreparedSwap): void {
   next.mouth?.dispose()
-  parts.armVariants.release(next.arms)
   const { compiled, texture } = next.prepared
   releaseCompiledGpu(parts.gl, compiled.layers, compiled.collarClip, texture)
 }

@@ -1012,6 +1012,8 @@ interface Faults {
   failAt: number
   /** Where each step was taken, while recording. */
   sites: string[] | null
+  /** What happens at the failing step, instead of its failing: the context is lost, and the step taken without one. */
+  lose?: () => void
 }
 
 /** The nearest source lines on the stack: what makes one failure point different from another. */
@@ -1036,8 +1038,9 @@ const GPU_MAKES: Record<string, string> = { createBuffer: 'deleteBuffer', create
 const GPU_STEPS = [...Object.keys(GPU_MAKES), 'bufferData', 'texImage2D', 'texSubImage2D', 'texStorage2D']
 
 /**
- * Watches a context's objects and fails its steps. A create gives null, which is what a lost context gives; an upload
- * throws, which a real one does only for an image it may not read. Out of memory is a GL error instead, not simulated.
+ * Watches a context's objects and fails its steps. A create gives null, which WebGL allows though the browsers give a
+ * dead object on a lost context; an upload throws, which a real one does only for an image it may not read. Out of
+ * memory is a GL error instead, not simulated.
  */
 function watchGpu(gl: WebGL2RenderingContext, faults: Faults): Set<object> {
   const live = new Set<object>()
@@ -1046,8 +1049,9 @@ function watchGpu(gl: WebGL2RenderingContext, faults: Faults): Set<object> {
     const original = calls[name]!.bind(gl)
     calls[name] = (...args: unknown[]) => {
       if (step(faults, name)) {
-        if (name in GPU_MAKES) return null
-        throw new Error(`injected failure at ${name}`)
+        if (faults.lose) faults.lose()
+        else if (name in GPU_MAKES) return null
+        else throw new Error(`injected failure at ${name}`)
       }
       const made = original(...args)
       if (name in GPU_MAKES && made) live.add(made as object)
@@ -1102,16 +1106,7 @@ interface Watched {
 }
 
 async function watched(pkg: FigurePackage): Promise<Watched> {
-  seed = 1749
-  const canvas = document.createElement('canvas')
-  // Both twins at the page's corner: a touch falls on the same fraction of each.
-  canvas.style.cssText = 'position: absolute; left: 0; top: 0'
-  document.body.append(canvas)
-  // The player asks this canvas for its context and is handed this one, watched.
-  const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, stencil: true, antialias: true,
-    preserveDrawingBuffer: true, powerPreference: 'low-power' })!
-  const gpu: Faults = { steps: 0, failAt: 0, sites: null }
-  const live = watchGpu(gl, gpu)
+  const { gl, gpu, live, canvas } = watchedCanvas()
   const player = new Anime25DPlayer(canvas, pkg.playback, pkg.manifest)
   // Out of the page first, so the player gives its context up and the runs never pile up contexts.
   const close = () => { canvas.remove(); player.dispose() }
@@ -1126,6 +1121,20 @@ async function watched(pkg: FigurePackage): Promise<Watched> {
     throw error
   }
   return { player, gl, gpu, live, seed, close }
+}
+
+/** A canvas on the page whose context is watched, for a player to be made on. */
+function watchedCanvas() {
+  seed = 1749
+  const canvas = document.createElement('canvas')
+  // Both twins at the page's corner: a touch falls on the same fraction of each.
+  canvas.style.cssText = 'position: absolute; left: 0; top: 0'
+  document.body.append(canvas)
+  // The player asks this canvas for its context and is handed this one, watched.
+  const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, stencil: true, antialias: true,
+    preserveDrawingBuffer: true, powerPreference: 'low-power' })!
+  const gpu: Faults = { steps: 0, failAt: 0, sites: null }
+  return { canvas, gl, gpu, live: watchGpu(gl, gpu) }
 }
 
 /** What the page can ask of the figure besides its pixels: what it can do, its gestures, what a touch lands on. */
@@ -1269,6 +1278,163 @@ async function swapFaults({ shown: shownRef, next: nextRef, kinds = ['gpu', 'rea
     finally {
       control.close()
       subject.close()
+    }
+  })
+}
+
+/** The textures alive while an outfit is put on: before, at the most, after. */
+async function swapPeak({ shown: shownRef, next: nextRef }: Pick<SwapRequest, 'shown' | 'next'>) {
+  const shown = await resolvePackage(shownRef)
+  const next = await resolvePackage(nextRef)
+  return seeded(async () => {
+    const w = await watched(shown)
+    try {
+      const textures = () => [...w.live].filter(object => object instanceof WebGLTexture).length
+      const before = textures()
+      let peak = before
+      const make = w.gl.createTexture.bind(w.gl)
+      w.gl.createTexture = () => {
+        const made = make()
+        peak = Math.max(peak, textures())
+        return made
+      }
+      await w.player.replaceLivePackage(next.playback, next.manifest, next.atlasUrl)
+      w.player.resize(192, 256, 1)
+      hold(w.player, AFTER_POSE, 4)
+      return { before, peak, after: textures() }
+    }
+    finally {
+      w.close()
+    }
+  })
+}
+
+/**
+ * A context really lost: while the figure plays, and at each place in the code of an outfit swap and of its first load,
+ * at its last visit. What a page calls every frame, a resize, a touch and a pose throw from nothing (a swap or a load may
+ * be refused); lost while it plays, the figure itself moves no differently; everything made on it is let go.
+ */
+async function contextLoss({ shown: shownRef, next: nextRef }: Pick<SwapRequest, 'shown' | 'next'>) {
+  const shown = await resolvePackage(shownRef)
+  const next = await resolvePackage(nextRef)
+  const loser = (gl: WebGL2RenderingContext) => {
+    const extension = gl.getExtension('WEBGL_lose_context')!
+    return () => extension.loseContext()
+  }
+  const move = (w: Watched, pose: Partial<Anime25DDriver>, frames = 1) => {
+    seed = w.seed
+    hold(w.player, pose, frames)
+    w.seed = seed
+  }
+  const state = ({ player }: Watched) => JSON.stringify([player.getCurrent(), player.inspect().layers.map(layer => [layer.opacity, hash(new Uint8Array(layer.placed.buffer, layer.placed.byteOffset, layer.placed.byteLength))])])
+  const thrown: string[] = []
+  const trying = <T>(what: string, run: () => T): T | null => {
+    try {
+      return run()
+    }
+    catch (error) {
+      thrown.push(`${what}: ${String(error)}`)
+      return null
+    }
+  }
+  return seeded(async () => {
+    // Lost while playing: everything a page may still call, until it has made another.
+    const [twin, subject] = await pairOf(shown)
+    let apart = 0
+    let left = -1
+    let posed = false
+    let gone = false
+    try {
+      for (const pose of POSED) { for (const w of [twin, subject]) move(w, pose, 6) }
+      const before = subject.player.getPose()!
+      loser(subject.gl)()
+      gone = subject.gl.isContextLost()
+      for (const pose of POSED) {
+        for (let i = 0; i < 6; i++) {
+          move(twin, pose)
+          trying('tick', () => move(subject, pose))
+          if (state(twin) !== state(subject)) apart++
+        }
+      }
+      posed = poseToJSON(subject.player.getPose()!) === poseToJSON(twin.player.getPose()!)
+      trying('resize', () => subject.player.resize(288, 384, 2))
+      trying('hitTestTouch', () => subject.player.hitTestTouch(96, 128))
+      trying('renderPose', () => subject.player.renderPose(before))
+      trying('tick after a pose', () => move(subject, POSED[0]!))
+      // (Put on all the same or refused: the page has made another figure by then.)
+      await subject.player.replaceLivePackage(next.playback, next.manifest, next.atlasUrl).catch(() => {})
+      trying('tick after a swap', () => move(subject, POSED[1]!, 3))
+      trying('dispose', () => subject.close())
+      left = subject.live.size
+    }
+    finally {
+      twin.close()
+      subject.close()
+    }
+    // Lost within a swap, and within the first load: at each place in the code, at its last visit.
+    const places = async (record: (gpu: Faults) => Promise<void>, gpu: Faults) => {
+      gpu.steps = 0
+      gpu.sites = []
+      await record(gpu)
+      return [...new Map(gpu.sites.map((at, index) => [at, index + 1]))]
+    }
+    const runs: { when: 'swap' | 'load', site: string, fired: boolean, left: number, refused: boolean }[] = []
+    const probe = await watched(shown)
+    const swaps = await places(() => probe.player.replaceLivePackage(next.playback, next.manifest, next.atlasUrl), probe.gpu)
+    probe.close()
+    for (const [at, failAt] of swaps) {
+      const w = await watched(shown)
+      Object.assign(w.gpu, { steps: 0, failAt, lose: loser(w.gl) })
+      let refused = false
+      try {
+        seed = w.seed
+        await w.player.replaceLivePackage(next.playback, next.manifest, next.atlasUrl)
+      }
+      catch {
+        refused = true
+      }
+      const fired = w.gpu.steps >= failAt && w.gl.isContextLost()
+      w.gpu.failAt = 0
+      trying(`tick after ${at}`, () => move(w, AFTER_POSE, 4))
+      trying(`resize after ${at}`, () => w.player.resize(192, 256, 1))
+      trying(`dispose after ${at}`, () => w.close())
+      runs.push({ when: 'swap', site: at, fired, left: w.live.size, refused })
+    }
+    const load = async (failAt: number) => {
+      const { canvas, gl, gpu, live } = watchedCanvas()
+      Object.assign(gpu, { failAt, lose: loser(gl), sites: failAt ? null : [] })
+      let player: Anime25DPlayer | null = null
+      let refused = false
+      try {
+        player = new Anime25DPlayer(canvas, next.playback, next.manifest)
+        await player.replaceLivePackage(next.playback, next.manifest, next.atlasUrl)
+      }
+      catch {
+        refused = true
+      }
+      const made = player
+      if (made) {
+        trying('tick after load', () => { made.resize(192, 256, 1); hold(made, AFTER_POSE, 4) })
+        canvas.remove()
+        trying('dispose after load', () => made.dispose())
+      }
+      canvas.remove()
+      return { gpu, gone: gl.isContextLost(), left: live.size, refused }
+    }
+    const whole = await load(0)
+    for (const [at, failAt] of new Map(whole.gpu.sites!.map((at, index) => [at, index + 1]))) {
+      const { gpu, gone, left, refused } = await load(failAt)
+      runs.push({ when: 'load', site: at, fired: gpu.steps >= failAt && gone, left, refused })
+    }
+    // And a figure made after all of it.
+    const [one, other] = await pairOf(shown)
+    try {
+      const same = moveOn(one) === moveOn(other) && readPixels(one.gl).some((value, index) => index % 4 === 3 && value > 0)
+      return { gone, apart, posed, left, leftWhole: whole.left, thrown, runs, same, error: one.gl.getError() }
+    }
+    finally {
+      one.close()
+      other.close()
     }
   })
 }
@@ -1451,5 +1617,5 @@ function gpuDiffers(w: Watched, pose: Anime25DPose): number {
   }).length
 }
 
-export const probes = { poses, features, bodyStageProjection, posture, torsoTurn, turns, corners, correction, collar, shoulder, earrings, hair, musicExit, thoughtToSpeech, sharedCut, swapFaults }
+export const probes = { poses, features, bodyStageProjection, posture, torsoTurn, turns, corners, correction, collar, shoulder, earrings, hair, musicExit, thoughtToSpeech, sharedCut, swapFaults, swapPeak, contextLoss }
 Object.assign(window, { figureProbes: probes })
