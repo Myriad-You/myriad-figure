@@ -1,11 +1,54 @@
+import type { Page } from '@playwright/test'
 import { Buffer } from 'node:buffer'
 import { expect, test } from '@playwright/test'
+
+interface TouchState {
+  active: boolean
+  form: string | undefined
+  pose: { eyeOpenL: number, eyeSqueeze: number, browAngSym: number, body: number }
+}
+
+/**
+ * A live figure to touch with the page's clock stopped. Touch, the reaction and the player all run by
+ * the clock; stepped by hand, they run the same on every engine, however slowly the machine draws.
+ */
+async function touchSurface(page: Page, region?: string): Promise<{ x: number, y: number }> {
+  test.setTimeout(60_000)
+  await page.clock.install({ time: 0 })
+  // The clock runs until this lands; a busy machine may take seconds to get here.
+  await page.clock.pauseAt(60_000)
+  const point = await page.evaluate(region => (window as any).rigImportTest.touchSurface(region), region)
+  expect(point).not.toBeNull()
+  return point
+}
+
+const touched = (page: Page): Promise<TouchState> => page.evaluate(() => (window as any).touchSurfaceState.current())
+const touchEvents = (page: Page): Promise<string[]> => page.evaluate(() => (window as any).touchSurfaceState.events)
+
+/** Her state as soon as `reached`, or after `ms` of hers. */
+async function touchedWithin(page: Page, ms: number, reached: (state: TouchState) => boolean): Promise<TouchState> {
+  for (let passed = 0; ; passed += 50) {
+    const state = await touched(page)
+    if (reached(state) || passed >= ms) return state
+    await page.clock.runFor(50)
+  }
+}
+
+async function click(page: Page, point: { x: number, y: number }, delay = 40) {
+  await page.mouse.move(point.x, point.y)
+  await page.mouse.down()
+  if (delay) await page.clock.runFor(delay)
+  await page.mouse.up()
+}
 
 // blur is the figure's own; the page cancels for its own reasons (the site does on sign-in or sign-out).
 for (const cause of ['blur', 'page']) {
 test(`${cause} cancels a completed tap tail immediately and the next press starts fresh`, async ({ page }) => {
-  const point = await page.evaluate(() => (window as any).rigImportTest.touchSurface('face'))
-  for (let i = 0; i < 3; i++) await page.mouse.click(point.x, point.y, { delay: 40 })
+  const point = await touchSurface(page, 'face')
+  for (let i = 0; i < 3; i++) {
+    await click(page, point)
+    await page.clock.runFor(60)
+  }
   const cancelled = await page.evaluate(cause => {
     const state = (window as any).touchSurfaceState
     const before = state.current()
@@ -17,14 +60,14 @@ test(`${cause} cancels a completed tap tail immediately and the next press start
   expect(cancelled.active).toBe(false)
   await page.mouse.move(point.x, point.y)
   await page.mouse.down()
-  expect(await page.evaluate(() => (window as any).touchSurfaceState.current().form)).toBe('notice')
+  expect((await touched(page)).form).toBe('notice')
   await page.mouse.up()
   await page.evaluate(() => (window as any).touchSurfaceState.dispose())
 })
 }
 
 test('a page cancel releases a held pointer and ignores its later pointer-up', async ({ page }) => {
-  const point = await page.evaluate(() => (window as any).rigImportTest.touchSurface('hair'))
+  const point = await touchSurface(page, 'hair')
   await page.mouse.move(point.x, point.y)
   await page.mouse.down()
   await expect(page.locator('#touch-character')).toHaveAttribute('data-merope-touch-active', 'true')
@@ -35,97 +78,113 @@ test('a page cancel releases a held pointer and ignores its later pointer-up', a
   expect(cancelled).toBe(false)
   await expect(page.locator('#touch-character')).not.toHaveAttribute('data-merope-touch-active', 'true')
   await page.mouse.up()
-  expect(await page.evaluate(() => (window as any).touchSurfaceState.events.includes('end:tap'))).toBe(false)
-  await page.mouse.click(point.x, point.y)
-  expect(await page.evaluate(() => (window as any).touchSurfaceState.current().form)).toBe('accept')
+  expect(await touchEvents(page)).not.toContain('end:tap')
+  // Down and up within one frame is still a tap.
+  await click(page, point, 0)
+  expect((await touched(page)).form).toBe('accept')
   await page.evaluate(() => (window as any).touchSurfaceState.dispose())
 })
 
 test('repeated hair clicks never reopen the settled happy eyes between presses', async ({ page }) => {
-  const point = await page.evaluate(() => (window as any).rigImportTest.touchSurface('hair'))
-  await page.mouse.click(point.x, point.y)
-  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().pose.eyeOpenL)).toBeLessThan(0.65)
+  const point = await touchSurface(page, 'hair')
+  await click(page, point, 90)
+  expect((await touchedWithin(page, 1000, state => state.pose.eyeOpenL < 0.65)).pose.eyeOpenL).toBeLessThan(0.65)
   await page.evaluate(() => {
     const state = (window as any).touchSurfaceState
     state.eyeSamples = []
     state.monitor = setInterval(() => state.eyeSamples.push(state.current().pose.eyeOpenL), 8)
   })
-  for (let i = 0; i < 8; i++) await page.mouse.click(point.x, point.y, { delay: 90 })
+  await page.clock.runFor(300)
+  const settled = await page.evaluate(() => (window as any).touchSurfaceState.eyeSamples.length as number)
+  for (let i = 0; i < 8; i++) {
+    await click(page, point, 90)
+    await page.clock.runFor(60)
+  }
   const samples = await page.evaluate(() => {
     const state = (window as any).touchSurfaceState
     clearInterval(state.monitor)
     return state.eyeSamples as number[]
   })
-  expect(samples.length).toBeGreaterThan(20)
-  const diagnostics = await page.evaluate(() => ({ events: (window as any).touchSurfaceState.events, current: (window as any).touchSurfaceState.current() }))
+  const diagnostics = { events: await touchEvents(page), current: await touched(page) }
   expect(diagnostics.events.filter((event: string) => event === 'end:tap')).toHaveLength(9)
   expect(diagnostics.events.some((event: string) => event.startsWith('cancel:'))).toBe(false)
   expect(Math.max(...samples), JSON.stringify(diagnostics)).toBeLessThan(0.68)
-  expect(Math.max(...samples) - Math.min(...samples)).toBeLessThan(0.15)
+  const between = samples.slice(settled)
+  expect(between.length).toBeGreaterThan(100)
+  expect(Math.max(...between) - Math.min(...between)).toBeLessThan(0.15)
+  // While they still settle, only a rise from the lowest yet is reopening.
+  let lowest = Infinity
+  expect(Math.max(...samples.map(open => open - (lowest = Math.min(lowest, open))))).toBeLessThan(0.15)
   await page.evaluate(() => (window as any).touchSurfaceState.dispose())
 })
 
 for (const region of ['hair', 'face']) {
   test(`completed ${region} click produces a held facial expression, not just head motion`, async ({ page }) => {
-    const point = await page.evaluate(region => (window as any).rigImportTest.touchSurface(region), region)
-    expect(point).not.toBeNull()
-    await page.mouse.click(point.x, point.y)
-    await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().form)).toBe(region === 'hair' ? 'accept' : 'hesitate')
-    await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().pose.eyeOpenL)).toBeLessThan(region === 'hair' ? 0.7 : 0.85)
-    expect(await page.evaluate(() => (window as any).touchSurfaceState.current().pose.eyeSqueeze)).toBe(0)
-    await expect.poll(() => page.evaluate(() => Math.abs((window as any).touchSurfaceState.current().pose.browAngSym))).toBeGreaterThan(region === 'hair' ? 0.15 : 0.35)
-    await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().active), { timeout: 3000 }).toBe(false)
-    await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().pose.eyeOpenL), { timeout: 3000 }).toBeGreaterThan(0.95)
+    const point = await touchSurface(page, region)
+    await click(page, point)
+    const form = region === 'hair' ? 'accept' : 'hesitate'
+    expect((await touchedWithin(page, 200, state => state.form === form)).form).toBe(form)
+    const eyes = region === 'hair' ? 0.7 : 0.85
+    expect((await touchedWithin(page, 1000, state => state.pose.eyeOpenL < eyes)).pose.eyeOpenL).toBeLessThan(eyes)
+    expect((await touched(page)).pose.eyeSqueeze).toBe(0)
+    const brow = region === 'hair' ? 0.15 : 0.35
+    expect(Math.abs((await touchedWithin(page, 1000, state => Math.abs(state.pose.browAngSym) > brow)).pose.browAngSym)).toBeGreaterThan(brow)
+    expect((await touchedWithin(page, 3000, state => !state.active)).active).toBe(false)
+    expect((await touchedWithin(page, 3000, state => state.pose.eyeOpenL > 0.95)).pose.eyeOpenL).toBeGreaterThan(0.95)
     await page.evaluate(() => (window as any).touchSurfaceState.dispose())
   })
 }
 
 test('three completed face clicks change hesitation into a visible frown', async ({ page }) => {
-  const point = await page.evaluate(() => (window as any).rigImportTest.touchSurface('face'))
-  for (let i = 0; i < 3; i++) await page.mouse.click(point.x, point.y, { delay: 40 })
-  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().form)).toBe('withdraw')
+  const point = await touchSurface(page, 'face')
+  for (let i = 0; i < 3; i++) {
+    await click(page, point)
+    await page.clock.runFor(60)
+  }
+  expect((await touched(page)).form).toBe('withdraw')
   await page.mouse.move(point.x, point.y)
   await page.mouse.down()
-  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().form)).toBe('withdraw')
-  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.events.includes('update:hold'))).toBe(true)
-  expect(await page.evaluate(() => (window as any).touchSurfaceState.current().form)).toBe('withdraw')
-  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().pose.browAngSym)).toBeGreaterThan(0.45)
+  expect((await touchedWithin(page, 200, state => state.form === 'withdraw')).form).toBe('withdraw')
+  await page.clock.runFor(600)
+  expect(await touchEvents(page)).toContain('update:hold')
+  expect((await touched(page)).form).toBe('withdraw')
+  expect((await touchedWithin(page, 1000, state => state.pose.browAngSym > 0.45)).pose.browAngSym).toBeGreaterThan(0.45)
   await page.mouse.up()
   await page.evaluate(() => (window as any).touchSurfaceState.dispose())
 })
 
 test('real pointer contact reaches the shared director and releases on blur', async ({ page }) => {
-  const point = await page.evaluate(() => (window as any).rigImportTest.touchSurface())
-  expect(point).not.toBeNull()
+  const point = await touchSurface(page)
   await page.mouse.move(point.x, point.y)
   await page.mouse.down()
-  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().active)).toBe(true)
+  expect((await touched(page)).active).toBe(true)
   await expect(page.locator('#touch-character')).toHaveAttribute('data-merope-touch-active', 'true')
-  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.events.includes('update:hold'))).toBe(true)
+  await page.clock.runFor(600)
+  expect(await touchEvents(page)).toContain('update:hold')
   // Face contact expresses hesitation; its head answer is transient, not a
   // permanently positive nod. Assert the sustained rendered reaction instead.
-  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().form)).toBe('hesitate')
-  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().pose.browAngSym)).toBeLessThan(-0.35)
-  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().pose.body)).toBeLessThan(-0.02)
+  expect((await touchedWithin(page, 1000, state => state.form === 'hesitate')).form).toBe('hesitate')
+  expect((await touchedWithin(page, 1000, state => state.pose.browAngSym < -0.35)).pose.browAngSym).toBeLessThan(-0.35)
+  expect((await touchedWithin(page, 1000, state => state.pose.body < -0.02)).pose.body).toBeLessThan(-0.02)
   await page.evaluate(() => window.dispatchEvent(new Event('blur')))
-  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().active)).toBe(false)
+  expect((await touched(page)).active).toBe(false)
   await expect(page.locator('#touch-character')).not.toHaveAttribute('data-merope-touch-active', 'true')
   await page.mouse.up()
-  expect(await page.evaluate(() => (window as any).touchSurfaceState.events.includes('end:tap'))).toBe(false)
+  expect(await touchEvents(page)).not.toContain('end:tap')
   await page.evaluate(() => (window as any).touchSurfaceState.dispose())
 })
 
 test('covering the captured character cancels contact rather than touching through the overlay', async ({ page }) => {
-  const point = await page.evaluate(() => (window as any).rigImportTest.touchSurface())
+  const point = await touchSurface(page)
   await page.mouse.move(point.x, point.y)
   await page.mouse.down()
-  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().active)).toBe(true)
+  expect((await touched(page)).active).toBe(true)
   await page.evaluate(() => {
     const cover = document.createElement('div')
     cover.style.cssText = 'position:fixed;inset:0;z-index:99999;background:white'
     document.body.append(cover)
   })
-  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().active)).toBe(false)
+  expect((await touchedWithin(page, 1000, state => !state.active)).active).toBe(false)
   await page.mouse.up()
   await page.evaluate(() => (window as any).touchSurfaceState.dispose())
 })
@@ -201,6 +260,7 @@ for (const [fps, decision] of [[30, 'withdraw'], [60, 'withdraw'], [120, 'withdr
 
 for (const kind of ['ordinary', 'collar', 'necklace']) {
   test(`touch picking matches real rendered alpha for ${kind} while turning`, async ({ page }) => {
+    test.setTimeout(60_000)
     const result = await page.evaluate((kind) => (window as any).rigImportTest.touchPicking(kind), kind)
     expect(result.hits).toBeGreaterThan(50)
     expect(result.falseHits).toBe(0)

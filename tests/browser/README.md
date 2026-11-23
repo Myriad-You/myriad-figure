@@ -3,6 +3,27 @@
 Pages for the figure alone: no site and no backend. Every request a page makes
 outside the test server is the test's to mock.
 
+## Engines
+
+`pnpm test:browser` runs Chromium. `FIGURE_BROWSER_ENGINES` names the engines to
+run instead, after `playwright install` of each:
+
+```sh
+FIGURE_BROWSER_ENGINES=webkit,firefox pnpm test:browser
+```
+
+CI runs Chromium on Linux (software WebGL), and on macOS all of WebKit and the
+part of Firefox an engine can do differently (`.github/workflows/ci.yml` says
+which and why). Playwright's WebKit is the engine Safari is built on, not Safari,
+and not an iPhone: iOS's memory and canvas limits, touch input and its on-device
+GPU are not covered.
+
+The touch tests press a real pointer on a stopped clock (`page.clock`) and step
+it, so a slow machine or engine changes nothing they see.
+
+If Firefox exits at launch on macOS with `Could not find profile folder`, give it
+a home of its own: `CFFIXED_USER_HOME=/some/writable/directory`.
+
 ## Rig import
 
 `pnpm test:browser rigImport.spec.ts` runs real PSD decoding and compilation in

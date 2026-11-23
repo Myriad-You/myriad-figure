@@ -88,6 +88,28 @@ export function cutsOut(part: Readonly<Anime25DPart>, canvas: { width: number; h
   return !part.separate && part.motion === 'dangle' && (x1 - x0) * (y1 - y0) <= MAX_AREA_SHARE * canvas.width * canvas.height
 }
 
+/**
+ * Each hanging piece as large as it could come out, before any pixel is looked at: all of a layer it may be cut
+ * from. What validation holds its mesh to.
+ */
+export function largestPieces(layers: readonly Anime25DPlaybackLayer[], profile: Anime25DPartProfile | undefined, canvas: { width: number; height: number }): Anime25DPlaybackLayer[] {
+  return (profile?.parts ?? []).flatMap((part) => cutsOut(part, canvas)
+    ? layers.filter((layer) => mayHost(part, layer)).map((host) => pieceLayer(host, host))
+    : [])
+}
+
+/** Whether a piece may be cut from a layer: the one it names, or else any it could be drawn in. */
+function mayHost(part: Readonly<Anime25DPart>, layer: Readonly<Anime25DPlaybackLayer>): boolean {
+  if (!HOST_ROLES.has(layer.role) || (part.bone === 'head') !== HEAD_ROLES.has(layer.role)) return false
+  return part.layer ? layer.name === part.layer : !layer.fade
+}
+
+/** A piece's own layer, `size` of its host: a thing of its own, with none of what the host does. */
+function pieceLayer(host: Readonly<Anime25DPlaybackLayer>, size: Readonly<Pick<Anime25DPlaybackLayer, 'x' | 'y' | 'w' | 'h' | 'atlas'>>): Anime25DPlaybackLayer {
+  const { x, y, w, h, atlas } = size
+  return { ...host, role: 'objects', side: null, phys: null, fade: null, x, y, w, h, atlas }
+}
+
 /** The layer a piece is drawn in: the one the inventory named, or the topmost one opaque at its middle. */
 function hostOf(
   part: Readonly<Anime25DPart>,
@@ -657,24 +679,21 @@ export function splitHangingParts(
     hostPixels.set(host, result.host)
     const { x: x0, y: y0 } = result
     const source: Anime25DPlaybackLayer = {
-      ...host,
+      ...pieceLayer(host, {
+        x: host.x + x0 / sx,
+        y: host.y + y0 / sy,
+        w: result.piece.width / sx,
+        h: result.piece.height / sy,
+        atlas: {
+          x: host.atlas.x + (x0 / art.width) * host.atlas.w,
+          y: host.atlas.y + (y0 / art.height) * host.atlas.h,
+          w: (result.piece.width / art.width) * host.atlas.w,
+          h: (result.piece.height / art.height) * host.atlas.h,
+        },
+      }),
       name: splitLayerName(index, part),
       // Drawn just over its host.
       z: (host.z ?? layers.indexOf(host)) + 0.5,
-      role: 'objects',
-      side: null,
-      phys: null,
-      fade: null,
-      x: host.x + x0 / sx,
-      y: host.y + y0 / sy,
-      w: result.piece.width / sx,
-      h: result.piece.height / sy,
-      atlas: {
-        x: host.atlas.x + (x0 / art.width) * host.atlas.w,
-        y: host.atlas.y + (y0 / art.height) * host.atlas.h,
-        w: (result.piece.width / art.width) * host.atlas.w,
-        h: (result.piece.height / art.height) * host.atlas.h,
-      },
     }
     cutHosts.set(source, host.name)
     cut.push({ host, hostPixels: result.host, pixels: result.piece, source })

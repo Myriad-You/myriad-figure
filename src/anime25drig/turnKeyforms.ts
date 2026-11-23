@@ -626,10 +626,16 @@ function sampleLattice(lattice: Readonly<Anime25DTurnLattice>, x: number, y: num
   }
 }
 
+/** Families keyed at most: the importer's parts, and one lock or iris each besides. */
+const MAX_KEYED_FAMILIES = 128
+/** Past this a key is no picture's: a document is at most 4096 a side, the frame it is moved into a little more. */
+const MAX_KEY_COORDINATE = 16_384
+
 export function isAnime25DTurnKeyforms(value: unknown): value is Anime25DTurnKeyforms {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  return Object.values(value as Record<string, unknown>).every((key) => {
-    if (!key || typeof key !== 'object') return false
+  const families = Object.entries(value as Record<string, unknown>)
+  return families.length <= MAX_KEYED_FAMILIES && families.every(([family, key]) => {
+    if (family.length > 64 || !key || typeof key !== 'object') return false
     const { plus, minus, up, down } = key as Record<string, unknown>
     return isLattice(plus) && isLattice(minus) && (up === undefined || isLattice(up)) && (down === undefined || isLattice(down))
   })
@@ -637,8 +643,13 @@ export function isAnime25DTurnKeyforms(value: unknown): value is Anime25DTurnKey
 
 function isLattice(value: unknown): value is Anime25DTurnLattice {
   if (!value || typeof value !== 'object') return false
-  const { box, grid, back } = value as Record<string, unknown>
-  if (!Array.isArray(box) || box.length !== 4 || !box.every(Number.isFinite)) return false
+  const { box, grid, back, multiply } = value as Record<string, unknown>
+  if (!Array.isArray(box) || box.length !== 4 || !box.every(isKeyCoordinate) || !(box[2] > box[0] && box[3] > box[1])) return false
   if (typeof grid !== 'number' || !Number.isInteger(grid) || grid < 2 || grid > 64) return false
-  return Array.isArray(back) && back.length === grid * grid * 2 && back.every(Number.isFinite)
+  if (multiply !== undefined && !(Array.isArray(multiply) && multiply.length === 3 && multiply.every((c: unknown) => typeof c === 'number' && c >= 0 && c <= 16))) return false
+  return Array.isArray(back) && back.length === grid * grid * 2 && back.every(isKeyCoordinate)
+}
+
+function isKeyCoordinate(value: unknown): value is number {
+  return typeof value === 'number' && Math.abs(value) <= MAX_KEY_COORDINATE
 }

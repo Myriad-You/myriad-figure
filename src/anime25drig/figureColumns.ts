@@ -1,6 +1,7 @@
 import type { Anime25DTorsoShellRotation } from './torsoDeformation'
 import type { Anime25DTorsoShellProfile } from './types'
 import { isAnime25DLiningPiece } from '../rig/anime25dLayerSemantics'
+import { FIGURE_LEG_ROWS } from './layerGrid'
 import { anime25DTurnedOffsetX, anime25DTurnedScale } from './torsoDeformation'
 
 /**
@@ -50,11 +51,6 @@ const TOE_HEIGHT = 1
  * all its own column, not squeezed for being on the far side.
  */
 const LEG_TOP = [0.04, 0.36, 0.1] as const
-/**
- * A leg's mesh has this many rows of cells: enough for that handing over to be done where it is meant to be,
- * not a canvas cell further down, on the thigh in view. (Its canvas-sized cells were a dozen down a leg.)
- */
-export const FIGURE_LEG_ROWS = 40
 /** Its width is read in this many rows down its drawing. */
 const ROWS = 48
 /** The limb's own drawing starts at the first row at least this share as wide as its widest. */
