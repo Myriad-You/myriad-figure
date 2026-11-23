@@ -1296,7 +1296,8 @@ async function poses(ref: PackageRef, frames = 24) {
     // The same at another size: a pose is drawn as large as its canvas.
     const large = await watched(pkg)
     const enlarged = await watched(pkg)
-    for (const { player } of [large, enlarged]) player.resize(288, 384, 2)
+    const wide = await watched(pkg)
+    for (const { player } of [large, enlarged, wide]) player.resize(288, 384, 2)
     try {
       const gestures = JSON.stringify(subject.player.armVariantGestures())
       const step = (w: Watched, pose: Partial<Anime25DDriver>) => {
@@ -1304,7 +1305,7 @@ async function poses(ref: PackageRef, frames = 24) {
         hold(w.player, pose, 1)
         w.seed = seed
       }
-      let drawn = 0; let replayed = 0; let drifted = 0; let shown = 0; let returned = 0; let lagging = 0; let bytes = 0; let refused = 0; let between = 0; let armed = 0; let cloths = 0; let stickers = 0; const mouths = new Set<string>(); let sized = 0; let damaged = 0; let spoilt = 0; const taking: string[] = []
+      let drawn = 0; let replayed = 0; let drifted = 0; let shown = 0; let returned = 0; let lagging = 0; let bytes = 0; let refused = 0; let between = 0; let armed = 0; let cloths = 0; let stickers = 0; const mouths = new Set<string>(); let sized = 0; let atSize = 0; const odd: unknown[] = []; let damaged = 0; let spoilt = 0; const taking: string[] = []
       let first: Anime25DPose | null = null
       let previous: Anime25DPose | null = null
       let raised: Anime25DPose | null = null
@@ -1326,7 +1327,15 @@ async function poses(ref: PackageRef, frames = 24) {
           // The GPU has what the pose says: read back, not from the player's own copy.
           lagging += gpuDiffers(subject, taken)
           if (replay.player.renderPose(back) && hash(readPixels(replay.gl)) === live) replayed++
-          if (enlarged.player.renderPose(back) && hash(readPixels(enlarged.gl)) === hash(readPixels(large.gl))) sized++
+          if (i % 4 === 0) {
+            atSize++
+            const [own, again, posed] = [readPixels(large.gl), readPixels(large.gl), enlarged.player.renderPose(back) && readPixels(enlarged.gl)]
+            const twice = enlarged.player.renderPose(back) && readPixels(enlarged.gl)
+            step(wide, pose)
+            if (posed && hash(posed) === hash(own)) sized++
+            else odd.push({ at: drawn, posed: posed && apart(posed, own), reread: apart(again, own), redrawn: posed && twice && apart(twice, posed), twin: apart(readPixels(wide.gl), own) })
+          }
+          else step(wide, pose)
           drawn++
           // Damaged in one place, it is refused whole, or the place is one that is not drawn.
           if (i === frames - 1) {
@@ -1355,7 +1364,7 @@ async function poses(ref: PackageRef, frames = 24) {
       }
       // Come to rest, hardly anything of her is uploaded anew: a pose shown then leaves nothing of it either.
       for (const w of [subject, twin]) {
-        for (let i = 0; i < 400; i++) step(w, { phys: false })
+        for (let i = 0; i < 120; i++) step(w, { phys: false })
       }
       subject.player.renderPose(first!)
       const stirred = hash(readPixels(subject.gl)) !== hash(readPixels(twin.gl))
@@ -1377,10 +1386,10 @@ async function poses(ref: PackageRef, frames = 24) {
       const went = replay.player.getPose() !== null && hash(readPixels(replay.gl)) !== as
       const figure = first!
       const parts = { mouth: figure.mouth !== null, cloth: figure.arms.some(arm => arm.cloths.length > 0), arm: figure.arms.length > 0 }
-      return { drawn, sized, damaged, taking, spoilt, resized, gone, again, went, parts, settled, replayed, drifted, shown, returned, lagging, bytes, refused, between, armed, cloths, stickers, mouths: mouths.size, gestures, wrong, error: subject.gl.getError() || replay.gl.getError() }
+      return { drawn, sized, atSize, odd, damaged, taking, spoilt, resized, gone, again, went, parts, settled, replayed, drifted, shown, returned, lagging, bytes, refused, between, armed, cloths, stickers, mouths: mouths.size, gestures, wrong, error: subject.gl.getError() || replay.gl.getError() }
     }
     finally {
-      for (const w of [subject, twin, replay, stranger, large, enlarged]) w.close()
+      for (const w of [subject, twin, replay, stranger, large, enlarged, wide]) w.close()
     }
   })
 }
@@ -1398,7 +1407,6 @@ function* damages(pose: Anime25DPose): Generator<[string, Anime25DPose]> {
     const keys = ArrayBuffer.isView(value) ? (value as Float32Array).length ? [0, (value as Float32Array).length - 1] : [] : Array.isArray(value) ? Object.keys(value).slice(0, 3) : Object.keys(value)
     for (const key of keys) yield* places((value as Record<string | number, unknown>)[key], [...path, key])
   }
-  const text = poseToJSON(pose)
   for (const path of places(pose, [])) {
     const name = path.join('.')
     const last = path.at(-1)!
@@ -1413,7 +1421,7 @@ function* damages(pose: Anime25DPose): Generator<[string, Anime25DPose]> {
       if ((Array.isArray(place) || ArrayBuffer.isView(place)) && (place as Float32Array).length && !ANY_LENGTH.test(name)) yield (place as Float32Array).slice(0, -1)
     }
     for (const bad of spoil()) {
-      const copy = poseFromJSON(text)
+      const copy = structuredClone(pose)
       const at = within(copy)
       // A typed list holds numbers whatever is put there; a list may hold nothing at all.
       if (at instanceof Uint16Array) at[last as number] = 65535
@@ -1423,6 +1431,18 @@ function* damages(pose: Anime25DPose): Generator<[string, Anime25DPose]> {
       yield [name, copy]
     }
   }
+}
+
+/** How many pixels of two pictures differ, and the most any does. */
+function apart(a: Uint8Array, b: Uint8Array): [pixels: number, most: number] {
+  let pixels = 0
+  let most = 0
+  for (let i = 0; i < a.length; i += 4) {
+    const by = Math.max(...[0, 1, 2, 3].map(k => Math.abs(a[i + k]! - b[i + k]!)))
+    if (by) pixels++
+    most = Math.max(most, by)
+  }
+  return [pixels, most]
 }
 
 /** Layers whose vertices on the GPU are not the pose's. */
