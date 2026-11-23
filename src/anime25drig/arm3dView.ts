@@ -9,6 +9,7 @@ import { liftForearm, wristOverUpper } from './arm3dMotion'
 import { ARM3D_INK, bareBelowSleeve, clothCuffMouth, ringFill, spreadFill } from './arm3dPrepare'
 import { BAKE_FS, BAKE_VS, COMPOSITE_FS, FULL_VS, GAP2_FS, GAP_FS, HAND_FS, HAND_VS, HELD_FS, HELD_VS, SLEEVE_FS, SLEEVE_VS, WHOLE_FS } from './arm3dShaders'
 import { arm3DTexture, createArm3DTarget, dropArm3DTarget, setArm3DGround } from './arm3dTarget'
+import { uploadPixels } from './pixelTexture'
 
 export type { Arm3DFrame } from './arm3dMotion'
 
@@ -88,17 +89,25 @@ interface Program {
 
 function compile(gl: WebGL2RenderingContext, vs: string, fs: string): Program {
   const program = gl.createProgram()
-  for (const [type, source] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]] as const) {
-    const shader = gl.createShader(type)!
-    gl.shaderSource(shader, source)
-    gl.compileShader(shader)
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader) ?? 'arm shader')
-    gl.attachShader(program, shader)
+  let shader: WebGLShader | null = null
+  try {
+    for (const [type, source] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]] as const) {
+      shader = gl.createShader(type)
+      if (!shader) throw new Error('arm shader')
+      gl.shaderSource(shader, source)
+      gl.compileShader(shader)
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader) ?? 'arm shader')
+      gl.attachShader(program, shader)
+      gl.deleteShader(shader)
+    }
+    gl.linkProgram(program)
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) ?? 'arm program')
+    return { program, attributes: new Map(), uniforms: new Map() }
+  } catch (error) {
     gl.deleteShader(shader)
+    gl.deleteProgram(program)
+    throw error
   }
-  gl.linkProgram(program)
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) ?? 'arm program')
-  return { program, attributes: new Map(), uniforms: new Map() }
 }
 
 /**
@@ -118,17 +127,45 @@ export class Arm3DView {
   private vao: WebGLVertexArrayObject
   private buffers = new Map<string, WebGLBuffer>()
   private target: Arm3DTarget | null = null
+  /** What `making` has made so far. */
+  private made: Set<WebGLTexture> | null = null
 
   constructor(private gl: WebGL2RenderingContext) {
-    this.sleeveProgram = compile(gl, SLEEVE_VS, SLEEVE_FS)
-    this.handProgram = compile(gl, HAND_VS, HAND_FS)
-    this.bakeProgram = compile(gl, BAKE_VS, BAKE_FS)
-    this.gapProgram = compile(gl, FULL_VS, GAP_FS)
-    this.gap2Program = compile(gl, FULL_VS, GAP2_FS)
-    this.compositeProgram = compile(gl, FULL_VS, COMPOSITE_FS)
-    this.heldProgram = compile(gl, HELD_VS, HELD_FS)
-    this.wholeProgram = compile(gl, FULL_VS, WHOLE_FS)
-    this.vao = gl.createVertexArray()
+    const made: Program[] = []
+    const program = (vs: string, fs: string) => {
+      const p = compile(gl, vs, fs)
+      made.push(p)
+      return p
+    }
+    try {
+      this.sleeveProgram = program(SLEEVE_VS, SLEEVE_FS)
+      this.handProgram = program(HAND_VS, HAND_FS)
+      this.bakeProgram = program(BAKE_VS, BAKE_FS)
+      this.gapProgram = program(FULL_VS, GAP_FS)
+      this.gap2Program = program(FULL_VS, GAP2_FS)
+      this.compositeProgram = program(FULL_VS, COMPOSITE_FS)
+      this.heldProgram = program(HELD_VS, HELD_FS)
+      this.wholeProgram = program(FULL_VS, WHOLE_FS)
+      this.vao = gl.createVertexArray()
+      if (!this.vao) throw new Error('arm vertex array')
+    } catch (error) {
+      for (const p of made) gl.deleteProgram(p.program)
+      throw error
+    }
+  }
+
+  /** Runs `make`; should it fail, the textures it made here go too, and nothing of it is left in the context. */
+  making<T>(make: () => T): T {
+    const made = new Set<WebGLTexture>()
+    this.made = made
+    try {
+      return make()
+    } catch (error) {
+      for (const texture of made) this.gl.deleteTexture(texture)
+      throw error
+    } finally {
+      this.made = null
+    }
   }
 
   dispose(): void {
@@ -160,6 +197,14 @@ export class Arm3DView {
     return p.attributes.get(name)!
   }
 
+  /** A new buffer kept as `name`. Without one a bake has nothing to bake; a frame of a lost context just draws nothing. */
+  private buffer(name: string): WebGLBuffer {
+    const buffer = this.gl.createBuffer()
+    if (buffer) this.buffers.set(name, buffer)
+    else if (this.made) throw new Error('arm buffer')
+    return buffer
+  }
+
   /** The mesh's attributes for `p` (named arrays, `size` floats each) and its indices; returns how many. */
   private upload(p: Program, attributes: Record<string, [ArrayLike<number>, number]>, idx: number[]): number {
     const gl = this.gl
@@ -170,8 +215,7 @@ export class Arm3DView {
       if (loc < 0) continue
       let b = this.buffers.get(name)
       if (!b) {
-        b = gl.createBuffer()
-        this.buffers.set(name, b)
+        b = this.buffer(name)
       }
       gl.bindBuffer(gl.ARRAY_BUFFER, b)
       gl.bufferData(gl.ARRAY_BUFFER, data instanceof Float32Array ? data : new Float32Array(data), gl.DYNAMIC_DRAW)
@@ -180,8 +224,7 @@ export class Arm3DView {
     }
     let ib = this.buffers.get('idx')
     if (!ib) {
-      ib = gl.createBuffer()
-      this.buffers.set('idx', ib)
+      ib = this.buffer('idx')
     }
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib)
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(idx), gl.DYNAMIC_DRAW)
@@ -190,7 +233,9 @@ export class Arm3DView {
 
   /** A picture as a texture (straight colour). */
   picture(picture: Pick<Arm3DPicture, 'pixels' | 'width' | 'height'>, mip = true): WebGLTexture {
-    return arm3DTexture(this.gl, picture.width, picture.height, picture.pixels, mip)
+    const texture = arm3DTexture(this.gl, picture.width, picture.height, picture.pixels, mip)
+    this.made?.add(texture)
+    return texture
   }
 
   bakeSleeve(shape: Arm3DShape, px: number, view: { width: number; height: number }, passes: Arm3DBakePass[]): WebGLTexture {
@@ -218,11 +263,30 @@ export class Arm3DView {
    */
   private bake(shape: Arm3DShape, px: number, view: { width: number; height: number }, passes: Arm3DBakePass[], elbow: boolean): { texture: WebGLTexture; written: number } {
     const gl = this.gl
-    const p = this.bakeProgram
     const [W, H] = elbow ? [ELBOW_SIZE, ELBOW_SIZE] : [BAKE_W, BAKE_H]
     const out = arm3DTexture(gl, W, H, null, false)
+    this.made?.add(out)
     const fb = gl.createFramebuffer()
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
+    // The figure's frames keep the viewport their last resize set, and go on being drawn while the next outfit is made.
+    const viewport = gl.getParameter(gl.VIEWPORT) as Int32Array
+    try {
+      // Without one of its own it would bake onto the canvas.
+      if (!fb) throw new Error('arm framebuffer')
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
+      return { texture: out, written: this.bakeInto(out, W, H, shape, px, view, passes, elbow) }
+    } finally {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+      gl.deleteFramebuffer(fb)
+      gl.viewport(viewport[0], viewport[1], viewport[2], viewport[3])
+      gl.bindVertexArray(null)
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
+    }
+  }
+
+  /** `bake` into `out`, in the framebuffer bound; returns how much of it the pictures wrote. */
+  private bakeInto(out: WebGLTexture, W: number, H: number, shape: Arm3DShape, px: number, view: { width: number; height: number }, passes: Arm3DBakePass[], elbow: boolean): number {
+    const gl = this.gl
+    const p = this.bakeProgram
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, out, 0)
     gl.viewport(0, 0, W, H)
     gl.clearColor(0, 0, 0, 0)
@@ -260,8 +324,6 @@ export class Arm3DView {
     }
     const px8 = new Uint8Array(W * H * 4)
     gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px8)
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
-    gl.deleteFramebuffer(fb)
     // About 11° round the ring in from where a picture saw the sleeve last: past the outline it draws there.
     let written = 0
     for (let at = 3; at < px8.length; at += 4) written += px8[at] > 0 ? 1 : 0
@@ -270,18 +332,14 @@ export class Arm3DView {
     if (!elbow && shape.restCuff !== undefined) clothCuffMouth(px8, W, H)
     if (!elbow && shape.shortSleeve !== undefined) bareBelowSleeve(px8, W, H, shape.shortSleeve, arm3DBareElbowRow(shape.shortSleeve), shape.skin, shape.shade)
     gl.bindTexture(gl.TEXTURE_2D, out)
-    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, px8)
-    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1)
+    uploadPixels(gl, W, H, px8)
     gl.generateMipmap(gl.TEXTURE_2D)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
     // Seen slanting round the sleeve's sides the texture is squeezed one way only; a plain mip blurred it both ways.
     const aniso = gl.getExtension('EXT_texture_filter_anisotropic')
     if (aniso) gl.texParameterf(gl.TEXTURE_2D, aniso.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, gl.getParameter(aniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT)))
-    gl.bindVertexArray(null)
-    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
-    return { texture: out, written }
+    return written
   }
 
   private dropTarget(): void {

@@ -158,7 +158,8 @@ export class Anime25DArmVariants {
       const figure = layers.some((layer) => layer.source.role === 'arm-variant' && layer.source.side === side && layer.source.armVariant?.model?.restFore !== undefined)
       const pieces = figure ? layers.filter((layer) => names.has(cutFrom(layer.source) ?? '')) : []
       modelled = new Arm3DSide(view, bases, { width: gpu.canvasWidth, height: canvasHeight }, pieces)
-      modelled.bind(layers, gpu.gl, gpu.atlas, gpu.texture && gpu.program ? { texture: gpu.texture, program: gpu.program } : undefined)
+      const arm = modelled
+      view.making(() => arm.bind(layers, gpu.gl, gpu.atlas, gpu.texture && gpu.program ? { texture: gpu.texture, program: gpu.program } : undefined))
       if (modelled.gestures.length > 0) return modelled
     } catch (error) {
       console.warn('[figure] gesture arm drawn flat: its 3D model could not be bound', error)

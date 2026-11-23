@@ -1,5 +1,5 @@
 import type { Page, TestInfo } from '@playwright/test'
-import type { PackageRef } from './fixture/probes'
+import type { PackageRef, SwapRequest } from './fixture/probes'
 import { Buffer } from 'node:buffer'
 import { readFile } from 'node:fs/promises'
 import { basename, delimiter } from 'node:path'
@@ -19,17 +19,8 @@ const packages: { name: string, synthetic?: string, root?: string }[] = [
 
 type Probes = typeof import('./fixture/probes')['probes']
 
-async function stage(page: Page, pkg: (typeof packages)[number]): Promise<PackageRef> {
-  await page.route('**/api/**', route => route.abort())
-  await page.goto('/probes.html')
-  await page.waitForFunction(() => 'figureProbes' in window)
-  if (pkg.root) {
-    const manifest = JSON.parse(await readFile(`${pkg.root}/manifest.json`, 'utf8'))
-    const atlas = await readFile(`${pkg.root}/atlas.png`)
-    await page.route('**/real-atlas.png', route => route.fulfill({ contentType: 'image/png', body: atlas }))
-    return { manifest, atlasUrl: '/real-atlas.png' }
-  }
-  // The importer reads a portrait for every PSD; serve a flat one.
+/** The importer reads a portrait for every PSD; serves a flat one. */
+async function servePortrait(page: Page) {
   const portrait = await page.evaluate(() => {
     const canvas = document.createElement('canvas')
     canvas.width = 192
@@ -40,10 +31,23 @@ async function stage(page: Page, pkg: (typeof packages)[number]): Promise<Packag
     return canvas.toDataURL('image/png').split(',')[1]!
   })
   await page.route('**/unused*.png', route => route.fulfill({ contentType: 'image/png', body: Buffer.from(portrait, 'base64') }))
+}
+
+async function stage(page: Page, pkg: (typeof packages)[number]): Promise<PackageRef> {
+  await page.route('**/api/**', route => route.abort())
+  await page.goto('/probes.html')
+  await page.waitForFunction(() => 'figureProbes' in window)
+  if (pkg.root) {
+    const manifest = JSON.parse(await readFile(`${pkg.root}/manifest.json`, 'utf8'))
+    const atlas = await readFile(`${pkg.root}/atlas.png`)
+    await page.route('**/real-atlas.png', route => route.fulfill({ contentType: 'image/png', body: atlas }))
+    return { manifest, atlasUrl: '/real-atlas.png' }
+  }
+  await servePortrait(page)
   return { synthetic: pkg.synthetic! }
 }
 
-async function run<K extends keyof Probes>(page: Page, name: K, ref: PackageRef): Promise<Awaited<ReturnType<Probes[K]>>> {
+async function run<K extends keyof Probes>(page: Page, name: K, ref: Parameters<Probes[K]>[0]): Promise<Awaited<ReturnType<Probes[K]>>> {
   const result = await page.evaluate(
     ([name, ref]) => (window as unknown as { figureProbes: Record<string, (ref: unknown) => unknown> }).figureProbes[name]!(ref),
     [name as string, ref as unknown] as const,
@@ -259,16 +263,39 @@ for (const pkg of packages) {
       expect(result.folds).toBe(0)
       expect(result.error).toBe(0)
     })
+  })
+}
 
-    test('an outfit swap that fails anywhere leaves the figure exactly as it was', async ({ page }, testInfo) => {
-      // Every place builds most of an outfit again; real art, with its modelled arms, takes many minutes.
-      if (pkg.root) test.setTimeout(2_400_000)
-      const result = await run(page, 'swapFaults', await stage(page, pkg))
-      await attach(testInfo, result)
-      expect(result.runs.some(run => run.kind === 'gpu' && run.outcome === 'refused')).toBe(true)
-      expect(result.runs.some(run => run.kind === 'read' && run.outcome === 'refused')).toBe(true)
-      expect(result.runs.filter(run => !run.same || run.leaked || run.lost || run.error)).toEqual([])
-      expect(result.recovered, 'after refused swaps the next one goes through').toBe(true)
-    })
+// What is shown, and what the failing swap puts on: another outfit; one with a modelled arm, over a figure without arms
+// and over one with (its GPU steps only, the reads being the same); and real art those two ways.
+const synthetic = (kind: string, armed = false): PackageRef => ({ synthetic: kind, armed })
+const swaps: { name: string, root?: string, refs: (own: PackageRef) => SwapRequest }[] = [
+  { name: 'synthetic to synthetic collar', refs: () => ({ shown: synthetic('ordinary'), next: synthetic('collar') }) },
+  { name: 'synthetic collar to an outfit with a modelled arm', refs: () => ({ shown: synthetic('collar'), next: synthetic('ordinary', true) }) },
+  { name: 'synthetic with a modelled arm to the same', refs: () => ({ shown: synthetic('ordinary', true), next: synthetic('ordinary', true), kinds: ['gpu'] }) },
+  ...real.flatMap((root) => {
+    const name = `real ${basename(root).slice(0, 8)}`
+    return [
+      { name: `synthetic to ${name}`, root, refs: (own: PackageRef) => ({ shown: synthetic('ordinary'), next: own }) },
+      { name: `${name} to itself`, root, refs: (own: PackageRef) => ({ shown: own, next: own, kinds: ['gpu'] }) },
+    ]
+  }),
+]
+
+for (const { name, root, refs } of swaps) {
+  test(`${name}: an outfit swap that fails anywhere leaves the figure exactly as it was`, async ({ page }, testInfo) => {
+    // Every place builds most of an outfit again; real art, with its modelled arms, takes many minutes.
+    test.setTimeout(root ? 3_600_000 : 900_000)
+    const own = await stage(page, { name, root, synthetic: 'ordinary' })
+    if (root) await servePortrait(page)
+    const request = refs(own)
+    const result = await run(page, 'swapFaults', request)
+    await attach(testInfo, result)
+    expect(result.runs.filter(run => !run.fired), 'every failure was put where it was meant').toEqual([])
+    for (const kind of request.kinds ?? ['gpu', 'read'])
+      expect(result.runs.some(run => run.kind === kind && run.outcome === 'refused'), kind).toBe(true)
+    if (name.includes('modelled arm')) expect(result.runs.some(run => run.site.includes('arm3dArm')), 'a modelled arm was made').toBe(true)
+    expect(result.runs.filter(run => !run.same || run.leaked || run.lost || run.error)).toEqual([])
+    expect(result.recovered, 'after refused swaps the next one goes through').toBe(true)
   })
 }

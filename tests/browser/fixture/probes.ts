@@ -5,7 +5,7 @@
 import type { Anime25DDriver } from '../../../src/anime25drig/driver'
 import type { Anime25DInspection, Anime25DLayerView, Anime25DPoint } from '../../../src/anime25drig/playerInspection'
 import type { PoseCorrection } from '../../../src/anime25drig/poseCorrections'
-import type { Anime25DPlayback } from '../../../src/anime25drig/types'
+import type { Anime25DArmModel, Anime25DPlayback } from '../../../src/anime25drig/types'
 import type { MotionChannelPolicy } from '../../../src/motion/policy'
 import type { MeropeRigManifest } from '../../../src/rig/types'
 import { writePsd } from 'ag-psd'
@@ -19,7 +19,7 @@ import { musicSignalAt } from '../../../src/singing/musicSignal.test-support'
 import { fixture, importPsd } from './synthetic'
 
 /** A synthetic kind built in the page, or a real package the test serves. */
-export type PackageRef = { synthetic: string } | { manifest: MeropeRigManifest, atlasUrl: string }
+export type PackageRef = { synthetic: string, armed?: boolean } | { manifest: MeropeRigManifest, atlasUrl: string }
 
 interface FigurePackage {
   playback: Anime25DPlayback
@@ -42,7 +42,32 @@ async function resolvePackage(ref: PackageRef): Promise<FigurePackage> {
       .then(prepared => ({ playback: prepared.source.anime25dPlayback!, atlasUrl: URL.createObjectURL(prepared.atlas) }))
     synthetic.set(ref.synthetic, built)
   }
-  return built
+  if (!ref.armed) return built
+  const { playback, ...rest } = await built
+  return { ...rest, playback: withModelledArm(playback) }
+}
+
+/** The package with a gesture arm modelled on one of its drawn ones, so what is made for modelled arms is made here too. */
+function withModelledArm(playback: Anime25DPlayback): Anime25DPlayback {
+  const base = playback.layers.find(layer => layer.role === 'handwear' && layer.side)
+  if (!base) throw new Error('no drawn arm to model')
+  const { w, h } = base
+  const at = (x: number, y: number, z = 0): [number, number, number] => [x * w, y * h, z * w]
+  const hand: [number, number][] = [[0.5 * w, 0.42 * h]]
+  for (const [finger, dx] of [-0.2, -0.1, 0, 0.1, 0.2].entries()) {
+    for (let joint = 1; joint <= 4; joint++) hand.push([(0.5 + dx) * w, (0.36 - (finger === 0 ? 0 : 0.03) - 0.04 * joint) * h])
+  }
+  const box = (x0: number, y0: number, x1: number, y1: number): [number, number][] => [[x0 * w, y0 * h], [x1 * w, y0 * h], [x1 * w, y1 * h], [x0 * w, y1 * h]]
+  const model: Anime25DArmModel = {
+    upper: 0.4 * h, fore: 0.5 * h, radius: Array.from({ length: 24 }, (_, i) => (0.3 - 0.006 * i) * w), cuff: 0.6, bare: 0.12 * w, bareShift: 0,
+    restEnd: 0.4, restReach: Array.from({ length: 24 }, () => [0.3 * w, 0.3 * w] as [number, number]),
+    rest: { shoulder: at(0.5, 0.05), elbow: at(0.5, 0.45), wrist: at(0.5, 0.95) },
+    raised: { shoulder: at(0.5, 0.05), elbow: at(0.2, 0.45, 0.2), wrist: at(0.5, 0.42, 0.3) },
+    hand, fingers: [0.04, 0.04, 0.04, 0.04, 0.03].map(share => share * w), fingerProfile: [], keyProfile: [], palmOutline: null, hiddenFingers: [],
+    skin: [240, 210, 196], shade: [210, 170, 160], line: [90, 60, 60], handOutline: [box(0.2, 0.1, 0.8, 0.45)], armOutline: [box(0, 0, 1, 1)],
+  }
+  const gesture = { ...base, name: `arm-variant-wave-${base.side}`, role: 'arm-variant', strands: [], armVariant: { gesture: 'wave', lift: 'whole' as const, model } }
+  return { ...playback, layers: [...playback.layers, gesture] }
 }
 
 let seed = 1749
@@ -1096,12 +1121,23 @@ async function watched(pkg: FigurePackage): Promise<Watched> {
   return { player, gl, gpu, live, seed, close }
 }
 
-/** Moves the figure on, on this player's own random stream, and hashes what it shows. */
-function moveOn(w: Watched): number {
+/** What the page can ask of the figure besides its pixels: what it can do, its gestures, what a touch lands on. */
+function answers(w: Watched): string {
+  const { left, top, width, height } = (w.gl.canvas as HTMLCanvasElement).getBoundingClientRect()
+  const touches = [0.2, 0.35, 0.5, 0.65, 0.8].flatMap(x => [0.15, 0.3, 0.45, 0.6, 0.75].map(y =>
+    w.player.hitTestTouch(left + x * width, top + y * height)))
+  return JSON.stringify([w.player.getMotionCapabilities(), w.player.armVariantGestures(), touches])
+}
+
+/** Moves the figure on, on this player's own random stream, and hashes what it shows from the very next frame on. */
+function moveOn(w: Watched): string {
   seed = w.seed
-  hold(w.player, AFTER_POSE, 8)
+  const frames = Array.from({ length: 8 }, () => {
+    hold(w.player, AFTER_POSE, 1)
+    return frameHash(w.player, w.gl)
+  })
   w.seed = seed
-  return frameHash(w.player, w.gl)
+  return `${frames.join()} ${answers(w)}`
 }
 
 async function pairOf(pkg: FigurePackage): Promise<[Watched, Watched]> {
@@ -1117,8 +1153,9 @@ async function pairOf(pkg: FigurePackage): Promise<[Watched, Watched]> {
 
 interface SwapRun {
   kind: 'gpu' | 'read'
-  /** Where the swap failed. */
+  /** Where the swap failed, and whether the failure was really put there. */
   site: string
+  fired: boolean
   outcome: 'swapped' | 'refused'
   /** GPU objects alive that were not before the swap, and ones from before it that are gone. */
   leaked: number
@@ -1128,54 +1165,72 @@ interface SwapRun {
   error: number
 }
 
+export interface SwapRequest {
+  shown: PackageRef
+  next: PackageRef
+  kinds?: ('gpu' | 'read')[]
+}
+
 /**
  * An outfit swap that fails, wherever it fails (a GPU step, or a read of the package), leaves the figure on screen
  * exactly as it was: frame for frame a twin that never swapped, not one GPU object more or fewer. Each place in the
  * code is failed once, at its last visit, where the most has been made.
  */
-async function swapFaults(ref: PackageRef) {
-  const pkg = await resolvePackage(ref)
+async function swapFaults({ shown: shownRef, next: nextRef, kinds = ['gpu', 'read'] }: SwapRequest) {
+  const shown = await resolvePackage(shownRef)
+  const next = await resolvePackage(nextRef)
   return seeded(async () => {
-    const swap = (w: Watched, playback = pkg.playback) => w.player.replaceLivePackage(playback, pkg.manifest, pkg.atlasUrl)
+    const swap = async (w: Watched, pkg: FigurePackage, playback = pkg.playback) => {
+      seed = w.seed
+      await w.player.replaceLivePackage(playback, pkg.manifest, pkg.atlasUrl)
+      w.seed = seed
+    }
     const places: { kind: SwapRun['kind'], failAt: number, site: string }[] = []
-    for (const kind of ['gpu', 'read'] as const) {
-      const w = await watched(pkg)
+    for (const kind of kinds) {
+      const w = await watched(shown)
       const faults: Faults = kind === 'gpu' ? w.gpu : { steps: 0, failAt: 0, sites: null }
       faults.steps = 0
       faults.sites = []
-      await swap(w, kind === 'read' ? readWatched(pkg.playback, faults) : undefined)
+      await swap(w, next, kind === 'read' ? readWatched(next.playback, faults) : undefined)
       const last = new Map(faults.sites.map((at, index) => [at, index + 1]))
       w.close()
       for (const [at, failAt] of last) places.push({ kind, failAt, site: at })
     }
-    let [control, subject] = await pairOf(pkg)
+    let [control, subject] = await pairOf(shown)
     const runs: SwapRun[] = []
     try {
       for (const { kind, failAt, site: at } of places) {
         const faults: Faults = kind === 'gpu' ? subject.gpu : { steps: 0, failAt: 0, sites: null }
-        const playback = kind === 'read' ? readWatched(pkg.playback, faults) : pkg.playback
+        const playback = kind === 'read' ? readWatched(next.playback, faults) : next.playback
         const before = new Set(subject.live)
         faults.steps = 0
         faults.failAt = failAt
         let outcome: SwapRun['outcome'] = 'swapped'
         try {
-          await swap(subject, playback)
+          await swap(subject, next, playback)
         }
         catch {
           outcome = 'refused'
         }
         faults.failAt = 0
+        const fired = faults.steps >= failAt
+        let leaked: number
+        let lost: number
         if (outcome === 'swapped') {
-          // A failure the swap gets round (a modelled arm drawn flat). The next outfit must leave as many objects as ever.
-          await swap(subject)
-          runs.push({ kind, site: at, outcome, leaked: Math.max(0, subject.live.size - before.size), lost: Math.max(0, before.size - subject.live.size), same: true, error: subject.gl.getError() })
-          control.close()
-          subject.close();
-          [control, subject] = await pairOf(pkg)
-          continue
+          // A failure the swap gets round (a modelled arm drawn flat). Taken once more, whole, and back in the outfit
+          // before, it must have the objects and show what a twin has and shows whose swaps all went through.
+          await swap(subject, shown)
+          for (const w of [subject, control]) {
+            await swap(w, next)
+            await swap(w, shown)
+          }
+          leaked = Math.max(0, subject.live.size - control.live.size)
+          lost = Math.max(0, control.live.size - subject.live.size)
         }
-        const leaked = [...subject.live].filter(object => !before.has(object)).length
-        const lost = [...before].filter(object => !subject.live.has(object)).length
+        else {
+          leaked = [...subject.live].filter(object => !before.has(object)).length
+          lost = [...before].filter(object => !subject.live.has(object)).length
+        }
         let same = true
         try {
           same = moveOn(control) === moveOn(subject)
@@ -1183,15 +1238,15 @@ async function swapFaults(ref: PackageRef) {
         catch {
           same = false
         }
-        runs.push({ kind, site: at, outcome, leaked, lost, same, error: subject.gl.getError() })
-        if (same && !leaked && !lost) continue
-        // Broken from here on: a new pair, so every place is judged on its own.
+        runs.push({ kind, site: at, fired, outcome, leaked, lost, same, error: subject.gl.getError() })
+        if (outcome === 'refused' && same && !leaked && !lost) continue
+        // Broken, or swapped, from here on: a new pair, so every place is judged on its own.
         control.close()
         subject.close();
-        [control, subject] = await pairOf(pkg)
+        [control, subject] = await pairOf(shown)
       }
-      await swap(subject)
-      const recovered = Number.isFinite(moveOn(subject)) && readPixels(subject.gl).some((value, index) => index % 4 === 3 && value > 0)
+      await swap(subject, next)
+      const recovered = moveOn(subject).length > 0 && readPixels(subject.gl).some((value, index) => index % 4 === 3 && value > 0)
         && subject.gl.getError() === subject.gl.NO_ERROR
       return { runs, recovered }
     }

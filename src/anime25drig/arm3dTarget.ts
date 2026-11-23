@@ -1,3 +1,5 @@
+import { createFilledTexture, uploadPixels } from './pixelTexture'
+
 /** The modelled arm's own render target: antialiased colour with depth and stencil, and the textures it resolves to. */
 export interface Arm3DTarget {
   width: number
@@ -14,19 +16,18 @@ export interface Arm3DTarget {
   coverTexture: WebGLTexture
 }
 
-export function arm3DTexture(gl: WebGL2RenderingContext, width: number, height: number, pixels: ArrayBufferView | null, mip: boolean, repeatS = false): WebGLTexture {
-  const t = gl.createTexture()
-  gl.bindTexture(gl.TEXTURE_2D, t)
+function fillArm3DTexture(gl: WebGL2RenderingContext, width: number, height: number, pixels: ArrayBufferView | null, mip: boolean, repeatS: boolean): void {
   // Straight colour: the arm's shaders weigh it by its alpha themselves.
-  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
-  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1)
+  uploadPixels(gl, width, height, pixels)
   if (mip) gl.generateMipmap(gl.TEXTURE_2D)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, mip ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, repeatS ? gl.REPEAT : gl.CLAMP_TO_EDGE)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-  return t
+}
+
+export function arm3DTexture(gl: WebGL2RenderingContext, width: number, height: number, pixels: ArrayBufferView | null, mip: boolean, repeatS = false): WebGLTexture {
+  return createFilledTexture(gl, () => fillArm3DTexture(gl, width, height, pixels, mip, repeatS))
 }
 
 export function createArm3DTarget(gl: WebGL2RenderingContext, width: number, height: number): Arm3DTarget {
@@ -43,7 +44,10 @@ export function createArm3DTarget(gl: WebGL2RenderingContext, width: number, hei
   gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, color)
   gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, depth)
   const own = (filter: number): [WebGLFramebuffer, WebGLTexture] => {
-    const t = arm3DTexture(gl, width, height, null, false)
+    // Made while drawing, where a lost context may give none: nothing is drawn then, and nothing thrown.
+    const t = gl.createTexture()
+    gl.bindTexture(gl.TEXTURE_2D, t)
+    fillArm3DTexture(gl, width, height, null, false, false)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter)
     const fb = gl.createFramebuffer()
