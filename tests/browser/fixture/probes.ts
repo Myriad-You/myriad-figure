@@ -1190,6 +1190,11 @@ async function swapFaults({ shown: shownRef, next: nextRef, kinds = ['gpu', 'rea
       await w.player.replaceLivePackage(playback, pkg.manifest, pkg.atlasUrl)
       w.seed = seed
     }
+    /** A swap that goes through, and the resize the page follows it with; one that failed is not followed by any. */
+    const take = async (w: Watched, pkg: FigurePackage) => {
+      await swap(w, pkg)
+      w.player.resize(192, 256, 1)
+    }
     const places: { kind: SwapRun['kind'], failAt: number, site: string }[] = []
     for (const kind of kinds) {
       const w = await watched(shown)
@@ -1224,11 +1229,12 @@ async function swapFaults({ shown: shownRef, next: nextRef, kinds = ['gpu', 'rea
           if (outcome === 'swapped') {
             // A failure the swap gets round (a modelled arm drawn flat): that outfit draws, and back in the one before
             // the figure is a twin's whose swap went through whole.
-            await swap(control, next)
+            subject.player.resize(192, 256, 1)
+            await take(control, next)
             moveOn(control)
             moveOn(subject)
-            await swap(control, shown)
-            await swap(subject, shown)
+            await take(control, shown)
+            await take(subject, shown)
             subject.seed = control.seed
           }
           same = moveOn(control) === moveOn(subject)
@@ -1239,9 +1245,9 @@ async function swapFaults({ shown: shownRef, next: nextRef, kinds = ['gpu', 'rea
         if (outcome === 'swapped') {
           // What modelled arms are made and drawn with is made once and kept: once more, whole and drawn, on both.
           for (const w of [subject, control]) {
-            await swap(w, next)
+            await take(w, next)
             moveOn(w)
-            await swap(w, shown)
+            await take(w, shown)
           }
         }
         const leaked = outcome === 'swapped' ? Math.max(0, subject.live.size - control.live.size) : [...subject.live].filter(object => !before.has(object)).length
@@ -1253,7 +1259,7 @@ async function swapFaults({ shown: shownRef, next: nextRef, kinds = ['gpu', 'rea
         subject.close();
         [control, subject] = await pairOf(shown)
       }
-      await swap(subject, next)
+      await take(subject, next)
       const recovered = moveOn(subject).length > 0 && readPixels(subject.gl).some((value, index) => index % 4 === 3 && value > 0)
         && subject.gl.getError() === subject.gl.NO_ERROR
       return { runs, recovered }
