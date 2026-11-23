@@ -225,6 +225,8 @@ async function touchSurface(region = 'face') {
   }, () => runtime.touch.release('test-surface'))
   let raf = 0
   let revision = -1
+  let last = performance.now()
+  // By the clock, as a page drives her: the touch itself runs by it, however long a frame takes.
   const tick = () => {
     const now = performance.now()
     const frame = runtime.frame(now)
@@ -234,7 +236,8 @@ async function touchSurface(region = 'face') {
       if (frame.behaviorPlan) player.setBehaviorMotionUnits(realizeAnime25DBehaviorPlan(frame.behaviorPlan, now).units, now)
       else player.setBehaviorMotionUnits([], now)
     }
-    player.tick(1 / 60)
+    player.tick((now - last) / 1000)
+    last = now
     raf = requestAnimationFrame(tick)
   }
   raf = requestAnimationFrame(tick)
