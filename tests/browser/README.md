@@ -101,7 +101,8 @@ What the probes hold, and what they do not:
   her own player drawing poses in between goes on frame for frame as a twin
   that drew none; another outfit's pose, and one spoilt in any of the places
   tried (every kind there is), is refused whole. Cloth on a modelled arm is
-  only on real art.
+  only on real art. On Firefox one pixel may be one level off: on a virtual
+  machine's GPU it is not the same as itself.
 - Pose corrections: an authored correction (through `previewPoseCorrections`)
   changes only its combination pose, never the body, and releasing it restores
   every pixel.

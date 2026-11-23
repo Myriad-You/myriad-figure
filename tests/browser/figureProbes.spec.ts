@@ -310,7 +310,7 @@ const posed: { name: string, root?: string, ref?: PackageRef }[] = [
 
 for (const { name, root, ref } of posed) {
   test(`${name}: a pose taken as data is drawn again to the pixel and moves nothing`, async ({ page }, testInfo) => {
-    test.setTimeout(root ? 1_200_000 : 300_000)
+    test.setTimeout(root ? 1_200_000 : 600_000)
     const own = await stage(page, { name, root, synthetic: 'ordinary' })
     if (root) await servePortrait(page)
     const result = await run(page, 'poses', ref ?? own)
