@@ -1311,14 +1311,21 @@ function gpuBytes(gl: WebGL2RenderingContext) {
   after('bindTexture', (_, texture) => { bound.texture = texture })
   after('bindRenderbuffer', (_, renderbuffer) => { bound.renderbuffer = renderbuffer })
   after('texImage2D', (...args) => {
+    if (args[0] !== gl.TEXTURE_2D || args[1] !== 0 || (args[2] !== gl.RGBA && args[2] !== gl.RGBA8)) throw new Error('a picture of another kind is not counted')
     const [width, height] = args.length > 6 ? [args[3], args[4]] : [args[5].naturalWidth ?? args[5].width, args[5].naturalHeight ?? args[5].height]
     if (bound.texture) pictures.set(bound.texture, width * height * 4)
     size(bound.texture, width * height * 4)
   })
   after('generateMipmap', () => { if (bound.texture) size(bound.texture, Math.round((pictures.get(bound.texture) ?? 0) * 4 / 3)) })
   after('renderbufferStorageMultisample', (_, samples, _format, width, height) => { size(bound.renderbuffer, width * height * 4 * samples) })
-  after('deleteTexture', texture => { size(texture, 0) })
+  after('deleteTexture', (texture) => {
+    if (bound.texture === texture) bound.texture = null
+    if (texture) pictures.delete(texture)
+    size(texture, 0)
+  })
   after('deleteRenderbuffer', renderbuffer => { size(renderbuffer, 0) })
+  for (const name of ['texStorage2D', 'texStorage3D', 'texImage3D', 'compressedTexImage2D', 'compressedTexImage3D', 'copyTexImage2D', 'renderbufferStorage'])
+    (gl as unknown as Record<string, () => void>)[name] = () => { throw new Error(`${name} is not counted`) }
   return { now: () => now, peak: () => peak, restart: () => { peak = now } }
 }
 
@@ -1342,9 +1349,9 @@ async function swapPeak({ shown: shownRef, next: nextRef }: Pick<SwapRequest, 's
       }
       bytes.restart()
       await w.player.replaceLivePackage(next.playback, next.manifest, next.atlasUrl)
-      peak.bytes = bytes.peak()
       w.player.resize(192, 256, 1)
       hold(w.player, AFTER_POSE, 4)
+      peak.bytes = bytes.peak()
       const after = { textures: textures(), bytes: bytes.now() }
       w.close()
       return { before, peak, after, left: bytes.now() }
