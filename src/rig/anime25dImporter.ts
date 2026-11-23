@@ -3,6 +3,7 @@ import type { Anime25DSourceReference } from './anime25dImportTypes'
 import type { ArmVariantReference } from './armVariants'
 import type { AuthoredExpressionReference } from './authoredExpression'
 import type { CharacterAssetProfile } from './contract'
+import type { ImportTimer } from './importTiming'
 import type { MotionExposureFinding } from './motionExposure'
 import type { Anime25DPsdReconciliation } from './psdReconciliation'
 import type { PsdSkeleton } from './skeleton'
@@ -33,7 +34,6 @@ import { liftHairShadowOffSkin } from './hairShadow'
 import { hangTopPiecesOnHeadwear } from './headOrnaments'
 import { contentFrame, deriveAnchors, semanticAnchors, standingStance } from './importerAnchors'
 import { assignCrossfadeSlots, hasStaticSeeThroughMouth, mirrorLostEyeWhite, preserveStaticMouthAsClosed, splitHandwearIfNeeded, splitLowerLimbsIfNeeded, splitVariantEyesIfNeeded, stackArmsByReference, stackEarwearByReference, stackHeadwearByReference, stackLowerLimbsByReference, stackNeckwearByReference, stackOpenEyesInOrder, tuckBackHairBehindNeck, tuckBehindFace, tuckTopUnderChinBehindNeck } from './importerLayerSplits'
-import { lap } from './importTiming'
 import { addHiddenArmFragments, anime25DShoulderSeeds } from './linkedHandwear'
 import { findMotionExposure } from './motionExposure'
 import { inferOutfitProfileFromPartIds } from './outfit'
@@ -83,6 +83,8 @@ export interface Anime25DRigPsdOptions {
   /** The bust by default. */
   profile?: CharacterAssetProfile
   skeleton?: PsdSkeleton
+  /** Takes each step's time (importTiming); the import is the same with or without. */
+  timer?: ImportTimer
 }
 
 export async function prepareAnime25DRigPsd(
@@ -96,6 +98,7 @@ export async function prepareAnime25DRigPsd(
     armVariantReferences = [],
     profile = 'bust',
     skeleton,
+    timer,
   }: Anime25DRigPsdOptions,
 ): Promise<PreparedAnime25DRigImport> {
   if (!isAnime25DDocument(psd)) {
@@ -104,9 +107,9 @@ export async function prepareAnime25DRigPsd(
   const importProfile = anime25DImportProfile(profile)
   const staticSeeThroughMouth = hasStaticSeeThroughMouth(psd)
   const working = flattenPsdForRigger(psd, importProfile)
-  lap('layers.flatten')
+  timer?.lap('layers.flatten')
   Rigger.cleanPsdLayers(working)
-  lap('layers.clean')
+  timer?.lap('layers.clean')
   mirrorLostEyeWhite(working, Rigger.baseName)
   // A named but empty/hidden face must never silently acquire guessed pivots.
   if (
@@ -120,17 +123,17 @@ export async function prepareAnime25DRigPsd(
   ) {
     throw new FigureError('anime25dMissingFace')
   }
-  lap('layers.faceCheck')
+  timer?.lap('layers.faceCheck')
   const rig = Rigger.buildRig(working, { generic: genericCloseParts() })
   compensateSyntheticClosedEyeAngles(rig.layers)
-  lap('layers.buildRig')
+  timer?.lap('layers.buildRig')
   onStage?.('validated')
   const usedIds = new Set<string>()
   let layers = stackOpenEyesInOrder(rig.layers.map((part) => rasterFromRiggerPart(part, usedIds)))
   if (staticSeeThroughMouth) layers = preserveStaticMouthAsClosed(layers)
   layers = splitHandwearIfNeeded(layers, rig.anchors.face.cx)
   layers = splitLowerLimbsIfNeeded(splitTrouserLegsIfNeeded(layers))
-  lap('layers.splits')
+  timer?.lap('layers.splits')
   if (sourceReference) {
     layers = stackLowerLimbsByReference(layers, sourceReference)
     layers = stackNeckwearByReference(layers, sourceReference)
@@ -139,13 +142,13 @@ export async function prepareAnime25DRigPsd(
     // A bust's arms are cut off above where a skirt would be.
     if (profile === 'fullBody') layers = stackArmsByReference(layers, sourceReference)
   }
-  lap('layers.stackByReference')
+  timer?.lap('layers.stackByReference')
   layers = addHiddenArmFragments(layers, anime25DShoulderSeeds(layers), new Set(layers.map((layer) => layer.id)))
-  lap('layers.hiddenArmFragments')
+  timer?.lap('layers.hiddenArmFragments')
   // Cut against the arms as split, kept out of everything that reconciles the
   // resting figure with the portrait, and drawn last, over the front hair.
-  const armVariants = cutArmVariantLayers(layers, sourceReference, armVariantReferences, skeleton, profile === 'fullBody')
-  lap('arms.rest')
+  const armVariants = cutArmVariantLayers(layers, sourceReference, armVariantReferences, skeleton, profile === 'fullBody', timer)
+  timer?.lap('arms.rest')
   layers = splitVariantEyesIfNeeded(layers, rig.anchors.face.cx, 'eye-dizzy')
   layers = splitVariantEyesIfNeeded(layers, rig.anchors.face.cx, 'eye-squeeze')
   layers = splitVariantEyesIfNeeded(layers, rig.anchors.face.cx, 'eye-cry')
@@ -160,23 +163,23 @@ export async function prepareAnime25DRigPsd(
       rig.anchors.mouth = estimateAnime25DMouthAnchor(frame, rig.anchors.face)
     }
   }
-  lap('expressions.variantEyes')
+  timer?.lap('expressions.variantEyes')
   layers = addAuthoredExpressionLayers(
     layers,
     rig.anchors,
     sourceReference,
     expressionReferences,
   )
-  lap('expressions.authored')
+  timer?.lap('expressions.authored')
   layers = compileAnime25DExpressionLayers(layers, rig.anchors)
-  lap('expressions.compile')
+  timer?.lap('expressions.compile')
   // A closed eye is lines on the face's own lid: a fill painted with it shows as a smear.
   layers = layers.map((layer) => layer.role === 'eye-close' || layer.role === 'eye-close2'
     ? { ...layer, data: keepClosedEyeLines(layer.data) }
     : layer)
-  lap('expressions.closedEyeLines')
+  timer?.lap('expressions.closedEyeLines')
   layers = splitHighCollarOcclusion(layers, rig.anchors, sourceReference)
-  lap('tuck.highCollar')
+  timer?.lap('tuck.highCollar')
   layers = tuckBackHairBehindNeck(tuckBehindFace(layers))
   // A coat drawn over a leg or the neck the portrait shows goes behind it
   // before repair, which would cut it out and leave a hole once it moves.
@@ -185,13 +188,13 @@ export async function prepareAnime25DRigPsd(
     layers = tuckGarmentOffNeckByReference(layers, sourceReference, visibleInAnalysisReference)
     layers = revealCrownUnderFace(layers, visibleInAnalysisReference, sourceReference)
   }
-  lap('tuck.beforeRepair')
+  timer?.lap('tuck.beforeRepair')
   layers.forEach((layer, index) => {
     layer.order = index
   })
   assignCrossfadeSlots(layers)
   validateAnime25DCharacterLayers(layers)
-  lap('layers.validate')
+  timer?.lap('layers.validate')
   let reconciliation: Anime25DPsdReconciliation | null = null
   if (sourceReference) {
     const repair = repairAnime25DPsd(
@@ -201,7 +204,7 @@ export async function prepareAnime25DRigPsd(
       Math.max(0, MAX_RIG_PARTS - layers.length - armVariants.length),
       profile === 'fullBody',
     )
-    lap('repair.reconcile')
+    timer?.lap('repair.reconcile')
     layers = paintAccessoriesFromReference(
       raiseEarwearOverFrontHair(repair.layers),
       visibleInAnalysisReference,
@@ -212,7 +215,7 @@ export async function prepareAnime25DRigPsd(
     if (profile !== 'fullBody' && layers.some((layer) => layer.role === 'bottomwear' && layer.synthetic)) {
       layers = stackArmsByReference(layers, sourceReference)
     }
-    lap('repair.accessories')
+    timer?.lap('repair.accessories')
     reconciliation = repair.reconciliation
     layers.forEach((layer, index) => {
       layer.order = index
@@ -227,7 +230,7 @@ export async function prepareAnime25DRigPsd(
   // locks above it.
   const necked = dropTopSkinOverNeck(hangTopPiecesOnHeadwear(tuckLiningBehindLegs(layers), visibleInAnalysisReference), visibleInAnalysisReference, sourceReference)
   const tucked = underlapHairLocks(liftHairShadowOffSkin(tuckTopUnderChinBehindNeck(necked, visibleInAnalysisReference), visibleInAnalysisReference))
-  lap('tuck.afterRepair')
+  timer?.lap('tuck.afterRepair')
   if (tucked !== layers) {
     layers = tucked
     layers.forEach((layer, index) => {
@@ -245,9 +248,9 @@ export async function prepareAnime25DRigPsd(
   layers.forEach((layer, index) => {
     layer.order = index
   })
-  lap('expressions.accents')
+  timer?.lap('expressions.accents')
   const motionExposure = findMotionExposure(layers)
-  lap('check.motionExposure')
+  timer?.lap('check.motionExposure')
   const faceCenter = {
     x: rig.anchors.face.cx,
     y: rig.anchors.face.cy,
@@ -260,7 +263,7 @@ export async function prepareAnime25DRigPsd(
   if (importProfile.bodyPivot === 'hips' && !stance) {
     throw new FigureError('anime25dMissingLayer', { role: 'legwear' })
   }
-  lap('frame.content')
+  timer?.lap('frame.content')
   onStage?.('packing')
   const {
     atlas,
@@ -268,7 +271,7 @@ export async function prepareAnime25DRigPsd(
     layers: prepared,
     width: packedWidth,
     height: packedHeight,
-  } = await packAnime25DAtlas(frame, layers)
+  } = await packAnime25DAtlas(frame, layers, timer)
   const anchors = deriveAnchors(frame, prepared, faceCenter)
   const { bones, layerHandles, secondaryBoneIds } =
     buildAnime25DBonesAndHandles(prepared, anchors)
@@ -292,7 +295,7 @@ export async function prepareAnime25DRigPsd(
     },
   )
   const outfitProfile = inferOutfitProfileFromPartIds(partIds)
-  lap('playback.build')
+  timer?.lap('playback.build')
   const semanticBones: Record<string, string> = {
     root: 'root',
     torso: 'body',

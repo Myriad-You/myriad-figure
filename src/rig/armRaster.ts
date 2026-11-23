@@ -548,6 +548,25 @@ export function percentile(values: readonly number[], q: number): number {
   return sorted[lo] + (sorted[hi] - sorted[lo]) * (at - lo)
 }
 
+/**
+ * For each place round a ring of `around`, the nearest of the places `have` (ascending, at least one), the ring
+ * closing on itself: the first of the nearest, looking through them all in order. That is the first met going
+ * one way round or the other, whichever is nearer, and the lower of the two where they are as near.
+ */
+export function nearestRound(have: readonly number[], around: number): Int32Array {
+  const nearest = new Int32Array(around)
+  const apart = (h: number, j: number) => Math.min(Math.abs(h - j), around - Math.abs(h - j))
+  let before = have[have.length - 1]
+  let next = 0
+  for (let j = 0; j < around; j += 1) {
+    while (next < have.length && have[next] < j) next += 1
+    const after = have[next < have.length ? next : 0]
+    if (after === j) before = j
+    nearest[j] = apart(before, j) < apart(after, j) ? before : apart(after, j) < apart(before, j) ? after : Math.min(before, after)
+  }
+  return nearest
+}
+
 export function linspace(a: number, b: number, n: number): number[] {
   if (n === 1) return [a]
   return Array.from({ length: n }, (_, i) => a + ((b - a) * i) / (n - 1))

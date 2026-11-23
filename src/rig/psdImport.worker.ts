@@ -4,7 +4,7 @@ import type { AuthoredExpressionReference } from './authoredExpression'
 import type { RigPsdImportReply, RigPsdImportRequest } from './psdImportClient'
 import { FigureError } from '../errors'
 import { prepareAnime25DRigPsd } from './anime25dImporter'
-import { importLaps, lap, startImportTiming } from './importTiming'
+import { ImportTimer } from './importTiming'
 import { decodeRigPsd } from './psdDecode'
 import { psdPlacement } from './psdPlacement'
 import { alignSkeletonToPsd } from './skeleton'
@@ -24,28 +24,29 @@ globalThis.onmessage = async (event: MessageEvent<RigPsdImportRequest>) => {
     timing,
   } = event.data
   try {
-    if (timing) startImportTiming()
+    const timer = timing ? new ImportTimer() : undefined
     const psd = (() => {
       try {
-        return decodeRigPsd(buffer)
+        return decodeRigPsd(buffer, timer)
       } catch (error) {
         const code = error instanceof Error ? error.message : ''
         throw new FigureError(code === 'psdTooLarge' || code === 'psdLayerCountInvalid' ? code : 'psdSpecInvalid')
       }
     })()
     const master = await alignSourceMaster(sourceMasterUrl, psd.width, psd.height)
-    lap('reference.portrait')
+    timer?.lap('reference.portrait')
     const expressionReferences = master
       ? await alignExpressions(expressions ?? [], psd.width, psd.height, master.size)
       : []
-    lap('reference.expressions')
+    timer?.lap('reference.expressions')
     const armVariantReferences = master
       ? await alignArmVariants(armVariants ?? [], psd.width, psd.height, master.size)
       : []
-    lap('reference.armVariants')
+    timer?.lap('reference.armVariants')
     const prepared = await prepareAnime25DRigPsd(psd, {
       sourceMasterAssetId,
       onStage: (stage) => reply({ stage }),
+      timer,
       sourceGenerationFingerprint,
       sourceReference: master?.reference,
       expressionReferences,
@@ -55,8 +56,7 @@ globalThis.onmessage = async (event: MessageEvent<RigPsdImportRequest>) => {
         ? (alignSkeletonToPsd(skeleton, psd.width, psd.height) ?? undefined)
         : undefined,
     })
-    const laps = importLaps()
-    reply(laps ? { prepared, timing: { laps, sentAt: performance.timeOrigin + performance.now() } } : { prepared })
+    reply(timer ? { prepared, timing: { laps: timer.laps(), sentAt: performance.timeOrigin + performance.now() } } : { prepared })
   } catch (error) {
     // Errors cross the worker boundary as data; the page rebuilds a FigureError from the code.
     reply(

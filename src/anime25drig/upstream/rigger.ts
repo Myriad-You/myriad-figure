@@ -8,6 +8,11 @@
  * semantic alpha unions, per-side synthesis, empty layers, narrow strands and
  * alpha-aware resampling. Runtime/geometry still use the original reference.
  * Myriad-specific policy belongs after this boundary.
+ *
+ * Four of its loops are no longer the reference's own: `bboxOf` passes over empty canvas a word at a time,
+ * `dilate` keeps a count as its reach moves, and `cleanAlpha` and `splitSides` work on the box of what a layer
+ * draws, not the whole canvas. What they return is the same to the byte; riggerScans.test.ts keeps the
+ * reference's loops and holds these to them.
  */
 import type {
   UpstreamCleanStats,
@@ -183,7 +188,7 @@ export function labelComponents(
  * count of what is in reach kept as the reach moves a pixel on (and, down, a row on), and only within `radius` of
  * the box of what is set: nothing further out can be.
  */
-function dilate(
+export function dilate(
   mask: Uint8Array,
   width: number,
   height: number,
@@ -291,7 +296,7 @@ export function cleanAlpha(
  * The layer's two sides of the face, each grown a little. Its components are found on the box of what is over
  * the threshold (numbered as on the whole canvas, their sums of x put back on the canvas's columns).
  */
-function splitSides(
+export function splitSides(
   alpha: Uint8Array,
   width: number,
   height: number,
@@ -402,7 +407,7 @@ function lastOver(
  * The box of the pixels over the threshold: the first and the last of them give its rows, and in each row between
  * only what lies outside the columns already found is looked at.
  */
-function bboxOf(
+export function bboxOf(
   alpha: Uint8Array,
   width: number,
   height: number,

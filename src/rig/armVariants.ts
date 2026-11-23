@@ -1,12 +1,12 @@
 import type { Anime25DArmLift } from '../anime25drig/types'
 import type { Anime25DSourceReference, EyeSide, RasterLayer } from './anime25dImportTypes'
 import type { ArmCuffReading } from './armCuff'
+import type { ImportTimer } from './importTiming'
 import type { PsdSkeleton } from './skeleton'
 import { trimRaster, uniquePartId } from './anime25dRaster'
 import { blurClamped, resampleRgb } from './armCutFilters'
 import { measureArmModel, placeArmModel } from './armModel'
 import { components, morphSquare } from './armRaster'
-import { lap } from './importTiming'
 
 /**
  * Gesture arms drawn by an image model: the portrait with one arm changed
@@ -85,6 +85,7 @@ export function cutArmVariantLayers(
   references: readonly ArmVariantReference[],
   skeleton?: PsdSkeleton,
   figure = false,
+  timer?: ImportTimer,
 ): RasterLayer[] {
   if (!neutral || references.length === 0) return []
   const usedIds = new Set(layers.map((layer) => layer.id))
@@ -97,7 +98,7 @@ export function cutArmVariantLayers(
     if (done.has(key)) continue
     if (reference.width !== neutral.width || reference.height !== neutral.height) continue
     const base = layers.filter((layer) => layer.role === 'handwear' && layer.side === reference.side)
-    const got = cutArmVariant(neutral, reference, base, skeleton, figure, shared)
+    const got = cutArmVariant(neutral, reference, base, skeleton, figure, shared, timer)
     if (!got) continue
     done.add(key)
     const id = uniquePartId(`arm-variant-${key}`, usedIds)
@@ -137,9 +138,10 @@ function cutArmVariant(
   skeleton: PsdSkeleton | undefined,
   figure: boolean,
   shared: SharedCut,
+  timer: ImportTimer | undefined,
 ): { layer: RasterLayer; cuffAtWrist: ArmCuffReading | null; hand?: RasterLayer } | null {
   const tag = `arms:${reference.gesture}-${reference.side}:`
-  lap('arms.rest')
+  timer?.lap('arms.rest')
   const window = figure ? figureWindow(reference, skeleton) : null
   // A full body measured on the bust's grid comes out a bust's model (no hanging hand, no own scale): none.
   if (figure && !window) return null
@@ -164,7 +166,7 @@ function cutArmVariant(
     own = { vacated: dilate(covered, w, h, VACATED_REACH * 2 + 1), drawn: null }
     grid.arms.set(reference.side, own)
   }
-  lap(`${tag}resample`)
+  timer?.lap(`${tag}resample`)
 
   const changed = new Uint8Array(w * h)
   const difference = new Float32Array(w * h)
@@ -179,10 +181,10 @@ function cutArmVariant(
       changed[p] = difference[p] > DIFF_LIMIT ? 1 : 0
     }
   }
-  lap(`${tag}difference`)
+  timer?.lap(`${tag}difference`)
   const opened = open(changed, w, h, OPEN_SIZE)
   const mask = close(opened, w, h, CLOSE_SIZE)
-  lap(`${tag}openClose`)
+  timer?.lap(`${tag}openClose`)
   const { labels, sizes } = components(mask, w, h)
   // By label, whether it is the arm.
   const keep = new Uint8Array(sizes.length)
@@ -209,10 +211,10 @@ function cutArmVariant(
   const arm = new Uint8Array(w * h)
   for (let p = 0; p < w * h; p += 1) arm[p] = keep[labels[p]] ? 1 : 0
   fillHoles(arm, w, h)
-  lap(`${tag}components`)
+  timer?.lap(`${tag}components`)
 
   const background = groundOf(variant, portrait, w, h)
-  lap(`${tag}ground`)
+  timer?.lap(`${tag}ground`)
   const notGround = new Float32Array(w * h)
   for (let p = 0; p < w * h; p += 1) notGround[p] = background[p] ? 0 : 1
   const armAlpha = blurClamped(toFloat(arm), w, h, ARM_FEATHER)
@@ -228,7 +230,7 @@ function cutArmVariant(
   const stayAlpha = blurClamped(toFloat(open(stay, w, h, OPEN_SIZE)), w, h, VACATED_FEATHER)
   const alpha = new Float32Array(w * h)
   for (let p = 0; p < w * h; p += 1) alpha[p] = Math.max(armAlpha[p], stayAlpha[p])
-  lap(`${tag}alpha`)
+  timer?.lap(`${tag}alpha`)
 
   // Back on the document, at its resolution, in the variant's own pixels.
   const left = Math.max(0, Math.floor(placement.x))
@@ -255,7 +257,7 @@ function cutArmVariant(
       any = true
     }
   }
-  lap(`${tag}cutToDocument`)
+  timer?.lap(`${tag}cutToDocument`)
   if (!any) return null
   const posed = skeleton && reference.keypoints?.length ? { skeleton, keypoints: reference.keypoints } : null
   let model: ReturnType<typeof measureArmModel> = null
@@ -266,7 +268,7 @@ function cutArmVariant(
       own.drawn = new Uint8Array(w * h)
       for (const layer of base) stampAlpha(own.drawn, layer, placement, scale, w, h, BASE_ALPHA)
     }
-    lap(`${tag}masks`)
+    timer?.lap(`${tag}masks`)
     model = measureArmModel({
       width: w,
       height: h,
@@ -280,9 +282,9 @@ function cutArmVariant(
       portraitPose: onGrid(posed.skeleton.keypoints, placement, scale),
       variantPose: onGrid(posed.keypoints, placement, scale),
       ...(window ? { whole: true } : {}),
-    })
+    }, timer)
   }
-  lap(`${tag}model`)
+  timer?.lap(`${tag}model`)
   const layer = trimRaster({
     id: '',
     role: 'arm-variant',
@@ -307,7 +309,7 @@ function cutArmVariant(
   // wore the canvas's white about its tip.
   const drawnOn = (x: number, y: number) => sample(keepOff, w, h, (x + 0.5 - placement.x) / scale - 0.5, (y + 0.5 - placement.y) / scale - 0.5)
   const hand = handPicture(reference, placed, drawnOn) ?? undefined
-  lap(`${tag}trimPlaceHand`)
+  timer?.lap(`${tag}trimPlaceHand`)
   return { layer, cuffAtWrist, hand }
 }
 

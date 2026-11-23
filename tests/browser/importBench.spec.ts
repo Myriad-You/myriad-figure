@@ -5,7 +5,6 @@ import { existsSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import process from 'node:process'
 import { expect, test } from '@playwright/test'
-import sharp from 'sharp'
 
 // Where a real import's time goes, and whether it still makes the same thing.
 // No artwork is kept in this repository: the test runs where FIGURE_IMPORT_BENCH
@@ -41,6 +40,8 @@ type Made = BenchResult['hashes'] & { atlasPixels: string; analysisReferencePixe
 test('a real import, timed and held to what it made before', async ({ page }) => {
   test.skip(!manifest || !existsSync(manifest), 'FIGURE_IMPORT_BENCH names no cases')
   test.setTimeout(60 * 60_000)
+  // Loaded only once there is something to decode: the skip above comes first.
+  const sharp = (await import('sharp')).default
   const { cases } = JSON.parse(await readFile(manifest, 'utf8')) as { cases: Case[] }
   const golden: Record<string, Made> = goldenFile && existsSync(goldenFile)
     ? JSON.parse(await readFile(goldenFile, 'utf8')) as Record<string, Made>

@@ -1,33 +1,26 @@
 /**
- * Where an import's time goes, for measuring it: off unless asked for, and
- * then only a clock read between steps. Nothing the import makes depends on it.
+ * Where an import's time goes, for measuring it. The worker makes a timer only for a request that asks for one
+ * and hands it down to the steps; without one every `timer?.lap(…)` on the way is a check that it is not there.
+ * Nothing the import makes depends on it.
  *
- * The steps run one after another on one thread, so one running clock serves:
- * `lap(name)` gives the time since the lap before it to `name`. Laps of one
- * name add up (a step run once per gesture arm is one line of the table).
+ * The steps run one after another on one thread, so one running clock serves: `lap(name)` gives the time since
+ * the lap before it to `name`. Laps of one name add up (a step run once per gesture arm is one line of the table).
  */
 export type ImportLap = readonly [name: string, ms: number]
 
-let laps: Array<[string, number]> | null = null
-let last = 0
+export class ImportTimer {
+  private readonly taken: Array<[string, number]> = []
+  private last = performance.now()
 
-/** Starts the clock; the import's laps are read with `importLaps` once it is done. */
-export function startImportTiming(): void {
-  laps = []
-  last = performance.now()
-}
+  /** The time since the last lap (or since the timer was made) went to `name`. */
+  lap(name: string): void {
+    const now = performance.now()
+    this.taken.push([name, now - this.last])
+    this.last = now
+  }
 
-/** The time since the last lap (or the start) went to `name`. */
-export function lap(name: string): void {
-  if (!laps) return
-  const now = performance.now()
-  laps.push([name, now - last])
-  last = now
-}
-
-/** The laps so far, and the clock off again. Null when it was never started. */
-export function importLaps(): ImportLap[] | null {
-  const done = laps
-  laps = null
-  return done
+  /** The laps so far, in the order they ended. */
+  laps(): ImportLap[] {
+    return this.taken
+  }
 }

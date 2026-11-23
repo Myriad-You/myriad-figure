@@ -3,7 +3,7 @@ import type { P2 } from './armRaster'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { blurClamped, resampleRgb } from './armCutFilters'
-import { add2, components, dist2, dot2, gaussian, median, morphEllipse, morphSquare, mul2, percentile, pointSegmentDistance, segmentDistance, sub2 } from './armRaster'
+import { add2, components, dist2, dot2, gaussian, median, morphEllipse, morphSquare, mul2, nearestRound, percentile, pointSegmentDistance, segmentDistance, sub2 } from './armRaster'
 
 // The plain loops the cut was tuned with (the 2026-11-03 trial), kept as the definition: the fast ones in
 // armCutFilters and armRaster must give their every bit.
@@ -362,6 +362,41 @@ test('components are numbered and sized as looking at each pixel\'s eight neighb
         const mask = Uint8Array.from({ length: w * h }, () => (random() < density ? 1 + Math.floor(random() * 3) : 0))
         assert.deepEqual(components(mask, w, h), plain(mask, w, h), `${w}x${h} density ${density}`)
       }
+    }
+  }
+})
+
+test('the nearest known place round a ring is the one found by looking through them all in order', () => {
+  // The sleeve's own loop as it was (origin/main d4901bb, layOnSleeve): the definition.
+  const plain = (have: readonly number[], around: number, j: number) => {
+    let pick = have[0]!
+    let nearest = Infinity
+    for (const h of have) {
+      const d = Math.min(Math.abs(h - j), around - Math.abs(h - j))
+      if (d < nearest) {
+        nearest = d
+        pick = h
+      }
+    }
+    return pick
+  }
+  const check = (have: number[], around: number) => {
+    const fast = nearestRound(have, around)
+    for (let j = 0; j < around; j += 1) assert.equal(fast[j], plain(have, around, j), `place ${j} of ${around}, known ${have.join(' ')}`)
+  }
+  // Every choice of known places on small rings: one known, all known, the ends, places as near either way.
+  for (let around = 1; around <= 11; around += 1) {
+    for (let chosen = 1; chosen < 1 << around; chosen += 1) {
+      check(Array.from({ length: around }, (_, j) => j).filter((j) => chosen & (1 << j)), around)
+    }
+  }
+  // And on the sleeve's own ring, sparse to nearly full.
+  const random = seeded(73)
+  for (const share of [0.01, 0.1, 0.5, 0.9, 0.99]) {
+    for (let round = 0; round < 40; round += 1) {
+      const have = Array.from({ length: 256 }, (_, j) => j).filter(() => random() < share)
+      if (have.length === 0) have.push(Math.floor(random() * 256))
+      check(have, 256)
     }
   }
 })

@@ -2,14 +2,14 @@ import type { Anime25DArmModel, Anime25DVec3 } from '../anime25drig/types'
 import type { EyeSide } from './anime25dImportTypes'
 import type { ArmCuffReading } from './armCuff'
 import type { P2 } from './armRaster'
+import type { ImportTimer } from './importTiming'
 import { cuffDrawnAtWrist } from './armCuff'
 import { extendFinger, FINGER_CHAINS, measureDrawnHand } from './armHand'
 import {
   add2, add3, capsuleMask, closeSquare, components, convexMask, convexPatch, cropAround, cropOf, cross3, dilateSquare,
-  dist2, dist3, fillHoles, gaussian, interp, linspace, median, medianColor, mul2, mul3, percentile, pointSegmentDistance, rings,
+  dist2, dist3, fillHoles, gaussian, interp, linspace, median, medianColor, mul2, mul3, nearestRound, percentile, pointSegmentDistance, rings,
   round, simplify, sub2, sub3, texel, unit2, unit3, widths,
 } from './armRaster'
-import { lap } from './importTiming'
 
 /**
  * A gesture arm measured as a 3D arm (the 2026-11-06 pure 3D arm): the drawn
@@ -74,18 +74,18 @@ const HAND_POINTS = 15
 /** The model, and (for the import to weigh) where the portrait's cuff lies and whether the picture drew it at the wrist. */
 export type MeasuredArmModel = Anime25DArmModel & { cuffAtWrist: ArmCuffReading | null }
 
-export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | null {
+export function measureArmModel(pictures: ArmModelPictures, timer?: ImportTimer): MeasuredArmModel | null {
   const { width: W, height: H, side } = pictures
   const portraitJoints = joints(pictures.portraitPose, side)
   const drawn = joints(pictures.variantPose, side)
   if (!portraitJoints || !drawn?.hand) return null
   const img = pictures.variant
-  lap('armModel.rest')
+  timer?.lap('armModel.rest')
   const held = extendFinger(drawn.hand, pictures.changed, img, W, H)
   drawn.hand = held.hand
-  lap('armModel.extendFinger')
+  timer?.lap('armModel.extendFinger')
   const mask = alongBones(pictures, drawn.s, drawn.e, drawn.w, drawn.hand)
-  lap('armModel.alongBones')
+  timer?.lap('armModel.alongBones')
   const on = (m: Uint8Array) => (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && m[y * W + x] > 0
   const base = on(pictures.base)
   const armAt = on(mask)
@@ -244,9 +244,9 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
   }
   const radius = smooth([...upper, ...fore])
 
-  lap('armModel.widths')
+  timer?.lap('armModel.widths')
   const restReach = measureRestReach(base, W, H, radius, ps, pe, hangWrist, hangs?.end ?? cuff)
-  lap('armModel.restReach')
+  timer?.lap('armModel.restReach')
 
   // How far down the upper arm the portrait's own sleeve is worn, raised: with the elbow in the picture, a short
   // sleeve's cuff (a band and pendant) is drawn just above it, and kept on the upper arm it stayed there as the
@@ -258,7 +258,7 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
     { img: pictures.portrait, mask: portraitMask, joints: rest },
     { img, mask, joints: raised, hand: hand0 },
   ])
-  lap('armModel.layOnSleeve')
+  timer?.lap('armModel.layOnSleeve')
   let restEnd = 0.49
   {
     const rows = SLEEVE_ROWS
@@ -291,10 +291,10 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
     }
   }
 
-  lap('armModel.restEnd')
+  timer?.lap('armModel.restEnd')
   const drawnHand = measureDrawnHand({ width: W, height: H, img, mask, found: hand0, elbow: drawn.e, wrist: drawn.w, tone, shown: held.laid === null ? [] : [held.laid] })
 
-  lap('armModel.drawnHand')
+  timer?.lap('armModel.drawnHand')
   const lum = handPixels.map((c) => (c[0] + c[1] + c[2]) / 3)
   // A hand of one flat colour has no lighter or darker part: all of it stands in.
   const pick = (keep: (l: number) => boolean) => {
@@ -319,12 +319,12 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
   const groundRings = rings(groundField, groundBox.w, groundBox.h, 0.5).map((ring) => simplify(ring, 0.6).map(([x, y]) => [x + groundBox.x, y + groundBox.y] as P2))
 
   const skin = pick((l) => l > p40)
-  lap('armModel.rings')
+  timer?.lap('armModel.rings')
   const cuffAtWrist = cuffDrawnAtWrist({
     width: W, height: H, portrait: pictures.portrait, variant: img, base: pictures.base, mask,
     rest: [ps, pe, hangWrist], raised: [drawn.s, drawn.e, drawn.w], radius, skin,
   })
-  lap('armModel.cuffAtWrist')
+  timer?.lap('armModel.cuffAtWrist')
   return {
     upper: U,
     fore: F,
@@ -818,19 +818,10 @@ function layOnSleeve(W: number, H: number, radius: number[], cuff: number, rows:
     }
     if (!have.length) continue
     ringOk.push(i)
-    // The nearest known texel round the ring is the first met going one way or the other: of the two, the nearer,
-    // and the lower of them where they are as near (as the first of the nearest, looking through them all in order).
-    let before = have[have.length - 1]
-    let next = 0
+    const nearest = nearestRound(have, TU)
     for (let j = 0; j < TU; j += 1) {
-      if (known[i * TU + j]) {
-        before = j
-        continue
-      }
-      while (next < have.length && have[next] < j) next += 1
-      const after = have[next < have.length ? next : 0]
-      const apart = (h: number) => Math.min(Math.abs(h - j), TU - Math.abs(h - j))
-      const pick = apart(before) < apart(after) ? before : apart(after) < apart(before) ? after : Math.min(before, after)
+      if (known[i * TU + j]) continue
+      const pick = nearest[j]
       filled.set(tex.subarray((i * TU + pick) * 3, (i * TU + pick) * 3 + 3), (i * TU + j) * 3)
     }
   }
