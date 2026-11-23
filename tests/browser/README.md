@@ -166,3 +166,25 @@ With `portrait-pose/<bust>.json` there too, the arms are measured and played as
 Both bounds were checked against a broken player: one frame in 37 left without
 its 3D arm failed the flicker scan (0.29), and the hanging arm moved 6 document
 pixels sideways failed the upright bound.
+
+## Import bench
+
+`importBench.spec.ts` imports real figures in the production worker and says
+where the time went, step by step (`src/rig/importTiming.ts`: a clock read
+between steps, off unless a request asks for it). No artwork is kept here: it
+runs only where `FIGURE_IMPORT_BENCH` names a JSON file of cases (the spec's
+head gives its shape), and skips elsewhere.
+
+- `FIGURE_IMPORT_BENCH_RUNS` imports each case that many times (3), each in a
+  page and a worker of its own; `FIGURE_IMPORT_BENCH_OUT` takes every run's laps.
+- `FIGURE_IMPORT_BENCH_GOLDEN` names the file of what each case made. Where
+  there is none it is written; where there is one the import is held to it,
+  hash for hash: the rig to the bit (every number, key order included), the
+  atlas and the reference picture byte for byte as PNG files, and their pixels
+  as another decoder reads them. A change meant only to make the import faster
+  is run against a golden written before it.
+
+The PNG bytes are the browser's encoder's: a golden holds for the browser and
+version it was written with. The times are a development server's (the worker's
+modules are fetched one by one before it starts), so the worker's own laps are
+the measure, not the wall clock around them.

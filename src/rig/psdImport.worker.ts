@@ -4,6 +4,7 @@ import type { AuthoredExpressionReference } from './authoredExpression'
 import type { RigPsdImportReply, RigPsdImportRequest } from './psdImportClient'
 import { FigureError } from '../errors'
 import { prepareAnime25DRigPsd } from './anime25dImporter'
+import { importLaps, lap, startImportTiming } from './importTiming'
 import { decodeRigPsd } from './psdDecode'
 import { psdPlacement } from './psdPlacement'
 import { alignSkeletonToPsd } from './skeleton'
@@ -20,8 +21,10 @@ globalThis.onmessage = async (event: MessageEvent<RigPsdImportRequest>) => {
     armVariants,
     profile,
     skeleton,
+    timing,
   } = event.data
   try {
+    if (timing) startImportTiming()
     const psd = (() => {
       try {
         return decodeRigPsd(buffer)
@@ -31,12 +34,15 @@ globalThis.onmessage = async (event: MessageEvent<RigPsdImportRequest>) => {
       }
     })()
     const master = await alignSourceMaster(sourceMasterUrl, psd.width, psd.height)
+    lap('reference.portrait')
     const expressionReferences = master
       ? await alignExpressions(expressions ?? [], psd.width, psd.height, master.size)
       : []
+    lap('reference.expressions')
     const armVariantReferences = master
       ? await alignArmVariants(armVariants ?? [], psd.width, psd.height, master.size)
       : []
+    lap('reference.armVariants')
     const prepared = await prepareAnime25DRigPsd(psd, {
       sourceMasterAssetId,
       onStage: (stage) => reply({ stage }),
@@ -49,7 +55,8 @@ globalThis.onmessage = async (event: MessageEvent<RigPsdImportRequest>) => {
         ? (alignSkeletonToPsd(skeleton, psd.width, psd.height) ?? undefined)
         : undefined,
     })
-    reply({ prepared })
+    const laps = importLaps()
+    reply(laps ? { prepared, timing: { laps, sentAt: performance.timeOrigin + performance.now() } } : { prepared })
   } catch (error) {
     // Errors cross the worker boundary as data; the page rebuilds a FigureError from the code.
     reply(

@@ -9,6 +9,7 @@ import {
   dist2, dist3, fillHoles, gaussian, interp, linspace, median, medianColor, mul2, mul3, percentile, rings, round,
   segmentDistance, simplify, sub2, sub3, texel, unit2, unit3, widths,
 } from './armRaster'
+import { lap } from './importTiming'
 
 /**
  * A gesture arm measured as a 3D arm (the 2026-11-06 pure 3D arm): the drawn
@@ -79,9 +80,12 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
   const drawn = joints(pictures.variantPose, side)
   if (!portraitJoints || !drawn?.hand) return null
   const img = pictures.variant
+  lap('armModel.rest')
   const held = extendFinger(drawn.hand, pictures.changed, img, W, H)
   drawn.hand = held.hand
+  lap('armModel.extendFinger')
   const mask = alongBones(pictures, drawn.s, drawn.e, drawn.w, drawn.hand)
+  lap('armModel.alongBones')
   const on = (m: Uint8Array) => (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && m[y * W + x] > 0
   const base = on(pictures.base)
   const armAt = on(mask)
@@ -240,7 +244,9 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
   }
   const radius = smooth([...upper, ...fore])
 
+  lap('armModel.widths')
   const restReach = measureRestReach(base, W, H, radius, ps, pe, hangWrist, hangs?.end ?? cuff)
+  lap('armModel.restReach')
 
   // How far down the upper arm the portrait's own sleeve is worn, raised: with the elbow in the picture, a short
   // sleeve's cuff (a band and pendant) is drawn just above it, and kept on the upper arm it stayed there as the
@@ -252,6 +258,7 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
     { img: pictures.portrait, mask: portraitMask, joints: rest },
     { img, mask, joints: raised, hand: hand0 },
   ])
+  lap('armModel.layOnSleeve')
   let restEnd = 0.49
   {
     const rows = SLEEVE_ROWS
@@ -284,8 +291,10 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
     }
   }
 
+  lap('armModel.restEnd')
   const drawnHand = measureDrawnHand({ width: W, height: H, img, mask, found: hand0, elbow: drawn.e, wrist: drawn.w, tone, shown: held.laid === null ? [] : [held.laid] })
 
+  lap('armModel.drawnHand')
   const lum = handPixels.map((c) => (c[0] + c[1] + c[2]) / 3)
   // A hand of one flat colour has no lighter or darker part: all of it stands in.
   const pick = (keep: (l: number) => boolean) => {
@@ -310,6 +319,12 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
   const groundRings = rings(groundField, groundBox.w, groundBox.h, 0.5).map((ring) => simplify(ring, 0.6).map(([x, y]) => [x + groundBox.x, y + groundBox.y] as P2))
 
   const skin = pick((l) => l > p40)
+  lap('armModel.rings')
+  const cuffAtWrist = cuffDrawnAtWrist({
+    width: W, height: H, portrait: pictures.portrait, variant: img, base: pictures.base, mask,
+    rest: [ps, pe, hangWrist], raised: [drawn.s, drawn.e, drawn.w], radius, skin,
+  })
+  lap('armModel.cuffAtWrist')
   return {
     upper: U,
     fore: F,
@@ -333,10 +348,7 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
     line: pick((l) => l < p3),
     armOutline: armRings,
     ground: groundRings,
-    cuffAtWrist: cuffDrawnAtWrist({
-      width: W, height: H, portrait: pictures.portrait, variant: img, base: pictures.base, mask,
-      rest: [ps, pe, hangWrist], raised: [drawn.s, drawn.e, drawn.w], radius, skin,
-    }),
+    cuffAtWrist,
   }
 }
 

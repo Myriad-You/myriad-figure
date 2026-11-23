@@ -1,5 +1,6 @@
 import type { Layer, Psd } from 'ag-psd'
 import { initializeCanvas, readPsd } from 'ag-psd'
+import { lap } from './importTiming'
 
 export const MAX_PSD_BYTES = 96 * 1024 * 1024
 /** A standing figure decomposed in tiles is stitched at up to 4096 px tall. */
@@ -67,6 +68,7 @@ export function decodeRigPsd(buffer: ArrayBuffer): Psd {
   }
   const metadata = readPsd(buffer, { ...options, skipLayerImageData: true })
   validateRigPsdStructure(metadata)
+  lap('psd.structure')
   initializeCanvas(
     () => {
       throw new Error('Canvas decoding is not allowed in the PSD worker')
@@ -78,5 +80,7 @@ export function decodeRigPsd(buffer: ArrayBuffer): Psd {
       colorSpace: 'srgb',
     }),
   )
-  return readPsd(buffer, options)
+  const psd = readPsd(buffer, options)
+  lap('psd.pixels')
+  return psd
 }
