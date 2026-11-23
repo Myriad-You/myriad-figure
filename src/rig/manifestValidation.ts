@@ -3,6 +3,20 @@ import { isAnime25DPlayback } from '../anime25drig/types'
 import { CHARACTER_ASSET_PROFILES, characterAssetProfileOf, isCharacterAssetProfile, MAX_RIG_BONES, MAX_RIG_COLLISION_VOLUMES, MAX_RIG_PARTS, MAX_RIG_TEXTURES, MAX_RIG_TOTAL_VERTICES, MAX_RIG_VERTICES_PER_PART, MIN_SUPPORTED_RIG_IR_VERSION, RIG_IR_VERSION, RIG_PRESENTATION_SLOTS, RIG_SCHEMA_VERSION, RIG_SEMANTIC_BONE_ROLES, RIG_SEMANTIC_CHAIN_ROLES } from './contract'
 import { RIG_OUTFIT_TOPOLOGIES } from './types'
 
+/** Ids come from a PSD's layer names, which hold 255 characters, with a few put before and after. */
+const MAX_IDENTIFIER = 512
+const MAX_URL = 2048
+/** What the server writes where a preview's atlas would be: the page holds that picture itself and loads no address. */
+const PREVIEW_ATLAS_URL = 'preview://rig-atlas'
+/** The server's own limit on a slot's and a variant's name, and on an anchor's. */
+const MAX_TAG = 64
+const MAX_SEMANTIC_ANCHORS = 128
+const MAX_EDGE = 16_384
+/** A place on the canvas or in a texture: far past any canvas, and whole in a Float32Array. */
+const MAX_COORDINATE = 65_536
+/** A mesh of n vertices has fewer than 2n triangles. */
+const MAX_INDICES_PER_PART = MAX_RIG_VERTICES_PER_PART * 6
+
 export function isLiveMeropeManifest(
   value: unknown,
 ): value is MeropeRigManifest {
@@ -73,7 +87,7 @@ export function isRigManifest(value: unknown): value is MeropeRigManifest {
     value.sourceMasterAssetId !== undefined &&
     (typeof value.sourceMasterAssetId !== 'string' ||
       value.sourceMasterAssetId.trim() === '' ||
-      value.sourceMasterAssetId.length > 512)
+      value.sourceMasterAssetId.length > MAX_IDENTIFIER)
   ) {
     return false
   }
@@ -110,12 +124,8 @@ export function isRigManifest(value: unknown): value is MeropeRigManifest {
     if (
       !isRecord(texture) ||
       !addIdentifier(textureIds, texture.id) ||
-      typeof texture.url !== 'string' ||
-      texture.url.trim() === '' ||
-      !isPositiveNumber(texture.width) ||
-      !isPositiveNumber(texture.height) ||
-      texture.width > 16_384 ||
-      texture.height > 16_384
+      !isOwnTextureUrl(texture.url) ||
+      !isPositiveSize(texture)
     ) {
       return false
     }
@@ -140,10 +150,11 @@ export function isRigManifest(value: unknown): value is MeropeRigManifest {
   if (
     value.semanticAnchors !== undefined &&
     (!isRecord(value.semanticAnchors) ||
+      Object.keys(value.semanticAnchors).length > MAX_SEMANTIC_ANCHORS ||
       Object.entries(value.semanticAnchors).some(
         ([name, anchor]) =>
           name.length === 0 ||
-          name.length > 64 ||
+          name.length > MAX_TAG ||
           !isRecord(anchor) ||
           typeof anchor.boneId !== 'string' ||
           !boneIds.has(anchor.boneId) ||
@@ -177,19 +188,19 @@ export function isRigManifest(value: unknown): value is MeropeRigManifest {
     if (
       !isRecord(part) ||
       !addIdentifier(partIds, part.id) ||
-      !textureIds.has(String(part.textureId)) ||
-      !isFiniteNumber(part.zIndex) ||
+      typeof part.textureId !== 'string' ||
+      !textureIds.has(part.textureId) ||
+      !isCoordinate(part.zIndex) ||
       !isUnitNumber(part.opacity) ||
-      (part.slot !== undefined &&
-        (typeof part.slot !== 'string' || part.slot.length === 0)) ||
-      (part.variant !== undefined &&
-        (typeof part.variant !== 'string' || part.variant.length === 0)) ||
+      (part.slot !== undefined && !isTag(part.slot)) ||
+      (part.variant !== undefined && !isTag(part.variant)) ||
       (part.slot === undefined) !== (part.variant === undefined) ||
       !Array.isArray(part.vertices) ||
       !Array.isArray(part.indices) ||
       part.vertices.length < 3 ||
       part.vertices.length > MAX_RIG_VERTICES_PER_PART ||
       part.indices.length < 3 ||
+      part.indices.length > MAX_INDICES_PER_PART ||
       part.indices.length % 3 !== 0
     ) {
       return false
@@ -199,12 +210,15 @@ export function isRigManifest(value: unknown): value is MeropeRigManifest {
       part.slot !== undefined &&
       part.variant !== undefined
     ) {
-      const definition = (
-        RIG_PRESENTATION_SLOTS as Record<
-          string,
-          { fallback: string; variants: readonly string[] }
-        >
-      )[part.slot]
+      // Its own slots only: 'constructor' names something on every object.
+      const definition = Object.hasOwn(RIG_PRESENTATION_SLOTS, part.slot)
+        ? (
+            RIG_PRESENTATION_SLOTS as Record<
+              string,
+              { fallback: string; variants: readonly string[] }
+            >
+          )[part.slot]
+        : undefined
       if (!definition || !definition.variants.includes(part.variant)) {
         return false
       }
@@ -429,12 +443,51 @@ function isPositiveSize(value: unknown): value is RigSize {
   return (
     isRecord(value) &&
     isPositiveNumber(value.width) &&
-    isPositiveNumber(value.height)
+    isPositiveNumber(value.height) &&
+    value.width <= MAX_EDGE &&
+    value.height <= MAX_EDGE
   )
 }
 
+/**
+ * The site's own picture, by a path from its root, or one this page holds
+ * itself. The server writes such a path into every manifest it hands out; any
+ * other address would have each page showing her load, and tell, some other
+ * host. A path that climbs out of where it starts is none of the site's either.
+ */
+function isOwnTextureUrl(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > MAX_URL) return false
+  if (value === PREVIEW_ATLAS_URL) return true
+  // A URL parser drops tabs and line ends and reads a backslash as a slash: what is checked must be what is fetched.
+  if (/[\u0000-\u0020\u007F\\]/u.test(value)) return false
+  if (value.startsWith('blob:')) return true
+  if (!value.startsWith('/')) return false
+  try {
+    const path = decodeURIComponent(value.split(/[?#]/u, 1)[0])
+    // Nothing to resolve: an empty step or a dotted one comes out as `//host`, or above where the path starts.
+    return (
+      !path.includes('\\') &&
+      path.slice(1).split('/').every((step) => step !== '' && step !== '.' && step !== '..')
+    )
+  } catch {
+    return false
+  }
+}
+
 function isPoint(value: unknown): value is RigPoint {
-  return isRecord(value) && isFiniteNumber(value.x) && isFiniteNumber(value.y)
+  return isRecord(value) && isCoordinate(value.x) && isCoordinate(value.y)
+}
+
+function isTag(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.trim() !== '' &&
+    value.length <= MAX_TAG
+  )
+}
+
+function isCoordinate(value: unknown): value is number {
+  return isNumberInRange(value, -MAX_COORDINATE, MAX_COORDINATE)
 }
 
 function isTuple4(value: unknown): value is [number, number, number, number] {
@@ -444,7 +497,12 @@ function isTuple4(value: unknown): value is [number, number, number, number] {
 }
 
 function addIdentifier(ids: Set<string>, value: unknown): boolean {
-  if (typeof value !== 'string' || value.trim() === '' || ids.has(value)) {
+  if (
+    typeof value !== 'string' ||
+    value.trim() === '' ||
+    value.length > MAX_IDENTIFIER ||
+    ids.has(value)
+  ) {
     return false
   }
   ids.add(value)
