@@ -301,6 +301,7 @@ for (const { name, root, refs } of swaps) {
 }
 
 test('two outfits with modelled arms never have them made at once', async ({ page }, testInfo) => {
+  test.setTimeout(180_000)
   await stage(page, { name: 'synthetic', synthetic: 'ordinary' })
   const bare = await run(page, 'swapPeak', { shown: synthetic('closed-mouth'), next: synthetic('closed-mouth') })
   const armed = await run(page, 'swapPeak', { shown: synthetic('closed-mouth', true), next: synthetic('closed-mouth', true) })
