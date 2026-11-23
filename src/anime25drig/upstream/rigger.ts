@@ -178,6 +178,11 @@ export function labelComponents(
   return { lab: labels, count, sizes, sumX }
 }
 
+/**
+ * Grown by a square of `radius` either side. The same ones and zeros as testing every pixel's whole reach, by a
+ * count of what is in reach kept as the reach moves a pixel on (and, down, a row on), and only within `radius` of
+ * the box of what is set: nothing further out can be.
+ */
 function dilate(
   mask: Uint8Array,
   width: number,
@@ -186,52 +191,74 @@ function dilate(
 ): Uint8Array {
   const temporary = new Uint8Array(width * height)
   const output = new Uint8Array(width * height)
-  for (let y = 0; y < height; y += 1) {
+  const set = bboxOf(mask, width, height, 0)
+  if (!set) return output
+  const x0 = Math.max(0, set.x0 - radius)
+  const x1 = Math.min(width - 1, set.x1 + radius)
+  const y0 = Math.max(0, set.y0 - radius)
+  const y1 = Math.min(height - 1, set.y1 + radius)
+  for (let y = set.y0; y <= set.y1; y += 1) {
     const offset = y * width
-    for (let x = 0; x < width; x += 1) {
-      let value = 0
-      for (let k = -radius; k <= radius; k += 1) {
-        const candidateX = x + k
-        if (
-          candidateX >= 0 &&
-          candidateX < width &&
-          mask[offset + candidateX]
-        ) {
-          value = 1
-          break
-        }
-      }
-      temporary[offset + x] = value
+    // What is set in reach of the pixel before x0.
+    let count = 0
+    for (let x = Math.max(0, x0 - 1 - radius); x <= Math.min(width - 1, x0 - 1 + radius); x += 1) {
+      if (mask[offset + x]) count += 1
+    }
+    for (let x = x0; x <= x1; x += 1) {
+      if (x + radius < width && mask[offset + x + radius]) count += 1
+      if (x - radius - 1 >= 0 && mask[offset + x - radius - 1]) count -= 1
+      temporary[offset + x] = count > 0 ? 1 : 0
     }
   }
-  for (let x = 0; x < width; x += 1) {
-    for (let y = 0; y < height; y += 1) {
-      let value = 0
-      for (let k = -radius; k <= radius; k += 1) {
-        const candidateY = y + k
-        if (
-          candidateY >= 0 &&
-          candidateY < height &&
-          temporary[candidateY * width + x]
-        ) {
-          value = 1
-          break
-        }
-      }
-      output[y * width + x] = value
+  const counts = new Int32Array(width)
+  for (let y = Math.max(0, y0 - 1 - radius); y <= Math.min(height - 1, y0 - 1 + radius); y += 1) {
+    const offset = y * width
+    for (let x = x0; x <= x1; x += 1) counts[x] += temporary[offset + x]
+  }
+  for (let y = y0; y <= y1; y += 1) {
+    if (y + radius < height) {
+      const enter = (y + radius) * width
+      for (let x = x0; x <= x1; x += 1) counts[x] += temporary[enter + x]
     }
+    if (y - radius - 1 >= 0) {
+      const leave = (y - radius - 1) * width
+      for (let x = x0; x <= x1; x += 1) counts[x] -= temporary[leave + x]
+    }
+    const offset = y * width
+    for (let x = x0; x <= x1; x += 1) output[offset + x] = counts[x] > 0 ? 1 : 0
   }
   return output
 }
 
+/**
+ * Drops the specks (components of fewer than `minPixels` pixels over the threshold) and everything further than
+ * three pixels from what is kept, unless all of it is specks.
+ *
+ * Worked on the box of what is over the threshold, three pixels about it: components are numbered in the order
+ * a scan of the whole canvas meets them, which is the order a scan of that box does, and nothing outside it is
+ * within three pixels of a kept one. A layer is a small part of its canvas; the result is the whole canvas's.
+ */
 export function cleanAlpha(
   alpha: Uint8Array,
   width: number,
   height: number,
   minPixels: number,
 ): Uint8Array {
-  const components = labelComponents(alpha, width, height, 16)
-  if (!components.count) return alpha
+  const REACH = 3
+  const over = bboxOf(alpha, width, height, 16)
+  if (!over) return alpha
+  const x0 = Math.max(0, over.x0 - REACH)
+  const y0 = Math.max(0, over.y0 - REACH)
+  const x1 = Math.min(width - 1, over.x1 + REACH)
+  const y1 = Math.min(height - 1, over.y1 + REACH)
+  const boxWidth = x1 - x0 + 1
+  const boxHeight = y1 - y0 + 1
+  const box = new Uint8Array(boxWidth * boxHeight)
+  for (let y = 0; y < boxHeight; y += 1) {
+    const from = (y + y0) * width + x0
+    box.set(alpha.subarray(from, from + boxWidth), y * boxWidth)
+  }
+  const components = labelComponents(box, boxWidth, boxHeight, 16)
   const keptComponents = new Uint8Array(components.count + 1)
   let any = false
   for (let index = 1; index <= components.count; index += 1) {
@@ -241,71 +268,162 @@ export function cleanAlpha(
     }
   }
   if (!any) return alpha
-  let mask: Uint8Array = new Uint8Array(width * height)
-  for (let index = 0; index < width * height; index += 1) {
+  let mask: Uint8Array = new Uint8Array(boxWidth * boxHeight)
+  for (let index = 0; index < boxWidth * boxHeight; index += 1) {
     if (keptComponents[components.lab[index]]) mask[index] = 1
   }
-  mask = dilate(mask, width, height, 3)
-  for (let index = 0; index < width * height; index += 1) {
-    if (!mask[index]) alpha[index] = 0
+  mask = dilate(mask, boxWidth, boxHeight, REACH)
+  alpha.fill(0, 0, y0 * width)
+  alpha.fill(0, (y1 + 1) * width)
+  for (let y = 0; y < boxHeight; y += 1) {
+    const row = (y + y0) * width
+    alpha.fill(0, row, row + x0)
+    alpha.fill(0, row + x1 + 1, row + width)
+    const maskRow = y * boxWidth
+    for (let x = 0; x < boxWidth; x += 1) {
+      if (!mask[maskRow + x]) alpha[row + x0 + x] = 0
+    }
   }
   return alpha
 }
 
+/**
+ * The layer's two sides of the face, each grown a little. Its components are found on the box of what is over
+ * the threshold (numbered as on the whole canvas, their sums of x put back on the canvas's columns).
+ */
 function splitSides(
   alpha: Uint8Array,
   width: number,
   height: number,
   faceCenterX: number,
 ): { l?: Uint8Array; r?: Uint8Array } {
-  const components = labelComponents(alpha, width, height, 16)
+  const result: { l?: Uint8Array; r?: Uint8Array } = {}
+  const over = bboxOf(alpha, width, height, 16)
+  if (!over) return result
+  const boxWidth = over.x1 - over.x0 + 1
+  const boxHeight = over.y1 - over.y0 + 1
+  const box = new Uint8Array(boxWidth * boxHeight)
+  for (let y = 0; y < boxHeight; y += 1) {
+    const from = (y + over.y0) * width + over.x0
+    box.set(alpha.subarray(from, from + boxWidth), y * boxWidth)
+  }
+  const components = labelComponents(box, boxWidth, boxHeight, 16)
   const sides = new Uint8Array(components.count + 1)
   for (let component = 1; component <= components.count; component += 1) {
     if (components.sizes[component] < 20) continue
+    const sumX = components.sumX[component] + over.x0 * components.sizes[component]
     sides[component] =
-      components.sumX[component] / components.sizes[component] < faceCenterX
+      sumX / components.sizes[component] < faceCenterX
         ? 1
         : 2
   }
   const left = new Uint8Array(width * height)
   const right = new Uint8Array(width * height)
-  for (let index = 0; index < width * height; index += 1) {
-    if (sides[components.lab[index]] === 1) left[index] = 1
-    else if (sides[components.lab[index]] === 2) right[index] = 1
-  }
-  const result: { l?: Uint8Array; r?: Uint8Array } = {}
   let leftCount = 0
   let rightCount = 0
-  for (let index = 0; index < width * height; index += 1) {
-    leftCount += left[index]
-    rightCount += right[index]
+  for (let y = 0; y < boxHeight; y += 1) {
+    const row = (y + over.y0) * width + over.x0
+    for (let x = 0; x < boxWidth; x += 1) {
+      const side = sides[components.lab[y * boxWidth + x]]
+      if (side === 1) {
+        left[row + x] = 1
+        leftCount += 1
+      } else if (side === 2) {
+        right[row + x] = 1
+        rightCount += 1
+      }
+    }
   }
   if (leftCount) result.l = dilate(left, width, height, 3)
   if (rightCount) result.r = dilate(right, width, height, 3)
   return result
 }
 
+/** The alpha four pixels to a word, to pass over empty canvas a word at a time; null where it does not lie on words. */
+function wordsOf(alpha: Uint8Array): Uint32Array | null {
+  return alpha.byteOffset % 4 === 0
+    ? new Uint32Array(alpha.buffer, alpha.byteOffset, alpha.byteLength >> 2)
+    : null
+}
+
+/** The first pixel from `from` up to `to` over the threshold, or -1. */
+function firstOver(
+  alpha: Uint8Array,
+  words: Uint32Array | null,
+  from: number,
+  to: number,
+  threshold: number,
+): number {
+  let index = from
+  if (words) {
+    for (; index < to && (index & 3); index += 1) {
+      if (alpha[index] > threshold) return index
+    }
+    for (; index + 4 <= to; index += 4) {
+      if (!words[index >> 2]) continue
+      for (let pixel = index; pixel < index + 4; pixel += 1) {
+        if (alpha[pixel] > threshold) return pixel
+      }
+    }
+  }
+  for (; index < to; index += 1) {
+    if (alpha[index] > threshold) return index
+  }
+  return -1
+}
+
+/** The last pixel from `from` up to `to` over the threshold, or -1. */
+function lastOver(
+  alpha: Uint8Array,
+  words: Uint32Array | null,
+  from: number,
+  to: number,
+  threshold: number,
+): number {
+  let index = to - 1
+  if (words) {
+    for (; index >= from && (index & 3) !== 3; index -= 1) {
+      if (alpha[index] > threshold) return index
+    }
+    for (; index - 3 >= from; index -= 4) {
+      if (!words[index >> 2]) continue
+      for (let pixel = index; pixel > index - 4; pixel -= 1) {
+        if (alpha[pixel] > threshold) return pixel
+      }
+    }
+  }
+  for (; index >= from; index -= 1) {
+    if (alpha[index] > threshold) return index
+  }
+  return -1
+}
+
+/**
+ * The box of the pixels over the threshold: the first and the last of them give its rows, and in each row between
+ * only what lies outside the columns already found is looked at.
+ */
 function bboxOf(
   alpha: Uint8Array,
   width: number,
   height: number,
   threshold: number,
 ): Bounds | null {
+  const words = wordsOf(alpha)
+  const first = firstOver(alpha, words, 0, width * height, threshold)
+  if (first < 0) return null
+  const last = lastOver(alpha, words, first, width * height, threshold)
+  const y0 = (first / width) | 0
+  const y1 = (last / width) | 0
   let x0 = width
-  let y0 = height
   let x1 = -1
-  let y1 = -1
-  for (let y = 0; y < height; y += 1) {
+  for (let y = y0; y <= y1; y += 1) {
     const offset = y * width
-    for (let x = 0; x < width; x += 1) {
-      if (alpha[offset + x] <= threshold) continue
-      if (x < x0) x0 = x
-      if (x > x1) x1 = x
-      if (y < y0) y0 = y
-      if (y > y1) y1 = y
-    }
+    const left = firstOver(alpha, words, offset, offset + x0, threshold)
+    if (left >= 0) x0 = left - offset
+    const right = lastOver(alpha, words, offset + x1 + 1, offset + width, threshold)
+    if (right >= 0) x1 = right - offset
   }
-  return x1 < 0 ? null : { x0, y0, x1, y1 }
+  return { x0, y0, x1, y1 }
 }
 
 function centroidOf(
