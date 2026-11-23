@@ -1,28 +1,44 @@
 import type { RasterLayer } from './anime25dImportTypes'
 import type { RigRect } from './types'
 
+/** The box of what is drawn (alpha above 8): its first and last rows, then in the rows between only the pixels outside the columns already found. */
 export function rasterBounds(layer: RasterLayer): RigRect | null {
-  let minX = layer.width
-  let minY = layer.height
+  const { width, height, data } = layer
+  const drawnInRow = (y: number) => {
+    const row = y * width * 4 + 3
+    for (let x = 0; x < width; x += 1) {
+      if (!(data[row + x * 4] <= 8)) return true
+    }
+    return false
+  }
+  let minY = 0
+  while (minY < height && !drawnInRow(minY)) minY += 1
+  if (minY >= height) return null
+  let maxY = height - 1
+  while (maxY > minY && !drawnInRow(maxY)) maxY -= 1
+  let minX = width
   let maxX = -1
-  let maxY = -1
-  for (let y = 0; y < layer.height; y += 1) {
-    for (let x = 0; x < layer.width; x += 1) {
-      if (layer.data[(y * layer.width + x) * 4 + 3] <= 8) continue
-      minX = Math.min(minX, x)
-      minY = Math.min(minY, y)
-      maxX = Math.max(maxX, x)
-      maxY = Math.max(maxY, y)
+  for (let y = minY; y <= maxY; y += 1) {
+    const row = y * width * 4 + 3
+    for (let x = 0; x < minX; x += 1) {
+      if (!(data[row + x * 4] <= 8)) {
+        minX = x
+        break
+      }
+    }
+    for (let x = width - 1; x > maxX; x -= 1) {
+      if (!(data[row + x * 4] <= 8)) {
+        maxX = x
+        break
+      }
     }
   }
-  return maxX < minX
-    ? null
-    : {
-        x: minX,
-        y: minY,
-        width: maxX - minX + 1,
-        height: maxY - minY + 1,
-      }
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX + 1,
+    height: maxY - minY + 1,
+  }
 }
 
 export function trimRaster(layer: RasterLayer): RasterLayer {

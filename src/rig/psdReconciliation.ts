@@ -5,6 +5,7 @@ import type {
 import type { EarAccessoryMasks } from './psdEarAccessory'
 import type { RigRect } from './types'
 import { earAccessoryMasks } from './psdEarAccessory'
+import { tally } from './tally'
 
 /**
  * Why the rest composite disagrees with the source illustration at a spot:
@@ -434,20 +435,19 @@ function floodBackground(
       }
     }
   }
+  const spread = (next: number) => {
+    if (outside[next] || !backgroundLike(next)) return
+    outside[next] = 1
+    stack.push(next)
+  }
   while (stack.length > 0) {
     const target = stack.pop()!
     const x = target % width
     const y = Math.floor(target / width)
-    for (const next of [
-      x > 0 ? target - 1 : -1,
-      x < width - 1 ? target + 1 : -1,
-      y > 0 ? target - width : -1,
-      y < height - 1 ? target + width : -1,
-    ]) {
-      if (next < 0 || outside[next] || !backgroundLike(next)) continue
-      outside[next] = 1
-      stack.push(next)
-    }
+    if (x > 0) spread(target - 1)
+    if (x < width - 1) spread(target + 1)
+    if (y > 0) spread(target - width)
+    if (y < height - 1) spread(target + width)
   }
   return outside
 }
@@ -494,11 +494,18 @@ function collectRegions(
   const visited = new Uint8Array(classes.length)
   const stack: number[] = []
   const regions: Anime25DPsdAnalysisRegion[] = []
+  // The class being gathered. Made once, not once a pixel looked at.
+  let code = 0
+  const visit = (next: number) => {
+    if (visited[next] || classes[next] !== code) return
+    visited[next] = 1
+    stack.push(next)
+  }
   for (let start = 0; start < classes.length; start += 1) {
-    const code = classes[start]
+    code = classes[start]
     if (!code || visited[start]) continue
     const kind = ANIME25D_PSD_DEFECT_CODES[code - 1]
-    const roles = new Map<string | null, number>()
+    const roles = tally<string | null>()
     let area = 0
     let minX = width
     let minY = height
@@ -518,7 +525,7 @@ function collectRegions(
       maxX = Math.max(maxX, x)
       maxY = Math.max(maxY, y)
       const role = roleAt(target, kind)
-      roles.set(role, (roles.get(role) ?? 0) + 1)
+      roles.vote(role)
       if (x > 0) visit(target - 1)
       if (x < width - 1) visit(target + 1)
       if (y > 0) visit(target - width)
@@ -530,7 +537,7 @@ function collectRegions(
     }
     let role: string | null = null
     let best = 0
-    for (const [candidate, votes] of roles) {
+    for (const [candidate, votes] of roles.counts()) {
       if (votes > best) {
         best = votes
         role = candidate
@@ -548,12 +555,6 @@ function collectRegions(
       role,
       members,
     })
-
-    function visit(next: number) {
-      if (visited[next] || classes[next] !== code) return
-      visited[next] = 1
-      stack.push(next)
-    }
   }
   return regions.toSorted((left, right) => right.area - left.area)
 }
