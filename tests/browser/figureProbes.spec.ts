@@ -307,8 +307,12 @@ test('two outfits with modelled arms never have them made at once', async ({ pag
   const armed = await run(page, 'swapPeak', { shown: synthetic('closed-mouth', true), next: synthetic('closed-mouth', true) })
   await attach(testInfo, { bare, armed })
   expect([bare.after, armed.after]).toEqual([bare.before, armed.before])
-  expect(armed.before, 'her arm is modelled').toBeGreaterThan(bare.before)
-  expect(armed.peak - armed.before, 'the swap holds no more than one without modelled arms').toBeLessThanOrEqual(bare.peak - bare.before)
+  expect([bare.left, armed.left], 'every byte is counted off again').toEqual([0, 0])
+  for (const kind of ['textures', 'bytes'] as const) {
+    expect(armed.before[kind], 'her arm is modelled').toBeGreaterThan(bare.before[kind])
+    expect(armed.peak[kind] - armed.before[kind], `the swap holds no more ${kind} than one without modelled arms`)
+      .toBeLessThanOrEqual(bare.peak[kind] - bare.before[kind])
+  }
 })
 
 const losses: typeof swaps = [

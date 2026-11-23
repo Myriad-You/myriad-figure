@@ -273,9 +273,10 @@ export class Anime25DPlayer {
     releaseCompiledGpu(this.gl, this.layers, this.collarClip, this.atlasTexture)
     this.atlasTexture = prepared.texture
     this.layers = compiled.layers
-    this.armVariants.adopt(next.arms)
     this.collarClip = compiled.collarClip
     this.face.bindAtlas(next.mouth)
+    // Last of what is taken on the GPU: modelled arms are made here, with all of the outfit before gone.
+    this.armVariants.adopt(next.arms)
     this.motionCapabilities = next.capabilities
     this.motion.directedPose.setCapabilities(this.motionCapabilities)
     this.touchAtlas = prepared.touchAtlas
