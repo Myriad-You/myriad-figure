@@ -1014,7 +1014,10 @@ interface Faults {
 
 /** The nearest source lines on the stack: what makes one failure point different from another. */
 function site(name: string): string {
+  Error.stackTraceLimit = 24
   const places = [...(new Error('site').stack ?? '').matchAll(/\/src\/(?:[\w-]+\/)*([\w-]+)\.ts[^:]*:(\d+)/g)]
+    // Whoever asked for the texture, not what makes every one of them.
+    .filter(([, file]) => file !== 'pixelTexture' && file !== 'arm3dTarget')
   return [name, ...places.slice(0, 4).map(([, file, line]) => `${file}:${line}`)].join(' < ')
 }
 
@@ -1099,6 +1102,8 @@ interface Watched {
 async function watched(pkg: FigurePackage): Promise<Watched> {
   seed = 1749
   const canvas = document.createElement('canvas')
+  // Both twins at the page's corner: a touch falls on the same fraction of each.
+  canvas.style.cssText = 'position: absolute; left: 0; top: 0'
   document.body.append(canvas)
   // The player asks this canvas for its context and is handed this one, watched.
   const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, stencil: true, antialias: true,
@@ -1214,30 +1219,33 @@ async function swapFaults({ shown: shownRef, next: nextRef, kinds = ['gpu', 'rea
         }
         faults.failAt = 0
         const fired = faults.steps >= failAt
-        let leaked: number
-        let lost: number
-        if (outcome === 'swapped') {
-          // A failure the swap gets round (a modelled arm drawn flat). Taken once more, whole, and back in the outfit
-          // before, it must have the objects and show what a twin has and shows whose swaps all went through.
-          await swap(subject, shown)
-          for (const w of [subject, control]) {
-            await swap(w, next)
-            await swap(w, shown)
-          }
-          leaked = Math.max(0, subject.live.size - control.live.size)
-          lost = Math.max(0, control.live.size - subject.live.size)
-        }
-        else {
-          leaked = [...subject.live].filter(object => !before.has(object)).length
-          lost = [...before].filter(object => !subject.live.has(object)).length
-        }
         let same = true
         try {
+          if (outcome === 'swapped') {
+            // A failure the swap gets round (a modelled arm drawn flat): that outfit draws, and back in the one before
+            // the figure is a twin's whose swap went through whole.
+            await swap(control, next)
+            moveOn(control)
+            moveOn(subject)
+            await swap(control, shown)
+            await swap(subject, shown)
+            subject.seed = control.seed
+          }
           same = moveOn(control) === moveOn(subject)
         }
         catch {
           same = false
         }
+        if (outcome === 'swapped') {
+          // What modelled arms are made and drawn with is made once and kept: once more, whole and drawn, on both.
+          for (const w of [subject, control]) {
+            await swap(w, next)
+            moveOn(w)
+            await swap(w, shown)
+          }
+        }
+        const leaked = outcome === 'swapped' ? Math.max(0, subject.live.size - control.live.size) : [...subject.live].filter(object => !before.has(object)).length
+        const lost = outcome === 'swapped' ? Math.max(0, control.live.size - subject.live.size) : [...before].filter(object => !subject.live.has(object)).length
         runs.push({ kind, site: at, fired, outcome, leaked, lost, same, error: subject.gl.getError() })
         if (outcome === 'refused' && same && !leaked && !lost) continue
         // Broken, or swapped, from here on: a new pair, so every place is judged on its own.

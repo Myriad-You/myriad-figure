@@ -268,7 +268,7 @@ export class Arm3DView {
     this.made?.add(out)
     const fb = gl.createFramebuffer()
     // The figure's frames keep the viewport their last resize set, and go on being drawn while the next outfit is made.
-    const viewport = gl.getParameter(gl.VIEWPORT) as Int32Array
+    const viewport = gl.getParameter(gl.VIEWPORT) as Int32Array | null
     try {
       // Without one of its own it would bake onto the canvas.
       if (!fb) throw new Error('arm framebuffer')
@@ -277,7 +277,7 @@ export class Arm3DView {
     } finally {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null)
       gl.deleteFramebuffer(fb)
-      gl.viewport(viewport[0], viewport[1], viewport[2], viewport[3])
+      if (viewport) gl.viewport(viewport[0], viewport[1], viewport[2], viewport[3])
       gl.bindVertexArray(null)
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
     }
