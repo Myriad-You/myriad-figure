@@ -29,7 +29,7 @@ function cells({ anchors: { face } }: Anime25DPlayback, across: number, down = a
 /** Hair over the whole of a frame as large as any, and something that hangs in it. */
 function hairPiece(p: Anime25DPlayback, box: [number, number, number, number]): void {
   p.pixelCanvas = { width: 8192, height: 8192 }
-  added(p, { role: 'front-hair', phys: 'hair', name: 'hair', x: 0, y: 0, w: 8192, h: 8192 })
+  added(p, { role: 'back-hair', phys: 'hair', name: 'hair', x: 0, y: 0, w: 8192, h: 8192 })
   Object.assign(p.partProfile!.parts[0], { layer: 'hair', bone: 'head', motion: 'dangle', separate: false, box, anchor: [(box[0] + box[2]) / 2, box[1]] })
 }
 /** As an untyped source may write it. */
@@ -57,6 +57,17 @@ const REFUSED_PACKAGES: ReadonlyArray<readonly [string, (playback: Anime25DPlayb
   ['a key with a place left empty', (p) => { delete p.turnKeyforms!.face.plus.back[2] }],
   ['a key\'s box with a place left empty', (p) => { delete (p.turnKeyforms!.face.minus.box as number[])[1] }],
   ['a correction with a place left empty', (p) => { delete p.shellProfile.poseCorrections![0] }],
+  ['a top meshed past what its indices reach, by the face of the figure that stands in it', (p) => {
+    p.pixelCanvas = { width: 8192, height: 8192 }
+    added(p, { role: 'topwear', group: 'body', w: 8192, h: 8192 })
+  }],
+  ['a lock drawn finer than any picture', (p) => added(p, { role: 'front-hair', phys: 'hair', w: 0.5, h: 0.5, atlas: { x: 0, y: 0, w: 1, h: 1 } })],
+  ['locks too far apart to put together', (p) => {
+    for (const at of [-4000, 4000]) added(p, { role: 'front-hair', phys: 'hair', x: at, y: at })
+  }],
+  ['locks past what is read of them', (p) => {
+    for (let i = 0; i < 40; i += 1) added(p, { role: 'front-hair', phys: 'hair', x: 50 * i, y: 50 * i, w: 2000, h: 2000, atlas: { x: 0, y: 0, w: 0.1, h: 0.1 } })
+  }],
   ['a layer wider than a frame', (p) => put(p.layers[0], 'w', 8193)],
   ['a layer too thin to mesh', (p) => put(p.layers[0], 'h', 0.1)],
   ['a layer off every frame', (p) => put(p.layers[0], 'x', 1e308)],
@@ -220,6 +231,12 @@ test('what the importer and the server may well make is let through', () => {
   // Eight of them, as no figure wears.
   assert.equal(accepted(({ anime25dPlayback: p }) => {
     for (let i = 0; i < 8; i += 1) added(p!, { role: 'headwear', ...cells(p!, 146, 213), atlas: { x: 0, y: 0, w: 0.1, h: 0.1 } })
+  }), true)
+  // Locks cut from hair as long as a figure, on an atlas drawn twice as fine.
+  assert.equal(accepted((m) => {
+    m.textures[0].width *= 2
+    m.textures[0].height *= 2
+    for (let i = 0; i < 8; i += 1) added(m.anime25dPlayback!, { role: 'front-hair', phys: 'hair', x: 100 * i, y: 0, w: 400, h: 2000, atlas: { x: 0, y: 0, w: 0.1, h: 0.1 } })
   }), true)
   // What hangs in hair over the whole of a frame is looked for around its own box only.
   assert.equal(accepted(({ anime25dPlayback: p }) => hairPiece(p!, [3000, 3000, 3200, 3400])), true)

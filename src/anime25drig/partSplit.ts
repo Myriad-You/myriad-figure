@@ -89,8 +89,7 @@ export function cutsOut(part: Readonly<Anime25DPart>, canvas: { width: number; h
 
 /**
  * Each hanging piece as large as it could come out, before any pixel is looked at, in each layer it may be cut from:
- * what findPiece looks through there. What validation holds its mesh to. (Its layer is taken to be drawn at one
- * scale both ways, a pixel to a canvas pixel or finer, as the importer draws them.)
+ * its window there. What validation holds its mesh to.
  */
 export function largestPieces(
   layers: readonly Anime25DPlaybackLayer[],
@@ -98,7 +97,7 @@ export function largestPieces(
   canvas: { width: number; height: number },
 ): Anime25DPlaybackLayer[][] {
   return (profile?.parts ?? []).filter((part) => cutsOut(part, canvas)).map((part) => {
-    const window = aroundWindow(searchWindow(part.box, part.anchor[1]))
+    const window = pieceWindow(part)
     return layers.filter((layer) => mayHost(part, layer, layers)).flatMap((host) => {
       const x = Math.max(host.x, window[0])
       const y = Math.max(host.y, window[1])
@@ -196,6 +195,15 @@ function searchWindow([x0, y0, x1, y1]: Box, anchorY: number): Box {
 function aroundWindow([x0, y0, x1, y1]: Box): Box {
   const margin = Math.max(2, 0.1 * Math.max(x1 - x0, y1 - y0))
   return [Math.floor(x0 - margin), Math.floor(y0 - margin), Math.ceil(x1 + margin), Math.ceil(y1 + margin)]
+}
+
+/**
+ * Where on the canvas a piece may lie. It is looked for in its layer's own pixels, a whole one out either way; drawn
+ * at a pixel to the canvas's or finer, that is no further than this. Found further out, it is none of the part's.
+ */
+function pieceWindow(part: Readonly<Anime25DPart>): Box {
+  const [x0, y0, x1, y1] = aroundWindow(searchWindow(part.box, part.anchor[1]))
+  return [x0 - 1, y0 - 1, x1 + 1, y1 + 1]
 }
 
 /** Which of a box's pixels are a piece hanging from row `anchorY`; null when none can be told apart. */
@@ -705,7 +713,6 @@ export function splitHangingParts(
     const sy = art.height / host.h
     const result = findPiece(art, part, (x: number) => (x - host.x) * sx, (y: number) => (y - host.y) * sy)
     if (!result) return
-    hostPixels.set(host, result.host)
     const { x: x0, y: y0 } = result
     const source: Anime25DPlaybackLayer = {
       ...pieceLayer(host, {
@@ -724,6 +731,9 @@ export function splitHangingParts(
       // Drawn just over its host.
       z: (host.z ?? layers.indexOf(host)) + 0.5,
     }
+    const window = pieceWindow(part)
+    if (source.x < window[0] || source.y < window[1] || source.x + source.w > window[2] || source.y + source.h > window[3]) return
+    hostPixels.set(host, result.host)
     cutHosts.set(source, host.name)
     cut.push({ host, hostPixels: result.host, pixels: result.piece, source })
   })

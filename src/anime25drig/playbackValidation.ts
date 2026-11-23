@@ -40,6 +40,9 @@ const MAX_RING_POINTS = 16_384
 const RING_REACH = 2
 /** How many times over the layers may cut out the whole atlas: the importer lays each in a place of its own (under 1). */
 const MAX_ATLAS_CUTS = 4
+/** Locks of front hair are laid together in one picture (unionDrawing): its pixels, and those times the locks read for each. */
+const MAX_FRINGE_PIXELS = 2 * 4096 ** 2
+const MAX_FRINGE_READS = 16 * MAX_FRINGE_PIXELS
 /** Pixels of gesture-arm ground in one package. Eight arms on a 1133 × 1511 bust come to 2.1 million. */
 const MAX_GROUND_AREA = 2 * 4096 ** 2
 /** Where the cuff starts is divided by where it ends, hanging, which the importer reads from 0.75 of the forearm on. */
@@ -120,6 +123,20 @@ function isPlaybackLayer(value: unknown): value is Anime25DPlaybackLayer {
     isStrands(value.strands) &&
     (value.synthetic === undefined || typeof value.synthetic === 'boolean') &&
     (value.armVariant === undefined || isArmVariant(value.armVariant, value.w, value.h))
+}
+
+/**
+ * Front hair cut into locks is put together in one picture, as large as they reach over the canvas and as fine as the
+ * finest is drawn on its atlas: no larger than a page can hold and read. (The server holds an atlas to its said size.)
+ */
+export function fringeFits(layers: readonly Anime25DPlaybackLayer[], atlas: { width: number }): boolean {
+  const locks = layers.map(resolveAnime25DLayerSemantics).filter((layer) => layer.role === 'front-hair')
+  if (locks.length < 2) return true
+  const scale = Math.max(...locks.map((lock) => Math.max(1, lock.atlas.w * atlas.width) / lock.w))
+  const across = Math.max(...locks.map((lock) => lock.x + lock.w)) - Math.min(...locks.map((lock) => lock.x))
+  const down = Math.max(...locks.map((lock) => lock.y + lock.h)) - Math.min(...locks.map((lock) => lock.y))
+  const pixels = (across * scale + 1) * (down * scale + 1)
+  return pixels <= MAX_FRINGE_PIXELS && pixels * locks.length <= MAX_FRINGE_READS
 }
 
 /** Where a drawing lies in the atlas, as shares of it: all of it inside. */

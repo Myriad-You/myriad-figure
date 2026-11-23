@@ -1,4 +1,5 @@
 import type { MeropeRigManifest, RigBone, RigMotionProfile, RigOutfitProfile, RigOutfitTopology, RigPoint, RigSemantics, RigSize, RigSpatialProfile, RigVertex } from './types'
+import { fringeFits } from '../anime25drig/playbackValidation'
 import { isAnime25DPlayback } from '../anime25drig/types'
 import { CHARACTER_ASSET_PROFILES, characterAssetProfileOf, isCharacterAssetProfile, MAX_RIG_BONES, MAX_RIG_COLLISION_VOLUMES, MAX_RIG_PARTS, MAX_RIG_TEXTURES, MAX_RIG_TOTAL_VERTICES, MAX_RIG_VERTICES_PER_PART, MIN_SUPPORTED_RIG_IR_VERSION, RIG_IR_VERSION, RIG_PRESENTATION_SLOTS, RIG_SCHEMA_VERSION, RIG_SEMANTIC_BONE_ROLES, RIG_SEMANTIC_CHAIN_ROLES } from './contract'
 import { everyItem } from './lists'
@@ -111,12 +112,8 @@ export function isRigManifest(value: unknown): value is MeropeRigManifest {
   ) {
     return false
   }
-  if (
-    value.anime25dPlayback !== undefined &&
-    !isAnime25DPlayback(value.anime25dPlayback)
-  ) {
-    return false
-  }
+  const playback = value.anime25dPlayback
+  if (playback !== undefined && !isAnime25DPlayback(playback)) return false
   const textures = value.textures
   const bones = value.bones
   const parts = value.parts
@@ -130,6 +127,12 @@ export function isRigManifest(value: unknown): value is MeropeRigManifest {
     ) {
       return false
     }
+  }
+  if (
+    playback !== undefined &&
+    !textures.every((texture) => fringeFits(playback.layers, texture))
+  ) {
+    return false
   }
   const boneIds = new Set<string>()
   for (const bone of bones) {

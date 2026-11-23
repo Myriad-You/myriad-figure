@@ -7,7 +7,7 @@ import { resetCachedAtlasImagesForTests } from './webglRuntime'
 export interface PlayerRun {
   /** The first number it gave the GPU that is not one. */
   nonFinite: string | null
-  /** Of every number it gave the GPU, in order: the same for two runs that drew the same. */
+  /** Of every float it gave the GPU (vertices and uniforms), in order: the same for two runs that drew the same. */
   drawn: number
 }
 

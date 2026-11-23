@@ -121,3 +121,20 @@ test('the pieces of an inventory are cut out of their hosts, named for their par
   assert.equal(partOfLayer(profile, cut[0].source.name), profile.parts[0])
   assert.equal(partOfLayer(profile, 'neckwear'), profile.parts[0])
 })
+
+test('a piece found outside where its part may be, on a layer drawn at another scale one way than the other, stays', () => {
+  // A wide gold block hanging from a band; the part is a thin strip of it.
+  const image = art(120, 120, [30, 30, 90, 100], [0, 34, 120, 120])
+  const hostOf = (w: number): Anime25DPlaybackLayer => ({
+    name: 'hair', role: 'back-hair', z: 0, depth: 1, group: 'head', x: 0, y: 0, w, h: 120,
+    atlas: { x: 0, y: 0, w: 1, h: 1 }, strands: [], phys: 'hair', fade: null, side: null,
+  })
+  const cutAt = (scale: number, half: number) => splitHangingParts([hostOf(120 * scale)], { version: 1, source: 'ai-vision', parts: [{
+    name: 'block', layer: 'hair', separate: false,
+    box: [(60 - half) * scale, 30, (60 + half) * scale, 100], anchor: [60 * scale, 30],
+    bone: 'head', motion: 'dangle', material: 'metal', stiffness: 0.2, weight: 0.5,
+  } satisfies Anime25DPart] }, { width: 8192, height: 8192 }, () => image)
+  assert.equal(cutAt(1, 30).length, 1, 'one to one, it is cut')
+  assert.equal(cutAt(20, 30).length, 1, 'stretched, it is cut where its box is')
+  assert.equal(cutAt(20, 9).length, 0, 'found past its window, it is not the part')
+})
