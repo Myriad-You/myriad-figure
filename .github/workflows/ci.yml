@@ -61,10 +61,11 @@ jobs:
           # is mostly the player's own arithmetic, frame after frame, which WebKit and
           # Chromium run: turns, hair, corrections and handovers over time, and the
           # touch handoffs and petting replayed against a control; and the outfit swap
-          # failing everywhere it can, minutes of it. A test renamed out of this list runs.
+          # failing everywhere it can, and poses of a modelled arm, minutes of each. A test
+          # renamed out of this list runs.
           - engine: firefox
             args: >-
-              --grep-invert "short head turn|continuous turns|every frame rate|authored correction|hair follows|music hands over|speech during a thought|touch handoff|petting|swap that fails"
+              --grep-invert "short head turn|continuous turns|every frame rate|authored correction|hair follows|music hands over|speech during a thought|touch handoff|petting|swap that fails|a mouth painted as she speaks"
     env:
       FIGURE_BROWSER_ENGINES: ${{ matrix.engine }}
     steps:

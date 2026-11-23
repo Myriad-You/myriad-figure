@@ -1296,8 +1296,7 @@ async function poses(ref: PackageRef, frames = 24) {
     // The same at another size: a pose is drawn as large as its canvas.
     const large = await watched(pkg)
     const enlarged = await watched(pkg)
-    const wide = await watched(pkg)
-    for (const { player } of [large, enlarged, wide]) player.resize(288, 384, 2)
+    for (const { player } of [large, enlarged]) player.resize(288, 384, 2)
     try {
       const gestures = JSON.stringify(subject.player.armVariantGestures())
       const step = (w: Watched, pose: Partial<Anime25DDriver>) => {
@@ -1305,7 +1304,7 @@ async function poses(ref: PackageRef, frames = 24) {
         hold(w.player, pose, 1)
         w.seed = seed
       }
-      let drawn = 0; let replayed = 0; let drifted = 0; let shown = 0; let returned = 0; let lagging = 0; let bytes = 0; let refused = 0; let between = 0; let armed = 0; let cloths = 0; let stickers = 0; const mouths = new Set<string>(); let sized = 0; let atSize = 0; const odd: unknown[] = []; let damaged = 0; let spoilt = 0; const taking: string[] = []
+      let drawn = 0; let replayed = 0; let drifted = 0; let shown = 0; let returned = 0; let lagging = 0; let bytes = 0; let refused = 0; let between = 0; let armed = 0; let cloths = 0; let stickers = 0; const mouths = new Set<string>(); let sized = 0; let atSize = 0; let damaged = 0; let spoilt = 0; const taking: string[] = []
       let first: Anime25DPose | null = null
       let previous: Anime25DPose | null = null
       let raised: Anime25DPose | null = null
@@ -1314,7 +1313,7 @@ async function poses(ref: PackageRef, frames = 24) {
           step(subject, pose)
           step(twin, pose)
           step(large, pose)
-          if (hash(readPixels(subject.gl)) !== hash(readPixels(twin.gl))) drifted++
+          if (!alike(readPixels(subject.gl), readPixels(twin.gl))) drifted++
           const taken = subject.player.getPose()!
           const text = poseToJSON(taken)
           bytes = Math.max(bytes, text.length)
@@ -1322,20 +1321,15 @@ async function poses(ref: PackageRef, frames = 24) {
           if (taken.arms.some(arm => arm.cloths.some(cloth => cloth))) cloths++
           if (taken.sticker) stickers++
           if (taken.mouth) mouths.add(JSON.stringify(taken.mouth))
-          const live = hash(readPixels(subject.gl))
+          const live = readPixels(subject.gl)
           const back = poseFromJSON(text)
           // The GPU has what the pose says: read back, not from the player's own copy.
           lagging += gpuDiffers(subject, taken)
-          if (replay.player.renderPose(back) && hash(readPixels(replay.gl)) === live) replayed++
+          if (replay.player.renderPose(back) && alike(readPixels(replay.gl), live)) replayed++
           if (i % 4 === 0) {
             atSize++
-            const [own, again, posed] = [readPixels(large.gl), readPixels(large.gl), enlarged.player.renderPose(back) && readPixels(enlarged.gl)]
-            const twice = enlarged.player.renderPose(back) && readPixels(enlarged.gl)
-            step(wide, pose)
-            if (posed && hash(posed) === hash(own)) sized++
-            else odd.push({ at: drawn, posed: posed && apart(posed, own), reread: apart(again, own), redrawn: posed && twice && apart(twice, posed), twin: apart(readPixels(wide.gl), own) })
+            if (enlarged.player.renderPose(back) && alike(readPixels(enlarged.gl), readPixels(large.gl))) sized++
           }
-          else step(wide, pose)
           drawn++
           // Damaged in one place, it is refused whole, or the place is one that is not drawn.
           if (i === frames - 1) {
@@ -1343,17 +1337,17 @@ async function poses(ref: PackageRef, frames = 24) {
               damaged++
               if (replay.player.renderPose(bad) && !/^(?:time|driver)(?:\.|$)/.test(place)) taking.push(place)
             }
-            if (hash(readPixels(replay.gl)) !== live) spoilt++
+            if (!alike(readPixels(replay.gl), live)) spoilt++
           }
           // Her own player draws an earlier pose now and then, and one between two.
           if (first && previous && i % 3 === 0) {
             shown++
             if (!subject.player.renderPose(first)) refused++
             if (!subject.player.renderPose(blendPoses(previous, taken, 0.5))) refused++
-            if (hash(readPixels(subject.gl)) !== live) between++
+            if (!alike(readPixels(subject.gl), live)) between++
             if (subject.player.hitTestTouch(1, 1) !== null) refused++
             if (!subject.player.renderPose(taken)) refused++
-            if (hash(readPixels(subject.gl)) === live) returned++
+            if (alike(readPixels(subject.gl), live)) returned++
             // Left showing another pose at times: her next frame is hers all the same.
             if (i % 2) subject.player.renderPose(i % 4 === 1 ? first : blendPoses(previous, taken, 0.9))
           }
@@ -1367,9 +1361,9 @@ async function poses(ref: PackageRef, frames = 24) {
         for (let i = 0; i < 120; i++) step(w, { phys: false })
       }
       subject.player.renderPose(first!)
-      const stirred = hash(readPixels(subject.gl)) !== hash(readPixels(twin.gl))
+      const stirred = !alike(readPixels(subject.gl), readPixels(twin.gl))
       for (const w of [subject, twin]) step(w, { phys: false })
-      const settled = stirred && hash(readPixels(subject.gl)) === hash(readPixels(twin.gl)) && gpuDiffers(subject, twin.player.getPose()!) === 0
+      const settled = stirred && alike(readPixels(subject.gl), readPixels(twin.gl)) && gpuDiffers(subject, twin.player.getPose()!) === 0
       const wrong = { other: stranger.player.renderPose(first!), short: replay.player.renderPose({ ...first!, layers: first!.layers.slice(1) }),
         nothing: replay.player.renderPose({} as Anime25DPose), bad: replay.player.renderPose({ ...first!, layers: first!.layers.map(layer => ({ ...layer, transform: layer.transform.map(() => Number.NaN) })) }) }
       // Shown while the canvas is resized, it is drawn again as large; while the outfit is put on again, it is gone,
@@ -1377,19 +1371,19 @@ async function poses(ref: PackageRef, frames = 24) {
       replay.player.renderPose(raised!)
       replay.player.resize(288, 384, 2)
       enlarged.player.renderPose(raised!)
-      const as = hash(readPixels(enlarged.gl))
-      const resized = hash(readPixels(replay.gl)) === as
+      const as = readPixels(enlarged.gl)
+      const resized = alike(readPixels(replay.gl), as)
       await replay.player.replaceLivePackage(pkg.playback, pkg.manifest, pkg.atlasUrl)
       const gone = replay.player.getPose() === null
-      const again = replay.player.renderPose(raised!) && hash(readPixels(replay.gl)) === as
+      const again = replay.player.renderPose(raised!) && alike(readPixels(replay.gl), as)
       hold(replay.player, {}, 1)
-      const went = replay.player.getPose() !== null && hash(readPixels(replay.gl)) !== as
+      const went = replay.player.getPose() !== null && !alike(readPixels(replay.gl), as)
       const figure = first!
       const parts = { mouth: figure.mouth !== null, cloth: figure.arms.some(arm => arm.cloths.length > 0), arm: figure.arms.length > 0 }
-      return { drawn, sized, atSize, odd, damaged, taking, spoilt, resized, gone, again, went, parts, settled, replayed, drifted, shown, returned, lagging, bytes, refused, between, armed, cloths, stickers, mouths: mouths.size, gestures, wrong, error: subject.gl.getError() || replay.gl.getError() }
+      return { drawn, sized, atSize, damaged, taking, spoilt, resized, gone, again, went, parts, settled, replayed, drifted, shown, returned, lagging, bytes, refused, between, armed, cloths, stickers, mouths: mouths.size, gestures, wrong, error: subject.gl.getError() || replay.gl.getError() }
     }
     finally {
-      for (const w of [subject, twin, replay, stranger, large, enlarged, wide]) w.close()
+      for (const w of [subject, twin, replay, stranger, large, enlarged]) w.close()
     }
   })
 }
@@ -1433,16 +1427,14 @@ function* damages(pose: Anime25DPose): Generator<[string, Anime25DPose]> {
   }
 }
 
-/** How many pixels of two pictures differ, and the most any does. */
-function apart(a: Uint8Array, b: Uint8Array): [pixels: number, most: number] {
-  let pixels = 0
-  let most = 0
-  for (let i = 0; i < a.length; i += 4) {
-    const by = Math.max(...[0, 1, 2, 3].map(k => Math.abs(a[i + k]! - b[i + k]!)))
-    if (by) pixels++
-    most = Math.max(most, by)
-  }
-  return [pixels, most]
+/**
+ * Whether two pictures are the same, to the pixel. Firefox on a virtual machine's GPU is not the same as itself: there
+ * one pixel by one level, now and then, is how two players of the very same frame differ, and one drawing it twice.
+ */
+function alike(a: Uint8Array, b: Uint8Array): boolean {
+  const spared = navigator.userAgent.includes('Firefox') ? 4 : 0
+  let apart = 0
+  return a.length === b.length && a.every((value, i) => value === b[i] || (Math.abs(value - b[i]!) <= 1 && (apart += 1) <= spared))
 }
 
 /** Layers whose vertices on the GPU are not the pose's. */
