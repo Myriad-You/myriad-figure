@@ -328,6 +328,7 @@ for (const { name, root, refs } of losses) {
     expect(result.apart, 'the figure itself moves the same without one').toBe(0)
     expect(result.posed).toBe(true)
     expect([result.left, result.leftWhole]).toEqual([0, 0])
+    expect([...new Set(result.runs.map(run => run.when))], 'places were found in both').toEqual(['swap', 'load'])
     expect(result.runs.filter(run => !run.fired), 'every loss was put where it was meant').toEqual([])
     expect(result.runs.filter(run => run.left)).toEqual([])
     expect(result.same, 'a figure made after it').toBe(true)

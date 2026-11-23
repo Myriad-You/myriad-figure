@@ -1038,8 +1038,9 @@ const GPU_MAKES: Record<string, string> = { createBuffer: 'deleteBuffer', create
 const GPU_STEPS = [...Object.keys(GPU_MAKES), 'bufferData', 'texImage2D', 'texSubImage2D', 'texStorage2D']
 
 /**
- * Watches a context's objects and fails its steps. A create gives null, which is what a lost context gives; an upload
- * throws, which a real one does only for an image it may not read. Out of memory is a GL error instead, not simulated.
+ * Watches a context's objects and fails its steps. A create gives null, which WebGL allows though the browsers give a
+ * dead object on a lost context; an upload throws, which a real one does only for an image it may not read. Out of
+ * memory is a GL error instead, not simulated.
  */
 function watchGpu(gl: WebGL2RenderingContext, faults: Faults): Set<object> {
   const live = new Set<object>()
@@ -1309,9 +1310,9 @@ async function swapPeak({ shown: shownRef, next: nextRef }: Pick<SwapRequest, 's
 }
 
 /**
- * A context really lost: while the figure plays, at any step of an outfit swap, at any step of its first load. Losing it
- * throws from nothing a page calls before it has made another, moves the figure itself no differently, and everything
- * made on it is let go; a figure made after it is one that was never near it.
+ * A context really lost: while the figure plays, and at each place in the code of an outfit swap and of its first load,
+ * at its last visit. What a page calls every frame, a resize, a touch and a pose throw from nothing (a swap or a load may
+ * be refused); lost while it plays, the figure itself moves no differently; everything made on it is let go.
  */
 async function contextLoss({ shown: shownRef, next: nextRef }: Pick<SwapRequest, 'shown' | 'next'>) {
   const shown = await resolvePackage(shownRef)

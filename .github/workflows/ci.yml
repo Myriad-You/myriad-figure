@@ -52,7 +52,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Everything: it takes five or six minutes here.
+          # Everything: it takes some twenty minutes here.
           - engine: webkit
           # Firefox takes 38 minutes for everything here. It runs what an engine can
           # do differently: the import Worker with its OffscreenCanvas and PNGs,

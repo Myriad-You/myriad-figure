@@ -108,10 +108,13 @@ What the probes hold, and what they do not:
   no GPU object more or fewer. Two outfits' modelled arms are never made at
   once: that is counted in textures, not in bytes, and out of memory itself is
   a GL error and not simulated.
-- A lost context, while she plays and at every step of a swap and of a first
-  load: nothing a page may still call throws, the figure itself moves the
-  same, everything made is deleted with the player, and a figure made after it
-  draws as a twin. The page is what notices and makes another; that is not here.
+- A lost context, while she plays and at each place in the code of a swap and
+  of a first load: a tick, a resize, a touch, a pose and letting her go do not
+  throw (the swap or the load itself may be refused), and everything made is
+  deleted with the player. Lost while she plays, the figure itself moves the
+  same. Browsers go on giving objects on a lost context, so what is half made
+  when a step fails is the outfit swaps' to hold. The page is what notices and
+  makes another; that is not here.
 - Pose corrections: an authored correction (through `previewPoseCorrections`)
   changes only its combination pose, never the body, and releasing it restores
   every pixel.
