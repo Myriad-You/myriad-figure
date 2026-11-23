@@ -38,6 +38,10 @@ const REFUSED_PACKAGES: ReadonlyArray<readonly [string, (playback: Anime25DPlayb
   ['meshes past the most together', (p) => {
     for (let i = 0; i < 6; i += 1) added(p, { role: 'nose', ...cells(p, 110) })
   }],
+  ['a piece that may be meshed past the most, cut from hair that is not', (p) => {
+    added(p, { role: 'front-hair', phys: 'hair', name: 'hair', group: 'head', ...cells(p, 300) })
+    Object.assign(p.partProfile!.parts[0], { layer: 'hair', bone: 'head', motion: 'dangle', separate: false, box: [0, 0, 20, 20], anchor: [10, 0] })
+  }],
   ['a layer wider than a frame', (p) => put(p.layers[0], 'w', 8193)],
   ['a layer too thin to mesh', (p) => put(p.layers[0], 'h', 0.1)],
   ['a layer off every frame', (p) => put(p.layers[0], 'x', 1e308)],
@@ -63,6 +67,24 @@ const REFUSED_PACKAGES: ReadonlyArray<readonly [string, (playback: Anime25DPlayb
   ['an eye inside out', (p) => put(p.anchors.eyeL, 'y1', p.anchors.eyeL!.y0 - 1)],
   ['an eye with no lid line', (p) => put(p.anchors.eyeL, 'closeY', undefined)],
   ['a face scale of nothing', (p) => put(p.anchors, 'faceScale', 0)],
+  ['a neck nowhere', (p) => put(p.anchors, 'neckPivot', { x: 1 })],
+  ['a neck with no top', (p) => put(p.anchors, 'neckTop', null)],
+  ['a neck with no bottom', (p) => put(p.anchors, 'neckBottom', null)],
+  ['a body that turns nowhere', (p) => put(p.anchors, 'bodyPivot', {})],
+  ['a face with no middle', (p) => put(p.anchors.face, 'cx', null)],
+  ['a mouth with no middle', (p) => put(p.anchors.mouth, 'cy', null)],
+  ['an eye with no iris', (p) => put(p.anchors.eyeL, 'icx', null)],
+  ['physics of another kind', (p) => put(p.layers[0], 'phys', 'cloth')],
+  ['a layer made or not by neither', (p) => put(p.layers[0], 'synthetic', 1)],
+  ['a forearm of no length', (p) => put(armOf(p), 'fore', 0)],
+  ['a hanging forearm of no length', (p) => put(armOf(p), 'restFore', 0)],
+  ['a hanging elbow nowhere', (p) => put(armOf(p).rest, 'elbow', [1, 2, 1e308])],
+  ['a hand of four fingers', (p) => put(armOf(p), 'fingers', [1, 1, 1, 1])],
+  ['a finger of no width at all', (p) => put(armOf(p).fingerProfile, 0, [-1])],
+  ['a palm past any hand', (p) => put(armOf(p), 'palmOutline', [[0, 0], [1, 0], [0, 1e308]])],
+  ['a part\'s box of three numbers', (p) => put(p.partProfile!.parts[0], 'box', [0, 0, 1])],
+  ['a part stiffer than stiff', (p) => put(p.partProfile!.parts[0], 'stiffness', 2)],
+  ['a family\'s name without end', (p) => put(p.turnKeyforms, 'x'.repeat(65), p.turnKeyforms!.face)],
   ['a ground of no number', (p) => put(p.anchors, 'groundY', '9')],
   ['a joint of no name', (p) => put(p.anchors.skeleton!.joints, 'toString', { x: 1, y: 1, score: 1 })],
   ['a joint nowhere', (p) => put(p.anchors.skeleton!.joints.kneeL, 'y', null)],
@@ -96,7 +118,7 @@ const REFUSED_PACKAGES: ReadonlyArray<readonly [string, (playback: Anime25DPlayb
     const layer = p.layers.find((each) => each.armVariant?.model)!
     layer.w = 2000
     layer.h = 2000
-    put(armOf(p), 'ground', [ringOf(-2000, -2000, 3000, 3000)])
+    put(armOf(p), 'ground', [ringOf(-2000, -2000, 4000, 4000)])
   }],
   ['a key with no room', (p) => put(p.turnKeyforms!.face.plus, 'box', [10, 10, 10, 20])],
   ['a key off every frame', (p) => put(p.turnKeyforms!.face.plus.box, 2, 1e308)],
@@ -113,9 +135,12 @@ const REFUSED_MANIFESTS: ReadonlyArray<readonly [string, (manifest: MeropeRigMan
   ['a texture named by a number', (m) => { put(m.textures[0], 'id', '7'); for (const part of m.parts) put(part, 'textureId', 7) }],
   ['a texture named by what has no name', (m) => put(m.parts[0], 'textureId', { toString: null, valueOf: null })],
   ['a preview of something else', (m) => put(m.textures[0], 'url', 'preview://rig-atlas/..')],
+  ['a slot\'s name without end', (m) => put(m.parts[0], 'slot', 'x'.repeat(65))],
+  ['a name for an anchor without end', (m) => put(m, 'semanticAnchors', { ['x'.repeat(65)]: m.semanticAnchors!.chest })],
+  ['a portrait\'s name without end', (m) => put(m, 'sourceMasterAssetId', 'x'.repeat(513))],
   ['a texture without end', (m) => put(m.textures[0], 'width', 16_385)],
   ['a canvas without end', (m) => put(m.canvas, 'height', 1e308)],
-  ['an id without end', (m) => put(m.parts[0], 'id', 'x'.repeat(513))],
+  ['an id without end', (m) => { put(m.textures[0], 'id', 'x'.repeat(513)); for (const part of m.parts) put(part, 'textureId', m.textures[0].id) }],
   ['a vertex off every canvas', (m) => put(m.parts[0].vertices[0].position, 'x', 1e308)],
   ['a depth off every stack', (m) => put(m.parts[0], 'zIndex', 1e308)],
   ['triangles without end', (m) => put(m.parts[0], 'indices', Array.from({ length: 16_384 * 6 + 3 }, () => 0))],

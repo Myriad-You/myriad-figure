@@ -2,6 +2,7 @@ import type { Anime25DArmModel, Anime25DArmVariant, Anime25DEnhancement, Anime25
 import { resolveAnime25DLayerSemantics } from '../rig/anime25dLayerSemantics'
 import { MAX_RIG_PARTS, MAX_RIG_TOTAL_VERTICES, MAX_RIG_VERTICES_PER_PART } from '../rig/contract'
 import { layerMeshVertexBound } from './layerGrid'
+import { largestPieces } from './partSplit'
 
 /**
  * What a playback package has to be before anything is built from it: the
@@ -34,9 +35,9 @@ const MAX_RING_POINTS = 16_384
 const RING_REACH = 2
 /** How many times over the layers may cut out the whole atlas: the importer lays each in a place of its own (under 1). */
 const MAX_ATLAS_CUTS = 4
-/** Pixels of gesture-arm ground in one package. Eight arms on a 4076-high figure come to 2.1 million. */
-const MAX_GROUND_AREA = 4096 ** 2
-/** A cuff's end hanging is read from 0.75 of the forearm on; what lies along the sleeve is a share of it. */
+/** Pixels of gesture-arm ground in one package. Eight arms on a 1133 × 1511 bust come to 2.1 million. */
+const MAX_GROUND_AREA = 2 * 4096 ** 2
+/** Where the cuff starts is divided by where it ends, hanging, which the importer reads from 0.75 of the forearm on. */
 const LEAST_CUFF = 0.1
 
 /** Every one of them: a name missing here would have a package that carries it refused, so the compiler asks for all. */
@@ -141,21 +142,28 @@ function isStrands(value: unknown): boolean {
  * The meshes the runtime would build, layer by layer, held to the rig contract's own limits: past them a
  * triangle's indices wrap round, and a drawing as wide as a number can be is memory without end.
  */
-export function playbackMeshesFit(playback: Pick<Anime25DPlayback, 'layers' | 'anchors' | 'pixelCanvas'>, shell: Anime25DShellProfile): boolean {
-  let total = 0
-  return playback.layers.every((source, layerZ) => {
-    const vertices = layerMeshVertexBound({
-      // As the player meshes it: an unnamed role goes by the layer's name, and the role says which group it is in.
-      source: resolveAnime25DLayerSemantics(source),
-      canvasWidth: playback.pixelCanvas.width,
-      face: playback.anchors.face,
-      layerZ,
-      faceShell: shell,
-      figure: playback.anchors.groundY !== undefined,
-    })
-    total += vertices
-    return vertices <= MAX_RIG_VERTICES_PER_PART && total <= MAX_RIG_TOTAL_VERTICES
+export function playbackMeshesFit(
+  playback: Pick<Anime25DPlayback, 'layers' | 'anchors' | 'pixelCanvas' | 'partProfile'>,
+  shell: Anime25DShellProfile,
+): boolean {
+  const vertices = (source: Anime25DPlaybackLayer, layerZ: number) => layerMeshVertexBound({
+    source,
+    canvasWidth: playback.pixelCanvas.width,
+    face: playback.anchors.face,
+    layerZ,
+    faceShell: shell,
+    figure: playback.anchors.groundY !== undefined,
   })
+  // As the player meshes them: an unnamed role goes by the layer's name, and the role says which group it is in.
+  const layers = playback.layers.map(resolveAnime25DLayerSemantics)
+  let total = 0
+  return layers.every((layer, layerZ) => {
+    const own = vertices(layer, layerZ)
+    total += own
+    return own <= MAX_RIG_VERTICES_PER_PART && total <= MAX_RIG_TOTAL_VERTICES
+  }) &&
+  // A piece hung from the head is meshed finer than hair it is cut from; how little of its host it is, its pixels say.
+  largestPieces(layers, playback.partProfile, playback.pixelCanvas).every((piece) => vertices(piece, 0) <= MAX_RIG_TOTAL_VERTICES)
 }
 
 export function isPlaybackAnchors(value: unknown): value is Anime25DPlaybackAnchors {
@@ -185,7 +193,11 @@ function isSkeleton(value: unknown): value is Anime25DSkeleton {
       isOneOf(JOINTS, name) && isPointAt(joint, 'x', 'y') && isBetween((joint as Record<string, unknown>).score, 0, 16))
 }
 
-export function isPartProfile(value: unknown): value is Anime25DPartProfile {
+export function isOptionalPartProfile(value: unknown): value is Anime25DPartProfile | undefined {
+  return value === undefined || isPartProfile(value)
+}
+
+function isPartProfile(value: unknown): value is Anime25DPartProfile {
   return isRecord(value) &&
     value.version === 1 &&
     (value.source === 'ai-vision' || value.source === 'none') &&

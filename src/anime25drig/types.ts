@@ -8,7 +8,7 @@ import {
   ANIME25D_PROJECT_NAME,
   ANIME25D_PROJECT_URL,
 } from './credit'
-import { isEnhancement, isPartProfile, isPlaybackAnchors, isPlaybackCanvas, isPlaybackLayers, playbackMeshesFit } from './playbackValidation'
+import { isEnhancement, isOptionalPartProfile, isPlaybackAnchors, isPlaybackCanvas, isPlaybackLayers, playbackMeshesFit } from './playbackValidation'
 import { isPoseCorrections } from './poseCorrections'
 import { isAnime25DTurnKeyforms } from './turnKeyforms'
 
@@ -457,11 +457,11 @@ export function isAnime25DPlayback(value: unknown): value is Anime25DPlayback {
     isAnime25DMouthProfile(mouthProfile, canvas.width, canvas.height) &&
     isAnime25DChestProfile(chestProfile, canvas.width, canvas.height) &&
     isAnime25DShellProfile(shellProfile, canvas.width, canvas.height) &&
-    playbackMeshesFit({ layers, anchors, pixelCanvas: canvas }, shellProfile) &&
     (record.turnKeyforms === undefined || isAnime25DTurnKeyforms(record.turnKeyforms)) &&
     (record.bodyTurnKeyforms === undefined || isAnime25DTurnKeyforms(record.bodyTurnKeyforms)) &&
     (record.enhancement === undefined || isEnhancement(record.enhancement)) &&
-    (record.partProfile === undefined || isPartProfile(record.partProfile)) &&
+    isOptionalPartProfile(record.partProfile) &&
+    playbackMeshesFit({ layers, anchors, pixelCanvas: canvas, partProfile: record.partProfile }, shellProfile) &&
     (record.figureStance === undefined || record.figureStance === 'ground' || record.figureStance === 'float')
   )
 }
