@@ -38,7 +38,9 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       # Real Worker imports, the player under real WebGL, touch and outfit swaps.
       # Probes that need real portraits skip without them.
-      - run: pnpm test:browser
+      # The sweep over every place an outfit swap can fail builds an outfit for each; software
+      # WebGL takes a quarter of an hour for it. It runs on WebKit below.
+      - run: pnpm test:browser --grep-invert "swap that fails"
 
   # Safari, and every browser on an iPhone, is WebKit; a macOS runner is as close to
   # Safari as CI gets. Firefox gets no WebGL2 at all on the Linux runners.
@@ -58,11 +60,11 @@ jobs:
           # testing, outfit swaps. Left out for their length are replays whose answer
           # is mostly the player's own arithmetic, frame after frame, which WebKit and
           # Chromium run: turns, hair, corrections and handovers over time, and the
-          # touch handoffs and petting replayed against a control. A test renamed out
-          # of this list runs.
+          # touch handoffs and petting replayed against a control; and the outfit swap
+          # failing everywhere it can, minutes of it. A test renamed out of this list runs.
           - engine: firefox
             args: >-
-              --grep-invert "short head turn|continuous turns|every frame rate|authored correction|hair follows|music hands over|speech during a thought|touch handoff|petting"
+              --grep-invert "short head turn|continuous turns|every frame rate|authored correction|hair follows|music hands over|speech during a thought|touch handoff|petting|swap that fails"
     env:
       FIGURE_BROWSER_ENGINES: ${{ matrix.engine }}
     steps:
