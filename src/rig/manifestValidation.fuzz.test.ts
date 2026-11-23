@@ -6,6 +6,7 @@ import test from 'node:test'
 import { buildAnime25DLayerBinding } from '../anime25drig/layerBinding'
 import { isAnime25DTurnKeyforms } from '../anime25drig/turnKeyforms'
 import { isAnime25DPlayback } from '../anime25drig/types'
+import { resolveAnime25DLayerSemantics } from './anime25dLayerSemantics'
 import { CHARACTER_ASSET_PROFILES, MAX_RIG_BONES, MAX_RIG_COLLISION_VOLUMES, MAX_RIG_PARTS, MAX_RIG_TEXTURES, MAX_RIG_TOTAL_VERTICES, MAX_RIG_VERTICES_PER_PART, MIN_SUPPORTED_RIG_IR_VERSION, RIG_IR_VERSION } from './contract'
 import { isLiveMeropeManifest, isRigManifest, sameLiveFaceRuntime } from './manifestValidation'
 import { BAD_URLS, BAD_VALUES, legalManifest, mulberry32, mutate } from './rigFuzz.fixture'
@@ -101,10 +102,10 @@ test('every field takes every bad value without a throw', () => {
 
 test('a texture is the site\'s own picture or the page\'s own blob, however the address is spelled', () => {
   const withUrl = (url: unknown) => isRigManifest(withValue(bust, ['textures', 0, 'url'], url))
-  for (const url of [`/api/merope/rig/assets/${'a'.repeat(64)}`, '/atlas.png', '/media/assets/a.b/c..d.png?v=2#x', 'blob:https://site.example/0f0e']) {
+  for (const url of [`/api/merope/rig/assets/${'a'.repeat(64)}`, '/atlas.png', '/media/assets/a.b/c..d.png?v=2#x', 'preview://rig-atlas', 'blob:https://site.example/0f0e']) {
     assert.equal(withUrl(url), true, url)
   }
-  for (const url of [...BAD_URLS, '', ' ', null, 7, {}]) assert.equal(withUrl(url), false, JSON.stringify(url)?.slice(0, 80))
+  for (const url of [...BAD_URLS, 'preview://rig-atlas/..', 'preview://x.example', '', ' ', null, 7, {}]) assert.equal(withUrl(url), false, JSON.stringify(url)?.slice(0, 80))
   // Put together at random, an address let through is still on the site, with nothing to resolve in its path.
   const pieces = ['/', '//', '\\', '..', '.', '%2e', '%2E%2e', '%2f', '%5c', '%', 'api', 'a.png', ':', '@', '?', '#', '\t', '\n', ' ', 'https:', 'blob:', 'x.example', '\u0000', '\u202E', '／']
   for (let seed = 0; seed < SEEDS; seed += 1) {
@@ -183,8 +184,9 @@ function assertPlayablePackage(playback: Anime25DPlayback, changedLayers: Iterab
   for (const index of new Set(changedLayers)) {
     const source = playback.layers[index]
     if (!source) continue
+    // As the player builds it: by the role its name gives it and the group its role does.
     const mesh = buildAnime25DLayerBinding({
-      source,
+      source: resolveAnime25DLayerSemantics(source),
       canvasWidth: width,
       face: playback.anchors.face,
       layerZ: index,

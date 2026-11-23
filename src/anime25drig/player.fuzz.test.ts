@@ -37,3 +37,11 @@ test(`a damaged manifest that validation lets through plays (${RUNS} of them)`, 
     assert.equal(run.nonFinite, null, where)
   }
 })
+
+test('an eye and a mouth one pixel thick, as their art may be, play', async () => {
+  const manifest = await legalManifest('bust')
+  const { eyeL, eyeR, mouth } = manifest.anime25dPlayback!.anchors
+  for (const box of [eyeL!, eyeR!, mouth]) box.y1 = box.y0
+  assert.equal(isLiveMeropeManifest(manifest), true)
+  assert.equal((await playManifest(manifest, 3)).nonFinite, null)
+})

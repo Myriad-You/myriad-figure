@@ -1,4 +1,5 @@
 import type { Anime25DArmModel, Anime25DArmVariant, Anime25DEnhancement, Anime25DFade, Anime25DJointName, Anime25DPart, Anime25DPartProfile, Anime25DPlayback, Anime25DPlaybackAnchors, Anime25DPlaybackLayer, Anime25DShellProfile, Anime25DSkeleton } from './types'
+import { resolveAnime25DLayerSemantics } from '../rig/anime25dLayerSemantics'
 import { MAX_RIG_PARTS, MAX_RIG_TOTAL_VERTICES, MAX_RIG_VERTICES_PER_PART } from '../rig/contract'
 import { layerMeshVertexBound } from './layerGrid'
 
@@ -31,21 +32,30 @@ const MAX_RINGS = 256
 const MAX_RING_POINTS = 16_384
 /** A ring may run past its layer (the ground about a raised arm) by this many of the layer's own sizes. */
 const RING_REACH = 2
+/** How many times over the layers may cut out the whole atlas: the importer lays each in a place of its own (under 1). */
+const MAX_ATLAS_CUTS = 4
+/** Pixels of gesture-arm ground in one package. Eight arms on a 4076-high figure come to 2.1 million. */
+const MAX_GROUND_AREA = 4096 ** 2
+/** A cuff's end hanging is read from 0.75 of the forearm on; what lies along the sleeve is a share of it. */
+const LEAST_CUFF = 0.1
 
-const FADES = new Set<string>([
-  'eyeOpen', 'eyeClose', 'eyeDizzy', 'eyeSqueeze', 'eyeCry', 'eyeSilly',
-  'lovestruckHeart', 'lovestruckFace', 'lovestruckDrool', 'maniacEyeShadow', 'maniacMouthShadow',
-  'angerMark', 'speechlessSweat',
-  'accentNotes', 'accentQuestion', 'accentSleep', 'accentSparkle', 'accentBlush',
-  'mouthOpen', 'mouthWide', 'mouthRound', 'mouthNarrow', 'mouthClose', 'mouthCry', 'mouthManiac', 'mouthSilly',
-  'armVariant',
-] satisfies Anime25DFade[])
-const JOINTS = new Set<string>([
-  'nose',
-  ...(['eye', 'ear', 'shoulder', 'elbow', 'wrist', 'hip', 'knee', 'ankle', 'bigToe', 'smallToe', 'heel'] as const)
-    .flatMap((joint): Anime25DJointName[] => [`${joint}L`, `${joint}R`]),
-])
-const PART_MOTIONS = new Set<string>(['rigid', 'sway', 'dangle', 'flutter'] satisfies Array<Anime25DPart['motion']>)
+/** Every one of them: a name missing here would have a package that carries it refused, so the compiler asks for all. */
+const FADES: Readonly<Record<Anime25DFade, true>> = {
+  eyeOpen: true, eyeClose: true, eyeDizzy: true, eyeSqueeze: true, eyeCry: true, eyeSilly: true,
+  lovestruckHeart: true, lovestruckFace: true, lovestruckDrool: true, maniacEyeShadow: true, maniacMouthShadow: true,
+  angerMark: true, speechlessSweat: true,
+  accentNotes: true, accentQuestion: true, accentSleep: true, accentSparkle: true, accentBlush: true,
+  mouthOpen: true, mouthWide: true, mouthRound: true, mouthNarrow: true, mouthClose: true, mouthCry: true, mouthManiac: true, mouthSilly: true,
+  armVariant: true,
+}
+const JOINTS: Readonly<Record<Anime25DJointName, true>> = {
+  nose: true,
+  eyeL: true, eyeR: true, earL: true, earR: true,
+  shoulderL: true, shoulderR: true, elbowL: true, elbowR: true, wristL: true, wristR: true,
+  hipL: true, hipR: true, kneeL: true, kneeR: true, ankleL: true, ankleR: true,
+  bigToeL: true, bigToeR: true, smallToeL: true, smallToeR: true, heelL: true, heelR: true,
+}
+const PART_MOTIONS: Readonly<Record<Anime25DPart['motion'], true>> = { rigid: true, sway: true, dangle: true, flutter: true }
 
 type Canvas = Anime25DPlayback['pixelCanvas']
 
@@ -54,7 +64,36 @@ export function isPlaybackCanvas(value: unknown): value is Canvas {
 }
 
 export function isPlaybackLayers(value: unknown): value is Anime25DPlaybackLayer[] {
-  return Array.isArray(value) && value.length > 0 && value.length <= MAX_RIG_PARTS && value.every(isPlaybackLayer)
+  return Array.isArray(value) && value.length > 0 && value.length <= MAX_RIG_PARTS && value.every(isPlaybackLayer) && picturesFit(value)
+}
+
+/**
+ * The pictures the runtime keeps of the layers: each one's own cut of the atlas, and the ground of each gesture arm,
+ * as large as its rings reach. One may be large; all of them together may not be that large many times over.
+ */
+function picturesFit(layers: readonly Anime25DPlaybackLayer[]): boolean {
+  let atlas = 0
+  let ground = 0
+  for (const { atlas: cut, armVariant } of layers) {
+    atlas += cut.w * cut.h
+    ground += ringsArea(armVariant?.model?.ground ?? [])
+  }
+  return atlas <= MAX_ATLAS_CUTS && ground <= MAX_GROUND_AREA
+}
+
+function ringsArea(rings: Anime25DArmModel['armOutline']): number {
+  const points = rings.flat()
+  if (points.length === 0) return 0
+  const span = (axis: 0 | 1) => {
+    let low = Infinity
+    let high = -Infinity
+    for (const point of points) {
+      low = Math.min(low, point[axis])
+      high = Math.max(high, point[axis])
+    }
+    return high - low + 1
+  }
+  return span(0) * span(1)
 }
 
 function isPlaybackLayer(value: unknown): value is Anime25DPlaybackLayer {
@@ -65,7 +104,7 @@ function isPlaybackLayer(value: unknown): value is Anime25DPlaybackLayer {
     isBetween(value.depth, 0, 4) &&
     (value.group === 'head' || value.group === 'body') &&
     (isAbsent(value.phys) || value.phys === 'hair') &&
-    (isAbsent(value.fade) || (typeof value.fade === 'string' && FADES.has(value.fade))) &&
+    (isAbsent(value.fade) || isOneOf(FADES, value.fade)) &&
     (isAbsent(value.side) || value.side === 'L' || value.side === 'R') &&
     isCoordinate(value.x) &&
     isCoordinate(value.y) &&
@@ -106,7 +145,8 @@ export function playbackMeshesFit(playback: Pick<Anime25DPlayback, 'layers' | 'a
   let total = 0
   return playback.layers.every((source, layerZ) => {
     const vertices = layerMeshVertexBound({
-      source,
+      // As the player meshes it: an unnamed role goes by the layer's name, and the role says which group it is in.
+      source: resolveAnime25DLayerSemantics(source),
       canvasWidth: playback.pixelCanvas.width,
       face: playback.anchors.face,
       layerZ,
@@ -120,7 +160,7 @@ export function playbackMeshesFit(playback: Pick<Anime25DPlayback, 'layers' | 'a
 
 export function isPlaybackAnchors(value: unknown): value is Anime25DPlaybackAnchors {
   return isRecord(value) &&
-    isBox(value.face) && isPointAt(value.face, 'cx', 'cy') &&
+    isBox(value.face) && hasRoom(value.face) && isPointAt(value.face, 'cx', 'cy') &&
     isPointAt(value.neckPivot, 'x', 'y') &&
     isCoordinate(value.neckTop) &&
     isCoordinate(value.neckBottom) &&
@@ -142,7 +182,7 @@ function isSkeleton(value: unknown): value is Anime25DSkeleton {
     isText(value.model, MAX_NAME) &&
     isRecord(value.joints) &&
     Object.entries(value.joints).every(([name, joint]) =>
-      JOINTS.has(name) && isPointAt(joint, 'x', 'y') && isBetween((joint as Record<string, unknown>).score, 0, 16))
+      isOneOf(JOINTS, name) && isPointAt(joint, 'x', 'y') && isBetween((joint as Record<string, unknown>).score, 0, 16))
 }
 
 export function isPartProfile(value: unknown): value is Anime25DPartProfile {
@@ -159,7 +199,7 @@ export function isPartProfile(value: unknown): value is Anime25DPartProfile {
       isNumbers(part.box, 4, isCoordinate) &&
       isNumbers(part.anchor, 2, isCoordinate) &&
       isText(part.bone, MAX_TAG) &&
-      typeof part.motion === 'string' && PART_MOTIONS.has(part.motion) &&
+      isOneOf(PART_MOTIONS, part.motion) &&
       isText(part.material, MAX_TAG) &&
       isShare(part.stiffness) &&
       isShare(part.weight))
@@ -190,7 +230,7 @@ function isArmModel(value: unknown, w: number, h: number): value is Anime25DArmM
     isOptional(value.drawnRadius, (v) => isLengths(v, radii.length, radii.length) && v.every(isBone)) &&
     isOptional(value.shortSleeve, isShare) &&
     isOptional(value.restFore, isBone) &&
-    isOptional(value.restCuff, isAlong) &&
+    isOptional(value.restCuff, (v) => isAlong(v) && v >= LEAST_CUFF) &&
     isOptional(value.cuffFrom, isAlong) &&
     isBone(value.upper) &&
     isBone(value.fore) &&
@@ -225,8 +265,9 @@ function isArmJoints(value: unknown): boolean {
     isNumbers(value.wrist, 3, isCoordinate)
 }
 
+/** Its size is from the wrist to the middle finger's root, and the modelled hand is laid on by dividing by it. */
 function isHand(value: unknown): boolean {
-  return isPoints(value, 21, 21, isCoordinate)
+  return isPoints(value, 21, 21, isCoordinate) && isBone(Math.hypot(value[9][0] - value[0][0], value[9][1] - value[0][1]))
 }
 
 /** One per finger, empty where it was not measured; a drawn hand may list fewer. */
@@ -234,27 +275,20 @@ function isFingerProfiles(value: unknown): boolean {
   return Array.isArray(value) && value.length <= 5 && value.every((finger: unknown) => isLengths(finger, 0, MAX_RADII))
 }
 
-/** Outlines near their layer; filled in together, they ask for a picture as large as they reach: no larger than a frame. */
+/** Outlines, on their layer or near it. */
 function isRings(value: unknown, w: number, h: number): boolean {
   if (!Array.isArray(value) || value.length > MAX_RINGS) return false
   let points = 0
-  const low = [Infinity, Infinity]
-  const high = [-Infinity, -Infinity]
-  const isNear = (v: unknown, axis: number, edge: number): boolean => {
-    if (!isBetween(v, -edge * RING_REACH, edge * (1 + RING_REACH))) return false
-    low[axis] = Math.min(low[axis], v)
-    high[axis] = Math.max(high[axis], v)
-    return high[axis] - low[axis] <= MAX_PLAYBACK_EDGE
-  }
+  const isNear = (v: unknown, edge: number) => isBetween(v, -edge * RING_REACH, edge * (1 + RING_REACH))
   return value.every((ring: unknown) => {
     if (!Array.isArray(ring)) return false
     points += ring.length
     return points <= MAX_RING_POINTS &&
-      ring.every((point: unknown) => Array.isArray(point) && point.length === 2 && isNear(point[0], 0, w) && isNear(point[1], 1, h))
+      ring.every((point: unknown) => Array.isArray(point) && point.length === 2 && isNear(point[0], w) && isNear(point[1], h))
   })
 }
 
-function isPoints(value: unknown, least: number, most: number, within: (v: unknown) => boolean): boolean {
+function isPoints(value: unknown, least: number, most: number, within: (v: unknown) => boolean): value is Array<[number, number]> {
   return Array.isArray(value) && value.length >= least && value.length <= most && value.every((point: unknown) => isNumbers(point, 2, within))
 }
 
@@ -266,15 +300,26 @@ function isLengths(value: unknown, least: number, most: number): value is number
   return Array.isArray(value) && value.length >= least && value.length <= most && value.every(isLength)
 }
 
-/** A box with room in it: what is measured across it divides by its size. */
-function isBox(value: unknown): boolean {
+type Box = Record<'x0' | 'y0' | 'x1' | 'y1', number>
+
+/** Its edges are the first and last pixels of what it bounds: a line one pixel thick has them in one place. */
+function isBox(value: unknown): value is Box {
   return isRecord(value) &&
     isCoordinate(value.x0) && isCoordinate(value.y0) && isCoordinate(value.x1) && isCoordinate(value.y1) &&
-    value.x1 > value.x0 && value.y1 > value.y0
+    value.x1 >= value.x0 && value.y1 >= value.y0
+}
+
+/** The face's size is what the head's meshes and turns are measured by. */
+function hasRoom(box: Box): boolean {
+  return box.x1 > box.x0 && box.y1 > box.y0
 }
 
 function isPointAt(value: unknown, x: string, y: string): boolean {
   return isRecord(value) && isCoordinate(value[x]) && isCoordinate(value[y])
+}
+
+function isOneOf(names: Readonly<Record<string, true>>, value: unknown): boolean {
+  return typeof value === 'string' && Object.hasOwn(names, value)
 }
 
 function isOptional(value: unknown, within: (v: unknown) => boolean): boolean {

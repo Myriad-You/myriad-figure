@@ -6,6 +6,8 @@ import { RIG_OUTFIT_TOPOLOGIES } from './types'
 /** Ids come from a PSD's layer names, which hold 255 characters, with a few put before and after. */
 const MAX_IDENTIFIER = 512
 const MAX_URL = 2048
+/** What the server writes where a preview's atlas would be: the page holds that picture itself and loads no address. */
+const PREVIEW_ATLAS_URL = 'preview://rig-atlas'
 /** The server's own limit on a slot's and a variant's name, and on an anchor's. */
 const MAX_TAG = 64
 const MAX_SEMANTIC_ANCHORS = 128
@@ -455,6 +457,7 @@ function isPositiveSize(value: unknown): value is RigSize {
  */
 function isOwnTextureUrl(value: unknown): value is string {
   if (typeof value !== 'string' || value.length > MAX_URL) return false
+  if (value === PREVIEW_ATLAS_URL) return true
   // A URL parser drops tabs and line ends and reads a backslash as a slash: what is checked must be what is fetched.
   if (/[\u0000-\u0020\u007F\\]/u.test(value)) return false
   if (value.startsWith('blob:')) return true
