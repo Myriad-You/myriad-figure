@@ -8,6 +8,7 @@ import {
   ANIME25D_PROJECT_NAME,
   ANIME25D_PROJECT_URL,
 } from './credit'
+import { isEnhancement, isPartProfile, isPlaybackAnchors, isPlaybackCanvas, isPlaybackLayers, playbackMeshesFit } from './playbackValidation'
 import { isPoseCorrections } from './poseCorrections'
 import { isAnime25DTurnKeyforms } from './turnKeyforms'
 
@@ -442,27 +443,26 @@ export function anime25DPlaybackSource(): Pick<
 export function isAnime25DPlayback(value: unknown): value is Anime25DPlayback {
   if (!value || typeof value !== 'object') return false
   const record = value as Record<string, unknown>
-  const canvas = record.pixelCanvas as Record<string, unknown> | undefined
-  const chestProfile = record.chestProfile
-  const shellProfile = record.shellProfile
-  const mouthProfile = record.mouthProfile
+  const { pixelCanvas: canvas, layers, anchors, chestProfile, shellProfile, mouthProfile } = record
   return (
     record.kind === ANIME25D_PLAYBACK_KIND &&
     record.version === ANIME25D_PLAYBACK_VERSION &&
     record.engine === ANIME25D_PROJECT_NAME &&
-    Array.isArray(record.layers) &&
-    record.layers.length > 0 &&
-    typeof canvas?.width === 'number' &&
-    typeof canvas.height === 'number' &&
-    canvas.width > 0 &&
-    canvas.height > 0 &&
-    Boolean(record.anchors) &&
-    typeof record.anchors === 'object' &&
+    (record.engineUrl === undefined || record.engineUrl === ANIME25D_PROJECT_URL) &&
+    (record.license === undefined || record.license === ANIME25D_LICENSE) &&
+    (record.copyright === undefined || (typeof record.copyright === 'string' && record.copyright.length <= 512)) &&
+    isPlaybackCanvas(canvas) &&
+    isPlaybackLayers(layers) &&
+    isPlaybackAnchors(anchors) &&
     isAnime25DMouthProfile(mouthProfile, canvas.width, canvas.height) &&
     isAnime25DChestProfile(chestProfile, canvas.width, canvas.height) &&
     isAnime25DShellProfile(shellProfile, canvas.width, canvas.height) &&
+    playbackMeshesFit({ layers, anchors, pixelCanvas: canvas }, shellProfile) &&
     (record.turnKeyforms === undefined || isAnime25DTurnKeyforms(record.turnKeyforms)) &&
-    (record.bodyTurnKeyforms === undefined || isAnime25DTurnKeyforms(record.bodyTurnKeyforms))
+    (record.bodyTurnKeyforms === undefined || isAnime25DTurnKeyforms(record.bodyTurnKeyforms)) &&
+    (record.enhancement === undefined || isEnhancement(record.enhancement)) &&
+    (record.partProfile === undefined || isPartProfile(record.partProfile)) &&
+    (record.figureStance === undefined || record.figureStance === 'ground' || record.figureStance === 'float')
   )
 }
 
@@ -510,6 +510,7 @@ export function isAnime25DShellProfile(
     !numberInRange(torso?.radiusZ, 1, canvasWidth) ||
     (torso?.yawFollowScale !== undefined &&
       !numberInRange(torso.yawFollowScale, 0, 1)) ||
+    (torso?.neckDepth !== undefined && !numberInRange(torso.neckDepth, 0, 1)) ||
     (profile.poseCorrections !== undefined && !isPoseCorrections(profile.poseCorrections))
   ) {
     return false
