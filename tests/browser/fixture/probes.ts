@@ -1395,7 +1395,7 @@ function* damages(pose: Anime25DPose): Generator<[string, Anime25DPose]> {
   const places = function* (value: unknown, path: (string | number)[]): Generator<(string | number)[]> {
     if (path.length) yield path
     if (typeof value !== 'object' || value === null) return
-    const keys = ArrayBuffer.isView(value) ? [0, (value as Float32Array).length - 1].filter(at => at >= 0) : Array.isArray(value) ? Object.keys(value).slice(0, 3) : Object.keys(value)
+    const keys = ArrayBuffer.isView(value) ? (value as Float32Array).length ? [0, (value as Float32Array).length - 1] : [] : Array.isArray(value) ? Object.keys(value).slice(0, 3) : Object.keys(value)
     for (const key of keys) yield* places((value as Record<string | number, unknown>)[key], [...path, key])
   }
   const text = poseToJSON(pose)

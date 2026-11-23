@@ -12,6 +12,7 @@ import type { Anime25DGpuLayer } from './layerGpuBinding'
 import type { Anime25DArmPose, Anime25DClothPose, Anime25DDrawnArmPose, Anime25DLayerPose, Anime25DPose } from './pose'
 import type { Anime25DRenderableLayer, Anime25DRenderFrame } from './renderer'
 import type { ThinkingStickerFrame } from './thinkingSticker'
+import { cutFrom } from './partSplit'
 
 // Taking a drawn frame as a pose, and a pose as a frame to draw. The frame drawn for a pose is made of shadows of the
 // layers: the same meshes and textures, the pose's place, opacity and colour; the live layers are not touched.
@@ -25,16 +26,27 @@ export interface PoseFigure {
 }
 
 /**
- * What tells one package's poses from another's: its layers as it says them (their modelled arms too), and how many
- * vertices came of them. Not where those lie: that is worked out on each device, and may differ in its last place.
+ * What tells one package's poses from another's: its layers as it says them (their modelled arms too), however it has
+ * been written out since. A piece cut out of a layer here is told by its name: where it was cut is read from pixels,
+ * which no two browsers need give alike. Whether a pose's numbers are as many as this figure's, poseFits says.
  */
 export function figureKey({ layers, collarClip, armVariants, mouth }: PoseFigure): string {
-  const parts = layers.map(({ source, rest, indexCount }) => `${JSON.stringify(source)}:${rest.length}:${indexCount}`)
+  const parts = layers.map(({ source }) => cutFrom(source) === undefined ? told(source) : source.name)
   for (const { side, arm } of armVariants.modelledArms()) parts.push(`${side}:${arm.gestures.map(g => g.gesture).join()}`)
   parts.push(`collar:${collarClip?.deformed.length ?? 0}`, `mouth:${mouth !== null}`)
   let hash = 0x811C9DC5
   for (const char of parts.join('|')) hash = Math.imul(hash ^ char.codePointAt(0)!, 0x01000193) >>> 0
   return `${layers.length}-${hash.toString(16)}`
+}
+
+/** A value as one text, whatever order its keys are in and however its numbers end. */
+function told(value: unknown): string {
+  // (No step a number of few decimals falls just between: its last place would say which way it went.)
+  if (typeof value === 'number') return String(Math.round(value * Math.E * 100_000))
+  if (typeof value !== 'object' || value === null) return JSON.stringify(value) ?? ''
+  if (Array.isArray(value)) return `[${value.map(told).join()}]`
+  const own = value as Record<string, unknown>
+  return `{${Object.keys(own).filter(key => own[key] !== undefined).sort().map(key => `${key}:${told(own[key])}`).join()}}`
 }
 
 /** A layer whose vertices move: between ticks, the GPU has them as `deformed` does. */
