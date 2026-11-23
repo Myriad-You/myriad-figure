@@ -259,5 +259,16 @@ for (const pkg of packages) {
       expect(result.folds).toBe(0)
       expect(result.error).toBe(0)
     })
+
+    test('an outfit swap that fails anywhere leaves the figure exactly as it was', async ({ page }, testInfo) => {
+      // Every place builds most of an outfit again; real art, with its modelled arms, takes many minutes.
+      if (pkg.root) test.setTimeout(2_400_000)
+      const result = await run(page, 'swapFaults', await stage(page, pkg))
+      await attach(testInfo, result)
+      expect(result.runs.some(run => run.kind === 'gpu' && run.outcome === 'refused')).toBe(true)
+      expect(result.runs.some(run => run.kind === 'read' && run.outcome === 'refused')).toBe(true)
+      expect(result.runs.filter(run => !run.same || run.leaked || run.lost || run.error)).toEqual([])
+      expect(result.recovered, 'after refused swaps the next one goes through').toBe(true)
+    })
   })
 }

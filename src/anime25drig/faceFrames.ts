@@ -28,7 +28,14 @@ import {
   writeAnime25DOpacityFrame,
 } from './mouthRuntime'
 import { MouthTransitionController } from './mouthTransition'
-import { createContinuousMouth } from './playerPackage'
+
+/** A package's face, measured and not yet the one shown. */
+export interface FaceBinding {
+  anchors: Anime25DPlayback['anchors']
+  mouthTransition: MouthTransitionController
+  mouthMorphSources: Anime25DMouthMorphSources
+  deformationFrame: Anime25DMouthDeformationFrame & Anime25DExpressionDeformationFrame
+}
 
 /** What the face contributes to one frame beyond the driver itself. */
 export interface FaceFrameInput {
@@ -81,13 +88,12 @@ export class Anime25DFaceFrames {
     private readonly closedEyes: ClosedEyePresentation,
   ) {}
 
-  /** Measure a new package's mouths and face. */
-  bind(playback: Anime25DPlayback): void {
-    this.anchors = playback.anchors
-    this.mouthTransition = new MouthTransitionController(playback.mouthProfile)
-    this.mouthMorphSources = compileAnime25DMouthMorphSources(playback.layers)
+  /** Measures a new package's mouths and face; the face keeps the one it has until it is bound. */
+  measure(playback: Anime25DPlayback): FaceBinding {
+    const mouthTransition = new MouthTransitionController(playback.mouthProfile)
+    const mouthMorphSources = compileAnime25DMouthMorphSources(playback.layers)
     const faceFrame = resolveAnime25DFaceFrame(playback.anchors)
-    this.deformationFrame = {
+    const deformationFrame: FaceBinding['deformationFrame'] = {
       mouth: playback.anchors.mouth,
       face: playback.anchors.face,
       faceAxes: { cos: faceFrame.cos, sin: faceFrame.sin },
@@ -100,17 +106,21 @@ export class Anime25DFaceFrames {
       time: 0,
       stylizedMotion: null,
     }
+    return { anchors: playback.anchors, mouthTransition, mouthMorphSources, deformationFrame }
   }
 
-  /** Bind the new atlas: the live speaking mouth, if the portrait has one. */
-  bindAtlas(
-    gl: WebGL2RenderingContext,
-    playback: Readonly<Anime25DPlayback>,
-    atlas: HTMLImageElement,
-    layers: readonly Anime25DGpuLayer[],
-  ): void {
+  /** Takes a measured package's face. */
+  bind(binding: FaceBinding): void {
+    this.anchors = binding.anchors
+    this.mouthTransition = binding.mouthTransition
+    this.mouthMorphSources = binding.mouthMorphSources
+    this.deformationFrame = binding.deformationFrame
+  }
+
+  /** Takes the new atlas's live speaking mouth (null when the portrait has none), releasing the one before. */
+  bindAtlas(mouth: ContinuousMouthTexture | null): void {
     this.continuousMouth?.dispose()
-    this.continuousMouth = createContinuousMouth(gl, playback, atlas, layers)
+    this.continuousMouth = mouth
   }
 
   dispose(): void {

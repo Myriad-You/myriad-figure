@@ -357,7 +357,7 @@ test('directed torso targets reach the production body shell and final-space vol
   composer.directedPose.set(pose({ headTurn: -0.8, headNod: -0.8, torsoTurn: 0.8, torsoRise: 0.7, torsoPitch: 0.65 }), 0)
   const body = new Anime25DBodyFrames(current, frame, composer)
   const envelope = deriveAnime25DMotionEnvelopeProfile(playback)
-  body.bind(playback, envelope)
+  body.bind(body.measure(playback, envelope))
   for (let i = 1; i <= 240; i++) {
     const time = i / 120
     composer.step(1 / 120, { time, target: { ...IDENTITY_DRIVER, talk: false, blink: false, rand: false },
@@ -455,7 +455,7 @@ test('a standing figure leans on its bones, not in the shader; its head stays on
     composer.directedPose.set(pose(directed), 0)
     const body = new Anime25DBodyFrames(current, frame, composer)
     const envelope = deriveAnime25DMotionEnvelopeProfile(playback)
-    body.bind(playback, envelope)
+    body.bind(body.measure(playback, envelope))
     for (let i = 1; i <= 360; i++) {
       const time = i / 120
       composer.step(1 / 120, { time, target: { ...IDENTITY_DRIVER, idle: false, talk: false, blink: false, rand: false },
@@ -490,7 +490,7 @@ test('with its physics running, a figure takes a directed lean in turn, its skir
   composer.directedPose.setCapabilities(capabilities)
   const body = new Anime25DBodyFrames(current, frame, composer)
   const envelope = deriveAnime25DMotionEnvelopeProfile(playback)
-  body.bind(playback, envelope)
+  body.bind(body.measure(playback, envelope))
   const pitch = body.secondaryDeformationFrame.figure!.pitch!
   let time = 0
   // A frame as the player runs it: composed, its springs stepped on the pose, then posed again to be drawn.

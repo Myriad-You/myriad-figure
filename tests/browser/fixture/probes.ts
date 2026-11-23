@@ -977,5 +977,230 @@ async function sharedCut(ref: PackageRef) {
   })
 }
 
-export const probes = { features, bodyStageProjection, posture, torsoTurn, turns, corners, correction, collar, shoulder, earrings, hair, musicExit, thoughtToSpeech, sharedCut }
+/** Counts the steps of a swap, remembers where each was taken, and makes a chosen one fail. */
+interface Faults {
+  /** Steps taken since the last reset. */
+  steps: number
+  /** The step to fail, counted from the last reset; 0 for none. */
+  failAt: number
+  /** Where each step was taken, while recording. */
+  sites: string[] | null
+}
+
+/** The nearest source lines on the stack: what makes one failure point different from another. */
+function site(name: string): string {
+  const places = [...(new Error('site').stack ?? '').matchAll(/\/src\/(?:[\w-]+\/)*([\w-]+)\.ts[^:]*:(\d+)/g)]
+  return [name, ...places.slice(0, 4).map(([, file, line]) => `${file}:${line}`)].join(' < ')
+}
+
+/** Takes a step: true when it is the one to fail. */
+function step(faults: Faults, name: string): boolean {
+  faults.steps++
+  faults.sites?.push(site(name))
+  return faults.failAt > 0 && faults.steps === faults.failAt
+}
+
+/** GPU calls that make something or fill it. */
+const GPU_MAKES: Record<string, string> = { createBuffer: 'deleteBuffer', createTexture: 'deleteTexture', createVertexArray: 'deleteVertexArray',
+  createFramebuffer: 'deleteFramebuffer', createRenderbuffer: 'deleteRenderbuffer', createProgram: 'deleteProgram', createShader: 'deleteShader' }
+const GPU_STEPS = [...Object.keys(GPU_MAKES), 'bufferData', 'texImage2D', 'texSubImage2D', 'texStorage2D']
+
+/**
+ * Watches a context's objects and fails its steps. A create gives null, which is what a lost context gives; an upload
+ * throws, which a real one does only for an image it may not read. Out of memory is a GL error instead, not simulated.
+ */
+function watchGpu(gl: WebGL2RenderingContext, faults: Faults): Set<object> {
+  const live = new Set<object>()
+  const calls = gl as unknown as Record<string, (...args: unknown[]) => unknown>
+  for (const name of GPU_STEPS) {
+    const original = calls[name]!.bind(gl)
+    calls[name] = (...args: unknown[]) => {
+      if (step(faults, name)) {
+        if (name in GPU_MAKES) return null
+        throw new Error(`injected failure at ${name}`)
+      }
+      const made = original(...args)
+      if (name in GPU_MAKES && made) live.add(made as object)
+      return made
+    }
+  }
+  for (const name of Object.values(GPU_MAKES)) {
+    const original = calls[name]!.bind(gl)
+    calls[name] = (object: unknown) => {
+      if (object) live.delete(object as object)
+      return original(object)
+    }
+  }
+  return live
+}
+
+/** A package whose reads are steps: whatever measures it can fail there. Layers and arrays are handed over as they are. */
+function readWatched<T extends object>(value: T, faults: Faults, seen = new WeakMap<object, object>()): T {
+  const known = seen.get(value)
+  if (known) return known as T
+  const proxy = new Proxy(value, {
+    get(target, key, receiver) {
+      const read = Reflect.get(target, key, receiver)
+      if (typeof key === 'symbol') return read
+      if (step(faults, `read ${key}`)) throw new Error(`injected failure reading ${key}`)
+      return read && typeof read === 'object' && Object.getPrototypeOf(read) === Object.prototype ? readWatched(read, faults, seen) : read
+    },
+  })
+  seen.set(value, proxy)
+  return proxy
+}
+
+function frameHash(player: Anime25DPlayer, gl: WebGL2RenderingContext): number {
+  let h = hash(readPixels(gl))
+  for (const layer of player.inspect().layers)
+    h = (Math.imul(h, 31) + hash(new Uint8Array(layer.placed.buffer, layer.placed.byteOffset, layer.placed.byteLength))) | 0
+  return (Math.imul(h, 31) + hash(new TextEncoder().encode(JSON.stringify(player.getCurrent())))) | 0
+}
+
+const SWAP_POSE: Partial<Anime25DDriver> = { phys: true, angleX: 0.3, angleY: -0.2, angleZ: 0.2, body: 0.3, armY: 0.3 }
+const AFTER_POSE: Partial<Anime25DDriver> = { phys: true, angleX: -0.3, angleY: 0.25, body: -0.3, armY: -0.2 }
+
+/** A player on a watched context, with its own stream of Math.random so two of them can run side by side. */
+interface Watched {
+  player: Anime25DPlayer
+  gl: WebGL2RenderingContext
+  gpu: Faults
+  /** Every GPU object made and not yet deleted. */
+  live: Set<object>
+  seed: number
+  close: () => void
+}
+
+async function watched(pkg: FigurePackage): Promise<Watched> {
+  seed = 1749
+  const canvas = document.createElement('canvas')
+  document.body.append(canvas)
+  // The player asks this canvas for its context and is handed this one, watched.
+  const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, stencil: true, antialias: true,
+    preserveDrawingBuffer: true, powerPreference: 'low-power' })!
+  const gpu: Faults = { steps: 0, failAt: 0, sites: null }
+  const live = watchGpu(gl, gpu)
+  const player = new Anime25DPlayer(canvas, pkg.playback, pkg.manifest)
+  // Out of the page first, so the player gives its context up and the runs never pile up contexts.
+  const close = () => { canvas.remove(); player.dispose() }
+  try {
+    await player.replaceLivePackage(pkg.playback, pkg.manifest, pkg.atlasUrl)
+    player.resize(192, 256, 1)
+    player.setMotionPolicy(PREVIEW)
+    hold(player, SWAP_POSE, 20)
+  }
+  catch (error) {
+    close()
+    throw error
+  }
+  return { player, gl, gpu, live, seed, close }
+}
+
+/** Moves the figure on, on this player's own random stream, and hashes what it shows. */
+function moveOn(w: Watched): number {
+  seed = w.seed
+  hold(w.player, AFTER_POSE, 8)
+  w.seed = seed
+  return frameHash(w.player, w.gl)
+}
+
+async function pairOf(pkg: FigurePackage): Promise<[Watched, Watched]> {
+  const control = await watched(pkg)
+  try {
+    return [control, await watched(pkg)]
+  }
+  catch (error) {
+    control.close()
+    throw error
+  }
+}
+
+interface SwapRun {
+  kind: 'gpu' | 'read'
+  /** Where the swap failed. */
+  site: string
+  outcome: 'swapped' | 'refused'
+  /** GPU objects alive that were not before the swap, and ones from before it that are gone. */
+  leaked: number
+  lost: number
+  /** The frames after it match the figure's that never swapped. */
+  same: boolean
+  error: number
+}
+
+/**
+ * An outfit swap that fails, wherever it fails (a GPU step, or a read of the package), leaves the figure on screen
+ * exactly as it was: frame for frame a twin that never swapped, not one GPU object more or fewer. Each place in the
+ * code is failed once, at its last visit, where the most has been made.
+ */
+async function swapFaults(ref: PackageRef) {
+  const pkg = await resolvePackage(ref)
+  return seeded(async () => {
+    const swap = (w: Watched, playback = pkg.playback) => w.player.replaceLivePackage(playback, pkg.manifest, pkg.atlasUrl)
+    const places: { kind: SwapRun['kind'], failAt: number, site: string }[] = []
+    for (const kind of ['gpu', 'read'] as const) {
+      const w = await watched(pkg)
+      const faults: Faults = kind === 'gpu' ? w.gpu : { steps: 0, failAt: 0, sites: null }
+      faults.steps = 0
+      faults.sites = []
+      await swap(w, kind === 'read' ? readWatched(pkg.playback, faults) : undefined)
+      const last = new Map(faults.sites.map((at, index) => [at, index + 1]))
+      w.close()
+      for (const [at, failAt] of last) places.push({ kind, failAt, site: at })
+    }
+    let [control, subject] = await pairOf(pkg)
+    const runs: SwapRun[] = []
+    try {
+      for (const { kind, failAt, site: at } of places) {
+        const faults: Faults = kind === 'gpu' ? subject.gpu : { steps: 0, failAt: 0, sites: null }
+        const playback = kind === 'read' ? readWatched(pkg.playback, faults) : pkg.playback
+        const before = new Set(subject.live)
+        faults.steps = 0
+        faults.failAt = failAt
+        let outcome: SwapRun['outcome'] = 'swapped'
+        try {
+          await swap(subject, playback)
+        }
+        catch {
+          outcome = 'refused'
+        }
+        faults.failAt = 0
+        if (outcome === 'swapped') {
+          // A failure the swap gets round (a modelled arm drawn flat). The next outfit must leave as many objects as ever.
+          await swap(subject)
+          runs.push({ kind, site: at, outcome, leaked: Math.max(0, subject.live.size - before.size), lost: Math.max(0, before.size - subject.live.size), same: true, error: subject.gl.getError() })
+          control.close()
+          subject.close();
+          [control, subject] = await pairOf(pkg)
+          continue
+        }
+        const leaked = [...subject.live].filter(object => !before.has(object)).length
+        const lost = [...before].filter(object => !subject.live.has(object)).length
+        let same = true
+        try {
+          same = moveOn(control) === moveOn(subject)
+        }
+        catch {
+          same = false
+        }
+        runs.push({ kind, site: at, outcome, leaked, lost, same, error: subject.gl.getError() })
+        if (same && !leaked && !lost) continue
+        // Broken from here on: a new pair, so every place is judged on its own.
+        control.close()
+        subject.close();
+        [control, subject] = await pairOf(pkg)
+      }
+      await swap(subject)
+      const recovered = Number.isFinite(moveOn(subject)) && readPixels(subject.gl).some((value, index) => index % 4 === 3 && value > 0)
+        && subject.gl.getError() === subject.gl.NO_ERROR
+      return { runs, recovered }
+    }
+    finally {
+      control.close()
+      subject.close()
+    }
+  })
+}
+
+export const probes = { features, bodyStageProjection, posture, torsoTurn, turns, corners, correction, collar, shoulder, earrings, hair, musicExit, thoughtToSpeech, sharedCut, swapFaults }
 Object.assign(window, { figureProbes: probes })

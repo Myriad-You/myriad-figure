@@ -76,6 +76,14 @@ export interface Anime25DArmGpu {
   program?: WebGLProgram
 }
 
+/** Gesture arms readied for a package, not yet the ones shown. */
+export interface ArmVariantBinding {
+  sides: Record<Anime25DArmSide, SideState>
+  modelled: Partial<Record<Anime25DArmSide, Arm3DSide>>
+  /** The view made for these arms when none was there yet. */
+  view: Arm3DView | null
+}
+
 export class Anime25DArmVariants {
   private sides: Record<Anime25DArmSide, SideState> = { L: emptySide(), R: emptySide() }
   /** Sides whose gesture arms carry a 3D model: that side's arm is the modelled one, hanging too. */
@@ -84,42 +92,72 @@ export class Anime25DArmVariants {
 
   /** Takes the new layers' gesture arms and their portrait arms; drops whatever was raised. */
   bind(layers: readonly Anime25DGpuLayer[], canvasHeight: number, gpu?: Anime25DArmGpu): void {
-    this.dropModelled()
-    for (const side of ['L', 'R'] as const) {
-      const bases = layers.filter((layer) => layer.source.role === 'handwear' && layer.source.side === side)
-      const modelled = gpu ? this.bindModelled(side, bases, layers, canvasHeight, gpu) : null
-      if (modelled) {
-        this.modelled[side] = modelled
-        this.sides[side] = emptySide()
-        continue
+    this.adopt(this.measure(layers, canvasHeight, gpu))
+  }
+
+  /**
+   * Readies the new layers' gesture arms (a modelled arm's GPU resources too) while the arms shown stay as they are;
+   * adopt() shows them, release() lets them go. Fails having released what it made.
+   */
+  measure(layers: readonly Anime25DGpuLayer[], canvasHeight: number, gpu?: Anime25DArmGpu): ArmVariantBinding {
+    const binding: ArmVariantBinding = { sides: { L: emptySide(), R: emptySide() }, modelled: {}, view: null }
+    try {
+      for (const side of ['L', 'R'] as const) {
+        const bases = layers.filter((layer) => layer.source.role === 'handwear' && layer.source.side === side)
+        const modelled = gpu ? this.measureModelled(binding, side, bases, layers, canvasHeight, gpu) : null
+        if (modelled) {
+          binding.modelled[side] = modelled
+          continue
+        }
+        const variants = layers.flatMap((layer) => {
+          const variant = layer.source.armVariant
+          if (layer.source.role !== 'arm-variant' || !variant || layer.source.side !== side) return []
+          if (layer.deformed === layer.rest) layer.deformed = layer.rest.slice()
+          return [{
+            layer,
+            gesture: variant.gesture,
+            rise: RISE_SHARE * Math.max(0, canvasHeight - minY(layer.rest)),
+            weights: liftWeights(variant.lift, layer.rest, bases),
+          }]
+        })
+        binding.sides[side] = { ...emptySide(), bases, variants }
       }
-      const variants = layers.flatMap((layer) => {
-        const variant = layer.source.armVariant
-        if (layer.source.role !== 'arm-variant' || !variant || layer.source.side !== side) return []
-        if (layer.deformed === layer.rest) layer.deformed = layer.rest.slice()
-        return [{
-          layer,
-          gesture: variant.gesture,
-          rise: RISE_SHARE * Math.max(0, canvasHeight - minY(layer.rest)),
-          weights: liftWeights(variant.lift, layer.rest, bases),
-        }]
-      })
-      this.sides[side] = { ...emptySide(), bases, variants }
+      return binding
+    } catch (error) {
+      this.release(binding)
+      throw error
     }
   }
 
+  /** Shows measured arms in place of the ones before, whose GPU resources go. */
+  adopt(binding: ArmVariantBinding): void {
+    this.dropModelled()
+    this.sides = binding.sides
+    this.modelled = binding.modelled
+    if (binding.view) this.view = binding.view
+  }
+
+  /** Lets measured arms go without showing them. */
+  release(binding: ArmVariantBinding): void {
+    for (const side of ['L', 'R'] as const) binding.modelled[side]?.dispose()
+    binding.modelled = {}
+    binding.view?.dispose()
+    binding.view = null
+  }
+
   /** A side's arm as a 3D model, if its gesture arms have one and it can be drawn here; null raises them flat. */
-  private bindModelled(side: Anime25DArmSide, bases: Anime25DGpuLayer[], layers: readonly Anime25DGpuLayer[], canvasHeight: number, gpu: Anime25DArmGpu): Arm3DSide | null {
+  private measureModelled(binding: ArmVariantBinding, side: Anime25DArmSide, bases: Anime25DGpuLayer[], layers: readonly Anime25DGpuLayer[], canvasHeight: number, gpu: Anime25DArmGpu): Arm3DSide | null {
     const has = layers.some((layer) => layer.source.role === 'arm-variant' && layer.source.side === side && layer.source.armVariant?.model)
     if (!has || bases.length === 0) return null
     let modelled: Arm3DSide | null = null
     try {
-      this.view ??= new Arm3DView(gpu.gl)
+      // The view the arms shown draw with serves the new ones too; a first one is the binding's until it is adopted.
+      const view = this.view ?? (binding.view ??= new Arm3DView(gpu.gl))
       const names = new Set(bases.map((base) => base.source.name))
       // A standing figure's arm pieces (a charm cut out of the sleeve) go with its drawn arm; a bust keeps its own.
       const figure = layers.some((layer) => layer.source.role === 'arm-variant' && layer.source.side === side && layer.source.armVariant?.model?.restFore !== undefined)
       const pieces = figure ? layers.filter((layer) => names.has(cutFrom(layer.source) ?? '')) : []
-      modelled = new Arm3DSide(this.view, bases, { width: gpu.canvasWidth, height: canvasHeight }, pieces)
+      modelled = new Arm3DSide(view, bases, { width: gpu.canvasWidth, height: canvasHeight }, pieces)
       modelled.bind(layers, gpu.gl, gpu.atlas, gpu.texture && gpu.program ? { texture: gpu.texture, program: gpu.program } : undefined)
       if (modelled.gestures.length > 0) return modelled
     } catch (error) {
