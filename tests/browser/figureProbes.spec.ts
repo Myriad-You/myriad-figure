@@ -300,6 +300,41 @@ for (const { name, root, refs } of swaps) {
   })
 }
 
+test('two outfits with modelled arms never have them made at once', async ({ page }, testInfo) => {
+  await stage(page, { name: 'synthetic', synthetic: 'ordinary' })
+  const bare = await run(page, 'swapPeak', { shown: synthetic('closed-mouth'), next: synthetic('closed-mouth') })
+  const armed = await run(page, 'swapPeak', { shown: synthetic('closed-mouth', true), next: synthetic('closed-mouth', true) })
+  await attach(testInfo, { bare, armed })
+  expect([bare.after, armed.after]).toEqual([bare.before, armed.before])
+  expect(armed.before, 'her arm is modelled').toBeGreaterThan(bare.before)
+  expect(armed.peak - armed.before, 'the swap holds no more than one without modelled arms').toBeLessThanOrEqual(bare.peak - bare.before)
+})
+
+const losses: typeof swaps = [
+  { name: 'synthetic with a modelled arm to synthetic collar', refs: () => ({ shown: synthetic('closed-mouth', true), next: synthetic('collar') }) },
+  { name: 'synthetic collar to one with a modelled arm', refs: () => ({ shown: synthetic('collar'), next: synthetic('closed-mouth', true) }) },
+  ...real.map(root => ({ name: `real ${basename(root).slice(0, 8)} to itself`, root, refs: (own: PackageRef) => ({ shown: own, next: own }) })),
+]
+
+for (const { name, root, refs } of losses) {
+  test(`${name}: a context lost anywhere throws from nothing and leaves nothing behind`, async ({ page }, testInfo) => {
+    test.setTimeout(root ? 3_600_000 : 900_000)
+    const own = await stage(page, { name, root, synthetic: 'ordinary' })
+    if (root) await servePortrait(page)
+    const result = await run(page, 'contextLoss', refs(own))
+    await attach(testInfo, result)
+    expect(result.gone, 'the context is lost').toBe(true)
+    expect(result.thrown).toEqual([])
+    expect(result.apart, 'the figure itself moves the same without one').toBe(0)
+    expect(result.posed).toBe(true)
+    expect([result.left, result.leftWhole]).toEqual([0, 0])
+    expect(result.runs.filter(run => !run.fired), 'every loss was put where it was meant').toEqual([])
+    expect(result.runs.filter(run => run.left)).toEqual([])
+    expect(result.same, 'a figure made after it').toBe(true)
+    expect(result.error).toBe(0)
+  })
+}
+
 // A frame as data, drawn again: plain, with a modelled arm, and on real art.
 const posed: { name: string, root?: string, ref?: PackageRef }[] = [
   { name: 'synthetic', ref: synthetic('ordinary') },

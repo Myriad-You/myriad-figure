@@ -103,6 +103,15 @@ What the probes hold, and what they do not:
   tried (every kind there is), is refused whole. Cloth on a modelled arm is
   only on real art. On Firefox one pixel may be one level off: on a virtual
   machine's GPU it is not the same as itself.
+- Outfit swaps: one that fails anywhere (a GPU step, a read of the package)
+  leaves the figure as it was, frame for frame a twin that never swapped, and
+  no GPU object more or fewer. Two outfits' modelled arms are never made at
+  once: that is counted in textures, not in bytes, and out of memory itself is
+  a GL error and not simulated.
+- A lost context, while she plays and at every step of a swap and of a first
+  load: nothing a page may still call throws, the figure itself moves the
+  same, everything made is deleted with the player, and a figure made after it
+  draws as a twin. The page is what notices and makes another; that is not here.
 - Pose corrections: an authored correction (through `previewPoseCorrections`)
   changes only its combination pose, never the body, and releasing it restores
   every pixel.
