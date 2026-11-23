@@ -2,6 +2,7 @@ import type { Anime25DArmModel, Anime25DPlayback, Anime25DPlaybackLayer } from '
 import type { MeropeRigManifest } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { buildAnime25DLayerBinding } from '../anime25drig/layerBinding'
 import { isLiveMeropeManifest, isRigManifest } from './manifestValidation'
 import { legalManifest } from './rigFuzz.fixture'
 import { isDocumentTurnKeyforms } from './turnKeyformImport'
@@ -20,10 +21,16 @@ function added(playback: Anime25DPlayback, changes: Partial<Anime25DPlaybackLaye
 }
 const strands = (xs: readonly number[]) => xs.map((x) => ({ x, rootY: 10, tipY: 90 }))
 const ringOf = (x0: number, y0: number, x1: number, y1: number): Array<[number, number]> => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
-/** A head drawing's size, to be meshed in this many cells a side: each is 3% of the face's width. */
-function cells({ anchors: { face } }: Anime25DPlayback, count: number): { w: number; h: number } {
-  const edge = count * Math.max(4, (face.x1 - face.x0) * 0.03)
-  return { w: edge, h: edge }
+/** A head drawing's size, to be meshed in this many cells across and down: each is 3% of the face's width. */
+function cells({ anchors: { face } }: Anime25DPlayback, across: number, down = across): { w: number; h: number } {
+  const edge = Math.max(4, (face.x1 - face.x0) * 0.03)
+  return { w: across * edge, h: down * edge }
+}
+/** Hair over the whole of a frame as large as any, and something that hangs in it. */
+function hairPiece(p: Anime25DPlayback, box: [number, number, number, number]): void {
+  p.pixelCanvas = { width: 8192, height: 8192 }
+  added(p, { role: 'back-hair', phys: 'hair', name: 'hair', x: 0, y: 0, w: 8192, h: 8192 })
+  Object.assign(p.partProfile!.parts[0], { layer: 'hair', bone: 'head', motion: 'dangle', separate: false, box, anchor: [(box[0] + box[2]) / 2, box[1]] })
 }
 /** As an untyped source may write it. */
 function put(holder: unknown, key: string | number, value: unknown): void {
@@ -34,13 +41,32 @@ const REFUSED_PACKAGES: ReadonlyArray<readonly [string, (playback: Anime25DPlayb
   ['a mesh too fine, by the group its role puts it in', (p) => added(p, { role: 'irides', group: 'body', w: 2000, h: 2000 })],
   ['a mesh too fine, by the role its name gives it', (p) => added(p, { role: 'unknown', name: 'eyes', group: 'head', w: 500, h: 500 })],
   ['a mesh too fine, by both', (p) => added(p, { role: 'unknown', name: 'eyelash', group: 'body', w: 3000, h: 3000 })],
-  ['a mesh past the most', (p) => added(p, { role: 'nose', ...cells(p, 150) })],
+  ['a mesh past what its indices reach', (p) => added(p, { role: 'nose', ...cells(p, 256) })],
   ['meshes past the most together', (p) => {
-    for (let i = 0; i < 6; i += 1) added(p, { role: 'nose', ...cells(p, 110) })
+    for (let i = 0; i < 9; i += 1) added(p, { role: 'nose', ...cells(p, 250), atlas: { x: 0, y: 0, w: 0.1, h: 0.1 } })
   }],
-  ['a piece that may be meshed past the most, cut from hair that is not', (p) => {
-    added(p, { role: 'front-hair', phys: 'hair', name: 'hair', group: 'head', ...cells(p, 300) })
-    Object.assign(p.partProfile!.parts[0], { layer: 'hair', bone: 'head', motion: 'dangle', separate: false, box: [0, 0, 20, 20], anchor: [10, 0] })
+  ['a piece that may be meshed past what its indices reach, cut from hair that is not', (p) => hairPiece(p, [3000, 3000, 4400, 4400])],
+  ['layers with a place left empty', (p) => { delete p.layers[1] }],
+  ['strands with a place left empty', (p) => {
+    put(p.layers[0], 'strands', strands([10, 20]))
+    delete p.layers[0].strands[0]
+  }],
+  ['parts with a place left empty', (p) => { delete p.partProfile!.parts[0] }],
+  ['an arm\'s widths with a place left empty', (p) => { delete armOf(p).radius[3] }],
+  ['an outline with a place left empty', (p) => { delete armOf(p).handOutline[0][1] }],
+  ['a key with a place left empty', (p) => { delete p.turnKeyforms!.face.plus.back[2] }],
+  ['a key\'s box with a place left empty', (p) => { delete (p.turnKeyforms!.face.minus.box as number[])[1] }],
+  ['a correction with a place left empty', (p) => { delete p.shellProfile.poseCorrections![0] }],
+  ['a top meshed past what its indices reach, by the face of the figure that stands in it', (p) => {
+    p.pixelCanvas = { width: 8192, height: 8192 }
+    added(p, { role: 'topwear', group: 'body', w: 8192, h: 8192 })
+  }],
+  ['a lock drawn finer than any picture', (p) => added(p, { role: 'front-hair', phys: 'hair', w: 0.5, h: 0.5, atlas: { x: 0, y: 0, w: 1, h: 1 } })],
+  ['locks too far apart to put together', (p) => {
+    for (const at of [-4000, 4000]) added(p, { role: 'front-hair', phys: 'hair', x: at, y: at })
+  }],
+  ['locks past what is read of them', (p) => {
+    for (let i = 0; i < 40; i += 1) added(p, { role: 'front-hair', phys: 'hair', x: 50 * i, y: 50 * i, w: 2000, h: 2000, atlas: { x: 0, y: 0, w: 0.1, h: 0.1 } })
   }],
   ['a layer wider than a frame', (p) => put(p.layers[0], 'w', 8193)],
   ['a layer too thin to mesh', (p) => put(p.layers[0], 'h', 0.1)],
@@ -90,8 +116,9 @@ const REFUSED_PACKAGES: ReadonlyArray<readonly [string, (playback: Anime25DPlayb
   ['a joint nowhere', (p) => put(p.anchors.skeleton!.joints.kneeL, 'y', null)],
   ['a joint surer than sure', (p) => put(p.anchors.skeleton!.joints.kneeL, 'score', 1e9)],
   ['a torso deeper than itself', (p) => put(p.shellProfile.torso, 'neckDepth', 2)],
-  ['an address for the engine', (p) => put(p, 'engineUrl', 'https://elsewhere.example')],
-  ['a licence of its own', (p) => put(p, 'license', 'none')],
+  ['an engine\'s address of no text', (p) => put(p, 'engineUrl', {})],
+  ['an engine\'s address without end', (p) => put(p, 'engineUrl', 'x'.repeat(513))],
+  ['a licence without end', (p) => put(p, 'license', 'x'.repeat(513))],
   ['a copyright without end', (p) => put(p, 'copyright', 'x'.repeat(513))],
   ['a stance nobody stands', (p) => put(p, 'figureStance', 'sit')],
   ['an enhancement that is not yes or no', (p) => put(p.enhancement, 'turn', 'yes')],
@@ -142,6 +169,9 @@ const REFUSED_MANIFESTS: ReadonlyArray<readonly [string, (manifest: MeropeRigMan
   ['a canvas without end', (m) => put(m.canvas, 'height', 1e308)],
   ['an id without end', (m) => { put(m.textures[0], 'id', 'x'.repeat(513)); for (const part of m.parts) put(part, 'textureId', m.textures[0].id) }],
   ['a vertex off every canvas', (m) => put(m.parts[0].vertices[0].position, 'x', 1e308)],
+  ['a vertex left out', (m) => { delete m.parts[0].vertices[1] }],
+  ['a corner left out', (m) => { delete m.parts[0].indices[1] }],
+  ['a collision volume left out', (m) => { delete m.spatialProfile!.collisionVolumes[0] }],
   ['a depth off every stack', (m) => put(m.parts[0], 'zIndex', 1e308)],
   ['triangles without end', (m) => put(m.parts[0], 'indices', Array.from({ length: 16_384 * 6 + 3 }, () => 0))],
   ['anchors without end', (m) => {
@@ -188,4 +218,32 @@ test('what the importer and the server may well make is let through', () => {
   assert.equal(accepted(({ anime25dPlayback: p }) => put(p!.anchors.eyeL, 'y1', p!.anchors.eyeL!.y0)), true)
   assert.equal(accepted(({ anime25dPlayback: p }) => put(p!.anchors.mouth, 'y1', p!.anchors.mouth.y0)), true)
   assert.equal(accepted(({ anime25dPlayback: p }) => put(armOf(p!), 'ground', undefined)), true)
+  // A veil, or both tails' ribbons in one layer: 3 × 5 and 4.4 × 6.4 of the face's width, 16,968 and 31,458 vertices.
+  for (const [across, down, vertices] of [[100, 167, 16_968], [146, 213, 31_458]] as const) {
+    const veil = structuredClone(figure)
+    const playback = veil.anime25dPlayback!
+    added(playback, { role: 'headwear', name: 'headwear', ...cells(playback, across, down) })
+    assert.equal(isLiveMeropeManifest(veil), true, `${across} × ${down} cells`)
+    const mesh = buildAnime25DLayerBinding({ source: playback.layers.at(-1)!, canvasWidth: playback.pixelCanvas.width, face: playback.anchors.face, layerZ: 0, figure: true })
+    assert.equal(mesh.rest.length / 2, vertices)
+    assert.equal(mesh.indices.reduce((most, index) => Math.max(most, index)), vertices - 1)
+  }
+  // Eight of them, as no figure wears.
+  assert.equal(accepted(({ anime25dPlayback: p }) => {
+    for (let i = 0; i < 8; i += 1) added(p!, { role: 'headwear', ...cells(p!, 146, 213), atlas: { x: 0, y: 0, w: 0.1, h: 0.1 } })
+  }), true)
+  // Locks cut from hair as long as a figure, on an atlas drawn twice as fine.
+  assert.equal(accepted((m) => {
+    m.textures[0].width *= 2
+    m.textures[0].height *= 2
+    for (let i = 0; i < 8; i += 1) added(m.anime25dPlayback!, { role: 'front-hair', phys: 'hair', x: 100 * i, y: 0, w: 400, h: 2000, atlas: { x: 0, y: 0, w: 0.1, h: 0.1 } })
+  }), true)
+  // What hangs in hair over the whole of a frame is looked for around its own box only.
+  assert.equal(accepted(({ anime25dPlayback: p }) => hairPiece(p!, [3000, 3000, 3200, 3400])), true)
+  // Credited otherwise, as a package made before or after this one may be.
+  assert.equal(accepted(({ anime25dPlayback: p }) => {
+    put(p, 'engineUrl', 'https://github.com/someone/Anime2.5DRig')
+    put(p, 'license', 'Apache-2.0')
+    put(p, 'copyright', undefined)
+  }), true)
 })

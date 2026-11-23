@@ -440,6 +440,11 @@ export function anime25DPlaybackSource(): Pick<
   }
 }
 
+/** Whose work it is made with, as it was credited when it was made: any words, so many. */
+function isCredit(value: unknown): boolean {
+  return value === undefined || (typeof value === 'string' && value.length <= 512)
+}
+
 export function isAnime25DPlayback(value: unknown): value is Anime25DPlayback {
   if (!value || typeof value !== 'object') return false
   const record = value as Record<string, unknown>
@@ -448,9 +453,7 @@ export function isAnime25DPlayback(value: unknown): value is Anime25DPlayback {
     record.kind === ANIME25D_PLAYBACK_KIND &&
     record.version === ANIME25D_PLAYBACK_VERSION &&
     record.engine === ANIME25D_PROJECT_NAME &&
-    (record.engineUrl === undefined || record.engineUrl === ANIME25D_PROJECT_URL) &&
-    (record.license === undefined || record.license === ANIME25D_LICENSE) &&
-    (record.copyright === undefined || (typeof record.copyright === 'string' && record.copyright.length <= 512)) &&
+    [record.engineUrl, record.license, record.copyright].every(isCredit) &&
     isPlaybackCanvas(canvas) &&
     isPlaybackLayers(layers) &&
     isPlaybackAnchors(anchors) &&

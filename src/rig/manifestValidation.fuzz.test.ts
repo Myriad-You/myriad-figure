@@ -194,7 +194,7 @@ function assertPlayablePackage(playback: Anime25DPlayback, changedLayers: Iterab
       figure: playback.anchors.groundY !== undefined,
     })
     const vertices = mesh.rest.length / 2
-    assert.ok(vertices <= MAX_RIG_VERTICES_PER_PART, `${vertices} vertices`)
+    assert.ok(vertices <= 65_535, `${vertices} vertices`)
     assert.equal(mesh.indices.length, mesh.cols * mesh.rows * 6)
     assert.ok(mesh.indices.length > 0 && mesh.indices.every((vertex) => vertex < vertices))
     for (const numbers of [mesh.rest, mesh.atlasUvs, mesh.strandWeights, mesh.alongStrand, mesh.bangWeights, mesh.frontHairParallaxScale]) {
