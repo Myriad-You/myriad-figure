@@ -23,6 +23,8 @@ export interface FrontCollarContactModel {
 
 const ALPHA_THRESHOLD = 18
 const MAX_CONTACT_SAMPLES = 6
+/** The most lines a collar's contact lays through its mesh: four across and one down at each sample, and at its ends. */
+export const MAX_CONTACT_LINES = { x: MAX_CONTACT_SAMPLES * 4 + 4, y: MAX_CONTACT_SAMPLES + 2 } as const
 
 export function buildFrontCollarContactModel(
   rgba: Uint8ClampedArray,
