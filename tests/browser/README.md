@@ -96,6 +96,11 @@ What the probes hold, and what they do not:
 - Corners of combined turns: visible face and hair triangles stay oriented.
   Real art only: the synthetic face is a flat block, and it folds at two
   corners; whether drawn art can fold the same way is not settled.
+- Poses: a frame taken as data (`getPose`), through JSON and back, is drawn by
+  another player of the package to the pixel, at the same size and at another;
+  her own player drawing poses in between goes on frame for frame as a twin
+  that drew none; another outfit's pose, and one spoilt in any place that is
+  drawn, is refused whole. Cloth on a modelled arm is only on real art.
 - Pose corrections: an authored correction (through `previewPoseCorrections`)
   changes only its combination pose, never the body, and releasing it restores
   every pixel.

@@ -1,5 +1,14 @@
 import { sampleDizzyEyeTint } from '../expressionShapes/dizzyEye'
 
+/** The sticker as drawn: how far in, its turn, and where on the canvas. */
+export interface ThinkingStickerFrame {
+  time: number
+  amount: number
+  x: number
+  y: number
+  size: number
+}
+
 /** A procedural sticker: no atlas migration or remote image is required. */
 export class ThinkingSticker {
   private program: WebGLProgram | null = null
@@ -28,18 +37,13 @@ export class ThinkingSticker {
       -Math.expm1(-dt * (target > this.amount ? 10 : 6))
   }
 
-  draw(
-    gl: WebGL2RenderingContext,
-    time: number,
-    target: number,
-    x: number,
-    y: number,
-    size: number,
-    width: number,
-    height: number,
-  ): void {
+  /** The sticker where it is shown this frame; null while it is not. */
+  shown(time: number, target: number, x: number, y: number, size: number): ThinkingStickerFrame | null {
     this.update(time, target)
-    if (this.amount < 0.002) return
+    return this.amount < 0.002 ? null : { time, amount: this.amount, x, y, size }
+  }
+
+  paint(gl: WebGL2RenderingContext, { time, amount, x, y, size }: Readonly<ThinkingStickerFrame>, width: number, height: number): void {
     if (!this.program) {
       const program = gl.createProgram()!
       const sources = [
@@ -96,7 +100,7 @@ export class ThinkingSticker {
       x,
       y,
       size,
-      this.amount,
+      amount,
     )
     gl.uniform2f(gl.getUniformLocation(this.program, 'view'), width, height)
     gl.uniform3f(gl.getUniformLocation(this.program, 'ink'),

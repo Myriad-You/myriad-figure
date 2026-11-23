@@ -4,6 +4,7 @@
 // Each probe runs on a synthetic package in CI and on real art when given.
 import type { Anime25DDriver } from '../../../src/anime25drig/driver'
 import type { Anime25DInspection, Anime25DLayerView, Anime25DPoint } from '../../../src/anime25drig/playerInspection'
+import type { Anime25DPose } from '../../../src/anime25drig/pose'
 import type { PoseCorrection } from '../../../src/anime25drig/poseCorrections'
 import type { Anime25DArmModel, Anime25DPlayback } from '../../../src/anime25drig/types'
 import type { MotionChannelPolicy } from '../../../src/motion/policy'
@@ -14,6 +15,7 @@ import { IDENTITY_DRIVER } from '../../../src/anime25drig/driver'
 import { THINKING_EXPRESSION_PRESET } from '../../../src/anime25drig/expressionPresets'
 import { intentExpressionPatch } from '../../../src/anime25drig/performanceCueDefinitions'
 import { Anime25DPlayer } from '../../../src/anime25drig/player'
+import { blendPoses, poseFromJSON, poseToJSON } from '../../../src/anime25drig/pose'
 import { poseCorrectionPatch } from '../../../src/anime25drig/poseCorrections'
 import { musicSignalAt } from '../../../src/singing/musicSignal.test-support'
 import { fixture, importPsd } from './synthetic'
@@ -1271,5 +1273,144 @@ async function swapFaults({ shown: shownRef, next: nextRef, kinds = ['gpu', 'rea
   })
 }
 
-export const probes = { features, bodyStageProjection, posture, torsoTurn, turns, corners, correction, collar, shoulder, earrings, hair, musicExit, thoughtToSpeech, sharedCut, swapFaults }
+/** Drivers that stir what a pose must hold: turns, hair, the speaking mouth, arms raised and passed on between gestures. */
+const POSED: Partial<Anime25DDriver>[] = [
+  { phys: true, angleX: 0.6, angleY: -0.3, body: 0.4, armY: 0.4, handWaveL: 1, handWaveR: 1, mouthOpen: 0.8, mouthWide: 0.9 },
+  { phys: true, angleX: -0.7, angleZ: 0.4, body: -0.5, bodyLift: 0.4, mouthOpen: 0.7, mouthRound: 0.8, mouthForm: 0.3, handPointL: 1, handPointR: 1, talk: true },
+  { phys: true, angleY: 0.7, torsoTurn: 0.5, eyeOpenL: 0.4, eyeCry: 0.9, accentBlush: 1, thinking: true, handChestL: 1, handChestR: 1 },
+  { phys: true, mouthOpen: 0.5, mouthNarrow: 0.7, handChinR: 1, handWaveL: 1 },
+]
+
+/**
+ * A pose, as JSON and back, drawn by another player of the package, is the frame it was taken of to the pixel; drawn
+ * by the figure's own player it leaves her as she was, frame for frame a twin that drew none.
+ */
+async function poses(ref: PackageRef, frames = 24) {
+  const pkg = await resolvePackage(ref)
+  const other = await resolvePackage({ synthetic: 'necklace' })
+  return seeded(async () => {
+    const subject = await watched(pkg)
+    const twin = await watched(pkg)
+    const replay = await watched(pkg)
+    const stranger = await watched(other)
+    // The same at another size: a pose is drawn as large as its canvas.
+    const large = await watched(pkg)
+    const enlarged = await watched(pkg)
+    for (const { player } of [large, enlarged]) player.resize(288, 384, 2)
+    try {
+      const gestures = JSON.stringify(subject.player.armVariantGestures())
+      const step = (w: Watched, pose: Partial<Anime25DDriver>) => {
+        seed = w.seed
+        hold(w.player, pose, 1)
+        w.seed = seed
+      }
+      let drawn = 0; let replayed = 0; let drifted = 0; let shown = 0; let returned = 0; let lagging = 0; let bytes = 0; let refused = 0; let between = 0; let armed = 0; let cloths = 0; let stickers = 0; const mouths = new Set<string>(); let sized = 0; let damaged = 0; const taking: string[] = []
+      let first: Anime25DPose | null = null
+      let previous: Anime25DPose | null = null
+      for (const pose of POSED) {
+        for (let i = 0; i < frames; i++) {
+          step(subject, pose)
+          step(twin, pose)
+          step(large, pose)
+          if (hash(readPixels(subject.gl)) !== hash(readPixels(twin.gl))) drifted++
+          const taken = subject.player.getPose()!
+          const text = poseToJSON(taken)
+          bytes = Math.max(bytes, text.length)
+          if (taken.arms.some(arm => arm.now)) armed++
+          if (taken.arms.some(arm => arm.cloths.some(cloth => cloth))) cloths++
+          if (taken.sticker) stickers++
+          if (taken.mouth) mouths.add(JSON.stringify(taken.mouth))
+          const live = hash(readPixels(subject.gl))
+          const back = poseFromJSON(text)
+          // The GPU has what the pose says: read back, not from the player's own copy.
+          lagging += gpuDiffers(subject, taken)
+          if (replay.player.renderPose(back) && hash(readPixels(replay.gl)) === live) replayed++
+          if (enlarged.player.renderPose(back) && hash(readPixels(enlarged.gl)) === hash(readPixels(large.gl))) sized++
+          drawn++
+          // Damaged in one place, it is refused whole, or the place is one that is not drawn.
+          if (i === frames - 1) {
+            for (const [place, bad] of damages(taken)) {
+              damaged++
+              if (replay.player.renderPose(bad) && !/^(?:time|driver)(?:\.|$)/.test(place)) taking.push(place)
+            }
+          }
+          // Her own player draws an earlier pose now and then, and one between two.
+          if (first && previous && i % 3 === 0) {
+            shown++
+            if (!subject.player.renderPose(first)) refused++
+            if (!subject.player.renderPose(blendPoses(previous, taken, 0.5))) refused++
+            if (hash(readPixels(subject.gl)) !== live) between++
+            if (subject.player.hitTestTouch(1, 1) !== null) refused++
+            if (!subject.player.renderPose(taken)) refused++
+            if (hash(readPixels(subject.gl)) === live) returned++
+            // Left showing another pose at times: her next frame is hers all the same.
+            if (i % 2) subject.player.renderPose(first)
+          }
+          first ??= taken
+          previous = taken
+        }
+      }
+      // Come to rest, hardly anything of her is uploaded anew: a pose shown then leaves nothing of it either.
+      for (const w of [subject, twin]) {
+        for (let i = 0; i < 400; i++) step(w, { phys: false })
+      }
+      subject.player.renderPose(first!)
+      const stirred = hash(readPixels(subject.gl)) !== hash(readPixels(twin.gl))
+      for (const w of [subject, twin]) step(w, { phys: false })
+      const settled = stirred && hash(readPixels(subject.gl)) === hash(readPixels(twin.gl)) && gpuDiffers(subject, twin.player.getPose()!) === 0
+      const wrong = { other: stranger.player.renderPose(first!), short: replay.player.renderPose({ ...first!, layers: first!.layers.slice(1) }),
+        nothing: replay.player.renderPose({} as Anime25DPose), bad: replay.player.renderPose({ ...first!, layers: first!.layers.map(layer => ({ ...layer, transform: layer.transform.map(() => Number.NaN) })) }) }
+      // Shown while the canvas is resized, it is drawn again as large; while the outfit is put on again, it is gone.
+      replay.player.renderPose(first!)
+      replay.player.resize(288, 384, 2)
+      enlarged.player.renderPose(first!)
+      const resized = hash(readPixels(replay.gl)) === hash(readPixels(enlarged.gl))
+      await replay.player.replaceLivePackage(pkg.playback, pkg.manifest, pkg.atlasUrl)
+      const gone = replay.player.getPose() === null
+      hold(replay.player, {}, 1)
+      const again = replay.player.getPose() !== null && replay.player.renderPose(first!) && hash(readPixels(replay.gl)) === hash(readPixels(enlarged.gl))
+      return { drawn, sized, damaged, taking, resized, gone, again, settled, replayed, drifted, shown, returned, lagging, bytes, refused, between, armed, cloths, stickers, mouths: mouths.size, gestures, wrong, error: subject.gl.getError() || replay.gl.getError() }
+    }
+    finally {
+      for (const w of [subject, twin, replay, stranger, large, enlarged]) w.close()
+    }
+  })
+}
+
+/** The pose with one of its places spoilt: each place of it, the first few of a list. */
+function* damages(pose: Anime25DPose): Generator<[string, Anime25DPose]> {
+  const places = function* (value: unknown, path: (string | number)[]): Generator<(string | number)[]> {
+    if (path.length) yield path
+    if (typeof value !== 'object' || value === null) return
+    for (const key of ArrayBuffer.isView(value) ? ['0'] : Array.isArray(value) ? Object.keys(value).slice(0, 3) : Object.keys(value)) yield* places((value as Record<string, unknown>)[key], [...path, key])
+  }
+  for (const path of places(pose, [])) {
+    for (const bad of [Number.NaN, 'x', {}]) {
+      const copy = poseFromJSON(poseToJSON(pose))
+      let at = copy as unknown as Record<string | number, unknown>
+      for (const key of path.slice(0, -1)) at = at[key] as typeof at
+      const last = path.at(-1)!
+      // A typed list holds numbers whatever is put there.
+      if (at instanceof Uint16Array) at[last as never] = 65535 as never
+      else at[last] = bad
+      yield [path.join('.'), copy]
+    }
+  }
+}
+
+/** Layers whose vertices on the GPU are not the pose's. */
+function gpuDiffers(w: Watched, pose: Anime25DPose): number {
+  const { gl } = w
+  const layers = (w.player as unknown as { layers: { vertexBuffer: WebGLBuffer | null, rest: Float32Array }[] }).layers
+  return layers.filter((layer, i) => {
+    if (!layer.vertexBuffer) return false
+    const on = new Float32Array(layer.rest.length)
+    gl.bindBuffer(gl.ARRAY_BUFFER, layer.vertexBuffer)
+    gl.getBufferSubData(gl.ARRAY_BUFFER, 0, on)
+    const said = pose.layers[i]!.vertices ?? layer.rest
+    return on.some((value, k) => value !== said[k])
+  }).length
+}
+
+export const probes = { poses, features, bodyStageProjection, posture, torsoTurn, turns, corners, correction, collar, shoulder, earrings, hair, musicExit, thoughtToSpeech, sharedCut, swapFaults }
 Object.assign(window, { figureProbes: probes })

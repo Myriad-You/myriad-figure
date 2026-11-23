@@ -21,6 +21,29 @@ Myriad 的 2.5D 形象：在浏览器里演她的 rig 的运行时，和从分�
 
 `performance` 的词表以核心的表演契约为准：每份词表在 `src/performance/vocabulary.ts` 里只写一次，类型由它推导，`vocabulary.contract.test.ts` 逐字对照契约。
 
+## 姿势
+
+一帧画面可以当数据取出来，之后原样画回去：录一段表演逐帧导出、慢放、按别的尺寸重画，或者把摆好的一个姿势存下来给别处用。
+
+```ts
+import { blendPoses, poseFromJSON, poseToJSON } from '@myriad/figure/anime25drig'
+
+player.tick(1 / 60)
+const pose = player.getPose() // 刚画的这一帧；还没画过是 null
+const text = poseToJSON(pose!) // 存下来，数值一位不丢
+
+const back = poseFromJSON(text)
+player.renderPose(back) // 画它；不是这套形象的、缺了或坏了的返回 false，什么也不画
+player.renderPose(blendPoses(poseA, poseB, 0.5)) // 相邻两帧之间
+```
+
+- 同一套形象（同一个包）的任何一个播放器画出来都逐像素相同，在同一台机器、同样的画布尺寸上；换一套服装就不是同一套，`renderPose` 返回 `false`。重新导入过的包只要图层或手臂有变，也算另一套。
+- `renderPose` 不动她自己的状态：下一次 `tick` 接着她原来的地方走。显示姿势的时候不接触摸和姿势修正。
+- 尺寸由画布决定（`resize`），最大到素材本身的两倍。姿势里没有图，只有顶点和画法，取的时候多大都可以放大来画。
+- `blendPoses` 是给很近的两帧用的（慢放、换帧率）：位置直线过渡；画的先后、手臂在哪个手势的图里这类不能过渡的取近的那一帧。
+- 一个姿势的 JSON 大约 80–140 KB。逐帧存的话一分钟（60 帧）有几百 MB；长的表演隔帧存、画的时候用 `blendPoses` 补，或者压缩。
+- `pose.driver` 是那一刻各驱动的值，只供读，不参与画。
+
 ## 共用核心
 
 rig 契约和表演契约的源头在共用核心（[Myriad-You/myriad-core](https://github.com/Myriad-You/myriad-core)）的 `shared/` 里：核心的 Rust 从它们生成代码，她发给各端的表演指令也用这套词表。本仓库在 `contracts/` 带一份逐字节的副本，只读这份，不依赖 myriad-core，单独克隆就能装、能测。

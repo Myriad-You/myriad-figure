@@ -299,3 +299,38 @@ for (const { name, root, refs } of swaps) {
     expect(result.recovered, 'after refused swaps the next one goes through').toBe(true)
   })
 }
+
+// A frame as data, drawn again: plain, with a modelled arm, and on real art.
+const posed: { name: string, root?: string, ref?: PackageRef }[] = [
+  { name: 'synthetic', ref: synthetic('ordinary') },
+  { name: 'synthetic collar', ref: synthetic('collar') },
+  { name: 'synthetic with a modelled arm', ref: synthetic('ordinary', true) },
+  ...real.map(root => ({ name: `real ${basename(root).slice(0, 8)}`, root })),
+]
+
+for (const { name, root, ref } of posed) {
+  test(`${name}: a pose taken as data is drawn again to the pixel and moves nothing`, async ({ page }, testInfo) => {
+    test.setTimeout(root ? 1_200_000 : 300_000)
+    const own = await stage(page, { name, root, synthetic: 'ordinary' })
+    if (root) await servePortrait(page)
+    const result = await run(page, 'poses', ref ?? own)
+    await attach(testInfo, result)
+    expect(result.error).toBe(0)
+    expect(result.lagging, 'what the GPU has is what the pose says').toBe(0)
+    expect(result.replayed, 'drawn by another player').toBe(result.drawn)
+    expect(result.sized, 'and as large as its canvas').toBe(result.drawn)
+    expect(result.resized).toBe(true)
+    expect(result.gone, 'no frame of the outfit put on again yet').toBe(true)
+    expect(result.again).toBe(true)
+    expect(result.damaged).toBeGreaterThan(0)
+    expect(result.taking, 'damaged in what is drawn, yet drawn').toEqual([])
+    expect(result.drifted, 'drawing poses leaves her as she was').toBe(0)
+    expect(result.settled, 'a pose shown while she is still leaves nothing of it').toBe(true)
+    expect(result.refused).toBe(0)
+    expect(result.shown).toBeGreaterThan(0)
+    expect(result.returned, 'and her own frame again on top').toBe(result.shown)
+    expect(result.between, 'a pose between two is another picture').toBeGreaterThan(0)
+    if (result.gestures.includes('wave') && name.includes('modelled arm')) expect(result.armed).toBeGreaterThan(0)
+    expect(result.wrong).toEqual({ other: false, short: false, nothing: false, bad: false })
+  })
+}

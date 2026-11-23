@@ -168,7 +168,7 @@ export class Arm3DSide {
   constructor(
     private view: Arm3DView,
     readonly bases: Anime25DGpuLayer[],
-    private canvas: { width: number; height: number },
+    readonly canvas: { width: number; height: number },
     /** Pieces cut out of the drawn arm into layers of their own (a bracelet): part of it, hidden with it. */
     readonly pieces: Anime25DGpuLayer[] = [],
   ) {}
@@ -879,18 +879,25 @@ export class Arm3DSide {
   /** The gesture layer's mesh where the figure draws it this frame, for its drawn upper arm under the arm held there. */
   private heldMesh(g: Gesture): Arm3DFrame['held'] {
     if (g.near <= 0.004) return undefined
-    const { rest, deformed, indices, source } = g.layer
+    const { rest, deformed } = g.layer
     const n = rest.length / 2
     const pos = new Float32Array(n * 2)
-    const uv = new Float32Array(n * 2)
     for (let i = 0; i < n; i += 1) {
       const q = this.body ? arm3DOnBody([deformed[i * 2], deformed[i * 2 + 1], 0], this.body) : [deformed[i * 2], deformed[i * 2 + 1]]
       pos[i * 2] = q[0]
       pos[i * 2 + 1] = q[1]
-      uv[i * 2] = (rest[i * 2] - source.x) / source.w
-      uv[i * 2 + 1] = (rest[i * 2 + 1] - source.y) / source.h
     }
-    return { pos, uv, idx: indices, near: g.near, exact: g.exact, toDrawn: affineFit(pos, rest) }
+    return { pos, ...this.heldPicture(g.layer), near: g.near, exact: g.exact, toDrawn: affineFit(pos, rest) }
+  }
+
+  /** Where each vertex of a gesture's layer lies in its picture, and its triangles. */
+  heldPicture({ rest, indices, source }: Anime25DGpuLayer): { uv: Float32Array; idx: ArrayLike<number> } {
+    const uv = new Float32Array(rest.length)
+    for (let i = 0; i < rest.length; i += 2) {
+      uv[i] = (rest[i] - source.x) / source.w
+      uv[i + 1] = (rest[i + 1] - source.y) / source.h
+    }
+    return { uv, idx: indices }
   }
 
   dispose(): void {
