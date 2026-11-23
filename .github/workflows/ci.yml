@@ -39,3 +39,39 @@ jobs:
       # Real Worker imports, the player under real WebGL, touch and outfit swaps.
       # Probes that need real portraits skip without them.
       - run: pnpm test:browser
+
+  # Safari, and every browser on an iPhone, is WebKit; a macOS runner is as close to
+  # Safari as CI gets. Firefox gets no WebGL2 at all on the Linux runners.
+  engines:
+    name: browser (${{ matrix.engine }})
+    runs-on: macos-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Everything: it takes five or six minutes here.
+          - engine: webkit
+          # Firefox takes 38 minutes for everything here. It runs what an engine can
+          # do differently: the import Worker with its OffscreenCanvas and PNGs,
+          # shaders, drawn pixels and clipping, real pointers with capture and hit
+          # testing, outfit swaps. Left out for their length are replays whose answer
+          # is mostly the player's own arithmetic, frame after frame, which WebKit and
+          # Chromium run: turns, hair, corrections and handovers over time, and the
+          # touch handoffs and petting replayed against a control. A test renamed out
+          # of this list runs.
+          - engine: firefox
+            args: >-
+              --grep-invert "short head turn|continuous turns|every frame rate|authored correction|hair follows|music hands over|speech during a thought|touch handoff|petting"
+    env:
+      FIGURE_BROWSER_ENGINES: ${{ matrix.engine }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm install --global pnpm@11.25.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install ${{ matrix.engine }}
+      - run: pnpm test:browser --reporter=list ${{ matrix.args }}
