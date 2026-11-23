@@ -78,6 +78,7 @@ import { describeAnime25DPlayback } from './playerDebug'
 import { inspectAnime25DFrame } from './playerInspection'
 import {
   releaseCompiledGpu,
+  touchLayersFor,
 } from './playerPackage'
 
 import { measurePackage, prepareSwap, releaseSwap } from './playerSwap'
@@ -242,8 +243,9 @@ export class Anime25DPlayer {
 
   /**
    * The last outfit keeps drawing until the next one is ready, and stays exactly as it was if the next one fails:
-   * everything the new outfit needs is measured and made on the GPU first, touching nothing on screen, and only
-   * then taken in one step that cannot fail.
+   * everything that can fail it is measured and made on the GPU first, touching nothing on screen, and only then taken
+   * in one step that cannot fail. Its modelled arms are made in that step, the last one's gone; should they not be, its
+   * gestures are raised flat.
    */
   async replaceLivePackage(
     playback: Anime25DPlayback,
@@ -263,7 +265,7 @@ export class Anime25DPlayer {
     this.commitSwap(next)
   }
 
-  /** Takes a prepared outfit in place of the live one, whose GPU resources go. Only assigns and releases. */
+  /** Takes a prepared outfit in place of the live one, whose GPU resources go. Cannot fail. */
   private commitSwap(next: PreparedSwap): void {
     const { prepared } = next
     const { compiled } = prepared
@@ -278,7 +280,7 @@ export class Anime25DPlayer {
     this.motion.directedPose.setCapabilities(this.motionCapabilities)
     this.touchAtlas = prepared.touchAtlas
     this.thinkingSticker.setTint(next.tint)
-    this.touchLayers = next.touchLayers
+    this.touchLayers = touchLayersFor(this.layers, this.collarClip)
     this.drawn = null
     this.poses.reset()
   }
