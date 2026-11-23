@@ -6,8 +6,8 @@ import { cuffDrawnAtWrist } from './armCuff'
 import { extendFinger, FINGER_CHAINS, measureDrawnHand } from './armHand'
 import {
   add2, add3, capsuleMask, closeSquare, components, convexMask, convexPatch, cropAround, cropOf, cross3, dilateSquare,
-  dist2, dist3, fillHoles, gaussian, interp, linspace, median, medianColor, mul2, mul3, percentile, rings, round,
-  segmentDistance, simplify, sub2, sub3, texel, unit2, unit3, widths,
+  dist2, dist3, fillHoles, gaussian, interp, linspace, median, medianColor, mul2, mul3, percentile, pointSegmentDistance, rings,
+  round, simplify, sub2, sub3, texel, unit2, unit3, widths,
 } from './armRaster'
 import { lap } from './importTiming'
 
@@ -539,21 +539,26 @@ function alongBones(pictures: ArmModelPictures, s: P2, e: P2, w: P2, hand: P2[])
     const y1 = Math.min(box.y + box.h - 1, Math.ceil(Math.max(a[1], b[1]) + r))
     for (let y = y0; y <= y1; y += 1) {
       for (let x = x0; x <= x1; x += 1) {
-        if (cut[y * W + x] && segmentDistance([x, y], a, b) < r) near[(y - box.y) * box.w + x - box.x] = 1
+        if (cut[y * W + x] && pointSegmentDistance(x, y, a, b) < r) near[(y - box.y) * box.w + x - box.x] = 1
       }
     }
   }
   const closed = closeSquare(near, box.w, box.h, 11)
-  const { labels } = components(closed, box.w, box.h)
-  const seeds = new Set<number>()
+  const { labels, sizes } = components(closed, box.w, box.h)
+  // By label, whether a hand point lies on it.
+  const seeds = new Uint8Array(sizes.length)
+  let seeded = false
   for (const [x, y] of hand) {
     const lx = Math.trunc(x) - box.x
     const ly = Math.trunc(y) - box.y
     const label = lx >= 0 && ly >= 0 && lx < box.w && ly < box.h ? labels[ly * box.w + lx] : 0
-    if (label) seeds.add(label)
+    if (!label) continue
+    seeds[label] = 1
+    seeded = true
   }
-  if (!seeds.size) return cut
-  const m = Uint8Array.from(labels, (label) => (seeds.has(label) ? 1 : 0))
+  if (!seeded) return cut
+  const m = new Uint8Array(labels.length)
+  for (let k = 0; k < m.length; k += 1) m[k] = seeds[labels[k]]
   fillHoles(m, box.w, box.h)
   fingersOverSkin(m, box, pictures, hand)
   const out = new Uint8Array(W * H)
@@ -609,9 +614,13 @@ function fingersOverSkin(
   const skin = medianColor(onPalm)
   const like = new Uint8Array(w * h)
   for (let k = 0; k < w * h; k += 1) {
-    if (along[k]) like[k] = Math.max(...color(k).map((v, c) => Math.abs(v - skin[c]))) < 48 ? 1 : 0
+    if (!along[k]) continue
+    const i = at(k) * 3
+    like[k] = Math.max(Math.abs(variant[i] - skin[0]), Math.abs(variant[i + 1] - skin[1]), Math.abs(variant[i + 2] - skin[2])) < 48 ? 1 : 0
   }
-  const grown = closeSquare(Uint8Array.from(m, (inArm, k) => (inArm || (core[k] && like[k]) ? 1 : 0)), w, h, 5)
+  const joined = new Uint8Array(w * h)
+  for (let k = 0; k < w * h; k += 1) joined[k] = m[k] || (core[k] && like[k]) ? 1 : 0
+  const grown = closeSquare(joined, w, h, 5)
   const reach = Math.trunc(0.15 * size) | 1
   const nearFinger = dilateSquare(core, w, h, 5)
   const nearPalm = dilateSquare(inner, w, h, reach)
@@ -743,14 +752,16 @@ function layOnSleeve(W: number, H: number, radius: number[], cuff: number, rows:
       for (let j = 0; j < TU; j += 1) {
         const k = i * TU + j
         if (seen[k]) continue
-        const n = add3(mul3(f, around[j][0]), mul3(sd, around[j][1]))
-        if (n[2] < 0.15) continue
-        const x = Math.trunc(c[0] + n[0] * r)
-        const y = Math.trunc(c[1] + n[1] * r)
+        // The normal there, f · cos + sd · sin, a component at a time.
+        const [cos, sin] = around[j]
+        const toViewer = f[2] * cos + sd[2] * sin
+        if (toViewer < 0.15) continue
+        const x = Math.trunc(c[0] + (f[0] * cos + sd[0] * sin) * r)
+        const y = Math.trunc(c[1] + (f[1] * cos + sd[1] * sin) * r)
         // The picture's bottom rows run on below its edge: never taken.
         if (!(x >= 0 && y >= 0 && x < W && y < H - 8) || !usable(x, y) || !inside(x, y)) continue
         for (let ch = 0; ch < 3; ch += 1) acc[k * 3 + ch] = pic.img[(y * W + x) * 3 + ch]
-        best[k] = n[2]
+        best[k] = toViewer
         seen[k] = 1
       }
     }
@@ -772,7 +783,7 @@ function layOnSleeve(W: number, H: number, radius: number[], cuff: number, rows:
     const limit = v > 0.85 ? 40 : 70
     for (let j = 0; j < TU; j += 1) {
       const k = i * TU + j
-      const off = Math.max(...[0, 1, 2].map((ch) => Math.abs(acc[k * 3 + ch] - ref[ch]))) > limit
+      const off = Math.max(Math.abs(acc[k * 3] - ref[0]), Math.abs(acc[k * 3 + 1] - ref[1]), Math.abs(acc[k * 3 + 2] - ref[2])) > limit
       if (off && best[k] < 0.68) seen[k] = 0
     }
     // The forearm's end (the cuff) is bands round the arm: its sides are its front carried round.
@@ -807,17 +818,19 @@ function layOnSleeve(W: number, H: number, radius: number[], cuff: number, rows:
     }
     if (!have.length) continue
     ringOk.push(i)
+    // The nearest known texel round the ring is the first met going one way or the other: of the two, the nearer,
+    // and the lower of them where they are as near (as the first of the nearest, looking through them all in order).
+    let before = have[have.length - 1]
+    let next = 0
     for (let j = 0; j < TU; j += 1) {
-      if (known[i * TU + j]) continue
-      let pick = have[0]
-      let nearest = Infinity
-      for (const h of have) {
-        const d = Math.min(Math.abs(h - j), TU - Math.abs(h - j))
-        if (d < nearest) {
-          nearest = d
-          pick = h
-        }
+      if (known[i * TU + j]) {
+        before = j
+        continue
       }
+      while (next < have.length && have[next] < j) next += 1
+      const after = have[next < have.length ? next : 0]
+      const apart = (h: number) => Math.min(Math.abs(h - j), TU - Math.abs(h - j))
+      const pick = apart(before) < apart(after) ? before : apart(after) < apart(before) ? after : Math.min(before, after)
       filled.set(tex.subarray((i * TU + pick) * 3, (i * TU + pick) * 3 + 3), (i * TU + j) * 3)
     }
   }

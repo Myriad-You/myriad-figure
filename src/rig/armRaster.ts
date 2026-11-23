@@ -1,4 +1,5 @@
 import type { Anime25DVec3 } from '../anime25drig/types'
+import { sumAcross, sumDown } from './armCutFilters'
 
 /** Pixel and geometry helpers for measuring a drawn arm (armModel, armHand), on a w × h grid of row-major pixels. */
 
@@ -233,7 +234,7 @@ export function capsuleMask(a: P2, b: P2, radius: number, w: number, h: number):
   const r = Math.ceil(radius)
   for (let y = Math.max(0, Math.min(ta[1], tb[1]) - r); y <= Math.min(h - 1, Math.max(ta[1], tb[1]) + r); y += 1) {
     for (let x = Math.max(0, Math.min(ta[0], tb[0]) - r); x <= Math.min(w - 1, Math.max(ta[0], tb[0]) + r); x += 1) {
-      if (segmentDistance([x, y], ta, tb) <= radius) out[y * w + x] = 1
+      if (pointSegmentDistance(x, y, ta, tb) <= radius) out[y * w + x] = 1
     }
   }
   return out
@@ -253,6 +254,8 @@ export function components(mask: Uint8Array, w: number, h: number): { labels: In
   const labels = new Int32Array(w * h)
   const stack = new Int32Array(w * h)
   const sizes = [0]
+  // The first pixel of the last row.
+  const last = (h - 1) * w
   for (let start = 0; start < w * h; start += 1) {
     if (!mask[start] || labels[start]) continue
     const label = sizes.length
@@ -264,14 +267,11 @@ export function components(mask: Uint8Array, w: number, h: number): { labels: In
       const p = stack[--top]
       size += 1
       const x = p % w
-      const y = (p - x) / w
-      for (let dy = -1; dy <= 1; dy += 1) {
-        const ny = y + dy
-        if (ny < 0 || ny >= h) continue
-        for (let dx = -1; dx <= 1; dx += 1) {
-          const nx = x + dx
-          if (nx < 0 || nx >= w) continue
-          const n = ny * w + nx
+      // The eight about it that are on the grid: three in the row above, the two beside it, three below.
+      const from = x > 0 ? -1 : 0
+      const to = x < w - 1 ? 1 : 0
+      for (let row = p >= w ? p - w : p, end = p < last ? p + w : p; row <= end; row += w) {
+        for (let n = row + from; n <= row + to; n += 1) {
           if (mask[n] && !labels[n]) {
             labels[n] = label
             stack[top++] = n
@@ -287,18 +287,52 @@ export function components(mask: Uint8Array, w: number, h: number): { labels: In
 /** Each row's mask grown (or shrunk) by `half` either side, off the grid counted as `outside`. */
 export function rowSpread(mask: Uint8Array, w: number, h: number, half: number, grow: boolean): Uint8Array {
   const out = new Uint8Array(w * h)
-  const sum = new Int32Array(w + 1)
-  for (let y = 0; y < h; y += 1) {
-    for (let x = 0; x < w; x += 1) sum[x + 1] = sum[x] + mask[y * w + x]
-    for (let x = 0; x < w; x += 1) {
-      const a = Math.max(0, x - half)
-      const b = Math.min(w - 1, x + half)
-      const count = sum[b + 1] - sum[a]
-      // Shrinking, what lies off the grid does not count against a pixel.
-      out[y * w + x] = grow ? (count > 0 ? 1 : 0) : count === b - a + 1 ? 1 : 0
+  for (let y = 0; y < h; y += 1) spreadRow(mask, out, y * w, w, 0, w - 1, half, grow)
+  return out
+}
+
+/**
+ * One row of `rowSpread`, from column x0 to x1: what the mask holds within `half` of each pixel is summed once and
+ * the sum kept as the reach moves a pixel on. Shrinking, what lies off the grid does not count against a pixel.
+ */
+function spreadRow(mask: Uint8Array, out: Uint8Array, row: number, w: number, x0: number, x1: number, half: number, grow: boolean): void {
+  let count = 0
+  for (let x = Math.max(0, x0 - 1 - half), end = Math.min(w - 1, x0 - 1 + half); x <= end; x += 1) count += mask[row + x]
+  for (let x = x0; x <= x1; x += 1) {
+    if (x + half < w) count += mask[row + x + half]
+    if (x - half - 1 >= 0) count -= mask[row + x - half - 1]
+    out[row + x] = grow ? (count > 0 ? 1 : 0) : count === Math.min(w - 1, x + half) - Math.max(0, x - half) + 1 ? 1 : 0
+  }
+}
+
+/** The box of a mask's set pixels, or null with none set. */
+function setBox(mask: Uint8Array, w: number, h: number): { x0: number; y0: number; x1: number; y1: number } | null {
+  const n = w * h
+  let first = 0
+  while (first < n && !mask[first]) first += 1
+  if (first >= n) return null
+  let last = n - 1
+  while (!mask[last]) last -= 1
+  const y0 = (first / w) | 0
+  const y1 = (last / w) | 0
+  let x0 = w
+  let x1 = -1
+  for (let y = y0; y <= y1; y += 1) {
+    const row = y * w
+    for (let x = 0; x < x0; x += 1) {
+      if (mask[row + x]) {
+        x0 = x
+        break
+      }
+    }
+    for (let x = w - 1; x > x1; x -= 1) {
+      if (mask[row + x]) {
+        x1 = x
+        break
+      }
     }
   }
-  return out
+  return { x0, y0, x1, y1 }
 }
 
 /** Grown or shrunk by an ellipse `size` across (OpenCV's MORPH_ELLIPSE). */
@@ -313,14 +347,17 @@ export function morphEllipse(mask: Uint8Array, w: number, h: number, size: numbe
       spread = rowSpread(mask, w, h, half, grow)
       rows.set(half, spread)
     }
-    for (let y = 0; y < h; y += 1) {
-      const sy = y + dy
-      if (sy < 0 || sy >= h) continue
-      for (let x = 0; x < w; x += 1) {
-        if (grow) {
-          if (spread[sy * w + x]) out[y * w + x] = 1
-        } else if (!spread[sy * w + x]) {
-          out[y * w + x] = 0
+    for (let y = Math.max(0, -dy), end = Math.min(h, h - dy); y < end; y += 1) {
+      const from = (y + dy) * w
+      const to = y * w
+      if (grow) {
+        for (let x = 0; x < w; x += 1) {
+          if (spread[from + x]) out[to + x] = 1
+        }
+      }
+      else {
+        for (let x = 0; x < w; x += 1) {
+          if (!spread[from + x]) out[to + x] = 0
         }
       }
     }
@@ -331,18 +368,49 @@ export function morphEllipse(mask: Uint8Array, w: number, h: number, size: numbe
 export const dilateEllipse = (mask: Uint8Array, w: number, h: number, size: number) => morphEllipse(mask, w, h, size, true)
 export const erodeEllipse = (mask: Uint8Array, w: number, h: number, size: number) => morphEllipse(mask, w, h, size, false)
 
-export function transpose(mask: Uint8Array, w: number, h: number): Uint8Array {
-  const out = new Uint8Array(w * h)
-  for (let y = 0; y < h; y += 1) {
-    for (let x = 0; x < w; x += 1) out[x * h + y] = mask[y * w + x]
-  }
-  return out
-}
-
+/**
+ * Grown or shrunk by a square `size` across, off the grid not counted. Of ones and zeros.
+ *
+ * Worked only where anything can come of it: grown, a pixel is set within `half` of the box of what is set;
+ * shrunk, inside that box. Every pixel worked still counts its whole reach on the grid.
+ */
 export function morphSquare(mask: Uint8Array, w: number, h: number, size: number, grow: boolean): Uint8Array {
   const half = size >> 1
-  const across = rowSpread(mask, w, h, half, grow)
-  return transpose(rowSpread(transpose(across, w, h), h, w, half, grow), h, w)
+  const out = new Uint8Array(w * h)
+  const box = setBox(mask, w, h)
+  if (!box) return out
+  const about = grow ? half : 0
+  const x0 = Math.max(0, box.x0 - about)
+  const x1 = Math.min(w - 1, box.x1 + about)
+  const y0 = Math.max(0, box.y0 - about)
+  const y1 = Math.min(h - 1, box.y1 + about)
+  // Across: only the rows with anything set have anything.
+  const across = new Uint8Array(w * h)
+  for (let y = box.y0; y <= box.y1; y += 1) spreadRow(mask, across, y * w, w, x0, x1, half, grow)
+  // Down: each column's count of the rows in reach, kept as the reach moves a row.
+  const count = new Int32Array(w)
+  for (let y = Math.max(0, y0 - 1 - half), end = Math.min(h - 1, y0 - 1 + half); y <= end; y += 1) {
+    for (let x = x0; x <= x1; x += 1) count[x] += across[y * w + x]
+  }
+  for (let y = y0; y <= y1; y += 1) {
+    if (y + half < h) {
+      const enter = (y + half) * w
+      for (let x = x0; x <= x1; x += 1) count[x] += across[enter + x]
+    }
+    if (y - half - 1 >= 0) {
+      const leave = (y - half - 1) * w
+      for (let x = x0; x <= x1; x += 1) count[x] -= across[leave + x]
+    }
+    const row = y * w
+    if (grow) {
+      for (let x = x0; x <= x1; x += 1) out[row + x] = count[x] > 0 ? 1 : 0
+    }
+    else {
+      const all = Math.min(h - 1, y + half) - Math.max(0, y - half) + 1
+      for (let x = x0; x <= x1; x += 1) out[row + x] = count[x] === all ? 1 : 0
+    }
+  }
+  return out
 }
 
 export const dilateSquare = (mask: Uint8Array, w: number, h: number, size: number) => morphSquare(mask, w, h, size, true)
@@ -410,22 +478,28 @@ export function gaussian(image: Float32Array, w: number, h: number, sigma: numbe
     })
   const xs = taps(w, wrap)
   const ys = taps(h, false)
+  // The same sums, tap by tap in the same order; only where a tap reads is worked out less often: not at all
+  // between `inner0` and `inner1`, where none leaves the row, and once a row going down.
+  const weights = Float64Array.from(kernel)
+  const inner0 = Math.min(r, w)
+  const inner1 = Math.max(inner0, w - r)
   const pass = new Float32Array(w * h)
+  const edge = (row: number, x: number) => {
+    let sum = 0
+    for (let k = 0; k < size; k += 1) sum += image[row + xs[x + k]] * weights[k]
+    pass[row + x] = sum
+  }
   for (let y = 0; y < h; y += 1) {
     const row = y * w
-    for (let x = 0; x < w; x += 1) {
-      let sum = 0
-      for (let k = 0; k < size; k += 1) sum += image[row + xs[x + k]] * kernel[k]
-      pass[row + x] = sum
-    }
+    for (let x = 0; x < inner0; x += 1) edge(row, x)
+    sumAcross(image, pass, row + inner0, row + inner1, 1, weights)
+    for (let x = inner1; x < w; x += 1) edge(row, x)
   }
   const out = new Float32Array(w * h)
+  const rows = new Int32Array(size)
   for (let y = 0; y < h; y += 1) {
-    for (let x = 0; x < w; x += 1) {
-      let sum = 0
-      for (let k = 0; k < size; k += 1) sum += pass[ys[y + k] * w + x] * kernel[k]
-      out[y * w + x] = sum
-    }
+    for (let k = 0; k < size; k += 1) rows[k] = ys[y + k] * w
+    sumDown(pass, out, y * w, w, rows, weights)
   }
   return out
 }
@@ -436,9 +510,29 @@ export function texel(data: ArrayLike<number>, k: number): Anime25DVec3 {
 
 export function median(values: readonly number[]): number {
   if (!values.length) return 0
-  const sorted = [...values].sort((a, b) => a - b)
+  const sorted = ascending(values)
   const mid = sorted.length >> 1
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
+
+/**
+ * The values sorted as `[...values].sort((a, b) => a - b)` sorts them. Numbers sort much faster as numbers than
+ * by a comparison, to the same order but for zeros of the two signs (equal by comparison, kept as they came) and
+ * NaN (no order by comparison): where either is there, by comparison.
+ */
+function ascending(values: readonly number[]): ArrayLike<number> {
+  const sorted = new Float64Array(values).sort()
+  const n = sorted.length
+  // Sorted as numbers, NaN is last and a negative zero is the first of what is not below zero.
+  let lo = 0
+  let hi = n
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (sorted[mid] < 0) lo = mid + 1
+    else hi = mid
+  }
+  const signedZero = lo < n && Object.is(sorted[lo], -0)
+  return signedZero || (n > 0 && Number.isNaN(sorted[n - 1])) ? [...values].sort((a, b) => a - b) : sorted
 }
 
 export function medianColor(colors: readonly Anime25DVec3[]): Anime25DVec3 {
@@ -447,7 +541,7 @@ export function medianColor(colors: readonly Anime25DVec3[]): Anime25DVec3 {
 
 /** numpy's percentile: linear between the two nearest ranks. */
 export function percentile(values: readonly number[], q: number): number {
-  const sorted = [...values].sort((a, b) => a - b)
+  const sorted = ascending(values)
   const at = ((sorted.length - 1) * q) / 100
   const lo = Math.floor(at)
   const hi = Math.min(sorted.length - 1, lo + 1)
@@ -480,9 +574,15 @@ export function searchLeft(sorted: readonly number[], x: number): number {
 }
 
 export function segmentDistance(c: P2, a: P2, b: P2): number {
-  const d = sub2(b, a)
-  const t = Math.min(1, Math.max(0, dot2(sub2(c, a), d) / Math.max(1e-12, dot2(d, d))))
-  return dist2(c, add2(a, mul2(d, t)))
+  return pointSegmentDistance(c[0], c[1], a, b)
+}
+
+/** From (x, y) to the segment a–b: `segmentDistance`'s own arithmetic, step for step, with no points made on the way. */
+export function pointSegmentDistance(x: number, y: number, a: P2, b: P2): number {
+  const d0 = b[0] - a[0]
+  const d1 = b[1] - a[1]
+  const t = Math.min(1, Math.max(0, ((x - a[0]) * d0 + (y - a[1]) * d1) / Math.max(1e-12, d0 * d0 + d1 * d1)))
+  return Math.hypot(x - (a[0] + d0 * t), y - (a[1] + d1 * t))
 }
 
 export function round(x: number, digits: number): number {
