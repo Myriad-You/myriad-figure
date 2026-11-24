@@ -3,6 +3,7 @@ import type {
   RasterLayer,
   RigCanvasFrame,
 } from './anime25dImportTypes'
+import type { ImportTimer } from './importTiming'
 import { FigureError } from '../errors'
 import { trimRaster } from './anime25dRaster'
 
@@ -267,6 +268,7 @@ function rectContains(outer: FreeRect, inner: FreeRect): boolean {
 export async function packAnime25DAtlas(
   frame: RigCanvasFrame,
   layers: RasterLayer[],
+  timer?: ImportTimer,
 ): Promise<{
   atlas: Blob
   analysisReference: Blob
@@ -275,6 +277,7 @@ export async function packAnime25DAtlas(
   height: number
 }> {
   const trimmed = layers.map(trimRaster)
+  timer?.lap('pack.trim')
   const { places, width: packedWidth, height: packedHeight } =
     layoutAnime25DAtlas(trimmed.map((layer) => ({
       id: layer.id,
@@ -282,6 +285,7 @@ export async function packAnime25DAtlas(
       height: layer.height,
       apart: layer.armVariant !== undefined || layer.role === 'arm-variant-hand',
     })))
+  timer?.lap('pack.layout')
   const createCanvas = () =>
     typeof document === 'undefined'
       ? new OffscreenCanvas(1, 1)
@@ -351,10 +355,12 @@ export async function packAnime25DAtlas(
           : [],
     })
   }
+  timer?.lap('pack.draw')
   const [blob, analysisReference] = await Promise.all([
     canvasPng(atlas),
     canvasPng(analysisCanvas),
   ])
+  timer?.lap('pack.png')
   return {
     atlas: blob,
     analysisReference,

@@ -3,6 +3,7 @@ import type { PreparedAnime25DRigImport } from './anime25dImporter'
 import type { ArmVariantGesture } from './armVariants'
 import type { AuthoredExpressionKind } from './authoredExpression'
 import type { CharacterAssetProfile } from './contract'
+import type { ImportLap } from './importTiming'
 import type { DetectedSkeleton } from './skeleton'
 import { FigureError, isFigureErrorCode } from '../errors'
 
@@ -19,6 +20,8 @@ export interface RigPsdImportRequest {
   profile?: CharacterAssetProfile
   /** Joints found on the portrait, to bind the rig to. */
   skeleton?: DetectedSkeleton
+  /** Measures where the time goes (importTiming); the import itself is the same. */
+  timing?: boolean
 }
 
 /**
@@ -38,7 +41,7 @@ export interface ArmVariantSource {
 export type RigPsdImportStage = 'validated' | 'packing'
 export type RigPsdImportReply =
   | { stage: RigPsdImportStage }
-  | { prepared: PreparedAnime25DRigImport }
+  | { prepared: PreparedAnime25DRigImport; timing?: { laps: ImportLap[]; sentAt: number } }
   | { error: { code: FigureErrorCode; params: FigureErrorParams } }
   | { failure: string }
 

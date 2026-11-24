@@ -1,4 +1,5 @@
 import type { Layer, Psd } from 'ag-psd'
+import type { ImportTimer } from './importTiming'
 import { initializeCanvas, readPsd } from 'ag-psd'
 
 export const MAX_PSD_BYTES = 96 * 1024 * 1024
@@ -56,7 +57,7 @@ export function validateRigPsdStructure(psd: Psd): void {
   if (!visible || visible > MAX_LAYERS) throw new Error('psdLayerCountInvalid')
 }
 
-export function decodeRigPsd(buffer: ArrayBuffer): Psd {
+export function decodeRigPsd(buffer: ArrayBuffer, timer?: ImportTimer): Psd {
   validateRigPsdHeader(buffer)
   const options = {
     useImageData: true,
@@ -67,6 +68,7 @@ export function decodeRigPsd(buffer: ArrayBuffer): Psd {
   }
   const metadata = readPsd(buffer, { ...options, skipLayerImageData: true })
   validateRigPsdStructure(metadata)
+  timer?.lap('psd.structure')
   initializeCanvas(
     () => {
       throw new Error('Canvas decoding is not allowed in the PSD worker')
@@ -78,5 +80,7 @@ export function decodeRigPsd(buffer: ArrayBuffer): Psd {
       colorSpace: 'srgb',
     }),
   )
-  return readPsd(buffer, options)
+  const psd = readPsd(buffer, options)
+  timer?.lap('psd.pixels')
+  return psd
 }

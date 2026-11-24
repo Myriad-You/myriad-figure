@@ -127,7 +127,11 @@ export function closeMask(
   )
 }
 
-/** One axis of a dilation (`grow`) or erosion; `step` 1 is x, `width` is y. */
+/**
+ * One axis of a dilation (`grow`) or erosion; `step` 1 is x, `width` is y. Outside counts as set when eroding, so
+ * edges are not eaten away. What is set within `radius` along the axis is counted once and the count kept as the
+ * reach moves on: the same answer as looking at the whole reach from every pixel.
+ */
 function sweep(
   mask: Uint8Array,
   width: number,
@@ -138,27 +142,38 @@ function sweep(
 ): Uint8Array {
   const output = new Uint8Array(mask.length)
   const length = step === 1 ? width : height
-  const lines = step === 1 ? height : width
-  for (let line = 0; line < lines; line += 1) {
-    const start = step === 1 ? line * width : line
-    for (let position = 0; position < length; position += 1) {
-      let value = grow ? 0 : 1
-      for (let offset = -radius; offset <= radius; offset += 1) {
-        const other = position + offset
-        // Outside counts as set when eroding so edges are not eaten away.
-        const sample =
-          other < 0 || other >= length
-            ? grow
-              ? 0
-              : 1
-            : mask[start + other * step]
-        if (grow ? sample : !sample) {
-          value = grow ? 1 : 0
-          break
-        }
+  // How many pixels of the reach about `position` lie on the picture.
+  const inside = (position: number) => Math.min(length - 1, position + radius) - Math.max(0, position - radius) + 1
+  if (step === 1) {
+    for (let line = 0; line < height; line += 1) {
+      const start = line * width
+      let count = 0
+      for (let position = 0; position < Math.min(length, radius); position += 1) {
+        if (mask[start + position]) count += 1
       }
-      output[start + position * step] = value
+      for (let position = 0; position < length; position += 1) {
+        if (position + radius < length && mask[start + position + radius]) count += 1
+        if (position - radius - 1 >= 0 && mask[start + position - radius - 1]) count -= 1
+        output[start + position] = grow ? (count > 0 ? 1 : 0) : count === inside(position) ? 1 : 0
+      }
     }
+    return output
+  }
+  // Down: a count for each column, the rows taken in and let go a row at a time.
+  const counts = new Int32Array(width)
+  const take = (row: number, by: number) => {
+    const start = row * width
+    for (let x = 0; x < width; x += 1) {
+      if (mask[start + x]) counts[x] += by
+    }
+  }
+  for (let position = 0; position < Math.min(length, radius); position += 1) take(position, 1)
+  for (let position = 0; position < length; position += 1) {
+    if (position + radius < length) take(position + radius, 1)
+    if (position - radius - 1 >= 0) take(position - radius - 1, -1)
+    const start = position * width
+    const all = inside(position)
+    for (let x = 0; x < width; x += 1) output[start + x] = grow ? (counts[x] > 0 ? 1 : 0) : counts[x] === all ? 1 : 0
   }
   return output
 }

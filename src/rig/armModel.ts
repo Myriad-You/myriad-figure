@@ -2,12 +2,13 @@ import type { Anime25DArmModel, Anime25DVec3 } from '../anime25drig/types'
 import type { EyeSide } from './anime25dImportTypes'
 import type { ArmCuffReading } from './armCuff'
 import type { P2 } from './armRaster'
+import type { ImportTimer } from './importTiming'
 import { cuffDrawnAtWrist } from './armCuff'
 import { extendFinger, FINGER_CHAINS, measureDrawnHand } from './armHand'
 import {
   add2, add3, capsuleMask, closeSquare, components, convexMask, convexPatch, cropAround, cropOf, cross3, dilateSquare,
-  dist2, dist3, fillHoles, gaussian, interp, linspace, median, medianColor, mul2, mul3, percentile, rings, round,
-  segmentDistance, simplify, sub2, sub3, texel, unit2, unit3, widths,
+  dist2, dist3, fillHoles, gaussian, interp, linspace, median, medianColor, mul2, mul3, nearestRound, percentile, pointSegmentDistance, rings,
+  round, simplify, sub2, sub3, texel, unit2, unit3, widths,
 } from './armRaster'
 
 /**
@@ -73,15 +74,18 @@ const HAND_POINTS = 15
 /** The model, and (for the import to weigh) where the portrait's cuff lies and whether the picture drew it at the wrist. */
 export type MeasuredArmModel = Anime25DArmModel & { cuffAtWrist: ArmCuffReading | null }
 
-export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | null {
+export function measureArmModel(pictures: ArmModelPictures, timer?: ImportTimer): MeasuredArmModel | null {
   const { width: W, height: H, side } = pictures
   const portraitJoints = joints(pictures.portraitPose, side)
   const drawn = joints(pictures.variantPose, side)
   if (!portraitJoints || !drawn?.hand) return null
   const img = pictures.variant
+  timer?.lap('armModel.rest')
   const held = extendFinger(drawn.hand, pictures.changed, img, W, H)
   drawn.hand = held.hand
+  timer?.lap('armModel.extendFinger')
   const mask = alongBones(pictures, drawn.s, drawn.e, drawn.w, drawn.hand)
+  timer?.lap('armModel.alongBones')
   const on = (m: Uint8Array) => (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && m[y * W + x] > 0
   const base = on(pictures.base)
   const armAt = on(mask)
@@ -240,7 +244,9 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
   }
   const radius = smooth([...upper, ...fore])
 
+  timer?.lap('armModel.widths')
   const restReach = measureRestReach(base, W, H, radius, ps, pe, hangWrist, hangs?.end ?? cuff)
+  timer?.lap('armModel.restReach')
 
   // How far down the upper arm the portrait's own sleeve is worn, raised: with the elbow in the picture, a short
   // sleeve's cuff (a band and pendant) is drawn just above it, and kept on the upper arm it stayed there as the
@@ -252,6 +258,7 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
     { img: pictures.portrait, mask: portraitMask, joints: rest },
     { img, mask, joints: raised, hand: hand0 },
   ])
+  timer?.lap('armModel.layOnSleeve')
   let restEnd = 0.49
   {
     const rows = SLEEVE_ROWS
@@ -284,8 +291,10 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
     }
   }
 
+  timer?.lap('armModel.restEnd')
   const drawnHand = measureDrawnHand({ width: W, height: H, img, mask, found: hand0, elbow: drawn.e, wrist: drawn.w, tone, shown: held.laid === null ? [] : [held.laid] })
 
+  timer?.lap('armModel.drawnHand')
   const lum = handPixels.map((c) => (c[0] + c[1] + c[2]) / 3)
   // A hand of one flat colour has no lighter or darker part: all of it stands in.
   const pick = (keep: (l: number) => boolean) => {
@@ -310,6 +319,12 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
   const groundRings = rings(groundField, groundBox.w, groundBox.h, 0.5).map((ring) => simplify(ring, 0.6).map(([x, y]) => [x + groundBox.x, y + groundBox.y] as P2))
 
   const skin = pick((l) => l > p40)
+  timer?.lap('armModel.rings')
+  const cuffAtWrist = cuffDrawnAtWrist({
+    width: W, height: H, portrait: pictures.portrait, variant: img, base: pictures.base, mask,
+    rest: [ps, pe, hangWrist], raised: [drawn.s, drawn.e, drawn.w], radius, skin,
+  })
+  timer?.lap('armModel.cuffAtWrist')
   return {
     upper: U,
     fore: F,
@@ -333,10 +348,7 @@ export function measureArmModel(pictures: ArmModelPictures): MeasuredArmModel | 
     line: pick((l) => l < p3),
     armOutline: armRings,
     ground: groundRings,
-    cuffAtWrist: cuffDrawnAtWrist({
-      width: W, height: H, portrait: pictures.portrait, variant: img, base: pictures.base, mask,
-      rest: [ps, pe, hangWrist], raised: [drawn.s, drawn.e, drawn.w], radius, skin,
-    }),
+    cuffAtWrist,
   }
 }
 
@@ -527,21 +539,26 @@ function alongBones(pictures: ArmModelPictures, s: P2, e: P2, w: P2, hand: P2[])
     const y1 = Math.min(box.y + box.h - 1, Math.ceil(Math.max(a[1], b[1]) + r))
     for (let y = y0; y <= y1; y += 1) {
       for (let x = x0; x <= x1; x += 1) {
-        if (cut[y * W + x] && segmentDistance([x, y], a, b) < r) near[(y - box.y) * box.w + x - box.x] = 1
+        if (cut[y * W + x] && pointSegmentDistance(x, y, a, b) < r) near[(y - box.y) * box.w + x - box.x] = 1
       }
     }
   }
   const closed = closeSquare(near, box.w, box.h, 11)
-  const { labels } = components(closed, box.w, box.h)
-  const seeds = new Set<number>()
+  const { labels, sizes } = components(closed, box.w, box.h)
+  // By label, whether a hand point lies on it.
+  const seeds = new Uint8Array(sizes.length)
+  let seeded = false
   for (const [x, y] of hand) {
     const lx = Math.trunc(x) - box.x
     const ly = Math.trunc(y) - box.y
     const label = lx >= 0 && ly >= 0 && lx < box.w && ly < box.h ? labels[ly * box.w + lx] : 0
-    if (label) seeds.add(label)
+    if (!label) continue
+    seeds[label] = 1
+    seeded = true
   }
-  if (!seeds.size) return cut
-  const m = Uint8Array.from(labels, (label) => (seeds.has(label) ? 1 : 0))
+  if (!seeded) return cut
+  const m = new Uint8Array(labels.length)
+  for (let k = 0; k < m.length; k += 1) m[k] = seeds[labels[k]]
   fillHoles(m, box.w, box.h)
   fingersOverSkin(m, box, pictures, hand)
   const out = new Uint8Array(W * H)
@@ -597,9 +614,13 @@ function fingersOverSkin(
   const skin = medianColor(onPalm)
   const like = new Uint8Array(w * h)
   for (let k = 0; k < w * h; k += 1) {
-    if (along[k]) like[k] = Math.max(...color(k).map((v, c) => Math.abs(v - skin[c]))) < 48 ? 1 : 0
+    if (!along[k]) continue
+    const i = at(k) * 3
+    like[k] = Math.max(Math.abs(variant[i] - skin[0]), Math.abs(variant[i + 1] - skin[1]), Math.abs(variant[i + 2] - skin[2])) < 48 ? 1 : 0
   }
-  const grown = closeSquare(Uint8Array.from(m, (inArm, k) => (inArm || (core[k] && like[k]) ? 1 : 0)), w, h, 5)
+  const joined = new Uint8Array(w * h)
+  for (let k = 0; k < w * h; k += 1) joined[k] = m[k] || (core[k] && like[k]) ? 1 : 0
+  const grown = closeSquare(joined, w, h, 5)
   const reach = Math.trunc(0.15 * size) | 1
   const nearFinger = dilateSquare(core, w, h, 5)
   const nearPalm = dilateSquare(inner, w, h, reach)
@@ -731,14 +752,16 @@ function layOnSleeve(W: number, H: number, radius: number[], cuff: number, rows:
       for (let j = 0; j < TU; j += 1) {
         const k = i * TU + j
         if (seen[k]) continue
-        const n = add3(mul3(f, around[j][0]), mul3(sd, around[j][1]))
-        if (n[2] < 0.15) continue
-        const x = Math.trunc(c[0] + n[0] * r)
-        const y = Math.trunc(c[1] + n[1] * r)
+        // The normal there, f · cos + sd · sin, a component at a time.
+        const [cos, sin] = around[j]
+        const toViewer = f[2] * cos + sd[2] * sin
+        if (toViewer < 0.15) continue
+        const x = Math.trunc(c[0] + (f[0] * cos + sd[0] * sin) * r)
+        const y = Math.trunc(c[1] + (f[1] * cos + sd[1] * sin) * r)
         // The picture's bottom rows run on below its edge: never taken.
         if (!(x >= 0 && y >= 0 && x < W && y < H - 8) || !usable(x, y) || !inside(x, y)) continue
         for (let ch = 0; ch < 3; ch += 1) acc[k * 3 + ch] = pic.img[(y * W + x) * 3 + ch]
-        best[k] = n[2]
+        best[k] = toViewer
         seen[k] = 1
       }
     }
@@ -760,7 +783,7 @@ function layOnSleeve(W: number, H: number, radius: number[], cuff: number, rows:
     const limit = v > 0.85 ? 40 : 70
     for (let j = 0; j < TU; j += 1) {
       const k = i * TU + j
-      const off = Math.max(...[0, 1, 2].map((ch) => Math.abs(acc[k * 3 + ch] - ref[ch]))) > limit
+      const off = Math.max(Math.abs(acc[k * 3] - ref[0]), Math.abs(acc[k * 3 + 1] - ref[1]), Math.abs(acc[k * 3 + 2] - ref[2])) > limit
       if (off && best[k] < 0.68) seen[k] = 0
     }
     // The forearm's end (the cuff) is bands round the arm: its sides are its front carried round.
@@ -795,17 +818,10 @@ function layOnSleeve(W: number, H: number, radius: number[], cuff: number, rows:
     }
     if (!have.length) continue
     ringOk.push(i)
+    const nearest = nearestRound(have, TU)
     for (let j = 0; j < TU; j += 1) {
       if (known[i * TU + j]) continue
-      let pick = have[0]
-      let nearest = Infinity
-      for (const h of have) {
-        const d = Math.min(Math.abs(h - j), TU - Math.abs(h - j))
-        if (d < nearest) {
-          nearest = d
-          pick = h
-        }
-      }
+      const pick = nearest[j]
       filled.set(tex.subarray((i * TU + pick) * 3, (i * TU + pick) * 3 + 3), (i * TU + j) * 3)
     }
   }
