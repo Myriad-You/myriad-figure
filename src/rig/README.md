@@ -15,8 +15,8 @@ There are no shoulder, elbow, wrist, leg, foot, contact-IK, locomotion, or hand
 pose bones in the IR, and no directed behaviour addresses one: the bones a
 figure moves with are built at playback from the joints a pose model found
 (`anchors.skeleton`), not stored, and follow the body. A standing figure gets a bone
-tree (`../anime25drig/figureSkeleton.ts`), the way a Live2D rig nests its
-rotation deformers: pelvis, abdomen and chest up the spine, thigh, shin and
+tree (`../anime25drig/figureSkeleton.ts`), nested the way a 2D rigger nests
+rotations: pelvis, abdomen and chest up the spine, thigh, shin and
 foot down each leg. Every layer does its own deformation first and the bones
 then carry it; the feet stay planted, the figure sways from them, and each leg
 is solved from hip to ankle. Large poses (a hand in front of the body, a

@@ -239,7 +239,7 @@ export function bindPartPhysics(
 
 /**
  * Damped angular pendula driven by support acceleration, with a rigid 3D projection.
- * Cubism's input/model/output separation is retained; constants are artistic, not
+ * What drives it, the pendulum and what it moves are kept apart; constants are artistic, not
  * measured jewellery properties. There is no wind/random forcing at rest.
  */
 export class EarwearPhysics {

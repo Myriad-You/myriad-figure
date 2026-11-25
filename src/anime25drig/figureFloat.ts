@@ -2,8 +2,8 @@ import type { BoneTransform, FigurePose, FigureRest } from './figureSkeleton'
 import { compose, FIGURE_LEAN, setRotationAbout, setSegment } from './figureSkeleton'
 
 /**
- * A figure that floats instead of standing, the way a VTuber's full body is
- * often rigged: the upper body leads, swaying as the chest goes, and what is
+ * A figure that floats instead of standing, the way a streaming avatar's full body
+ * is often rigged: the upper body leads, swaying as the chest goes, and what is
  * below hangs from it. The hips trail the chest on a spring and overshoot, so
  * the spine bends; each leg is a pendulum on its hip, swung by how the hips
  * move; the knee of the leg the sway leaves behind bends, its shin seen

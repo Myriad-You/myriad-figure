@@ -3,8 +3,8 @@ import type { Anime25DPlaybackLayer } from './types'
 import { everyItem } from '../rig/lists'
 
 /**
- * A head turn drawn, not computed: as a Live2D rigger keys a warp deformer at
- * AngleX ±30, each part of the head has the shape it takes at the full turn
+ * A head turn drawn, not computed: as a 2D rigger keys a lattice at the turn's
+ * two ends, each part of the head has the shape it takes at the full turn
  * either way, as a lattice over its bounds. A turn in between is the rest
  * shape and the key mixed linearly by the angle.
  */
@@ -23,7 +23,7 @@ export interface Anime25DTurnLattice {
   /**
    * The part's colour at the full turn, as a multiple of its colour at rest
    * (r, g, b): the light on it changes as it turns (a neck the raised chin
-   * no longer shades). Cubism keys a multiply colour the same way.
+   * no longer shades).
    */
   multiply?: [number, number, number]
 }
@@ -448,8 +448,8 @@ function latticeRoot(cells: LatticeCells, qx: number, qy: number, out: Float32Ar
 /**
  * The offset at `amount` of the full turn (−1…1) and `nod` of the full nod,
  * for vertex `vertex`. Along either axis it is that key mixed by its share;
- * in between, the four keys around the pose mix bilinearly, as a Live2D
- * deformer mixes its keyforms, the corner composed (turnedNod).
+ * in between, the four keys around the pose mix bilinearly,
+ * the corner composed (turnedNod).
  */
 export function turnKeyformOffset(
   bound: Readonly<BoundTurnKeyform>,

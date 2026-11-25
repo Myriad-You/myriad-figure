@@ -30,7 +30,7 @@ export const FIGURE_ARM_INERTIA_GAIN = 1
 /**
  * How a pendulum arm is tuned: a bust's, drawn cropped at the shoulder and
  * moved by a 2D body, and a standing figure's. A figure's arms hang as in a
- * full-body Live2D idle: plumb whatever way the chest leans, so one opens off
+ * hand-rigged standing idle: plumb whatever way the chest leans, so one opens off
  * the body as the other closes in; the hand trails the body by about an
  * eighth of a second, swings past and settles over two or three swings.
  * Measured on such a rig swayed about once a second: the hand goes 1.23

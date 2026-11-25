@@ -51,7 +51,7 @@ export interface HeadSilhouette {
 const OPAQUE = 128
 /**
  * Head turn at full angleX, radians, for a rig with turn keys: about 30°, the
- * range of a Live2D model's AngleX, which the keys were fitted to.
+ * turn the keys were fitted to.
  */
 export const HEAD_TURN_RADIANS = 0.52
 /**

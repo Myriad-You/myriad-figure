@@ -1,7 +1,7 @@
 /**
  * Which of a standing figure's legs is drawn over the other. A drawing puts
  * one leg's layers over the other's once and for all; a rigger keys the draw
- * order to the stance (Cubism's parameter-keyed draw order), so the free leg,
+ * order to the stance, so the free leg,
  * its knee bent towards the viewer, comes over the leg bearing the weight
  * where the two meet. The legs' layers trade places only among the places
  * they hold in the stack; everything drawn between them keeps its place.

@@ -4,7 +4,7 @@
  * the one above it a moment later, so the motion travels down the lock and
  * the tip whips through an S rather than the whole lock leaning as one
  * piece. Links keep their length: a swinging tip rises on its arc instead of
- * stretching, as Live2D's physics chains do.
+ * stretching.
  *
  * Each link is sprung toward the direction it hangs in at rest, partly
  * carried round by the link above it (a lock holds its own curve), and
@@ -27,13 +27,11 @@ export interface HairChainTuning {
   /**
    * Radians the direction the lock hangs in turns from as drawn. Gravity
    * stays down while the head tilts, so a lock carried round with the head
-   * hangs back toward the vertical, as Cubism's physics turns its gravity
-   * by the input angle.
+   * hangs back toward the vertical.
    */
   hang?: number
   /**
-   * The furthest a link swings from the way the lock hangs, radians, as
-   * Cubism's physics output stops at its parameter's range: a lock flung
+   * The furthest a link swings from the way the lock hangs, radians: a lock flung
    * hard stays a swept lock and does not fly up off the head.
    */
   limit?: number

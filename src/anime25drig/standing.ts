@@ -86,8 +86,8 @@ export function isStandingFigure(anchors: Pick<Anime25DPlaybackAnchors, 'groundY
 }
 
 /**
- * A figure's `body` = ±1 is its rig's full range, as a full-body Live2D model
- * shows it off: turned about 20 degrees, swayed about a tenth of its height.
+ * A figure's `body` = ±1 is its rig's full range, as a hand-rigged standing
+ * figure shows it off: turned about 20 degrees, swayed about a tenth of its height.
  * Day to day it stands nearly still in that range: what idles it (its weight
  * shift, its breath, the torso a look recruits) takes this share of it.
  * Directed and pointer-driven motion keep the whole range.
