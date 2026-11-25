@@ -167,7 +167,7 @@ test('releases partial mesh allocations when WebGL runs out of buffers', () => {
 })
 
 test('live player keeps the last frame when animation pauses', () => {
-  const player = readFileSync(new URL('./player.ts', import.meta.url), 'utf8')
+  const player = readFileSync(new URL('./stage.ts', import.meta.url), 'utf8')
   assert.match(player, /preserveDrawingBuffer:\s*true/)
   assert.match(player, /WEBGL_lose_context/)
   assert.match(player, /isConnected/)

@@ -1,7 +1,9 @@
-import type { TouchRegion } from '../interaction/touchGesture'
 import type { Anime25DRenderableLayer, Anime25DRenderFrame } from './renderer'
 import type { TouchMesh, TouchMeshHit } from './touchHitTest'
 import { hitTestTouchMesh, sampleTouchAlpha } from './touchHitTest'
+
+/** The part of her a touch lands on. */
+export type Anime25DTouchRegion = 'hair' | 'face' | 'body' | 'accessory'
 
 export interface TouchPaintLayer {
   paint: Pick<Anime25DRenderableLayer,
@@ -19,7 +21,7 @@ export interface TouchAtlas {
 export interface VisibleTouchHit extends TouchMeshHit {
   layerIndex: number
   /** An opaque unknown layer blocks hits behind it, without guessing anatomy. */
-  region: TouchRegion | null
+  region: Anime25DTouchRegion | null
 }
 
 export function readTouchAtlas(image: HTMLImageElement): TouchAtlas | null {
@@ -94,7 +96,7 @@ export function hitTestVisibleTouch(
 }
 
 /** Never substring-match asset names. */
-export function touchRegionForRole(role: string): TouchRegion | null {
+export function touchRegionForRole(role: string): Anime25DTouchRegion | null {
   if (role === 'front-hair' || role === 'back-hair') return 'hair'
   if (['headwear', 'earwear', 'eyewear', 'neckwear', 'handwear'].includes(role)) return 'accessory'
   if (['face', 'eyewhite', 'iris', 'eyelash', 'eyelash-l', 'eyelash-r', 'eyebrow',

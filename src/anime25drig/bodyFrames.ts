@@ -7,13 +7,13 @@ import type {
 } from './chestPhysics'
 import type { CollarMotionPose } from './collarRuntime'
 import type { Anime25DDriver } from './driver'
+import type { Anime25DBodyDriving } from './driving'
 import type { FigureBody } from './figureSkeleton'
 import type { Anime25DHairSpringFrame } from './hairPhysics'
 import type { HeadSilhouette, HeadTurn } from './headTurn'
 import type { JellyElement } from './jellyVolume'
 import type { LayerJelly } from './layerFrameDeformation'
 import type { Anime25DGpuLayer } from './layerGpuBinding'
-import type { Anime25DMotionComposer } from './motionComposer'
 import type { Anime25DMotionEnvelopeProfile } from './motionEnvelope'
 import type { Anime25DRenderFrame } from './renderer'
 import type { Anime25DSecondaryDeformationFrame } from './secondaryDeformation'
@@ -150,7 +150,8 @@ export class Anime25DBodyFrames {
     private readonly current: Anime25DDriver,
     /** The render frame, whose body pivot and roll the body writes. */
     private readonly renderFrame: Anime25DRenderFrame,
-    private readonly motion: Anime25DMotionComposer,
+    /** What drives the figure, whose directed controls the body's own posture gives way to. */
+    private readonly motion: Anime25DBodyDriving,
   ) {}
 
   /**
