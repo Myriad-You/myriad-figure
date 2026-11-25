@@ -4,7 +4,7 @@ import { JellyVolume } from './jellyVolume'
 /**
  * The iris is a soft, wet thing, not a sticker: when the lid snaps open or
  * the gaze darts, it squashes and stretches a little and wobbles back, the
- * プルプル of a hand-rigged eye, driven by the lids.
+ * プルプル of a hand-rigged eye.
  * Both are volume, not travel: the iris stays where the gaze puts it and
  * keeps its area, it only changes shape.
  */

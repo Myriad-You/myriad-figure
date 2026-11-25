@@ -3,8 +3,8 @@ import type { Anime25DPlaybackLayer } from './types'
 import { everyItem } from '../rig/lists'
 
 /**
- * A head turn drawn, not computed: as a 2D rigger keys a lattice at the turn's
- * two ends, each part of the head has the shape it takes at the full turn
+ * A head turn drawn, not computed: as a 2D rigger keys a lattice at the full
+ * turn either way (about 30°), each part of the head has the shape it takes at the full turn
  * either way, as a lattice over its bounds. A turn in between is the rest
  * shape and the key mixed linearly by the angle.
  */
