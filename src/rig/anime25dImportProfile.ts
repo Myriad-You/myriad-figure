@@ -20,7 +20,7 @@ export interface Anime25DImportProfile {
   /**
    * Room left beside the content on each side, as a share of its padded
    * width: a standing figure sways from its feet about a tenth of its height
-   * each way, as a full-body Live2D idle does, and is cut off without it.
+   * each way, as a hand-rigged standing idle does, and is cut off without it.
    */
   readonly stageMargin: number
 }

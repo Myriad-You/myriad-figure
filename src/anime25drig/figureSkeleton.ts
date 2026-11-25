@@ -11,7 +11,7 @@ import { applySkirtTrail } from './standing'
 import { figureShellProfile, HEAD_YAW_SHARE } from './torsoDeformation'
 
 /**
- * A standing figure's bones, as a Live2D rig nests its rotation deformers:
+ * A standing figure's bones, nested as a 2D rigger nests rotations:
  * pelvis, abdomen and chest up the spine, thigh, shin and foot down each
  * leg. Everything drawn rides a bone or a blend of neighbouring bones; what
  * a layer does on its own (a keyed turn, a sleeve's swing, a hem's trail) is

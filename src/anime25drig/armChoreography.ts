@@ -31,8 +31,8 @@ export interface ArmSideIntent {
 
 /**
  * What a standing figure's arm is asked to do: hang at its side and go as the
- * body carries it. A full-body Live2D idle never lifts, swings or reaches its
- * arms on their own, and a lifted sleeve on a figure reads as flailing.
+ * body carries it. A hand-rigged standing figure's idle never lifts, swings or
+ * reaches its arms on their own, and a lifted sleeve on a figure reads as flailing.
  */
 export const HANGING_ARM: Readonly<ArmSideIntent & { sway: number }> = { open: 0, bend: 0, reach: 0, sway: 0 }
 
