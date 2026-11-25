@@ -7,13 +7,13 @@ import type {
 } from './chestPhysics'
 import type { CollarMotionPose } from './collarRuntime'
 import type { Anime25DDriver } from './driver'
+import type { Anime25DBodyDriving } from './driving'
 import type { FigureBody } from './figureSkeleton'
 import type { Anime25DHairSpringFrame } from './hairPhysics'
 import type { HeadSilhouette, HeadTurn } from './headTurn'
 import type { JellyElement } from './jellyVolume'
 import type { LayerJelly } from './layerFrameDeformation'
 import type { Anime25DGpuLayer } from './layerGpuBinding'
-import type { Anime25DMotionComposer } from './motionComposer'
 import type { Anime25DMotionEnvelopeProfile } from './motionEnvelope'
 import type { Anime25DRenderFrame } from './renderer'
 import type { Anime25DSecondaryDeformationFrame } from './secondaryDeformation'
@@ -150,7 +150,8 @@ export class Anime25DBodyFrames {
     private readonly current: Anime25DDriver,
     /** The render frame, whose body pivot and roll the body writes. */
     private readonly renderFrame: Anime25DRenderFrame,
-    private readonly motion: Anime25DMotionComposer,
+    /** What drives the figure, whose directed controls the body's own posture gives way to. */
+    private readonly driving: Anime25DBodyDriving,
   ) {}
 
   /**
@@ -237,7 +238,7 @@ export class Anime25DBodyFrames {
       this.torsoShellRotation,
       anime25DTorsoYawFollow(this.shellProfile.torso, this.current.bodyYaw),
       this.current.torsoTurn,
-      this.motion.directedBodyWeight('torsoTurn'),
+      this.driving.directedBodyWeight('torsoTurn'),
       this.figure ? FIGURE_BODY_YAW : undefined,
     )
     // Explicit posture can be directed independently. Existing performances also
@@ -259,7 +260,7 @@ export class Anime25DBodyFrames {
     const anchors = this.anchors
     const faceScale = anchors.faceScale
     const e = this.current
-    stepJawMotion(this.jaw, jawMotionTarget(e, this.motion.jawEmphasis), dt)
+    stepJawMotion(this.jaw, jawMotionTarget(e, this.driving.jawEmphasis), dt)
     const chestProfile = this.chestProfile
     if (chestProfile.enabled) {
       const chestTarget = chestMotionTarget(e, faceScale, this.chestTarget)
@@ -320,14 +321,14 @@ export class Anime25DBodyFrames {
     const breathHead = 0.5 + 0.5 * Math.sin((time * Math.PI * 2) / 3.4 - 0.6)
     const faceHeight = anchors.face.y1 - anchors.face.y0
     const span = Math.max(1, anchors.bodyPivot.y - anchors.neckBottom)
-    const recruited = this.bodyPitchResponse.value * (1 - this.motion.directedBodyWeight('torsoPitch'))
+    const recruited = this.bodyPitchResponse.value * (1 - this.driving.directedBodyWeight('torsoPitch'))
     Object.assign(this.bodyLiftField, {
       centerX: anchors.neckPivot.x,
       upperY: anchors.neckBottom + Math.min(faceHeight * 0.65, span * 0.5),
       lowerY: anchors.bodyPivot.y,
       // Directed pose is already continuous in the composer: don't filter it
       // a second time here. Only the automatic body recruitment has a spring.
-      amount: Math.max(-1, Math.min(1, e.bodyLift + this.bodyLiftResponse.value * (1 - this.motion.directedBodyWeight('torsoRise')))) * Math.min(faceHeight * 0.05, span * 0.035),
+      amount: Math.max(-1, Math.min(1, e.bodyLift + this.bodyLiftResponse.value * (1 - this.driving.directedBodyWeight('torsoRise')))) * Math.min(faceHeight * 0.05, span * 0.035),
       // A bust's posture is its shader's 2D correction; a figure leans in depth on its bones (figurePitch).
       pitch: this.figure ? 0 : Math.max(-1, Math.min(1, e.bodyPitch + recruited)) * 0.18,
       depth: this.shellProfile.torso.enabled ? Math.min(this.shellProfile.torso.radiusZ, span * 0.45) : 0,
@@ -340,10 +341,10 @@ export class Anime25DBodyFrames {
     frame.headRotationSine = Math.sin(frame.headRoll)
     frame.bodyBreathOffset = breath * 2
     frame.headBreathOffset = breathHead * 1.6
-    frame.specialHeadOffset = this.motion.stylizedMotion
-      ? (this.motion.stylizedMotion.maniacHeadPulse * 80 +
-          this.motion.stylizedMotion.sillyHeadPulse * 8 +
-          this.motion.stylizedMotion.lovestruckHeadPulse * 5) * this.motion.stylizedHeadShare * anchors.faceScale
+    frame.specialHeadOffset = this.driving.stylizedMotion
+      ? (this.driving.stylizedMotion.maniacHeadPulse * 80 +
+          this.driving.stylizedMotion.sillyHeadPulse * 8 +
+          this.driving.stylizedMotion.lovestruckHeadPulse * 5) * this.driving.stylizedHeadShare * anchors.faceScale
       : 0
     frame.breath = breath
     frame.shellBlend = this.shellProfile.blend * this.shellActivation
@@ -500,8 +501,8 @@ export class Anime25DBodyFrames {
       shoulder.x = this.armJoint.x
       shoulder.y = this.armJoint.y
       const own = choreography[side]
-      const raiseShare = this.motion.directedBodyWeight(side === 'L' ? 'leftArmRaise' : 'rightArmRaise')
-      const swingShare = this.motion.directedBodyWeight(side === 'L' ? 'leftArmSwing' : 'rightArmSwing')
+      const raiseShare = this.driving.directedBodyWeight(side === 'L' ? 'leftArmRaise' : 'rightArmRaise')
+      const swingShare = this.driving.directedBodyWeight(side === 'L' ? 'leftArmSwing' : 'rightArmSwing')
       const [raised, swung] = side === 'L' ? [e.armRaiseL, e.armSwingL] : [e.armRaiseR, e.armSwingR]
       // A standing figure's arms hang and go as the body carries them (HANGING_ARM).
       const intent = this.figure ? HANGING_ARM

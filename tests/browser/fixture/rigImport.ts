@@ -167,7 +167,7 @@ async function livePackage(slowUrl: string) {
     canvases.push(canvas)
     return new Anime25DPlayer(canvas, playback)
   }
-  const internals = (player: Anime25DPlayer) => player as unknown as { atlasTexture: unknown, playback: { engineUrl: string } }
+  const internals = (player: Anime25DPlayer) => (player as unknown as { stage: { atlasTexture: unknown, playback: { engineUrl: string } } }).stage
   // Each load carries its own marker where the engine URL goes, to tell which one landed.
   const marked = (marker: string) => ({ ...playback, engineUrl: marker }) as unknown as typeof playback
   try {
@@ -757,13 +757,13 @@ async function bodyReplay(kind: string, fps: number) {
   const playback = prepared.source.anime25dPlayback!
   const player = new Anime25DPlayer(canvas, playback)
   const url = URL.createObjectURL(prepared.atlas)
-  const state = player as unknown as {
+  const state = (player as unknown as { stage: {
     layers: Anime25DGpuLayer[]
     collarClip: CollarClipMesh | null
     deform: () => void
     uploadGeometry: () => void
     draw: () => void
-  }
+  } }).stage
   const gl = canvas.getContext('webgl2')!
   const geometry = () => [
     ...state.layers.flatMap((l) => [...l.deformed, ...l.layerTransform]),
@@ -959,13 +959,13 @@ async function eyeRuntime() {
   const player = new Anime25DPlayer(canvas, prepared.source.anime25dPlayback!)
   const url = URL.createObjectURL(prepared.atlas)
   // Test-only inspection of actual compiled frame state; no production debug API.
-  const state = player as unknown as {
+  const state = (player as unknown as { stage: {
     layers: Array<{
       source: { role: string; side: string }
       frameOpacity: number
     }>
     irisRebound: { x: number; y: number }
-  }
+  } }).stage
   const opacity = (role: string, side: string) =>
     state.layers.find((l) => l.source.role === role && l.source.side === side)
       ?.frameOpacity ?? 0
@@ -1075,7 +1075,7 @@ async function eyePixels(fps: number) {
     frameOpacity: number
     deformed: Float32Array
   }
-  const state = player as unknown as { layers: Layer[]; draw: () => void }
+  const state = (player as unknown as { stage: { layers: Layer[]; draw: () => void } }).stage
   const gl = canvas.getContext('webgl2')!
   const read = () => {
     const pixels = new Uint8Array(canvas.width * canvas.height * 4)

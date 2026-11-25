@@ -1,5 +1,7 @@
+import type { Anime25DTouchRegion } from '../anime25drig/touchVisibility'
+
 /** Pointer evidence only */
-export type TouchRegion = 'hair' | 'face' | 'body' | 'accessory'
+export type TouchRegion = Anime25DTouchRegion
 export type TouchGesture = 'contact' | 'hold' | 'stroke' | 'tap'
 
 export interface TouchSample {

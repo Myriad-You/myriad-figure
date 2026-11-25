@@ -1660,7 +1660,7 @@ function alike(a: Uint8Array, b: Uint8Array): boolean {
 /** Layers whose vertices on the GPU are not the pose's. */
 function gpuDiffers(w: Watched, pose: Anime25DPose): number {
   const { gl } = w
-  const layers = (w.player as unknown as { layers: { vertexBuffer: WebGLBuffer | null, rest: Float32Array }[] }).layers
+  const layers = (w.player as unknown as { stage: { layers: { vertexBuffer: WebGLBuffer | null, rest: Float32Array }[] } }).stage.layers
   return layers.filter((layer, i) => {
     if (!layer.vertexBuffer) return false
     const on = new Float32Array(layer.rest.length)
