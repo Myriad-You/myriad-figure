@@ -68,4 +68,4 @@ pnpm test:browser
 
 ## 许可
 
-AGPL-3.0-only，见 [LICENSE](LICENSE)。`src/anime25drig/vendor/` 是运行时参照的 Anime2.5DRig 的 MIT 许可和说明。
+MIT，见 [LICENSE](LICENSE)。`src/anime25drig/vendor/` 是运行时参照的 Anime2.5DRig 的 MIT 许可和说明。

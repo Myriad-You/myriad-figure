@@ -5,7 +5,7 @@
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "description": "Myriad's 2.5D figure: the runtime that plays her rig and the tools that build one from a layered picture.",
-  "license": "AGPL-3.0-only",
+  "license": "MIT",
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
