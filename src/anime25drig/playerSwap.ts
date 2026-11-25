@@ -119,7 +119,7 @@ export function prepareSwap<Measured>(
 }
 
 /** Lets a prepared outfit go without taking it. */
-export function releaseSwap(parts: Pick<SwapParts, 'gl'>, next: PreparedSwap): void {
+export function releaseSwap<Measured>(parts: Pick<SwapParts<Measured>, 'gl'>, next: PreparedSwap<Measured>): void {
   next.mouth?.dispose()
   const { compiled, texture } = next.prepared
   releaseCompiledGpu(parts.gl, compiled.layers, compiled.collarClip, texture)

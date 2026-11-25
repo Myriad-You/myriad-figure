@@ -104,7 +104,7 @@ export class Anime25DPlayer {
       measureCapabilities: boundRigCapabilities,
       bindCapabilities: (capabilities) => {
         this.motionCapabilities = capabilities
-        this.motion.directedPose.setCapabilities(this.motionCapabilities)
+        motion.directedPose.setCapabilities(capabilities)
       },
     }
     this.stage = new Anime25DStage(canvas, playback, rigManifest, driving, {
@@ -118,16 +118,16 @@ export class Anime25DPlayer {
    * The last outfit keeps drawing until the next one is ready, and stays exactly as it was if the next one fails
    * (Anime25DStage.replaceLivePackage).
    */
-  async replaceLivePackage(
+  replaceLivePackage(
     playback: Anime25DPlayback,
     rigManifest: MeropeRigManifest | undefined,
     atlasUrl: string,
   ): Promise<void> {
-    await this.stage.replaceLivePackage(playback, rigManifest, atlasUrl)
+    return this.stage.replaceLivePackage(playback, rigManifest, atlasUrl)
   }
 
-  async loadAtlas(url: string): Promise<void> {
-    await this.stage.loadAtlas(url)
+  loadAtlas(url: string): Promise<void> {
+    return this.stage.loadAtlas(url)
   }
 
   /** Workbench-only override. Never changes the immutable playback package. */
