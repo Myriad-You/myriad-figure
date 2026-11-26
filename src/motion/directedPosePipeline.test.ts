@@ -20,7 +20,7 @@ test('model pose → channel → lifecycle → bearing → production writer →
   const runtime = new MotionRuntime(new RigMotionCoordinator(), null, figureChannel)
   const release = runtime.retain()
   const current = { ...IDENTITY_DRIVER }
-  const target = { ...IDENTITY_DRIVER, talk: false, blink: false, rand: false }
+  const target = { ...IDENTITY_DRIVER, talking: false, autoBlink: false, idleSway: false }
   const composer = new Anime25DMotionComposer(current, new ClosedEyePresentation(), new Anime25DIrisRebound())
   composer.directedPose.setCapabilities(['head-body', 'torso-volume', 'left-arm', 'right-arm'])
   let time = 0

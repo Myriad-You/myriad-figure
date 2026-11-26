@@ -23,7 +23,7 @@ test('keeps semantic face ownership out of the non-manual energy patch', () => {
     attention: 0.8,
   })
   assert.equal(patch.jaw, undefined)
-  assert.equal(patch.talk, undefined)
+  assert.equal(patch.talking, undefined)
   assert.equal(patch.lipCurve, undefined)
   assert.equal(patch.browLift, undefined)
   assert.equal(patch.lidL, undefined)
@@ -123,7 +123,7 @@ test('restores performance pose without taking speech, face, or gaze ownership',
     false,
   )
   for (const key of [
-    'talk',
+    'talking',
     'jaw',
     'lipCurve',
     'lidL',
@@ -139,11 +139,12 @@ test('restores performance pose without taking speech, face, or gaze ownership',
   }
   assert.equal(patch.bodyLean, 0)
   assert.equal(performanceRestDriverPatch(null, true).bodyLean, 0)
-  assert.equal(performanceRestDriverPatch(null, true).rand, false)
+  assert.equal(performanceRestDriverPatch(null, true).idleSway, false)
   assert.equal(performanceRestDriverPatch(null, true).thinking, true)
-  assert.equal(performanceRestDriverPatch(null, true).idle, true)
-  assert.equal(performanceRestDriverPatch(null, true).blink, true)
-  assert.equal(performanceRestDriverPatch(null, true).phys, true)
+  assert.equal(performanceRestDriverPatch(null, true).torsoBreath, true)
+  assert.equal(performanceRestDriverPatch(null, true).hairWind, true)
+  assert.equal(performanceRestDriverPatch(null, true).autoBlink, true)
+  assert.equal(performanceRestDriverPatch(null, true).physics, true)
   assert.equal(
     performanceRestDriverPatch(
       {
@@ -153,7 +154,7 @@ test('restores performance pose without taking speech, face, or gaze ownership',
         attention: 1,
       },
       true,
-    ).rand,
+    ).idleSway,
     false,
   )
 })
@@ -161,7 +162,7 @@ test('restores performance pose without taking speech, face, or gaze ownership',
 test('keeps active speech channels out of a full base refresh', () => {
   assert.deepEqual(idleSpeechDriverPatch(70, true), {})
   assert.deepEqual(idleSpeechDriverPatch(70, false), {
-    talk: false,
+    talking: false,
     jaw: 0,
     lipCurve: 0.07,
     eyeSmile: 0.1125,
@@ -249,7 +250,7 @@ test('a cue form never switches secondary physics off', () => {
     new URL('./performanceCueDefinitions.ts', import.meta.url),
     'utf8',
   )
-  assert.doesNotMatch(definitions, /idle:/)
+  assert.doesNotMatch(definitions, /torsoBreath:|hairWind:|physics:/)
 })
 
 test('keeps directed body motion above idle scale at ordinary intensity', () => {

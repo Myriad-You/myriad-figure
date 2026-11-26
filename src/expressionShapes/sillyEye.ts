@@ -1,4 +1,4 @@
-import type { RgbColor } from '@myriad/figure-player/internals'
+import type { Anime25DRgb } from '@myriad/figure-player/internals'
 
 export type SillyEyeSide = 'left' | 'right'
 
@@ -9,13 +9,13 @@ export interface SillyEyeSize {
 }
 
 export interface SillyEyePalette {
-  outline: RgbColor
-  sclera: RgbColor
-  scleraShade: RgbColor
-  iris: RgbColor
-  irisLight: RgbColor
-  irisDark: RgbColor
-  pupil: RgbColor
+  outline: Anime25DRgb
+  sclera: Anime25DRgb
+  scleraShade: Anime25DRgb
+  iris: Anime25DRgb
+  irisLight: Anime25DRgb
+  irisDark: Anime25DRgb
+  pupil: Anime25DRgb
 }
 
 const FALLBACK_SCLERA = { red: 250, green: 247, blue: 249 }
@@ -59,16 +59,16 @@ export function sillyIrisTravelRoom(size: Readonly<SillyEyeSize>): {
 }
 
 export function sampleSillyEyePalette(
-  outline: Readonly<RgbColor>,
+  outline: Readonly<Anime25DRgb>,
   irisPixels?: Uint8ClampedArray,
   scleraPixels?: Uint8ClampedArray,
 ): SillyEyePalette {
-  const iris = mixColor(
+  const iris = mixRgb(
     sampleChromaWeightedColor(irisPixels) ?? FALLBACK_IRIS,
     FALLBACK_IRIS,
     0.14,
   )
-  const sclera = mixColor(
+  const sclera = mixRgb(
     sampleLightNeutralColor(scleraPixels) ?? FALLBACK_SCLERA,
     FALLBACK_SCLERA,
     0.16,
@@ -76,11 +76,11 @@ export function sampleSillyEyePalette(
   return {
     outline: { ...outline },
     sclera,
-    scleraShade: mixColor(sclera, iris, 0.1),
+    scleraShade: mixRgb(sclera, iris, 0.1),
     iris,
-    irisLight: mixColor(iris, sclera, 0.34),
-    irisDark: mixColor(iris, outline, 0.58),
-    pupil: mixColor(outline, { red: 6, green: 5, blue: 12 }, 0.46),
+    irisLight: mixRgb(iris, sclera, 0.34),
+    irisDark: mixRgb(iris, outline, 0.58),
+    pupil: mixRgb(outline, { red: 6, green: 5, blue: 12 }, 0.46),
   }
 }
 
@@ -131,7 +131,7 @@ export function createSillyEyeWhiteBitmap(
         paint(
           data,
           offset,
-          mixColor(palette.sclera, palette.scleraShade, lowerShade),
+          mixRgb(palette.sclera, palette.scleraShade, lowerShade),
           fillCoverage,
         )
       }
@@ -190,8 +190,8 @@ export function createSillyIrisBitmap(
       const offset = (y * edge + x) * 4
       const edgeMix = smoothstep((distance - 0.75) / 0.22)
       const verticalLight = 1 - smoothstep((ny + 0.45) / 1.18)
-      const irisTone = mixColor(
-        mixColor(palette.irisDark, palette.irisLight, verticalLight * 0.82),
+      const irisTone = mixRgb(
+        mixRgb(palette.irisDark, palette.irisLight, verticalLight * 0.82),
         palette.outline,
         edgeMix * 0.76,
       )
@@ -325,7 +325,7 @@ function ellipseCoverage(
 
 function sampleChromaWeightedColor(
   pixels: Uint8ClampedArray | undefined,
-): RgbColor | null {
+): Anime25DRgb | null {
   if (!pixels) return null
   let red = 0
   let green = 0
@@ -364,7 +364,7 @@ function sampleChromaWeightedColor(
 
 function sampleLightNeutralColor(
   pixels: Uint8ClampedArray | undefined,
-): RgbColor | null {
+): Anime25DRgb | null {
   if (!pixels) return null
   let red = 0
   let green = 0
@@ -402,7 +402,7 @@ function sampleLightNeutralColor(
 function paint(
   data: Uint8ClampedArray,
   offset: number,
-  color: Readonly<RgbColor>,
+  color: Readonly<Anime25DRgb>,
   sourceAlpha: number,
 ): void {
   const source = clamp(sourceAlpha, 0, 1)
@@ -422,11 +422,11 @@ function paint(
   data[offset + 3] = Math.round(output * 255)
 }
 
-function mixColor(
-  first: Readonly<RgbColor>,
-  second: Readonly<RgbColor>,
+function mixRgb(
+  first: Readonly<Anime25DRgb>,
+  second: Readonly<Anime25DRgb>,
   amount: number,
-): RgbColor {
+): Anime25DRgb {
   const mix = clamp(amount, 0, 1)
   return {
     red: first.red + (second.red - first.red) * mix,

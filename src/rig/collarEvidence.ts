@@ -1,4 +1,4 @@
-import type { Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
+import type { Anime25DSourceAnchors } from '@myriad/figure-player/internals'
 import type { Anime25DSourceReference, RasterLayer } from './anime25dImportTypes'
 import { ALPHA_COMPONENT_THRESHOLD, HIGH_COLLAR_UPPER_FRACTION, perceptualColorDistance, rasterPixelIndex } from './collarCommon'
 
@@ -15,7 +15,7 @@ const COLLAR_REFERENCE_MIN_AGREEMENT = 0.38
 export function hasHighCollarEvidence(
   neck: RasterLayer,
   topwear: RasterLayer,
-  anchors: Anime25DRiggerAnchors,
+  anchors: Anime25DSourceAnchors,
 ): boolean {
   const exposedTop = Math.ceil(Math.max(anchors.face.y1, neck.top))
   const exposedBottom = Math.floor(

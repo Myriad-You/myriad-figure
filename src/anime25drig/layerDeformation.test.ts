@@ -7,7 +7,7 @@ import type {
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { IDENTITY_DRIVER } from '@myriad/figure-player'
-import { bindAnime25DUpstreamFeature, deformAnime25DUpstreamFeaturePoint, resolveAnime25DUpstreamFeature, writeAnime25DLayerGlobalTransform } from '@myriad/figure-player/internals'
+import { bindAnime25DEyeFeature, deformAnime25DEyeFeaturePoint, resolveAnime25DEyeFeature, writeAnime25DLayerGlobalTransform } from '@myriad/figure-player/internals'
 import { deformUpstreamRuntimeLayer } from './upstream/runtime'
 
 const FRAME: UpstreamRuntimeFrame = {
@@ -94,28 +94,28 @@ test('shared local stage composes with shader transforms like upstream deform', 
 
 test('resolver excludes Myriad replacement expressions from the upstream stage', () => {
   assert.equal(
-    resolveAnime25DUpstreamFeature(
+    resolveAnime25DEyeFeature(
       { role: 'irides', fade: 'eyeOpen' },
       true,
     ),
     'eye-open-iris',
   )
   assert.equal(
-    resolveAnime25DUpstreamFeature(
+    resolveAnime25DEyeFeature(
       { role: 'eye-close', fade: 'eyeClose' },
       true,
     ),
     'eye-close',
   )
   assert.equal(
-    resolveAnime25DUpstreamFeature(
+    resolveAnime25DEyeFeature(
       { role: 'eye-cry', fade: 'eyeCry' },
       true,
     ),
     null,
   )
   assert.equal(
-    resolveAnime25DUpstreamFeature(
+    resolveAnime25DEyeFeature(
       { role: 'mouth-open', fade: 'mouthOpen' },
       false,
     ),
@@ -126,7 +126,7 @@ test('resolver excludes Myriad replacement expressions from the upstream stage',
 test('binding holds the live driver reference without per-frame reconstruction', () => {
   const source = featureLayers()[0]
   const expression = driverOf(runtimeExpression({}))
-  const binding = bindAnime25DUpstreamFeature(
+  const binding = bindAnime25DEyeFeature(
     source,
     FRAME.anchors.eyeL,
     FRAME.faceScale,
@@ -156,9 +156,9 @@ test('a closing lid is hinged at the corners: they stay, the lashes ride down wh
   const middle = (eye.x0 + eye.x1) / 2
   const fixture = layer('eyelash', 'eyeOpen', 'L', eye.x0 - 8, eye.y0 - 10, eye.x1 - eye.x0 + 16, eye.y1 - eye.y0 + 12, 1.3)
   const at = (x: number, y: number, open: number) => {
-    const binding = bindAnime25DUpstreamFeature(fixture, eye, FRAME.faceScale, driverOf(runtimeExpression({ eyeOpenL: open, eyeCY: 0, eyeCAng: 0, eyeScaleL: 1 })))!
+    const binding = bindAnime25DEyeFeature(fixture, eye, FRAME.faceScale, driverOf(runtimeExpression({ eyeOpenL: open, eyeCY: 0, eyeCAng: 0, eyeScaleL: 1 })))!
     const point = { x, y }
-    deformAnime25DUpstreamFeaturePoint(point, binding)
+    deformAnime25DEyeFeaturePoint(point, binding)
     return point
   }
   // A corner, and the lash wing past it, do not move as she squints.
@@ -236,7 +236,7 @@ function localFeatureVertices(
 ): Float32Array {
   const output = vertices(source)
   const eye = source.side === 'L' ? FRAME.anchors.eyeL : FRAME.anchors.eyeR
-  const binding = bindAnime25DUpstreamFeature(
+  const binding = bindAnime25DEyeFeature(
     source,
     eye,
     FRAME.faceScale,
@@ -246,7 +246,7 @@ function localFeatureVertices(
   for (let index = 0; index < output.length; index += 2) {
     point.x = output[index]
     point.y = output[index + 1]
-    deformAnime25DUpstreamFeaturePoint(point, binding)
+    deformAnime25DEyeFeaturePoint(point, binding)
     output[index] = point.x
     output[index + 1] = point.y
   }
@@ -341,9 +341,9 @@ test('a smile reaching the eyes lifts the lower lid in an arch; the iris only ri
     ({ role, fade: 'eyeOpen', side: 'L', x: 70, y: 80, w: 45, h: 40 }) as Pick<
       Anime25DPlaybackLayer, 'fade' | 'h' | 'role' | 'side' | 'w' | 'x' | 'y'>
   const move = (role: string, x: number, y: number, eyeSmile: number) => {
-    const feature = bindAnime25DUpstreamFeature(layer(role), eye, 1, { ...IDENTITY_DRIVER, eyeSmile })!
+    const feature = bindAnime25DEyeFeature(layer(role), eye, 1, { ...IDENTITY_DRIVER, eyeSmile })!
     const point = { x, y }
-    deformAnime25DUpstreamFeaturePoint(point, feature)
+    deformAnime25DEyeFeaturePoint(point, feature)
     return point
   }
   const middle = (eye.x0 + eye.x1) / 2
@@ -371,9 +371,9 @@ test('a smiling closed eye bows up into ^, most at its middle', () => {
   const closed = { role: 'eye-close', fade: 'eyeClose', side: 'L', x: 70, y: 98, w: 45, h: 10 } as Pick<
     Anime25DPlaybackLayer, 'fade' | 'h' | 'role' | 'side' | 'w' | 'x' | 'y'>
   const at = (x: number, eyeSmile: number) => {
-    const feature = bindAnime25DUpstreamFeature(closed, eye, 1, { ...IDENTITY_DRIVER, lidL: 0, eyeSmile })!
+    const feature = bindAnime25DEyeFeature(closed, eye, 1, { ...IDENTITY_DRIVER, lidL: 0, eyeSmile })!
     const point = { x, y: eye.closeY }
-    deformAnime25DUpstreamFeaturePoint(point, feature)
+    deformAnime25DEyeFeaturePoint(point, feature)
     return point.y
   }
   const middle = (eye.x0 + eye.x1) / 2
@@ -392,9 +392,9 @@ test('wide eyes lift the upper lid and tighten the iris', () => {
     ({ role, fade: 'eyeOpen', side: 'L', x: 70, y: 80, w: 45, h: 40 }) as Pick<
       Anime25DPlaybackLayer, 'fade' | 'h' | 'role' | 'side' | 'w' | 'x' | 'y'>
   const move = (role: string, x: number, y: number, eyeWide: number) => {
-    const feature = bindAnime25DUpstreamFeature(layer(role), eye, 1, { ...IDENTITY_DRIVER, eyeWide })!
+    const feature = bindAnime25DEyeFeature(layer(role), eye, 1, { ...IDENTITY_DRIVER, eyeWide })!
     const point = { x, y }
-    deformAnime25DUpstreamFeaturePoint(point, feature)
+    deformAnime25DEyeFeaturePoint(point, feature)
     return point
   }
   const middle = (eye.x0 + eye.x1) / 2

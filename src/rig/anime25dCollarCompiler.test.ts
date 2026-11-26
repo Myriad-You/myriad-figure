@@ -1,4 +1,4 @@
-import type { Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
+import type { Anime25DSourceAnchors } from '@myriad/figure-player/internals'
 import type { RasterLayer } from './anime25dImportTypes'
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -12,7 +12,7 @@ const anchors = {
   bodyPivot: { x: 40, y: 80 },
   mouth: { x0: 34, y0: 12, x1: 46, y1: 17, cx: 40, cy: 14 },
   faceScale: 1,
-} as Anime25DRiggerAnchors
+} as Anime25DSourceAnchors
 
 test('keeps ordinary low clothing untouched', () => {
   const neck = raster('neck', 20, 20, 40, 50, () => [245, 205, 190, 255])

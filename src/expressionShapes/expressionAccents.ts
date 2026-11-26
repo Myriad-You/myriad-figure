@@ -1,4 +1,4 @@
-import type { RgbColor } from '@myriad/figure-player/internals'
+import type { Anime25DRgb } from '@myriad/figure-player/internals'
 
 /**
  * Small drawn accents that sit beside her face and say a mood at a glance:
@@ -27,12 +27,12 @@ interface Glyph {
   marks: readonly Mark[]
   /** Width over height of the drawn box. */
   aspect: number
-  body: Readonly<RgbColor>
-  outline: Readonly<RgbColor>
+  body: Readonly<Anime25DRgb>
+  outline: Readonly<Anime25DRgb>
 }
 
-const WHITE: Readonly<RgbColor> = { red: 255, green: 252, blue: 250 }
-const SHADOW: Readonly<RgbColor> = { red: 66, green: 44, blue: 70 }
+const WHITE: Readonly<Anime25DRgb> = { red: 255, green: 252, blue: 250 }
+const SHADOW: Readonly<Anime25DRgb> = { red: 66, green: 44, blue: 70 }
 
 function arc(
   center: Point,
@@ -186,8 +186,8 @@ function drawBlush(requested: { width: number; height: number }): AccentBitmap {
   const width = clampInt(requested.width, 32, 440)
   const height = clampInt(requested.height, 12, 120)
   const data = new Uint8ClampedArray(width * height * 4)
-  const patch: Readonly<RgbColor> = { red: 247, green: 132, blue: 156 }
-  const stroke: Readonly<RgbColor> = { red: 226, green: 88, blue: 122 }
+  const patch: Readonly<Anime25DRgb> = { red: 247, green: 132, blue: 156 }
+  const stroke: Readonly<Anime25DRgb> = { red: 226, green: 88, blue: 122 }
   const cheeks: readonly number[] = [0.16, 0.84]
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
@@ -287,7 +287,7 @@ function insidePolygon(x: number, y: number, points: readonly Point[]): boolean 
 function paint(
   data: Uint8ClampedArray,
   offset: number,
-  color: Readonly<RgbColor>,
+  color: Readonly<Anime25DRgb>,
   alpha: number,
 ): void {
   const sourceAlpha = clamp(alpha, 0, 1)

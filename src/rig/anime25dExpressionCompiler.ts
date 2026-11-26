@@ -1,4 +1,4 @@
-import type { Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
+import type { Anime25DSourceAnchors } from '@myriad/figure-player/internals'
 import type { RasterLayer } from './anime25dImportTypes'
 import { resolveAnime25DFaceFrame } from '@myriad/figure-player/internals'
 import { synthesizeMissingExpressionSymbols, synthesizeMissingLovestruckEffects } from './expressionEffectLayers'
@@ -7,7 +7,7 @@ import { synthesizeMissingMouthExpressions } from './expressionMouthLayers'
 
 export function compileAnime25DExpressionLayers(
   layers: RasterLayer[],
-  anchors: Anime25DRiggerAnchors,
+  anchors: Anime25DSourceAnchors,
 ): RasterLayer[] {
   const frame = resolveAnime25DFaceFrame(anchors)
   let output = synthesizeMissingDizzyEyes(layers, anchors, frame)

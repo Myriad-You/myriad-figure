@@ -12,7 +12,7 @@ import { prepareRigPsdImport } from '../../../src/rig/psdImporter'
 // Nothing here is synthetic: the test serves the files.
 
 const PREVIEW = { mouth: 'preview', expression: 'preview', gaze: 'preview', headBody: 'preview' } as const
-const QUIET: Partial<Anime25DDriver> = { idle: false, blink: false, phys: true, talk: false }
+const QUIET: Partial<Anime25DDriver> = { torsoBreath: false, hairWind: false, autoBlink: false, physics: true, talking: false }
 const FPS = 60
 
 export interface BustRequest {

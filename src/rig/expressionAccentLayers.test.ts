@@ -1,4 +1,4 @@
-import type { Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
+import type { Anime25DSourceAnchors } from '@myriad/figure-player/internals'
 import type { RasterLayer } from './anime25dImportTypes'
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -9,7 +9,7 @@ const anchors = {
   face: { x0: 300, x1: 600, y0: 200, y1: 560, cx: 450, cy: 380 },
   eyeL: { x0: 340, y0: 340, x1: 420, y1: 400, icx: 380, icy: 372, closeY: 385 },
   eyeR: { x0: 480, y0: 340, x1: 560, y1: 400, icx: 520, icy: 372, closeY: 385 },
-} as unknown as Anime25DRiggerAnchors
+} as unknown as Anime25DSourceAnchors
 
 function layer(id: string, left: number, top: number, width: number, height: number): RasterLayer {
   return {

@@ -1,14 +1,14 @@
 import type { Anime25DDriver, Anime25DIrisRebound, Anime25DMotionEnvelopeProfile, Anime25DPlayback, ClosedEyePresentation } from '@myriad/figure-player'
-import type { Anime25DBlinkState } from '@myriad/figure-player/internals'
+import type { Anime25DBlinkState, IdleSwayOffset } from '@myriad/figure-player/internals'
 import type { MotionChannelPolicy } from '../motion/policy'
 import type { MusicMotionSignal } from '../singing/musicSignal'
 import type { AmbientPose } from './ambientMotion'
 import type { IndependentBodyControl } from './directedPose'
-import type { Anime25DStylizedTargets } from './driverComposition'
+import type { Anime25DStylizedTargets, BreathPose } from './driverComposition'
 import type { RandomActionFrame } from './randomAction'
 import type { StylizedExpressionMotion } from './stylizedExpressionMotion'
 import { IDENTITY_DRIVER } from '@myriad/figure-player'
-import { applyAnime25DCryMouth, applyAnime25DSillyMouthOwnership, bodyKeyShare, GazeShiftBlink, headRidesBody, idleBreathOffset, isStandingFigure, PoseResponseController, prepareAnime25DWorkingTarget, projectAnime25DMotionEnvelope, smoothAnime25DUnit, STANDING_HEAD_ROLL, STANDING_IDLE_SHARE, standingWeightShift, stepAnime25DBlink, stepAnime25DDriverResponse } from '@myriad/figure-player/internals'
+import { applyAnime25DCryMouth, applyAnime25DSillyMouthOwnership, bodyKeyShare, GazeShiftBlink, headRidesBody, idleSwayOffset, isStandingFigure, PoseResponseController, prepareAnime25DWorkingTarget, projectAnime25DMotionEnvelope, smoothAnime25DUnit, STANDING_HEAD_ROLL, STANDING_IDLE_SHARE, standingWeightShift, stepAnime25DBlink, stepAnime25DDriverResponse } from '@myriad/figure-player/internals'
 import { allowsPointerGaze } from '../motion/policy'
 import { SingingGrooveController } from '../singing/singingGroove'
 import { AmbientMotionController } from './ambientMotion'
@@ -88,13 +88,13 @@ export class Anime25DMotionComposer {
   }
 
   /** The stylized face's own motion, which the head and mouth deformers read. */
-  stylizedMotion: Readonly<StylizedExpressionMotion> | null = null
+  stickerFaceMotion: Readonly<StylizedExpressionMotion> | null = null
   /** How much of the stylized head pulse the gate lets through. */
-  stylizedHeadShare = 1
+  stickerFaceHeadShare = 1
   /** How far a sticker face owns the mouth once she stops talking. */
-  sillyMouthShare = 1
+  stickerMouthShare = 1
   /** Speech's brow accent, which the jaw follows. */
-  jawEmphasis = 0
+  jawBoost = 0
 
   private readonly workingTarget: Anime25DDriver = { ...IDENTITY_DRIVER }
   private readonly expressionTarget: Anime25DDriver = { ...IDENTITY_DRIVER }
@@ -133,7 +133,9 @@ export class Anime25DMotionComposer {
   private readonly composedPose = zeroOccupancyOffset()
   /** Breath and voice, kept apart to ride on what the director holds. */
   private readonly ridingPose = zeroOccupancyOffset()
-  private readonly breathPose = { angleX: 0, angleY: 0, angleZ: 0, body: 0 }
+  private readonly sway: IdleSwayOffset = { headYaw: 0, headPitch: 0, headRoll: 0, bodyLean: 0 }
+  /** The idle sway as a pose source, in its keys. */
+  private readonly breathPose: BreathPose = { angleX: 0, angleY: 0, angleZ: 0, body: 0 }
   private readonly idleAmbient: AmbientPose = { angleX: 0, angleY: 0, angleZ: 0, body: 0, eyeX: 0, eyeY: 0 }
   private readonly idleRandom = {} as RandomActionFrame
   private standing = false
@@ -202,7 +204,7 @@ export class Anime25DMotionComposer {
     this.directedPose.setTouchShare(this.performanceExpression.getTouchShare())
     const target = input.target
     const pointer =
-      target.mouse && allowsPointerGaze(input.policy.gaze)
+      target.followPointer && allowsPointerGaze(input.policy.gaze)
         ? input.mouse
         : { x: 0, y: 0, inside: false }
     const pointerWanted = pointer.inside ? 1 : 0
@@ -227,7 +229,7 @@ export class Anime25DMotionComposer {
     )
     this.controlTime = controlTime
     const behaviorMotion = this.behaviorMotion.sample(controlTime)
-    const speaking = input.speechActive || target.talk
+    const speaking = input.speechActive || target.talking
     const singing = target.singing
     const vocalizing = speaking || (singing && (behaviorMotion.musicMode === 'sing' || behaviorMotion.musicMode === 'hum'))
     // Her standing acting gives way to speaking by itself, as she is taken up.
@@ -238,7 +240,7 @@ export class Anime25DMotionComposer {
     const semanticExpression = this.performanceExpression.sample(
       controlTime,
       expressionTarget,
-      input.speechActive || target.talk,
+      input.speechActive || target.talking,
     )
     this.directedPose.setTransientMotion(semanticExpression, this.performanceExpression.getActiveLevel())
     const stylizedTargets = resolveAnime25DStylizedTargets(
@@ -254,16 +256,16 @@ export class Anime25DMotionComposer {
       stylizedTargets.silly,
       stylizedTargets.lovestruck,
     )
-    this.stylizedMotion = stylized
+    this.stickerFaceMotion = stylized
     const performanceMotionScale =
       this.performanceExpression.getAmbientMotionScale()
-    const pointerDriven = target.mouse && pointer.inside
-    const speech = this.speechMotion.sample(controlTime, target.talk)
-    this.jawEmphasis = speech.browAccent
+    const pointerDriven = target.followPointer && pointer.inside
+    const speech = this.speechMotion.sample(controlTime, target.talking)
+    this.jawBoost = speech.browAccent
     const speechExpression = this.speechExpression.sample(
       controlTime,
       speaking,
-      input.speechActive && !target.talk ? tgt.jaw : null,
+      input.speechActive && !target.talking ? tgt.jaw : null,
       speech.phraseActivity,
       speech.browAccent,
       speech.headAccent,
@@ -278,8 +280,8 @@ export class Anime25DMotionComposer {
       behaviorMotion.musicMode,
     )
     // A sticker face only takes the mouth once the character has stopped talking
-    this.sillyMouthShare +=
-      ((vocalizing ? 0 : 1) - this.sillyMouthShare) * (1 - Math.exp(-7 * dt))
+    this.stickerMouthShare +=
+      ((vocalizing ? 0 : 1) - this.stickerMouthShare) * (1 - Math.exp(-7 * dt))
     const sticker = Math.max(
       stylizedTargets.anger,
       stylizedTargets.speechless,
@@ -292,17 +294,22 @@ export class Anime25DMotionComposer {
       singing,
       thinking: target.thinking,
       pointerDriven,
-      automation: target.rand,
+      automation: target.idleSway,
       sticker,
     })
     const randomAction = this.randomAction.sample(
       t,
-      target.rand,
+      target.idleSway,
       this.performanceExpression.getActiveLevel() >= DIRECTED_BODY_BLOCK_LEVEL,
     )
-    const ambient = this.ambientMotion.sample(t, target.rand, speaking)
+    const ambient = this.ambientMotion.sample(t, target.idleSway, speaking)
     const thinking = this.thinkingMotion.sample(t, target.thinking && !speaking, tgt)
-    const breath = idleBreathOffset(t, this.breathPose)
+    const sway = idleSwayOffset(t, this.sway)
+    const breath = this.breathPose
+    breath.angleX = sway.headYaw
+    breath.angleY = sway.headPitch
+    breath.angleZ = sway.headRoll
+    breath.body = sway.bodyLean
     if (this.standing) {
       const weight = standingWeightShift(t) * STANDING_IDLE_SHARE
       breath.body = breath.body * STANDING_IDLE_SHARE + weight
@@ -321,7 +328,7 @@ export class Anime25DMotionComposer {
         behaviorMotion,
       ),
     )
-    this.stylizedHeadShare = gate.stylized.headBody
+    this.stickerFaceHeadShare = gate.stylized.headBody
     applyAnime25DComposedPose(
       tgt,
       gate,
@@ -342,7 +349,7 @@ export class Anime25DMotionComposer {
       tgt,
       semanticExpression,
       stylized,
-      this.sillyMouthShare,
+      this.stickerMouthShare,
       gate.performance.expression,
       gate.stylized.expression,
     )
@@ -358,7 +365,7 @@ export class Anime25DMotionComposer {
     applyAnime25DSpeechExtras(tgt, speech, gatedSpeechExpression)
     applyAnime25DSillyMouthOwnership(
       tgt,
-      smoothAnime25DUnit(stylizedTargets.silly) * this.sillyMouthShare,
+      smoothAnime25DUnit(stylizedTargets.silly) * this.stickerMouthShare,
     )
     this.directedPose.setTouchShare(this.performanceExpression.getTouchShare())
     this.directedPose.write(tgt, vocalizing, this.ridingPose)
@@ -416,7 +423,7 @@ export class Anime25DMotionComposer {
         this.blinkState.activeSeconds >= 0,
         Math.random,
       ) &&
-      target.blink &&
+      target.autoBlink &&
       !blinkSuppressed &&
       this.blinkState.activeSeconds < 0
     ) {
@@ -425,7 +432,7 @@ export class Anime25DMotionComposer {
       // A speaker blinks in the pause between sentences more than within one.
       this.speechMotion.takePause() &&
       Math.random() < PAUSE_BLINK_CHANCE &&
-      target.blink &&
+      target.autoBlink &&
       !blinkSuppressed &&
       this.blinkState.activeSeconds < 0
     ) {
@@ -436,7 +443,7 @@ export class Anime25DMotionComposer {
       this.blinkState,
       t,
       dt,
-      target.blink,
+      target.autoBlink,
       blinkSuppressed,
     )
     this.irisRebound.step(

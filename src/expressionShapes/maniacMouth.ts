@@ -1,10 +1,10 @@
-import type { MouthExpressionKind, MouthExpressionPalette, Point, Rgb } from '@myriad/figure-player/internals'
+import type { Anime25DRgb, MouthExpressionKind, MouthExpressionPalette, MouthPathPoint } from '@myriad/figure-player/internals'
 import type { MouthExpressionSize } from './mouthShared'
-import { mixColor } from '@myriad/figure-player/internals'
+import { mixRgb } from '@myriad/figure-player/internals'
 import { paint, pointInPolygon, pointToPolylineDistance } from './mouthPaths'
 import { clamp, clampInt } from './mouthShared'
 
-const MANIAC_TONGUE_HIGHLIGHT_RAIL: readonly Point[] = [
+const MANIAC_TONGUE_HIGHLIGHT_RAIL: readonly MouthPathPoint[] = [
   [-0.49, 0.68],
   [-0.43, 0.79],
   [-0.32, 0.87],
@@ -18,7 +18,7 @@ export function createManiacMouthShadowBitmap(
   const width = clampInt(Math.round(requestedSize.width), 16, 360)
   const height = clampInt(Math.round(requestedSize.height), 12, 300)
   const data = new Uint8ClampedArray(width * height * 4)
-  const right: Point[] = [
+  const right: MouthPathPoint[] = [
     [0.728, -0.832],
     [0.976, -0.816],
     [1.078, -0.657],
@@ -27,10 +27,10 @@ export function createManiacMouthShadowBitmap(
     [0.965, -0.669],
     [0.758, -0.713],
   ]
-  const shadows = [right.map(([x, y]): Point => [-x, y]), right]
-  const color = mixColor(palette.cavity, palette.fill, 0.2)
-  const lowerLipShadowColor = mixColor(palette.line, palette.fill, 0.38)
-  const samples: readonly Point[] = [
+  const shadows = [right.map(([x, y]): MouthPathPoint => [-x, y]), right]
+  const color = mixRgb(palette.cavity, palette.fill, 0.2)
+  const lowerLipShadowColor = mixRgb(palette.line, palette.fill, 0.38)
+  const samples: readonly MouthPathPoint[] = [
     [0.2, 0.2],
     [0.8, 0.2],
     [0.2, 0.8],
@@ -88,7 +88,7 @@ export function maniacOutlineTone(
   x: number,
   y: number,
   palette: Readonly<MouthExpressionPalette>,
-): Rgb {
+): Anime25DRgb {
   const lowerSoftness = smootherstep((y - 0.18) / 0.72) * 0.13
   const highlightDistance = pointToPolylineDistance(
     x,
@@ -97,7 +97,7 @@ export function maniacOutlineTone(
   )
   const leftRimLight =
     (1 - smootherstep((highlightDistance - 0.015) / 0.07)) * 0.075
-  return mixColor(
+  return mixRgb(
     palette.line,
     palette.fill,
     clamp(lowerSoftness + leftRimLight, 0, 0.19),
@@ -108,14 +108,14 @@ export function maniacCavityTone(
   x: number,
   y: number,
   palette: Readonly<MouthExpressionPalette>,
-): Rgb {
+): Anime25DRgb {
   const lowerWarmth = smootherstep((y + 0.63) / 0.52) * 0.075
   const centerDepth =
     (1 - smootherstep(Math.abs(x) / 0.82)) *
     (1 - smootherstep((y + 0.7) / 0.62)) *
     0.055
   return shadeColor(
-    mixColor(palette.cavity, palette.fill, lowerWarmth),
+    mixRgb(palette.cavity, palette.fill, lowerWarmth),
     centerDepth,
   )
 }
@@ -124,7 +124,7 @@ export function maniacTongueTone(
   x: number,
   y: number,
   palette: Readonly<MouthExpressionPalette>,
-): Rgb {
+): Anime25DRgb {
   const depth = smootherstep((y + 0.1) / 0.95)
   const centerLight =
     (1 - smootherstep(Math.abs(x) / 0.74)) * (0.035 + depth * 0.055)
@@ -138,15 +138,15 @@ export function maniacTongueTone(
     (1 - smootherstep((highlightDistance - 0.012) / 0.065)) *
     smootherstep((y - 0.55) / 0.16) *
     0.17
-  const lit = mixColor(
+  const lit = mixRgb(
     palette.fill,
     { red: 255, green: 236, blue: 241 },
     clamp(centerLight + rimHighlight, 0, 0.24),
   )
-  return mixColor(lit, palette.cavity, edgeShade)
+  return mixRgb(lit, palette.cavity, edgeShade)
 }
 
-function shadeColor(color: Readonly<Rgb>, amount: number): Rgb {
+function shadeColor(color: Readonly<Anime25DRgb>, amount: number): Anime25DRgb {
   const retained = 1 - clamp(amount, 0, 1)
   return {
     red: Math.round(color.red * retained),

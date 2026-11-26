@@ -67,7 +67,7 @@ test('selecting a correction freezes distracting motion and preserves unrelated 
   assert.equal(selected.lidL, 0)
   assert.equal(selected.lidR, 0)
   assert.equal(selected.lipCurve, 0.7)
-  for (const key of ['idle', 'rand', 'blink', 'talk', 'mouse', 'phys'] as const) assert.equal(selected[key], false)
+  for (const key of ['torsoBreath', 'hairWind', 'idleSway', 'autoBlink', 'talking', 'followPointer', 'physics'] as const) assert.equal(selected[key], false)
 })
 
 test('a pose needs a head turn, and a second condition the patch actually sits on', () => {

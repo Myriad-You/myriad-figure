@@ -17,7 +17,7 @@ export type { Anime25DPsdDefectKind, Anime25DPsdReconciliation } from '../rig/ps
 export { ANIME25D_PSD_DEFECT_COLORS, ANIME25D_PSD_REPAIRED_COLOR } from '../rig/psdReconciliation'
 export type { Anime25DDriver } from '@myriad/figure-player'
 export type { Anime25DPart, Anime25DPartProfile } from '@myriad/figure-player/internals'
-export { ANIME25D_PROJECT_NAME, ANIME25D_PROJECT_URL, PERSONA_UPSTREAM_THANKS } from '@myriad/figure-player/workbench'
+export { ANIME25D_PROJECT_NAME, ANIME25D_PROJECT_URL, CREDITED_AUTHORS } from '@myriad/figure-player/workbench'
 export { WORKBENCH_DRIVER } from '@myriad/figure-player/workbench'
 export type { Anime25DMotionEnvelopeProbeId } from '@myriad/figure-player/workbench'
 export { ANIME25D_MOTION_ENVELOPE_PROBES } from '@myriad/figure-player/workbench'

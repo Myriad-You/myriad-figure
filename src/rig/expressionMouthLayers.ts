@@ -1,4 +1,4 @@
-import type { Anime25DFaceFrame, Anime25DRiggerAnchors, MouthExpressionKind } from '@myriad/figure-player/internals'
+import type { Anime25DFaceFrame, Anime25DSourceAnchors, MouthExpressionKind } from '@myriad/figure-player/internals'
 import type { RasterLayer } from './anime25dImportTypes'
 import { detectPaintedLips, sampleMouthExpressionPalette } from '@myriad/figure-player/internals'
 import { placeFaceBitmap } from '../expressionShapes/faceFrame'
@@ -9,7 +9,7 @@ import { uniquePartId } from './anime25dRaster'
 
 export function synthesizeMissingMouthExpressions(
   layers: RasterLayer[],
-  anchors: Anime25DRiggerAnchors,
+  anchors: Anime25DSourceAnchors,
   frame: Readonly<Anime25DFaceFrame>,
 ): RasterLayer[] {
   const reference =

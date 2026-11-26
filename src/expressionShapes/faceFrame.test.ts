@@ -1,4 +1,4 @@
-import type { Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
+import type { Anime25DSourceAnchors } from '@myriad/figure-player/internals'
 import type { RasterLayer } from '../rig/anime25dImportTypes'
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -21,7 +21,7 @@ function eye(icx: number, icy: number) {
   }
 }
 
-function anchors(rollDegrees: number): Anime25DRiggerAnchors {
+function anchors(rollDegrees: number): Anime25DSourceAnchors {
   const roll = (rollDegrees * Math.PI) / 180
   const half = 40
   const dx = Math.cos(roll) * half

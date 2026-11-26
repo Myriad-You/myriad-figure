@@ -4,7 +4,7 @@ import type { BodyControl, BodyPose } from '../performance/types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Anime25DIrisRebound, ClosedEyePresentation, IDENTITY_DRIVER } from '@myriad/figure-player'
-import { Anime25DBodyFrames, applyBodyLift, deformAnime25DUpstreamFeaturePoint, deriveAnime25DMotionEnvelopeProfile, FIGURE_PITCH_BACK, FIGURE_PITCH_FORWARD, PoseResponseController } from '@myriad/figure-player/internals'
+import { Anime25DBodyFrames, applyBodyLift, deformAnime25DEyeFeaturePoint, deriveAnime25DMotionEnvelopeProfile, FIGURE_PITCH_BACK, FIGURE_PITCH_FORWARD, PoseResponseController } from '@myriad/figure-player/internals'
 import { BODY_CONTROLS, faceLife, sanitizeBodyPose } from '../events/performanceContract'
 import { TouchGestureTracker } from '../interaction/touchGesture'
 import { RigMotionCoordinator } from '../motion/coordinator'
@@ -68,7 +68,7 @@ test('semantic look-up actually moves the iris up in the renderer image coordina
   const target = advance(value, 1)
   const eye = { x0: 50, x1: 100, y0: 70, y1: 100, icx: 75, icy: 85, closeY: 95 }
   const point = { x: eye.icx, y: eye.icy }
-  deformAnime25DUpstreamFeaturePoint(point, { kind: 'eye-open-iris', side: 'L', eye,
+  deformAnime25DEyeFeaturePoint(point, { kind: 'eye-open-iris', side: 'L', eye,
     centerX: 75, centerY: 85, faceScale: 1, expression: target })
   assert.ok(point.y < eye.icy && point.x < eye.icx)
 })
@@ -184,7 +184,7 @@ test('the production composer distinguishes listening from actual singing, hummi
           strokeEndMs: 0, relaxMs: null, endMs: null },
         intensity: 1, quality: completeBehaviorQuality({}),
       }], 0, 0)
-      const target = { ...IDENTITY_DRIVER, talk: false, blink: false, rand: false, idle: false,
+      const target = { ...IDENTITY_DRIVER, talking: false, autoBlink: false, idleSway: false, torsoBreath: false, hairWind: false,
         singing: true, jaw: 0.25, mouthRound: 0.2 }
       const envelope = deriveAnime25DMotionEnvelopeProfile({ layers: [] })
       for (let i = 1; i <= 120; i++) { composer.step(1 / 120, {
@@ -220,7 +220,7 @@ test('the production composer performs a real short cue over held axes and recov
   const composer = new Anime25DMotionComposer(current, new ClosedEyePresentation(), new Anime25DIrisRebound())
   composer.directedPose.setCapabilities(capabilities)
   composer.directedPose.set(pose({ headTurn: -0.65, headNod: 0, torsoTurn: 0.7, eyeSmile: 0, leftArmRaise: 0.7 }), 0)
-  const target = { ...IDENTITY_DRIVER, talk: false, blink: false, rand: false, idle: false }
+  const target = { ...IDENTITY_DRIVER, talking: false, autoBlink: false, idleSway: false, torsoBreath: false, hairWind: false }
   const envelope = deriveAnime25DMotionEnvelopeProfile({ layers: [{ role: 'handwear' }] })
   const policy = { ...IDLE_MOTION_POLICY, expression: 'performance' as const, headBody: 'performance' as const }
   let time = 0
@@ -272,7 +272,7 @@ test('the production composer mixes each independent body goal once and filters 
     const authorityTarget = { ...IDENTITY_DRIVER }
     const response = new PoseResponseController()
     const authorityResponse = new PoseResponseController()
-    const target = { ...IDENTITY_DRIVER, talk: false, blink: false, rand: false, idle: false }
+    const target = { ...IDENTITY_DRIVER, talking: false, autoBlink: false, idleSway: false, torsoBreath: false, hairWind: false }
     const envelope = deriveAnime25DMotionEnvelopeProfile({ layers: [{ role: 'handwear' }] })
     let time = 0
     for (const value of [0.4, -0.3, null]) {
@@ -308,7 +308,7 @@ test('production composer preserves broad independent targets while bounding hig
     torsoPitch: 0.65, gazeHorizontal: 0, leftArmRaise: 0.9, rightArmRaise: 0, eyeOpenLeft: 0.1, eyeOpenRight: 1 }), 0)
   const envelope = deriveAnime25DMotionEnvelopeProfile({ layers: [{ role: 'collar-front' }, { role: 'handwear' }] })
   for (let i = 1; i <= 120; i++) { composer.step(1 / 120, {
-    time: i / 120, target: { ...IDENTITY_DRIVER, talk: false, blink: false, mouse: true },
+    time: i / 120, target: { ...IDENTITY_DRIVER, talking: false, autoBlink: false, followPointer: true },
     policy: IDLE_MOTION_POLICY, mouse: { x: 1, y: 1, inside: true }, speechActive: false,
     musicSignal: null, motionEnvelopeProfile: envelope,
   })
@@ -320,7 +320,7 @@ test('production composer preserves broad independent targets while bounding hig
   assert.ok(current.armRaiseL > 0.85 && Math.abs(current.armRaiseR) < 0.001)
   composer.directedPose.set(null, 1)
   for (let i = 121; i <= 360; i++) { composer.step(1 / 120, {
-    time: i / 120, target: { ...IDENTITY_DRIVER, talk: false, blink: false, rand: false },
+    time: i / 120, target: { ...IDENTITY_DRIVER, talking: false, autoBlink: false, idleSway: false },
     policy: IDLE_MOTION_POLICY, mouse: { x: 0, y: 0, inside: false }, speechActive: false,
     musicSignal: null, motionEnvelopeProfile: envelope,
   })
@@ -353,7 +353,7 @@ test('directed torso targets reach the production body shell and final-space vol
   body.bind(body.measure(playback, envelope))
   for (let i = 1; i <= 240; i++) {
     const time = i / 120
-    composer.step(1 / 120, { time, target: { ...IDENTITY_DRIVER, talk: false, blink: false, rand: false },
+    composer.step(1 / 120, { time, target: { ...IDENTITY_DRIVER, talking: false, autoBlink: false, idleSway: false },
       policy: IDLE_MOTION_POLICY, mouse: { x: 0, y: 0, inside: false }, speechActive: false,
       musicSignal: null, motionEnvelopeProfile: envelope })
     body.stepPosture(1 / 120, time)
@@ -380,7 +380,7 @@ test('directed torso targets reach the production body shell and final-space vol
   const drawn = () => [frame.bodyLift!.amount, frame.bodyLift!.pitch!, body.secondaryDeformationFrame.torsoShellRotation!.yawSine]
   const step = (dt: number) => {
     time += dt
-    composer.step(dt, { time, target: { ...IDENTITY_DRIVER, talk: false, blink: false, rand: false },
+    composer.step(dt, { time, target: { ...IDENTITY_DRIVER, talking: false, autoBlink: false, idleSway: false },
       policy: policyFromOwners(coordinator.snapshot(time * 1000).owners), mouse: { x: 0, y: 0, inside: false },
       speechActive: false, musicSignal: null, motionEnvelopeProfile: envelope })
     body.stepPosture(dt, time)
@@ -451,7 +451,7 @@ test('a standing figure leans on its bones, not in the shader; its head stays on
     body.bind(body.measure(playback, envelope))
     for (let i = 1; i <= 360; i++) {
       const time = i / 120
-      composer.step(1 / 120, { time, target: { ...IDENTITY_DRIVER, idle: false, talk: false, blink: false, rand: false },
+      composer.step(1 / 120, { time, target: { ...IDENTITY_DRIVER, torsoBreath: false, hairWind: false, talking: false, autoBlink: false, idleSway: false },
         policy: IDLE_MOTION_POLICY, mouse: { x: 0, y: 0, inside: false }, speechActive: false,
         musicSignal: null, motionEnvelopeProfile: envelope })
       body.stepPosture(1 / 120, time)
@@ -489,7 +489,7 @@ test('with its physics running, a figure takes a directed lean in turn, its skir
   // A frame as the player runs it: composed, its springs stepped on the pose, then posed again to be drawn.
   const tick = () => {
     time += 1 / 60
-    composer.step(1 / 60, { time, target: { ...IDENTITY_DRIVER, idle: false, talk: false, blink: false, rand: false },
+    composer.step(1 / 60, { time, target: { ...IDENTITY_DRIVER, torsoBreath: false, hairWind: false, talking: false, autoBlink: false, idleSway: false },
       policy: IDLE_MOTION_POLICY, mouse: { x: 0, y: 0, inside: false }, speechActive: false,
       musicSignal: null, motionEnvelopeProfile: envelope })
     body.stepPosture(1 / 60, time)

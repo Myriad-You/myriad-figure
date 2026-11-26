@@ -1,5 +1,5 @@
 // The dizzy eyes the importer draws for a face.
-import type { RgbColor } from '@myriad/figure-player/internals'
+import type { Anime25DRgb } from '@myriad/figure-player/internals'
 import { DIZZY_EYE_FIT } from '@myriad/figure-player/internals'
 
 export type DizzyEyeSide = 'left' | 'right'
@@ -25,7 +25,7 @@ export function dizzyEyeGeneratedSize(eye: {
 /** Pure RGBA generator so import tests do not depend on Canvas implementation. */
 export function createDizzyEyeBitmap(
   size: number,
-  tint: Readonly<RgbColor>,
+  tint: Readonly<Anime25DRgb>,
   side: DizzyEyeSide,
 ): { width: number; height: number; data: Uint8ClampedArray } {
   const edge = clampInt(

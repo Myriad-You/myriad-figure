@@ -21,7 +21,7 @@ function headRoll(speaking: boolean, seed: number): number[] {
   }
   try {
     const current = { ...IDENTITY_DRIVER }
-    const target = { ...IDENTITY_DRIVER, talk: speaking, blink: true, rand: true }
+    const target = { ...IDENTITY_DRIVER, talking: speaking, autoBlink: true, idleSway: true }
     const composer = new Anime25DMotionComposer(current, new ClosedEyePresentation(), new Anime25DIrisRebound())
     const envelope = deriveAnime25DMotionEnvelopeProfile({ layers: [{ role: 'handwear' }] })
     if (speaking) composer.speechMotion.enqueueText('诶？你说那家店啊，我上次路过的时候还在排队呢。不过说真的，我觉得他们家的拉面没有传说中那么好吃。', 'zh-CN')

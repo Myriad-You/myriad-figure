@@ -1,4 +1,4 @@
-import type { RgbColor } from '@myriad/figure-player/internals'
+import type { Anime25DRgb } from '@myriad/figure-player/internals'
 
 export interface ManiacEyeShadowSize {
   width: number
@@ -26,7 +26,7 @@ export function maniacEyeShadowGeneratedSize(eye: {
 
 export function createManiacEyeShadowBitmap(
   requestedSize: Readonly<ManiacEyeShadowSize>,
-  eyelashTint: Readonly<RgbColor>,
+  eyelashTint: Readonly<Anime25DRgb>,
   side: 'left' | 'right',
 ): { width: number; height: number; data: Uint8ClampedArray } {
   const width = clampInt(Math.round(requestedSize.width), 18, 160)
@@ -77,7 +77,7 @@ export function createManiacEyeShadowBitmap(
   return { width, height, data }
 }
 
-function shadowColor(tint: Readonly<RgbColor>): RgbColor {
+function shadowColor(tint: Readonly<Anime25DRgb>): Anime25DRgb {
   return {
     red: clampInt(tint.red * 0.35 + 80, 68, 136),
     green: clampInt(tint.green * 0.25 + 36, 34, 76),

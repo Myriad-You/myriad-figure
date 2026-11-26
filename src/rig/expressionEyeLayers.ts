@@ -1,4 +1,4 @@
-import type { Anime25DFaceFrame, Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
+import type { Anime25DFaceFrame, Anime25DSourceAnchors } from '@myriad/figure-player/internals'
 import type { RasterLayer } from './anime25dImportTypes'
 import { sampleDizzyEyeTint } from '@myriad/figure-player/internals'
 import { createCryEyeBitmap, cryEyeGeneratedSize } from '../expressionShapes/cryEye'
@@ -11,7 +11,7 @@ import { uniquePartId } from './anime25dRaster'
 
 export function synthesizeMissingDizzyEyes(
   layers: RasterLayer[],
-  anchors: Anime25DRiggerAnchors,
+  anchors: Anime25DSourceAnchors,
   frame: Readonly<Anime25DFaceFrame>,
 ): RasterLayer[] {
   const generated: RasterLayer[] = []
@@ -65,7 +65,7 @@ export function synthesizeMissingDizzyEyes(
 
 export function synthesizeMissingSqueezeEyes(
   layers: RasterLayer[],
-  anchors: Anime25DRiggerAnchors,
+  anchors: Anime25DSourceAnchors,
   frame: Readonly<Anime25DFaceFrame>,
 ): RasterLayer[] {
   const generated: RasterLayer[] = []
@@ -128,7 +128,7 @@ export function synthesizeMissingSqueezeEyes(
 
 export function synthesizeMissingCryEyes(
   layers: RasterLayer[],
-  anchors: Anime25DRiggerAnchors,
+  anchors: Anime25DSourceAnchors,
   frame: Readonly<Anime25DFaceFrame>,
 ): RasterLayer[] {
   const generated: RasterLayer[] = []
@@ -190,7 +190,7 @@ export function synthesizeMissingCryEyes(
 
 export function synthesizeMissingSillyEyes(
   layers: RasterLayer[],
-  anchors: Anime25DRiggerAnchors,
+  anchors: Anime25DSourceAnchors,
   frame: Readonly<Anime25DFaceFrame>,
 ): RasterLayer[] {
   const generated: RasterLayer[] = []
@@ -295,7 +295,7 @@ export function synthesizeMissingSillyEyes(
 
 export function synthesizeMissingManiacEyeShadows(
   layers: RasterLayer[],
-  anchors: Anime25DRiggerAnchors,
+  anchors: Anime25DSourceAnchors,
   frame: Readonly<Anime25DFaceFrame>,
 ): RasterLayer[] {
   const generated: RasterLayer[] = []

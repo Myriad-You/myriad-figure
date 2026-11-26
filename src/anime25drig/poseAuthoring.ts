@@ -24,7 +24,7 @@ export function poseCorrectionPreviewDriver(correction: PoseCorrection, current:
     ...(mouthOpen !== undefined ? { jaw: mouthOpen } : {}),
     ...(eyeCloseL !== undefined ? { lidL: 1 - eyeCloseL } : {}),
     ...(eyeCloseR !== undefined ? { lidR: 1 - eyeCloseR } : {}),
-    headRoll: 0, idle: false, blink: false, rand: false, talk: false, mouse: false, phys: false,
+    headRoll: 0, torsoBreath: false, hairWind: false, autoBlink: false, idleSway: false, talking: false, followPointer: false, physics: false,
   }
 }
 

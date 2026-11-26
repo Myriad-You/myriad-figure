@@ -8,7 +8,7 @@ type EnergyDriverPatch = Pick<
   | 'mouthRound'
   | 'mouthNarrow'
   | 'mouthSeal'
-  | 'talk'
+  | 'talking'
 >
 /** Keep preview speech disabled so the player never combines it with an unrelated random mouth. */
 export function speechEnergyDriverPatch(
@@ -20,7 +20,7 @@ export function speechEnergyDriverPatch(
     mouthRound: 0,
     mouthNarrow: 0,
     mouthSeal: 0,
-    talk: false,
+    talking: false,
   }
 }
 
@@ -44,7 +44,7 @@ export function speechArticulationDriverPatch(
     mouthRound: articulation.viseme === 'round' ? amount : 0,
     mouthNarrow: articulation.viseme === 'narrow' ? amount : 0,
     mouthSeal: articulation.viseme === 'closed' ? amount : 0,
-    talk: false,
+    talking: false,
   }
 }
 

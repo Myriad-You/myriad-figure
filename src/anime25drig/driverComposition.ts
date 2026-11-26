@@ -1,7 +1,6 @@
 // The performance's half of the per-frame driver composition: poses, special expressions and speech landed on the
 // driver. The stage's own response and blink steps come from @myriad/figure-player/internals.
 import type { Anime25DDriver } from '@myriad/figure-player'
-import type { IdleBreathOffset } from '@myriad/figure-player/internals'
 import type { SingingGroovePose } from '../singing/singingGroove'
 import type { AmbientPose } from './ambientMotion'
 import type { PerformanceExpressionOffset } from './performanceExpression'
@@ -19,6 +18,9 @@ import { POSE_KEY_DRIVER_FIELDS, POSE_KEYS } from './poseArbitration'
 import { accumulateOccupancyOffset, accumulatePoseChannel } from './poseCompositor'
 
 /** The stylized expressions' targets once each blocks the others. */
+/** The idle sway as a pose source: the head's turn, nod and tilt and the body's lean, in pose keys. */
+export type BreathPose = Pick<OccupancyOffset, 'angleX' | 'angleY' | 'angleZ' | 'body'>
+
 export interface Anime25DStylizedTargets {
   anger: number
   speechless: number
@@ -95,7 +97,7 @@ export function applyAnime25DComposedPose(
     randomAction: Readonly<RandomActionFrame>
     groove: Readonly<SingingGroovePose>
     thinking: Readonly<ThinkingMotionPose>
-    breath: Readonly<IdleBreathOffset>
+    breath: Readonly<BreathPose>
     performance: Readonly<PerformanceExpressionOffset>
     stylized: Readonly<StylizedExpressionMotion>
     coSpeech: Readonly<CoSpeechExpressionOffset>

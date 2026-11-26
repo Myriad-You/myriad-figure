@@ -1,20 +1,20 @@
 // Path geometry and painting for the drawn mouths.
-import type { Point, Rgb } from '@myriad/figure-player/internals'
+import type { Anime25DRgb, MouthPathPoint } from '@myriad/figure-player/internals'
 import { clamp } from './mouthShared'
 
 export function insetPath(
-  path: readonly Point[],
+  path: readonly MouthPathPoint[],
   scaleX: number,
   scaleY: number,
   offsetY: number,
-): Point[] {
+): MouthPathPoint[] {
   return path.map(([x, y]) => [x * scaleX, y * scaleY + offsetY])
 }
 
 export function pointInPolygon(
   x: number,
   y: number,
-  polygon: readonly Point[],
+  polygon: readonly MouthPathPoint[],
 ): boolean {
   let inside = false
   for (
@@ -38,7 +38,7 @@ export function pointInPolygon(
 export function pointToPolylineDistance(
   x: number,
   y: number,
-  points: readonly Point[],
+  points: readonly MouthPathPoint[],
 ): number {
   let distance = Number.POSITIVE_INFINITY
   for (let index = 1; index < points.length; index += 1) {
@@ -53,8 +53,8 @@ export function pointToPolylineDistance(
 function pointToSegmentDistance(
   x: number,
   y: number,
-  start: Point,
-  end: Point,
+  start: MouthPathPoint,
+  end: MouthPathPoint,
 ): number {
   const deltaX = end[0] - start[0]
   const deltaY = end[1] - start[1]
@@ -76,7 +76,7 @@ function pointToSegmentDistance(
 export function paint(
   data: Uint8ClampedArray,
   offset: number,
-  color: Readonly<Rgb>,
+  color: Readonly<Anime25DRgb>,
   alpha: number,
 ): void {
   const sourceAlpha = clamp(alpha, 0, 1)

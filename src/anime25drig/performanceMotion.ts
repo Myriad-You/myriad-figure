@@ -17,7 +17,7 @@ export { cueIsSticker } from './performanceCueDefinitions'
 
 type SpeechOwnedDriver = Pick<
   Anime25DDriver,
-  'eyeSmile' | 'lipCurve' | 'jaw' | 'talk'
+  'eyeSmile' | 'lipCurve' | 'jaw' | 'talking'
 >
 
 /** This patch owns only what the per-frame offset cannot reach */
@@ -30,10 +30,11 @@ export function baselineDriverPatch(
     rearHairSway: DEFAULT_REAR_HAIR_SWAY * swayEnergy,
     soft: 1.3 + energy * 0.6,
     fhAmp: DEFAULT_FRONT_HAIR_SWAY * swayEnergy,
-    idle: true,
-    blink: true,
-    rand: true,
-    phys: true,
+    torsoBreath: true,
+    hairWind: true,
+    autoBlink: true,
+    idleSway: true,
+    physics: true,
   }
 }
 
@@ -58,12 +59,13 @@ export function performanceRestDriverPatch(
     rearHairSway: DEFAULT_REAR_HAIR_SWAY,
     soft: 2,
     fhAmp: DEFAULT_FRONT_HAIR_SWAY,
-    idle: true,
-    blink: true,
-    phys: true,
+    torsoBreath: true,
+    hairWind: true,
+    autoBlink: true,
+    physics: true,
     ...(baseline ? baselineDriverPatch(baseline) : {}),
     thinking,
-    rand: !thinking,
+    idleSway: !thinking,
   }
 }
 
@@ -75,7 +77,7 @@ export function idleSpeechDriverPatch(
   if (speechActive) return {}
   const smile = Math.max(0, (mood - 50) / 80)
   return {
-    talk: false,
+    talking: false,
     jaw: 0,
     lipCurve: smile * 0.28,
     // A good mood shows in the eyes too; it stays while she talks.

@@ -26,7 +26,7 @@ test('thinking activity owns face and gaze without taking speech channels', () =
   assert.ok(thinking.browLift > 0.15)
   assert.equal(Object.hasOwn(thinking, 'jaw'), false)
   assert.equal(Object.hasOwn(thinking, 'lipCurve'), false)
-  assert.equal(Object.hasOwn(thinking, 'talk'), false)
+  assert.equal(Object.hasOwn(thinking, 'talking'), false)
 })
 
 test('leaving thinking resets every activity-owned expression channel', () => {
@@ -93,9 +93,9 @@ test('thinking preview enables the dedicated motion loop', () => {
 test('speech releases authored thinking face without erasing newer emotion or articulation', () => {
   for (const preset of [THINKING_ACTIVITY_EXPRESSION, THINKING_EXPRESSION_PRESET]) {
     const owner = new ThinkingExpressionOwnership()
-    const target = { ...IDENTITY_DRIVER, talk: false }
+    const target = { ...IDENTITY_DRIVER, talking: false }
     owner.apply(target, { ...preset, thinking: true }, false)
-    owner.apply(target, { anger: 0.8, jaw: 0.7, talk: true, browLift: -0.4 }, true)
+    owner.apply(target, { anger: 0.8, jaw: 0.7, talking: true, browLift: -0.4 }, true)
     assert.equal(target.thinking, false)
     assert.equal(target.gazeX, 0)
     assert.equal(target.gazeY, 0)
@@ -104,7 +104,7 @@ test('speech releases authored thinking face without erasing newer emotion or ar
     assert.equal(target.anger, 0.8)
     assert.equal(target.browLift, -0.4)
     assert.equal(target.jaw, 0.7)
-    assert.equal(target.talk, true)
+    assert.equal(target.talking, true)
     const released = { ...target }
     owner.release(target)
     assert.deepEqual(target, released)
@@ -114,9 +114,9 @@ test('speech releases authored thinking face without erasing newer emotion or ar
 test('a same-valued newer face survives thought release in the same write or a later speech event', () => {
   for (const together of [false, true]) {
     const owner = new ThinkingExpressionOwnership()
-    const target = { ...IDENTITY_DRIVER, talk: false }
+    const target = { ...IDENTITY_DRIVER, talking: false }
     owner.apply(target, THINKING_EXPRESSION_PRESET, false)
-    owner.apply(target, { browLift: 0.24, gazeX: 0.68, ...(together ? { talk: true } : {}) }, together)
+    owner.apply(target, { browLift: 0.24, gazeX: 0.68, ...(together ? { talking: true } : {}) }, together)
     if (!together) owner.release(target)
     assert.equal(target.browLift, 0.24)
     assert.equal(target.gazeX, 0.68)
@@ -127,7 +127,7 @@ test('a same-valued newer face survives thought release in the same write or a l
 
 test('repeated thinking updates restore the prior face and explicit exit does not overwrite the next pose', () => {
   const owner = new ThinkingExpressionOwnership()
-  const target = { ...IDENTITY_DRIVER, talk: false, anger: 0.6, browLift: -0.2 }
+  const target = { ...IDENTITY_DRIVER, talking: false, anger: 0.6, browLift: -0.2 }
   owner.apply(target, THINKING_EXPRESSION_PRESET, false)
   owner.apply(target, THINKING_EXPRESSION_PRESET, false)
   owner.apply(target, { thinking: false, gazeX: 0.3 }, false)
@@ -139,13 +139,13 @@ test('repeated thinking updates restore the prior face and explicit exit does no
 
 test('a boolean-only thought never owns an unrelated face, and replacement discards old ownership', () => {
   const owner = new ThinkingExpressionOwnership()
-  const target = { ...IDENTITY_DRIVER, talk: false, browLift: 0.24 }
+  const target = { ...IDENTITY_DRIVER, talking: false, browLift: 0.24 }
   owner.apply(target, { thinking: true }, false)
   owner.release(target)
   assert.equal(target.browLift, 0.24)
   owner.apply(target, THINKING_EXPRESSION_PRESET, false)
   owner.clear()
-  Object.assign(target, { ...IDENTITY_DRIVER, talk: false, browLift: 0.7 })
+  Object.assign(target, { ...IDENTITY_DRIVER, talking: false, browLift: 0.7 })
   owner.release(target)
   assert.equal(target.browLift, 0.7)
 })
@@ -153,7 +153,7 @@ test('a boolean-only thought never owns an unrelated face, and replacement disca
 test('activity thinking does not acquire independent mood mouth writes', () => {
   const owner = new ThinkingExpressionOwnership()
   const target = { ...IDENTITY_DRIVER }
-  owner.apply(target, { talk: false, lipCurve: 0.2 }, false)
+  owner.apply(target, { talking: false, lipCurve: 0.2 }, false)
   owner.apply(target, { ...THINKING_ACTIVITY_EXPRESSION, thinking: true }, false)
   assert.equal(target.thinking, true, 'initial idle speech release precedes the thought')
   owner.apply(target, { lipCurve: 0.4 }, false)
@@ -164,8 +164,8 @@ test('activity thinking does not acquire independent mood mouth writes', () => {
 test('explicit workbench replacement can retain authored flags without live speech arbitration', () => {
   const owner = new ThinkingExpressionOwnership()
   const target = { ...IDENTITY_DRIVER }
-  owner.apply(target, { ...THINKING_EXPRESSION_PRESET, talk: true }, false)
+  owner.apply(target, { ...THINKING_EXPRESSION_PRESET, talking: true }, false)
   assert.equal(target.thinking, true)
-  assert.equal(target.talk, true)
+  assert.equal(target.talking, true)
   assert.equal(target.gazeX, THINKING_EXPRESSION_PRESET.gazeX)
 })

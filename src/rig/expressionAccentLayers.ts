@@ -1,4 +1,4 @@
-import type { Anime25DFaceFrame, Anime25DLayerRole, Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
+import type { Anime25DFaceFrame, Anime25DLayerRole, Anime25DSourceAnchors } from '@myriad/figure-player/internals'
 import type { ExpressionAccent } from '../expressionShapes/expressionAccents'
 import type { RasterLayer } from './anime25dImportTypes'
 import { createExpressionAccentBitmap, expressionAccentSize } from '../expressionShapes/expressionAccents'
@@ -24,7 +24,7 @@ export const EXPRESSION_ACCENT_ROLES = [
  */
 export function synthesizeMissingExpressionAccents(
   layers: RasterLayer[],
-  anchors: Anime25DRiggerAnchors,
+  anchors: Anime25DSourceAnchors,
   frame: Readonly<Anime25DFaceFrame>,
   budget: number,
 ): RasterLayer[] {
@@ -81,7 +81,7 @@ export function synthesizeMissingExpressionAccents(
 
 function accentTarget(
   accent: ExpressionAccent,
-  anchors: Anime25DRiggerAnchors,
+  anchors: Anime25DSourceAnchors,
   frame: Readonly<Anime25DFaceFrame>,
   center: { x: number; y: number },
   faceWidth: number,
