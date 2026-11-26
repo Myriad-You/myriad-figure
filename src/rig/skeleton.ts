@@ -1,4 +1,4 @@
-import type { Anime25DJointName, Anime25DSkeleton } from '@myriad/figure-player/internals'
+import type { Anime25DJointName, Anime25DSkeleton } from '@myriad-you/figure-player/internals'
 import { psdPlacement } from './psdPlacement'
 
 /**

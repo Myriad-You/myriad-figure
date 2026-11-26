@@ -1,4 +1,4 @@
-import type { Anime25DGpuLayer, CollarClipMesh } from '@myriad/figure-player/internals'
+import type { Anime25DGpuLayer, CollarClipMesh } from '@myriad-you/figure-player/internals'
 import { writePsd } from 'ag-psd'
 import { realizeAnime25DBehaviorPlan } from '../../../src/anime25drig/behaviorRealizer'
 import { Anime25DPlayer } from '../../../src/anime25drig/player'
@@ -214,7 +214,7 @@ async function touchSurface(region = 'face') {
   player.resize(256, 300, 1)
   // This fixture isolates touch. Speech/music overlap has its own full replay;
   // the driver's default talk=true otherwise adds unrequested talking motion.
-  player.setTarget({ idle: false, blink: false, rand: false, talk: false })
+  player.setTarget({ torsoBreath: false, hairWind: false, autoBlink: false, idleSway: false, talking: false })
   player.tick(1 / 60)
   const runtime = new MotionRuntime(new RigMotionCoordinator())
   const events: string[] = []
@@ -286,7 +286,7 @@ async function touchPicking(kind: string) {
     await player.loadAtlas(url)
     player.resize(256, 300, 1)
     for (const direction of [-0.7, 0, 0.7]) {
-      player.setTarget({ headYaw: direction, headPitch: direction * 0.4, idle: false, blink: false })
+      player.setTarget({ headYaw: direction, headPitch: direction * 0.4, torsoBreath: false, hairWind: false, autoBlink: false })
       for (let i = 0; i < 45; i++) player.tick(1 / 60)
       const rect = canvas.getBoundingClientRect()
       const pixels = new Uint8Array(canvas.width * canvas.height * 4)
@@ -435,7 +435,7 @@ async function directorReplay(parallel = false, race = false, touchCase = '', fp
     setAutoSpeech: (v) => {
       if (!v) player.clearSpeechText()
       player.setTarget({
-        talk: v,
+        talking: v,
         jaw: 0,
         mouthWide: 0,
         mouthRound: 0,
@@ -511,11 +511,11 @@ async function directorReplay(parallel = false, race = false, touchCase = '', fp
     await player.loadAtlas(url)
     player.resize(128, 150, 1)
     player.setTarget({
-      idle: false,
-      rand: false,
-      blink: false,
-      talk: false,
-      phys: false,
+      torsoBreath: false, hairWind: false,
+      idleSway: false,
+      autoBlink: false,
+      talking: false,
+      physics: false,
     })
     Object.defineProperty(performance, 'now', {
       configurable: true,
@@ -810,11 +810,11 @@ async function bodyReplay(kind: string, fps: number) {
     await player.loadAtlas(url)
     player.resize(128, 150, 1)
     player.setTarget({
-      idle: false,
-      rand: false,
-      blink: false,
-      talk: false,
-      phys: true,
+      torsoBreath: false, hairWind: false,
+      idleSway: false,
+      autoBlink: false,
+      talking: false,
+      physics: true,
     })
     for (let i = 0; i < fps; i++) player.tick(1 / fps)
     const warmupError = gl.getError()
@@ -974,11 +974,11 @@ async function eyeRuntime() {
   try {
     await player.loadAtlas(url)
     player.setTarget({
-      idle: false,
-      rand: false,
-      talk: false,
-      blink: false,
-      phys: false,
+      torsoBreath: false, hairWind: false,
+      idleSway: false,
+      talking: false,
+      autoBlink: false,
+      physics: false,
     })
     advance()
     player.blinkNow()
@@ -1005,7 +1005,7 @@ async function eyeRuntime() {
     player.setTarget({ eyeCry: 1 })
     advance()
     const cry = opacity('eye-close2', 'L')
-    player.setTarget({ lidL: 1, lidR: 1, eyeCry: 0, blink: true })
+    player.setTarget({ lidL: 1, lidR: 1, eyeCry: 0, autoBlink: true })
     advance()
     player.blinkNow()
     let rebound = 0
@@ -1019,7 +1019,7 @@ async function eyeRuntime() {
         Math.abs(state.irisRebound.x * state.irisRebound.y - 1),
       )
     }
-    player.setTarget({ blink: false })
+    player.setTarget({ autoBlink: false })
     advance(120)
     const settledRebound = { ...state.irisRebound }
     return {
@@ -1199,11 +1199,11 @@ async function eyePixels(fps: number) {
     await player.loadAtlas(url)
     player.resize(128, 150, 1)
     player.setTarget({
-      idle: false,
-      rand: false,
-      talk: false,
-      blink: false,
-      phys: false,
+      torsoBreath: false, hairWind: false,
+      idleSway: false,
+      talking: false,
+      autoBlink: false,
+      physics: false,
     })
     advance('open', { lidL: 1, lidR: 1 })
     player.blinkNow()

@@ -1,7 +1,7 @@
-import type { Anime25DDriver } from '@myriad/figure-player'
+import type { Anime25DDriver } from '@myriad-you/figure-player'
 import type { CueIntent, PerformanceCueFootprint } from '../motion/performanceCues'
 import type { PerformanceExpressionOffset } from './performanceExpression'
-import { IDENTITY_DRIVER } from '@myriad/figure-player'
+import { IDENTITY_DRIVER } from '@myriad-you/figure-player'
 import { PERFORMANCE_CUE_FOOTPRINTS } from '../motion/performanceCues'
 
 export { cueIsSticker, performanceCueChannels } from '../motion/performanceCues'

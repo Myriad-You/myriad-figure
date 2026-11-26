@@ -1,8 +1,8 @@
-import type { Anime25DPlaybackAnchors, Anime25DPlaybackLayer } from '@myriad/figure-player/internals'
+import type { Anime25DPlaybackAnchors, Anime25DPlaybackLayer } from '@myriad-you/figure-player/internals'
 import type { UpstreamRig } from './upstream/types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildAnime25DLayerBinding, hairStrandDynamics, localToAtlasUv } from '@myriad/figure-player/internals'
+import { buildAnime25DLayerBinding, hairStrandDynamics, localToAtlasUv } from '@myriad-you/figure-player/internals'
 import { bindUpstreamRuntimeRig } from './upstream/runtime'
 
 const CANVAS_WIDTH = 768

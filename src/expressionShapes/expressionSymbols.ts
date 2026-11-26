@@ -1,4 +1,4 @@
-import type { RgbColor } from '@myriad/figure-player/internals'
+import type { Anime25DRgb } from '@myriad-you/figure-player/internals'
 
 export interface ExpressionSymbolSizes {
   anger: { width: number; height: number }
@@ -23,7 +23,7 @@ export function expressionSymbolGeneratedSizes(
 
 export function createAngerMarkBitmap(
   requestedSize: { width: number; height: number },
-  sourceTint: Readonly<RgbColor>,
+  sourceTint: Readonly<Anime25DRgb>,
 ): { width: number; height: number; data: Uint8ClampedArray } {
   const contentWidth = clampInt(Math.round(requestedSize.width), 44, 228)
   const contentHeight = clampInt(Math.round(requestedSize.height), 44, 228)
@@ -303,7 +303,7 @@ function pointToSegmentDistance(
 function paint(
   data: Uint8ClampedArray,
   offset: number,
-  color: Readonly<RgbColor>,
+  color: Readonly<Anime25DRgb>,
   alpha: number,
 ): void {
   const sourceAlpha = clamp(alpha, 0, 1)

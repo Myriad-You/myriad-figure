@@ -1,4 +1,4 @@
-import type { Anime25DDriver } from '@myriad/figure-player'
+import type { Anime25DDriver } from '@myriad-you/figure-player'
 import type { FaceLife, FaceShift } from '../events/performanceContract'
 import type { MotionChannelPolicy } from '../motion/policy'
 import type { ResolvedScore } from '../motion/scoreTimeline'

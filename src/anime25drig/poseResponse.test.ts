@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { IDENTITY_DRIVER } from '@myriad/figure-player'
-import { MAX_RESPONSE_SCALE, MIN_RESPONSE_SCALE, PoseResponseController } from '@myriad/figure-player/internals'
+import { IDENTITY_DRIVER } from '@myriad-you/figure-player'
+import { MAX_RESPONSE_SCALE, MIN_RESPONSE_SCALE, PoseResponseController } from '@myriad-you/figure-player/internals'
 import { poseResponseScale, resolvePoseResponseScale } from './poseResponse'
 
 const NEUTRAL_QUALITY = {

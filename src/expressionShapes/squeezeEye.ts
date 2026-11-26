@@ -1,6 +1,6 @@
 // The squeezed-shut eyes the importer draws for a face.
-import type { RgbColor } from '@myriad/figure-player/internals'
-import { SQUEEZE_EYE_WIDTH_FIT } from '@myriad/figure-player/internals'
+import type { Anime25DRgb } from '@myriad-you/figure-player/internals'
+import { SQUEEZE_EYE_WIDTH_FIT } from '@myriad-you/figure-player/internals'
 
 export type SqueezeEyeSide = 'left' | 'right'
 
@@ -44,7 +44,7 @@ export function squeezeEyeGeneratedSize(eye: {
 
 export function createSqueezeEyeBitmap(
   requestedSize: Readonly<SqueezeEyeSize>,
-  tint: Readonly<RgbColor>,
+  tint: Readonly<Anime25DRgb>,
   side: SqueezeEyeSide,
 ): { width: number; height: number; data: Uint8ClampedArray } {
   const width = clampInt(

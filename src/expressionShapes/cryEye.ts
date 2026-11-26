@@ -1,5 +1,5 @@
 // The crying eyes the importer draws for a face.
-import type { RgbColor } from '@myriad/figure-player/internals'
+import type { Anime25DRgb } from '@myriad-you/figure-player/internals'
 import type { SqueezeEyeSide } from './squeezeEye'
 import { createSqueezeEyeBitmap } from './squeezeEye'
 
@@ -55,7 +55,7 @@ export function cryEyeGeneratedSize(eye: {
 
 export function createCryEyeBitmap(
   requestedSize: Readonly<CryEyeSize>,
-  eyeTint: Readonly<RgbColor>,
+  eyeTint: Readonly<Anime25DRgb>,
   side: CryEyeSide,
 ): { width: number; height: number; data: Uint8ClampedArray } {
   const width = clampInt(
@@ -213,7 +213,7 @@ function compositeBitmap(
 function blendPixel(
   data: Uint8ClampedArray,
   offset: number,
-  color: Readonly<RgbColor>,
+  color: Readonly<Anime25DRgb>,
   sourceAlpha: number,
 ): void {
   const source = clamp(sourceAlpha, 0, 1)

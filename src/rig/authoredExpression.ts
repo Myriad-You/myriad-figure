@@ -1,6 +1,6 @@
-import type { Anime25DEyeAnchor, Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
+import type { Anime25DEyeAnchor, Anime25DSourceAnchors } from '@myriad-you/figure-player/internals'
 import type { Anime25DSourceReference, EyeSide, RasterLayer } from './anime25dImportTypes'
-import { ANIME25D_LAYER_DESCRIPTORS } from '@myriad/figure-player/internals'
+import { ANIME25D_LAYER_DESCRIPTORS } from '@myriad-you/figure-player/internals'
 import { trimRaster, uniquePartId } from './anime25dRaster'
 
 /**
@@ -56,7 +56,7 @@ const REGISTRATION_STEP = 4
 
 export function addAuthoredExpressionLayers(
   layers: RasterLayer[],
-  anchors: Anime25DRiggerAnchors,
+  anchors: Anime25DSourceAnchors,
   neutral: Anime25DSourceReference | undefined,
   references: readonly AuthoredExpressionReference[],
 ): RasterLayer[] {
@@ -167,7 +167,7 @@ interface Shift {
 export function registerExpression(
   neutral: Anime25DSourceReference,
   expression: Anime25DSourceReference,
-  face: Anime25DRiggerAnchors['face'],
+  face: Anime25DSourceAnchors['face'],
 ): Shift | null {
   // The face is what changed; everything around it must match.
   const margin = (face.x1 - face.x0) * 0.15
@@ -249,7 +249,7 @@ function eyeRegion(eye: Anime25DEyeAnchor, drawn: readonly RasterLayer[]): Regio
   }
 }
 
-function mouthRegion(anchors: Anime25DRiggerAnchors, layers: readonly RasterLayer[]): Region {
+function mouthRegion(anchors: Anime25DSourceAnchors, layers: readonly RasterLayer[]): Region {
   const faceWidth = anchors.face.x1 - anchors.face.x0
   let x0 = anchors.mouth.cx - faceWidth * 0.17
   let x1 = anchors.mouth.cx + faceWidth * 0.17

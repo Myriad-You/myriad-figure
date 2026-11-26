@@ -1,6 +1,6 @@
 // Whether a package's front-hair locks fit the one picture they are drawn together in, as the manifest check reads it.
-import type { Anime25DPlaybackLayer } from '@myriad/figure-player/internals'
-import { resolveAnime25DLayerSemantics } from '@myriad/figure-player/internals'
+import type { Anime25DPlaybackLayer } from '@myriad-you/figure-player/internals'
+import { resolveAnime25DLayerSemantics } from '@myriad-you/figure-player/internals'
 
 /** Locks of front hair are laid together in one picture when the stage binds them: its pixels, and those times the locks read for each. */
 const MAX_FRINGE_PIXELS = 2 * 4096 ** 2

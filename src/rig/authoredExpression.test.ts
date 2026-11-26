@@ -1,4 +1,4 @@
-import type { Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
+import type { Anime25DSourceAnchors } from '@myriad-you/figure-player/internals'
 import type { Anime25DSourceReference, RasterLayer } from './anime25dImportTypes'
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -13,7 +13,7 @@ const LASH = [52, 36, 60] as const
 type Rgb = readonly [number, number, number]
 type Paint = (x: number, y: number) => Rgb | null
 
-const anchors: Anime25DRiggerAnchors = {
+const anchors: Anime25DSourceAnchors = {
   face: { cx: 100, cy: 110, x0: 40, x1: 160, y0: 50, y1: 170 },
   eyeL: { x0: 60, y0: 80, x1: 92, y1: 96, icx: 76, icy: 88, closeY: 92 },
   mouth: { x0: 90, x1: 110, y0: 140, y1: 146, cx: 100, cy: 143 },

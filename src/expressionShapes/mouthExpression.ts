@@ -1,7 +1,7 @@
 // The speaking and crying mouths the importer draws for a face.
-import type { MouthExpressionKind, MouthExpressionPalette, Point } from '@myriad/figure-player/internals'
+import type { Anime25DMouthPathPoint, MouthExpressionKind, MouthExpressionPalette } from '@myriad-you/figure-player/internals'
 import type { MouthExpressionSize } from './mouthShared'
-import { mixColor, mouthOuterPath } from '@myriad/figure-player/internals'
+import { mixRgb, mouthOuterPath } from '@myriad-you/figure-player/internals'
 import { maniacCavityTone, maniacOutlineTone, maniacTongueShadeDepth, maniacTongueTone, tongueBoundary } from './maniacMouth'
 import { insetPath, paint, pointInPolygon } from './mouthPaths'
 import { clampInt } from './mouthShared'
@@ -133,7 +133,7 @@ export function createMouthExpressionBitmap(
   )
   const data = new Uint8ClampedArray(width * height * 4)
   const outer = mouthOuterPath(kind)
-  const maniacTongueShade = mixColor(palette.cavity, palette.fill, 0.48)
+  const maniacTongueShade = mixRgb(palette.cavity, palette.fill, 0.48)
   const inner = insetPath(
     outer,
     kind === 'maniac' ? 0.985 : kind === 'cry' ? 0.83 : 0.78,
@@ -146,7 +146,7 @@ export function createMouthExpressionBitmap(
           ? 0.045
           : 0.025,
   )
-  const samples: readonly Point[] = [
+  const samples: readonly Anime25DMouthPathPoint[] = [
     [0.25, 0.25],
     [0.75, 0.25],
     [0.25, 0.75],

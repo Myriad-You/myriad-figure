@@ -2,12 +2,12 @@
 // targets and ticks, then read what it drew (inspect(), pixels). Typed and
 // type-checked, so a renamed internal cannot turn a probe into a silent skip.
 // Each probe runs on a synthetic package in CI and on real art when given.
-import type { Anime25DDriver, Anime25DInspection, Anime25DLayerView, Anime25DPlayback, Anime25DPoint, Anime25DPose, MeropeRigManifest } from '@myriad/figure-player'
-import type { Anime25DArmModel } from '@myriad/figure-player/internals'
-import type { PoseCorrection } from '@myriad/figure-player/workbench'
+import type { Anime25DDriver, Anime25DInspection, Anime25DLayerView, Anime25DPlayback, Anime25DPoint, Anime25DPose, MeropeRigManifest } from '@myriad-you/figure-player'
+import type { Anime25DArmModel } from '@myriad-you/figure-player/internals'
+import type { PoseCorrection } from '@myriad-you/figure-player/workbench'
 import type { MotionChannelPolicy } from '../../../src/motion/policy'
-import { blendPoses, IDENTITY_DRIVER, poseFromJSON, poseToJSON } from '@myriad/figure-player'
-import { applyBodyLift, BODY_LIFT_GLSL, bodyPitchUniform } from '@myriad/figure-player/internals'
+import { blendPoses, IDENTITY_DRIVER, poseFromJSON, poseToJSON } from '@myriad-you/figure-player'
+import { applyBodyLift, BODY_LIFT_GLSL, bodyPitchUniform } from '@myriad-you/figure-player/internals'
 import { writePsd } from 'ag-psd'
 import { THINKING_EXPRESSION_PRESET } from '../../../src/anime25drig/expressionPresets'
 import { intentExpressionPatch } from '../../../src/anime25drig/performanceCueDefinitions'
@@ -26,7 +26,7 @@ interface FigurePackage {
   atlasUrl: string
 }
 
-const QUIET: Partial<Anime25DDriver> = { idle: false, rand: false, blink: false, talk: false, mouse: false }
+const QUIET: Partial<Anime25DDriver> = { torsoBreath: false, hairWind: false, idleSway: false, autoBlink: false, talking: false, followPointer: false }
 const PREVIEW: MotionChannelPolicy = { mouth: 'preview', expression: 'preview', gaze: 'preview', headBody: 'preview' }
 const HEAD_SURFACES = new Set(['face', 'front-hair', 'back-hair'])
 
@@ -384,7 +384,7 @@ async function posture(ref: PackageRef) {
       // Each layer as drawn upright: a standing figure's lean is in its layers' own vertices, not the shader's stage.
       const upright = new Map<string, Float32Array>()
       for (const [lift, pitch] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1]] as const) {
-        hold(player, { bodyLift: lift, bodyPitch: pitch, phys: false })
+        hold(player, { bodyLift: lift, bodyPitch: pitch, physics: false })
         const inspection = player.inspect()
         const pixels = readPixels(gl)
         neutral ??= pixels
@@ -415,7 +415,7 @@ async function posture(ref: PackageRef) {
         shots.push({ name: `${lift}-${pitch}`, image: screenshot(gl) })
       }
       // Existing head performances recruit the posture without knowing about it.
-      hold(player, { headPitch: 0.8, phys: false })
+      hold(player, { headPitch: 0.8, physics: false })
       const recruited = player.inspect().posture
       // How far a full lift reaches, from the art's own proportions (not the canvas: a full body is many faces tall).
       const { face, neckBottom, bodyPivot } = pkg.playback.anchors
@@ -432,7 +432,7 @@ async function torsoTurn(ref: PackageRef) {
     const run = async (cueFrames: number) => {
       const { player, gl, close } = await open(ref)
       try {
-        hold(player, { phys: true }, 30)
+        hold(player, { physics: true }, 30)
         let atCueEnd = 0
         for (let frame = 0; frame < 180; frame++) {
           player.setTarget({ headYaw: frame < cueFrames ? 1 : 0 })
@@ -456,7 +456,7 @@ async function turns(ref: PackageRef) {
       try {
         const alpha = await atlasAlpha(pkg)
         // Start from the sweep's own constant inputs, so its first frames are not a step response.
-        hold(player, { phys: true, torsoFollow: 1 }, 60)
+        hold(player, { physics: true, torsoFollow: 1 }, 60)
         let roots = 0; let rootsChecked = 0; let minRatio = Infinity
         let maxSpeed = 0; let invalid = 0
         let previous: Anime25DPoint | null = null
@@ -464,7 +464,7 @@ async function turns(ref: PackageRef) {
         const surfaces = player.inspect().layers.filter(layer => HEAD_SURFACES.has(layer.role)).map(layer => alpha.opaqueTriangles(layer))
         for (let frame = 0; frame < fps * 3; frame++) {
           const yaw = Math.sin(frame / fps * Math.PI * 2 / 3)
-          player.setTarget({ headYaw: yaw, headPitch: yaw * 0.6, headRoll: -yaw * 0.7, bodyLean: yaw * 0.8, torsoFollow: 1, phys: true })
+          player.setTarget({ headYaw: yaw, headPitch: yaw * 0.6, headRoll: -yaw * 0.7, bodyLean: yaw * 0.8, torsoFollow: 1, physics: true })
           player.tick(1 / fps)
           const inspection = player.inspect()
           if (!finite(inspection)) invalid++
@@ -495,7 +495,7 @@ async function corners(ref: PackageRef) {
     const { pkg, player, gl, close } = await open(ref)
     try {
       const alpha = await atlasAlpha(pkg)
-      hold(player, { phys: false })
+      hold(player, { physics: false })
       const surfaces = player.inspect().layers.filter(layer => HEAD_SURFACES.has(layer.role))
       const triangles = surfaces.map(layer => alpha.opaqueTriangles(layer))
       const runs = []
@@ -503,7 +503,7 @@ async function corners(ref: PackageRef) {
       for (const angleX of [-1, 1]) {
         for (const angleY of [-1, 1]) {
           for (const angleZ of [-0.8, 0.8]) {
-            hold(player, { headYaw: angleX, headPitch: angleY, headRoll: angleZ, bodyLean: angleZ, phys: false })
+            hold(player, { headYaw: angleX, headPitch: angleY, headRoll: angleZ, bodyLean: angleZ, physics: false })
             const inspection = player.inspect()
             let minimum = Infinity; let worst = ''
             inspection.layers.filter(layer => HEAD_SURFACES.has(layer.role)).forEach((layer, i) => {
@@ -546,7 +546,7 @@ async function correction(ref: PackageRef) {
         if (corrections !== 'none') player.previewPoseCorrections([authored])
         if (corrections === 'released') player.previewPoseCorrections(null)
         return poses.map((pose) => {
-          hold(player, { ...pose, phys: false }, 120)
+          hold(player, { ...pose, physics: false }, 120)
           const inspection = player.inspect()
           const face = inspection.layers.find(layer => layer.role === 'face')!
           return {
@@ -703,12 +703,12 @@ async function earrings(ref: PackageRef) {
     const run = async (phys: boolean) => {
       const { player, gl, close } = await open(ref, 384, 512)
       try {
-        hold(player, { phys }, 30)
+        hold(player, { physics: phys }, 30)
         let roots = 0; let checked = 0; let determinant = Infinity
         const tips: Float32Array[] = []
         for (let i = 0; i < 240; i++) {
           const angle = Math.sin(i / 24) * 0.8
-          player.setTarget({ phys, headYaw: angle, headPitch: angle * 0.6, headRoll: angle * 0.6 })
+          player.setTarget({ physics: phys, headYaw: angle, headPitch: angle * 0.6, headRoll: angle * 0.6 })
           player.tick(1 / 60)
           const inspection = player.inspect()
           const root = rootErrors(inspection)
@@ -764,13 +764,13 @@ async function hair(ref: PackageRef) {
     const replay = async (phys: boolean, frames: number, pose: (frame: number) => Partial<Anime25DDriver>, keep: (frame: number) => boolean, shape = true) => {
       const { player, gl, close } = await open(ref)
       try {
-        hold(player, { phys }, 30)
+        hold(player, { physics: phys }, 30)
         const hair: Float32Array[][] = []
         const pixels: Uint8Array[] = []
         let ratio = Infinity
         const triangles = player.inspect().layers.filter(layer => layer.hairBase).map(layer => alpha.opaqueTriangles(layer))
         for (let frame = 0; frame < frames; frame++) {
-          player.setTarget({ ...pose(frame), phys })
+          player.setTarget({ ...pose(frame), physics: phys })
           player.tick(1 / 60)
           if (!keep(frame) && (!shape || frame % 4)) continue
           const inspection = player.inspect()
@@ -863,7 +863,7 @@ async function musicExit(ref: PackageRef) {
     for (const fps of [30, 60, 120]) {
       const { player, gl, close } = await open(ref, 384, 512)
       try {
-        player.setTarget({ ...IDENTITY_DRIVER, talk: false, blink: false })
+        player.setTarget({ ...IDENTITY_DRIVER, talking: false, autoBlink: false })
         player.setMotionPolicy({ mouth: 'idle', expression: 'idle', gaze: 'idle', headBody: 'music' })
         player.setSingingTrack('transition-regression')
         player.setSinging(true)
@@ -927,7 +927,7 @@ async function thoughtToSpeech(ref: PackageRef) {
           player.setTarget({ browLift: 0.24 })
           const before = JSON.stringify(player.getCurrent())
           player.setSpeechActive(true)
-          player.setTarget({ talk: true })
+          player.setTarget({ talking: true })
           player.setMotionPolicy({ mouth: 'speech', expression: 'idle', gaze: 'idle', headBody: 'coSpeech' })
           player.enqueueSpeechText('我想好了。这个办法可以试一试，我们慢慢来。', 'zh-CN')
           reset = before !== JSON.stringify(player.getCurrent())
@@ -937,7 +937,7 @@ async function thoughtToSpeech(ref: PackageRef) {
         if (frame === 210) {
           player.clearSpeechText()
           player.setSpeechActive(false)
-          player.setTarget({ talk: false, jaw: 0 })
+          player.setTarget({ talking: false, jaw: 0 })
           player.setMotionPolicy({ mouth: 'idle', expression: 'idle', gaze: 'idle', headBody: 'idle' })
         }
         player.tick(1 / 60)
@@ -963,7 +963,7 @@ async function sharedCut(ref: PackageRef) {
       const bound = player.inspect().layers.filter(layer => layer.sharesCutWith)
       let maxError = 0; let folds = 0
       for (const sign of [0, 1, -1, 0.6, -0.6]) {
-        hold(player, { phys: true, headYaw: sign, headPitch: sign * 0.7, headRoll: sign * 0.6, bodyLean: sign, armY: sign, armPos: sign * 0.5 })
+        hold(player, { physics: true, headYaw: sign, headPitch: sign * 0.7, headRoll: sign * 0.6, bodyLean: sign, armY: sign, armPos: sign * 0.5 })
         const inspection = player.inspect()
         for (const named of bound) {
           const layer = inspection.layers.find(candidate => candidate.name === named.name)!
@@ -1088,8 +1088,8 @@ function frameHash(player: Anime25DPlayer, gl: WebGL2RenderingContext): number {
   return (Math.imul(h, 31) + hash(new TextEncoder().encode(JSON.stringify(player.getCurrent())))) | 0
 }
 
-const SWAP_POSE: Partial<Anime25DDriver> = { phys: true, headYaw: 0.3, headPitch: -0.2, headRoll: 0.2, bodyLean: 0.3, armY: 0.3 }
-const AFTER_POSE: Partial<Anime25DDriver> = { phys: true, headYaw: -0.3, headPitch: 0.25, bodyLean: -0.3, armY: -0.2 }
+const SWAP_POSE: Partial<Anime25DDriver> = { physics: true, headYaw: 0.3, headPitch: -0.2, headRoll: 0.2, bodyLean: 0.3, armY: 0.3 }
+const AFTER_POSE: Partial<Anime25DDriver> = { physics: true, headYaw: -0.3, headPitch: 0.25, bodyLean: -0.3, armY: -0.2 }
 
 /** A player on a watched context, with its own stream of Math.random so two of them can run side by side. */
 interface Watched {
@@ -1492,10 +1492,10 @@ async function contextLoss({ shown: shownRef, next: nextRef }: Pick<SwapRequest,
 
 /** Drivers that stir what a pose must hold: turns, hair, the speaking mouth, arms raised and passed on between gestures. */
 const POSED: Partial<Anime25DDriver>[] = [
-  { phys: true, headYaw: 0.6, headPitch: -0.3, bodyLean: 0.4, armY: 0.4, handWaveL: 1, handWaveR: 1, jaw: 0.8, mouthWide: 0.9 },
-  { phys: true, headYaw: -0.7, headRoll: 0.4, bodyLean: -0.5, bodyLift: 0.4, jaw: 0.7, mouthRound: 0.8, lipCurve: 0.3, handPointL: 1, handPointR: 1, talk: true },
-  { phys: true, headPitch: 0.7, torsoTurn: 0.5, lidL: 0.4, eyeCry: 0.9, accentBlush: 1, thinking: true, handChestL: 1, handChestR: 1 },
-  { phys: true, jaw: 0.5, mouthNarrow: 0.7, handChinR: 1, handWaveL: 1 },
+  { physics: true, headYaw: 0.6, headPitch: -0.3, bodyLean: 0.4, armY: 0.4, handWaveL: 1, handWaveR: 1, jaw: 0.8, mouthWide: 0.9 },
+  { physics: true, headYaw: -0.7, headRoll: 0.4, bodyLean: -0.5, bodyLift: 0.4, jaw: 0.7, mouthRound: 0.8, lipCurve: 0.3, handPointL: 1, handPointR: 1, talking: true },
+  { physics: true, headPitch: 0.7, torsoTurn: 0.5, lidL: 0.4, eyeCry: 0.9, accentBlush: 1, thinking: true, handChestL: 1, handChestR: 1 },
+  { physics: true, jaw: 0.5, mouthNarrow: 0.7, handChinR: 1, handWaveL: 1 },
 ]
 
 /**
@@ -1575,11 +1575,11 @@ async function poses(ref: PackageRef, frames = 24) {
       }
       // Come to rest, hardly anything of her is uploaded anew: a pose shown then leaves nothing of it either.
       for (const w of [subject, twin]) {
-        for (let i = 0; i < 120; i++) step(w, { phys: false })
+        for (let i = 0; i < 120; i++) step(w, { physics: false })
       }
       subject.player.renderPose(first!)
       const stirred = !alike(readPixels(subject.gl), readPixels(twin.gl))
-      for (const w of [subject, twin]) step(w, { phys: false })
+      for (const w of [subject, twin]) step(w, { physics: false })
       const settled = stirred && alike(readPixels(subject.gl), readPixels(twin.gl)) && gpuDiffers(subject, twin.player.getPose()!) === 0
       const wrong = { other: stranger.player.renderPose(first!), short: replay.player.renderPose({ ...first!, layers: first!.layers.slice(1) }),
         nothing: replay.player.renderPose({} as Anime25DPose), bad: replay.player.renderPose({ ...first!, layers: first!.layers.map(layer => ({ ...layer, transform: layer.transform.map(() => Number.NaN) })) }) }

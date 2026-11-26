@@ -1,4 +1,4 @@
-import { FigureError as StageError } from '@myriad/figure-player'
+import { FigureError as StageError } from '@myriad-you/figure-player'
 import { formatTemplate } from './rig/formatTemplate'
 
 /**

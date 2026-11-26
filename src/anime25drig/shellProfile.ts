@@ -1,5 +1,5 @@
-import type { Anime25DPlayback } from '@myriad/figure-player'
-import type { Anime25DPlaybackAnchors, Anime25DPlaybackLayer, Anime25DShellCurvePoint, Anime25DShellEllipsoid, Anime25DShellProfile, Anime25DTorsoShellProfile } from '@myriad/figure-player/internals'
+import type { Anime25DPlayback } from '@myriad-you/figure-player'
+import type { Anime25DPlaybackAnchors, Anime25DPlaybackLayer, Anime25DShellCurvePoint, Anime25DShellEllipsoid, Anime25DShellProfile, Anime25DTorsoShellProfile } from '@myriad-you/figure-player/internals'
 
 const DEFAULT_CURVE: readonly Anime25DShellCurvePoint[] = [
   { v: 0.06, z: 0.1 },

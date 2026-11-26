@@ -1,4 +1,4 @@
-import type { CharacterAssetProfile } from '@myriad/figure-player/internals'
+import type { CharacterAssetProfile } from '@myriad-you/figure-player/internals'
 import type { Psd } from 'ag-psd'
 import type { Anime25DSourceReference } from './anime25dImportTypes'
 import type { ArmVariantReference } from './armVariants'
@@ -8,9 +8,9 @@ import type { MotionExposureFinding } from './motionExposure'
 import type { Anime25DPsdReconciliation } from './psdReconciliation'
 import type { PsdSkeleton } from './skeleton'
 import type { MeropeRigImportSource } from './types'
-import { anime25DBaseRole, CHARACTER_ASSET_PROFILES, MAX_RIG_PARTS, normalizeAnime25DLayerName, resolveAnime25DFaceFrame } from '@myriad/figure-player/internals'
+import { anime25DBaseRole, CHARACTER_ASSET_PROFILES, MAX_RIG_PARTS, normalizeAnime25DLayerName, resolveAnime25DFaceFrame } from '@myriad-you/figure-player/internals'
 import { analyzeAnime25DMouthProfile } from '../anime25drig/mouthProfile'
-import { buildAnime25DPlayback, remapRiggerAnchors } from '../anime25drig/playback'
+import { buildAnime25DPlayback, remapSourceAnchors } from '../anime25drig/playback'
 import { rigger as Rigger } from '../anime25drig/upstream/rigger'
 import { FigureError } from '../errors'
 import { estimateAnime25DMouthAnchor } from '../expressionShapes/faceFrame'
@@ -45,8 +45,8 @@ import { dropTopSkinOverNeck } from './topSkinOverNeck'
 import { splitTrouserLegsIfNeeded } from './trouserLegs'
 
 export type { Anime25DSourceReference } from './anime25dImportTypes'
-export { ANIME25D_LAYER_DEPTH } from '@myriad/figure-player/internals'
-export type { Anime25DLayerRole } from '@myriad/figure-player/internals'
+export { ANIME25D_LAYER_DEPTH } from '@myriad-you/figure-player/internals'
+export type { Anime25DLayerRole } from '@myriad-you/figure-player/internals'
 
 export interface PreparedAnime25DRigImport {
   atlas: Blob
@@ -60,7 +60,7 @@ export interface PreparedAnime25DRigImport {
   /** The document and where the playback frame cuts it, for keys measured on the document. */
   documentFrame: { width: number; height: number; x: number; y: number }
 }
-export { anime25DBaseRole, normalizeAnime25DLayerName } from '@myriad/figure-player/internals'
+export { anime25DBaseRole, normalizeAnime25DLayerName } from '@myriad-you/figure-player/internals'
 
 export function isAnime25DDocument(psd: Psd): boolean {
   const names = flattenVisibleLayers(psd.children ?? []).map((layer) =>
@@ -275,7 +275,7 @@ export async function prepareAnime25DRigPsd(
     buildAnime25DBonesAndHandles(prepared, anchors)
   const rigLayers = buildAnime25DLayerSources(prepared, layerHandles)
   const partIds = prepared.map((layer) => `a25d-${layer.id}`)
-  const playbackAnchors = remapRiggerAnchors(rig.anchors, frame, stance)
+  const playbackAnchors = remapSourceAnchors(rig.anchors, frame, stance)
   const joints = skeleton ? skeletonInFrame(skeleton, frame) : null
   if (joints) playbackAnchors.skeleton = joints
   const mouthProfile = analyzeAnime25DMouthProfile(

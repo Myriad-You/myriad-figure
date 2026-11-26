@@ -8,9 +8,9 @@ importers:
 
   .:
     dependencies:
-      '@myriad/figure-player':
-        specifier: github:Myriad-You/myriad-figure-player#345ec3a7a755603d24f8acdf0ca651f387b9b720
-        version: https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/345ec3a7a755603d24f8acdf0ca651f387b9b720
+      '@myriad-you/figure-player':
+        specifier: github:Myriad-You/myriad-figure-player#3ff84ba1b6c9bf4993e7ca8994a409fdb982ff8d
+        version: https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/3ff84ba1b6c9bf4993e7ca8994a409fdb982ff8d
       ag-psd:
         specifier: ^31.0.3
         version: 31.0.3
@@ -582,8 +582,8 @@ packages:
   '@keyv/serialize@1.1.1':
     resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
 
-  '@myriad/figure-player@https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/345ec3a7a755603d24f8acdf0ca651f387b9b720':
-    resolution: {gitHosted: true, integrity: sha512-rQ6fGpiHSM5Tm/yap3w9mIQm5skRA3+GaEM19cNAAtN409efVC85gqpGQcrX3SB8cMd1LjeOMeJoCr3BTaYZ1A==, tarball: https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/345ec3a7a755603d24f8acdf0ca651f387b9b720}
+  '@myriad-you/figure-player@https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/3ff84ba1b6c9bf4993e7ca8994a409fdb982ff8d':
+    resolution: {gitHosted: true, integrity: sha512-aInFjyiZ8uqy4Fc0Wv86iy/qQ1dcenTlEQv8t1GHX5OPkAi0UNJwNWOfZLXDZNpLW6YSSf7k3D4pPeMoy/8DKw==, tarball: https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/3ff84ba1b6c9bf4993e7ca8994a409fdb982ff8d}
     version: 0.0.0
 
   '@ota-meshi/ast-token-store@0.3.0':
@@ -2428,7 +2428,7 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
-  '@myriad/figure-player@https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/345ec3a7a755603d24f8acdf0ca651f387b9b720': {}
+  '@myriad-you/figure-player@https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/3ff84ba1b6c9bf4993e7ca8994a409fdb982ff8d': {}
 
   '@ota-meshi/ast-token-store@0.3.0': {}
 

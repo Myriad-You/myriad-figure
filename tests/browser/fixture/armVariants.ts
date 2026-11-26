@@ -1,9 +1,9 @@
-import type { Anime25DArmAim, Anime25DDriver } from '@myriad/figure-player'
+import type { Anime25DArmAim, Anime25DDriver } from '@myriad-you/figure-player'
 import type { ArmVariantSource } from '../../../src/rig/psdImportClient'
 import type { PreparedRigPsdImport } from '../../../src/rig/psdImporter'
 import type { DetectedSkeleton } from '../../../src/rig/skeleton'
-import { IDENTITY_DRIVER } from '@myriad/figure-player'
-import { ARM_VARIANT_DRIVERS } from '@myriad/figure-player/internals'
+import { IDENTITY_DRIVER } from '@myriad-you/figure-player'
+import { ARM_VARIANT_DRIVERS } from '@myriad-you/figure-player/internals'
 import { Anime25DPlayer } from '../../../src/anime25drig/player'
 import { prepareRigPsdImport } from '../../../src/rig/psdImporter'
 
@@ -12,7 +12,7 @@ import { prepareRigPsdImport } from '../../../src/rig/psdImporter'
 // Nothing here is synthetic: the test serves the files.
 
 const PREVIEW = { mouth: 'preview', expression: 'preview', gaze: 'preview', headBody: 'preview' } as const
-const QUIET: Partial<Anime25DDriver> = { idle: false, blink: false, phys: true, talk: false }
+const QUIET: Partial<Anime25DDriver> = { torsoBreath: false, hairWind: false, autoBlink: false, physics: true, talking: false }
 const FPS = 60
 
 export interface BustRequest {

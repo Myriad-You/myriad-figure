@@ -1,7 +1,6 @@
 // The performance's half of the per-frame driver composition: poses, special expressions and speech landed on the
-// driver. The stage's own response and blink steps come from @myriad/figure-player/internals.
-import type { Anime25DDriver } from '@myriad/figure-player'
-import type { IdleBreathOffset } from '@myriad/figure-player/internals'
+// driver. The stage's own response and blink steps come from @myriad-you/figure-player/internals.
+import type { Anime25DDriver } from '@myriad-you/figure-player'
 import type { SingingGroovePose } from '../singing/singingGroove'
 import type { AmbientPose } from './ambientMotion'
 import type { PerformanceExpressionOffset } from './performanceExpression'
@@ -12,13 +11,16 @@ import type { CoSpeechExpressionOffset } from './speechExpression'
 import type { AutoSpeechPose } from './speechMotion'
 import type { StylizedExpressionMotion } from './stylizedExpressionMotion'
 import type { ThinkingMotionPose } from './thinkingMotion'
-import { IDENTITY_DRIVER } from '@myriad/figure-player'
+import { IDENTITY_DRIVER } from '@myriad-you/figure-player'
 import { semanticRollMotionOffset, semanticVerticalMotionOffset, speechBrowMotionOffset, speechHeadMotionOffset } from './expressiveMotionEnvelope'
 import { applyPerformanceExpressionExtras, mixBoundedExpressionChannel, mixEyeOpen } from './performanceExpression'
 import { POSE_KEY_DRIVER_FIELDS, POSE_KEYS } from './poseArbitration'
 import { accumulateOccupancyOffset, accumulatePoseChannel } from './poseCompositor'
 
-/** The stylized expressions' targets once each blocks the others. */
+/** The idle sway as a pose source: the head's turn, nod and tilt and the body's lean, in pose keys. */
+export type IdleSwayPose = Pick<OccupancyOffset, 'angleX' | 'angleY' | 'angleZ' | 'body'>
+
+/** The sticker faces' targets once each blocks the others. */
 export interface Anime25DStylizedTargets {
   anger: number
   speechless: number
@@ -27,7 +29,7 @@ export interface Anime25DStylizedTargets {
   lovestruck: number
 }
 
-/** Resolves the mutually blocked stylized-expression inputs without allocating. */
+/** Resolves the mutually blocked sticker-face inputs without allocating. */
 export function resolveAnime25DStylizedTargets(
   output: Anime25DStylizedTargets,
   target: Readonly<Anime25DDriver>,
@@ -80,7 +82,7 @@ export function resolveAnime25DStylizedTargets(
  *
  * Every shared pose producer contributes a layer with the weight
  * `resolvePoseGate` derived from ownership and occupancy. Ambient motion,
- * random action, groove, thinking, breath, directed expression and co-speech
+ * random action, groove, thinking, idle sway, directed expression and co-speech
  * therefore land on the driver once instead of rewriting it in call order.
  *
  * Channels only one source writes (the random action's brow asymmetry, eye
@@ -95,18 +97,18 @@ export function applyAnime25DComposedPose(
     randomAction: Readonly<RandomActionFrame>
     groove: Readonly<SingingGroovePose>
     thinking: Readonly<ThinkingMotionPose>
-    breath: Readonly<IdleBreathOffset>
+    idleSway: Readonly<IdleSwayPose>
     performance: Readonly<PerformanceExpressionOffset>
     stylized: Readonly<StylizedExpressionMotion>
     coSpeech: Readonly<CoSpeechExpressionOffset>
   },
   scratch: OccupancyOffset,
-  /** Receives the part that follows her breath and voice, which rides on a directed pose. */
+  /** Receives the part that follows her idle sway and voice, which rides on a directed pose. */
   riding?: OccupancyOffset,
 ): void {
   if (riding) {
     for (const key of POSE_KEYS) riding[key] = 0
-    accumulateOccupancyOffset(riding, sources.breath, gate.ambient)
+    accumulateOccupancyOffset(riding, sources.idleSway, gate.ambient)
     accumulateOccupancyOffset(riding, sources.coSpeech, gate.coSpeech)
     accumulatePoseChannel(riding, 'angleY', speechHeadMotionOffset(sources.coSpeech.angleY), gate.coSpeech)
     accumulatePoseChannel(riding, 'brow', speechBrowMotionOffset(sources.coSpeech.brow), gate.coSpeech)
@@ -116,7 +118,7 @@ export function applyAnime25DComposedPose(
   accumulateOccupancyOffset(scratch, sources.randomAction, gate.random)
   accumulateOccupancyOffset(scratch, sources.groove, gate.groove)
   accumulateOccupancyOffset(scratch, sources.thinking, gate.thinking)
-  accumulateOccupancyOffset(scratch, sources.breath, gate.ambient)
+  accumulateOccupancyOffset(scratch, sources.idleSway, gate.ambient)
   accumulateOccupancyOffset(scratch, sources.performance, gate.performance)
   accumulateOccupancyOffset(scratch, sources.stylized, gate.stylized)
   accumulateOccupancyOffset(scratch, sources.coSpeech, gate.coSpeech)

@@ -1,4 +1,4 @@
-import type { CharacterAssetProfile } from '@myriad/figure-player/internals'
+import type { CharacterAssetProfile } from '@myriad-you/figure-player/internals'
 import type { FigureErrorCode, FigureErrorParams } from '../errors'
 import type { PreparedAnime25DRigImport } from './anime25dImporter'
 import type { ArmVariantGesture } from './armVariants'

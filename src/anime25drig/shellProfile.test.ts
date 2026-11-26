@@ -1,8 +1,8 @@
-import type { Anime25DPlayback } from '@myriad/figure-player'
-import type { Anime25DPlaybackLayer } from '@myriad/figure-player/internals'
+import type { Anime25DPlayback } from '@myriad-you/figure-player'
+import type { Anime25DPlaybackLayer } from '@myriad-you/figure-player/internals'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { anime25DHairlinePinWeight, deformAnime25DShellPoint, sampleAnime25DHairlinePinWeights, writeAnime25DShellRotation } from '@myriad/figure-player/internals'
+import { anime25DHairlinePinWeight, deformAnime25DShellPoint, sampleAnime25DHairlinePinWeights, writeAnime25DShellRotation } from '@myriad-you/figure-player/internals'
 import { deriveAnime25DShellProfile } from './shellProfile'
 
 const faceLayer: Anime25DPlaybackLayer = {

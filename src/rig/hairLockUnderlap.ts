@@ -1,5 +1,5 @@
 import type { RasterLayer } from './anime25dImportTypes'
-import { insideDistance } from '@myriad/figure-player/internals'
+import { maskInsideDistance } from '@myriad-you/figure-player/internals'
 import { trimRaster } from './anime25dRaster'
 
 const LOCK = /^front-hair-\d+$/
@@ -52,7 +52,7 @@ export function underlapHairLocks(layers: RasterLayer[]): RasterLayer[] {
   const away = datas.map((data) => {
     const undrawn = new Uint8Array(size)
     for (let p = 0; p < size; p += 1) undrawn[p] = data[p * 4 + 3] > DRAWN ? 0 : 1
-    return insideDistance(undrawn, frame.width, frame.height)
+    return maskInsideDistance(undrawn, frame.width, frame.height)
   })
   let added = 0
   for (let p = 0; p < size; p += 1) {

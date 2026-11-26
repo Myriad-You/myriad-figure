@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { IDENTITY_DRIVER } from '@myriad/figure-player'
+import { IDENTITY_DRIVER } from '@myriad-you/figure-player'
 import { bearingDriverPatch } from './performanceExpression'
 import {
   speechArticulationDriverPatch,
@@ -14,7 +14,7 @@ test('keeps authored energy separate from preview speech', () => {
     mouthRound: 0,
     mouthNarrow: 0,
     mouthSeal: 0,
-    talk: false,
+    talking: false,
   })
   assert.deepEqual(speechEnergyDriverPatch(1.4), {
     jaw: 1,
@@ -22,7 +22,7 @@ test('keeps authored energy separate from preview speech', () => {
     mouthRound: 0,
     mouthNarrow: 0,
     mouthSeal: 0,
-    talk: false,
+    talking: false,
   })
   assert.deepEqual(speechEnergyDriverPatch(Number.NaN), {
     jaw: 0,
@@ -30,7 +30,7 @@ test('keeps authored energy separate from preview speech', () => {
     mouthRound: 0,
     mouthNarrow: 0,
     mouthSeal: 0,
-    talk: false,
+    talking: false,
   })
 })
 
@@ -43,7 +43,7 @@ test('maps authored visemes without enabling random speech', () => {
       mouthRound: 0,
       mouthNarrow: 0,
       mouthSeal: 0,
-      talk: false,
+      talking: false,
     },
   )
   assert.deepEqual(
@@ -58,7 +58,7 @@ test('maps authored visemes without enabling random speech', () => {
       mouthRound: 0,
       mouthNarrow: 0,
       mouthSeal: 0,
-      talk: false,
+      talking: false,
     },
   )
   assert.deepEqual(
@@ -73,7 +73,7 @@ test('maps authored visemes without enabling random speech', () => {
       mouthRound: 0.5,
       mouthNarrow: 0,
       mouthSeal: 0,
-      talk: false,
+      talking: false,
     },
   )
 })

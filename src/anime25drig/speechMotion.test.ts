@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { IDENTITY_DRIVER } from '@myriad/figure-player'
-import { PoseResponseController, stepAnime25DDriverResponse } from '@myriad/figure-player/internals'
+import { IDENTITY_DRIVER } from '@myriad-you/figure-player'
+import { PoseResponseController, stepAnime25DDriverResponse } from '@myriad-you/figure-player/internals'
 import {
   AutoSpeechController,
   speechPhraseAmplitudeScale,

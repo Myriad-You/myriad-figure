@@ -1,5 +1,5 @@
-import type { RigOutfitProfile, RigOutfitTopology } from '@myriad/figure-player/internals'
-import { RIG_OUTFIT_TOPOLOGIES } from '@myriad/figure-player/internals'
+import type { RigOutfitProfile, RigOutfitTopology } from '@myriad-you/figure-player/internals'
+import { RIG_OUTFIT_TOPOLOGIES } from '@myriad-you/figure-player/internals'
 import { RIG_OUTFIT_SAFETY, RIG_SECONDARY_PART_PATTERNS } from './contract'
 
 interface OutfitSafetyRule {

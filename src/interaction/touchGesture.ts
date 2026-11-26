@@ -1,4 +1,4 @@
-import type { Anime25DTouchRegion } from '@myriad/figure-player'
+import type { Anime25DTouchRegion } from '@myriad-you/figure-player'
 
 /** Pointer evidence only */
 export type TouchRegion = Anime25DTouchRegion

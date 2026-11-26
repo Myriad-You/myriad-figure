@@ -1,4 +1,4 @@
-import type { RgbColor } from '@myriad/figure-player/internals'
+import type { Anime25DRgb } from '@myriad-you/figure-player/internals'
 
 export interface LovestruckBitmapSize {
   width: number
@@ -7,12 +7,12 @@ export interface LovestruckBitmapSize {
 
 type Point = readonly [x: number, y: number]
 
-const HOT_PINK: Readonly<RgbColor> = { red: 244, green: 74, blue: 132 }
-const ROSE_EDGE: Readonly<RgbColor> = { red: 148, green: 49, blue: 91 }
-const BLUSH_PINK: Readonly<RgbColor> = { red: 250, green: 119, blue: 146 }
-const SWEAT_EDGE: Readonly<RgbColor> = { red: 95, green: 157, blue: 194 }
-const SWEAT_FILL: Readonly<RgbColor> = { red: 213, green: 242, blue: 250 }
-const SWEAT_LIGHT: Readonly<RgbColor> = { red: 248, green: 254, blue: 255 }
+const HOT_PINK: Readonly<Anime25DRgb> = { red: 244, green: 74, blue: 132 }
+const ROSE_EDGE: Readonly<Anime25DRgb> = { red: 148, green: 49, blue: 91 }
+const BLUSH_PINK: Readonly<Anime25DRgb> = { red: 250, green: 119, blue: 146 }
+const SWEAT_EDGE: Readonly<Anime25DRgb> = { red: 95, green: 157, blue: 194 }
+const SWEAT_FILL: Readonly<Anime25DRgb> = { red: 213, green: 242, blue: 250 }
+const SWEAT_LIGHT: Readonly<Anime25DRgb> = { red: 248, green: 254, blue: 255 }
 
 export function lovestruckHeartGeneratedSize(eye: {
   x0: number
@@ -67,13 +67,13 @@ export function lovestruckDroolGeneratedSize(
 /** Small opaque heart that covers the original pupil without replacing the iris. */
 export function createLovestruckHeartBitmap(
   requestedSize: Readonly<LovestruckBitmapSize>,
-  sourcePink: Readonly<RgbColor>,
+  sourcePink: Readonly<Anime25DRgb>,
 ): { width: number; height: number; data: Uint8ClampedArray } {
   const width = clampInt(Math.round(requestedSize.width), 16, 112)
   const height = clampInt(Math.round(requestedSize.height), 14, 104)
   const data = new Uint8ClampedArray(width * height * 4)
-  const core = mixColor(sourcePink, HOT_PINK, 0.72)
-  const edge = mixColor(core, ROSE_EDGE, 0.38)
+  const core = mixRgb(sourcePink, HOT_PINK, 0.72)
+  const edge = mixRgb(core, ROSE_EDGE, 0.38)
   const samples: readonly Point[] = [
     [0.2, 0.2],
     [0.8, 0.2],
@@ -106,13 +106,13 @@ export const LOVESTRUCK_CHEEK_ROW = 0.49
 
 export function createLovestruckFaceEffectBitmap(
   requestedSize: Readonly<LovestruckBitmapSize>,
-  sourcePink: Readonly<RgbColor>,
+  sourcePink: Readonly<Anime25DRgb>,
 ): { width: number; height: number; data: Uint8ClampedArray } {
   const width = clampInt(Math.round(requestedSize.width), 96, 768)
   const height = clampInt(Math.round(requestedSize.height), 96, 640)
   const data = new Uint8ClampedArray(width * height * 4)
-  const blush = mixColor(sourcePink, BLUSH_PINK, 0.8)
-  const hatch = mixColor(blush, ROSE_EDGE, 0.3)
+  const blush = mixRgb(sourcePink, BLUSH_PINK, 0.8)
+  const hatch = mixRgb(blush, ROSE_EDGE, 0.3)
   const hatchRails = cheekHatchRails()
 
   for (let y = 0; y < height; y += 1) {
@@ -357,7 +357,7 @@ function pointToSegmentDistance(
 function paint(
   data: Uint8ClampedArray,
   offset: number,
-  color: Readonly<RgbColor>,
+  color: Readonly<Anime25DRgb>,
   alpha: number,
 ): void {
   const sourceAlpha = clamp(alpha, 0, 1)
@@ -378,11 +378,11 @@ function paint(
   data[offset + 3] = Math.round(outputAlpha * 255)
 }
 
-function mixColor(
-  first: Readonly<RgbColor>,
-  second: Readonly<RgbColor>,
+function mixRgb(
+  first: Readonly<Anime25DRgb>,
+  second: Readonly<Anime25DRgb>,
   amount: number,
-): RgbColor {
+): Anime25DRgb {
   const mix = clamp(amount, 0, 1)
   return {
     red: first.red + (second.red - first.red) * mix,

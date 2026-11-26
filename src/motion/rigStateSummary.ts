@@ -1,4 +1,4 @@
-import type { Anime25DPlayback, MeropeRigManifest } from '@myriad/figure-player'
+import type { Anime25DPlayback, MeropeRigManifest } from '@myriad-you/figure-player'
 import type {
   PerformanceBaseline,
   PerformanceCue,

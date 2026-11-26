@@ -1,7 +1,7 @@
-import type { Anime25DDriver } from '@myriad/figure-player'
+import type { Anime25DDriver } from '@myriad-you/figure-player'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { IDENTITY_DRIVER } from '@myriad/figure-player'
+import { IDENTITY_DRIVER } from '@myriad-you/figure-player'
 import { applyAnime25DComposedPose, applyAnime25DStylizedExpression, resolveAnime25DStylizedTargets } from './driverComposition'
 import { intentExpressionOffset, mixBoundedExpressionChannel } from './performanceExpression'
 import { zeroOccupancyOffset } from './poseCompositor'
@@ -77,7 +77,7 @@ test('all shared pose producers land through one channel-weighted composition', 
         mouthCAng: 0,
         mouthScale: 0,
       },
-      breath: { angleX: 0.1, angleY: 0, angleZ: 0, body: 0.08 },
+      idleSway: { angleX: 0.1, angleY: 0, angleZ: 0, body: 0.08 },
       performance,
       stylized,
       coSpeech: {
@@ -183,7 +183,7 @@ test('delight realizes its claimed bust resource through head/body ownership', (
         mouthCAng: 0,
         mouthScale: 0,
       },
-      breath: { angleX: 0, angleY: 0, angleZ: 0, body: 0 },
+      idleSway: { angleX: 0, angleY: 0, angleZ: 0, body: 0 },
       performance,
       stylized,
       coSpeech: { brow: 0, eyeOpen: 0, angleY: 0, angleZ: 0, body: 0 },
@@ -241,7 +241,7 @@ test('an idle mood colours a free mouth but yields it to a voice or a song', () 
         },
         groove: { angleX: 0, angleY: 0, angleZ: 0, body: 0, armY: 0, armPos: 0, eyeX: 0, brow: 0 },
         thinking: { angleX: 0, angleY: 0, angleZ: 0, eyeX: 0, eyeY: 0, brow: 0, mouthCY: 0, mouthCAng: 0, mouthScale: 0 },
-        breath: { angleX: 0, angleY: 0, angleZ: 0, body: 0 },
+        idleSway: { angleX: 0, angleY: 0, angleZ: 0, body: 0 },
         performance: intentExpressionOffset('think', 0),
         stylized,
         coSpeech: { brow: 0, eyeOpen: 0, angleY: 0, angleZ: 0, body: 0 },
@@ -277,7 +277,7 @@ test('a wink closes one eye and leaves the other open', () => {
       },
       groove: { angleX: 0, angleY: 0, angleZ: 0, body: 0, armY: 0, armPos: 0, eyeX: 0, brow: 0 },
       thinking: { angleX: 0, angleY: 0, angleZ: 0, eyeX: 0, eyeY: 0, brow: 0, mouthCY: 0, mouthCAng: 0, mouthScale: 0 },
-      breath: { angleX: 0, angleY: 0, angleZ: 0, body: 0 },
+      idleSway: { angleX: 0, angleY: 0, angleZ: 0, body: 0 },
       performance: intentExpressionOffset('think', 0),
       stylized,
       coSpeech: { brow: 0, eyeOpen: 0, angleY: 0, angleZ: 0, body: 0 },

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { detectPaintedLips } from '@myriad/figure-player/internals'
+import { detectPaintedLips } from '@myriad-you/figure-player/internals'
 import { createLipMouthBitmap, LIP_MOUTH_KINDS, lipMouthSize } from './lipMouth'
 
 function mouth(width: number, height: number, paint: (x: number, y: number) => readonly [number, number, number] | null) {

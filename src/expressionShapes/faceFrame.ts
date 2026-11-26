@@ -1,5 +1,5 @@
 // Placing drawn expression art on a face: points, contours and bitmaps in the face's frame.
-import type { Anime25DFaceFrame, Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
+import type { Anime25DFaceFrame, Anime25DSourceAnchors } from '@myriad-you/figure-player/internals'
 import type { RasterLayer } from '../rig/anime25dImportTypes'
 
 const FACE_ALPHA_THRESHOLD = 8
@@ -74,8 +74,8 @@ export function faceContourAlongEyeLine(
 /** Rough mouth box for portraits that ship no mouth drawing at all. */
 export function estimateAnime25DMouthAnchor(
   frame: Readonly<Anime25DFaceFrame>,
-  face: Readonly<Anime25DRiggerAnchors['face']>,
-): Anime25DRiggerAnchors['mouth'] {
+  face: Readonly<Anime25DSourceAnchors['face']>,
+): Anime25DSourceAnchors['mouth'] {
   const center = faceFramePoint(
     frame,
     frame.originX,

@@ -1,4 +1,4 @@
-import type { Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
+import type { Anime25DSourceAnchors } from '@myriad-you/figure-player/internals'
 import type { Anime25DSourceReference, RasterLayer } from './anime25dImportTypes'
 import { uniquePartId } from './anime25dRaster'
 import { collarBoundaryRearAmount, collarColorMaskAt, collarStandaloneRearAmount, segmentRearCollarByColor } from './collarColorSplit'
@@ -27,7 +27,7 @@ function colorDistanceAt(layer: RasterLayer, x: number, y: number, reference: Ui
 
 export function splitHighCollarOcclusion(
   layers: RasterLayer[],
-  anchors: Anime25DRiggerAnchors,
+  anchors: Anime25DSourceAnchors,
   sourceReference?: Anime25DSourceReference,
 ): RasterLayer[] {
   // Never split it again.

@@ -1,9 +1,9 @@
 import type { Anime25DPlaybackBuildLayer } from './playback'
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { isAnime25DPlayback } from '@myriad/figure-player'
+import { isAnime25DPlayback } from '@myriad-you/figure-player'
 import { analyzeAnime25DMouthProfile } from './mouthProfile'
-import { buildAnime25DPlayback, remapRiggerAnchors } from './playback'
+import { buildAnime25DPlayback, remapSourceAnchors } from './playback'
 
 function layer(
   partial: Omit<
@@ -257,7 +257,7 @@ describe('Anime2.5DRig playback', () => {
   })
 
   it('remaps rigger anchors into the 3:4 frame without rebuilding them', () => {
-    const remapped = remapRiggerAnchors(
+    const remapped = remapSourceAnchors(
       {
         face: { cx: 128, cy: 80, x0: 60, x1: 196, y0: 30, y1: 140 },
         eyeL: {

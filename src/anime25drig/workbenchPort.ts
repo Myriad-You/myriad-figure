@@ -1,5 +1,5 @@
-import type { Anime25DDriver } from '@myriad/figure-player'
-import type { PoseCorrection, PoseCorrectionSurface } from '@myriad/figure-player/workbench'
+import type { Anime25DDriver } from '@myriad-you/figure-player'
+import type { PoseCorrection, PoseCorrectionSurface } from '@myriad-you/figure-player/workbench'
 import type { Anime25DDebugSnapshot } from './player'
 
 /** A correctable point under the pointer: its surface and rest place in head radii. */

@@ -1,4 +1,4 @@
-import type { Anime25DArmAim } from '@myriad/figure-player'
+import type { Anime25DArmAim } from '@myriad-you/figure-player'
 
 /**
  * A stage phrase for the arms, written against the beat: where each hand is on which beat and how long it takes

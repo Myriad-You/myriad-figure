@@ -1,6 +1,6 @@
-import type { Anime25DArmAim, Anime25DArmSide, Anime25DDebugSnapshot, Anime25DDriver, Anime25DDriving, Anime25DInspection, Anime25DMotionEnvelopeProfile, Anime25DPlayback, Anime25DPose, MeropeRigManifest, VisibleTouchHit } from '@myriad/figure-player'
+import type { Anime25DArmAim, Anime25DArmSide, Anime25DDriver, Anime25DDriving, Anime25DInspection, Anime25DMotionEnvelopeProfile, Anime25DPlayback, Anime25DPose, MeropeRigManifest, Anime25DDebugSnapshot as StageDebugSnapshot, VisibleTouchHit } from '@myriad-you/figure-player'
 
-import type { PoseCorrection, PoseCorrectionStageSource } from '@myriad/figure-player/workbench'
+import type { PoseCorrection, PoseCorrectionStageSource } from '@myriad-you/figure-player/workbench'
 import type { PresentedTouchReaction } from '../interaction/touchReaction'
 
 import type { MotionChannelPolicy } from '../motion/policy'
@@ -10,9 +10,9 @@ import type { SpeechProsodyPlan } from '../speech/prosody'
 import type { FigureTrace } from '../trace'
 import type { Anime25DMotionUnit } from './behaviorMotion'
 import type { MotionComposerInput, MotionFigure } from './motionComposer'
-import { Anime25DIrisRebound, Anime25DStage, ClosedEyePresentation, IDENTITY_DRIVER } from '@myriad/figure-player'
+import { Anime25DClosedEyePresentation, Anime25DIrisRebound, Anime25DStage, IDENTITY_DRIVER } from '@myriad-you/figure-player'
 
-import { sanitizeDriverPatch } from '@myriad/figure-player/internals'
+import { sanitizeDriverPatch } from '@myriad-you/figure-player/internals'
 import { IDLE_MOTION_POLICY } from '../motion/policy'
 import { boundRigCapabilities } from '../motion/rigStateSummary'
 
@@ -26,10 +26,13 @@ import {
 } from './performanceExpression'
 import { baselineDriverPatch, restEnergyDriverPatch } from './performanceMotion'
 
-export type { Anime25DDebugSnapshot } from '@myriad/figure-player'
-export type { Anime25DInspection, Anime25DLayerView, Anime25DPoint } from '@myriad/figure-player'
+/** The stage's snapshot (Anime25DStage.debugSnapshot), with what her motion envelope moved between channels. */
+export interface Anime25DDebugSnapshot extends StageDebugSnapshot {
+  motionEnvelope: StageDebugSnapshot['motionEnvelope'] & { transferredEnergy: number }
+}
+export type { Anime25DInspection, Anime25DLayerView, Anime25DPoint } from '@myriad-you/figure-player'
 
-/** The stage (Anime25DStage from @myriad/figure-player) driven by her performance: speech, song, directed poses, behaviors and touch. */
+/** The stage (Anime25DStage from @myriad-you/figure-player) driven by her performance: speech, song, directed poses, behaviors and touch. */
 export class Anime25DPlayer {
   private readonly stage: Anime25DStage<MotionFigure>
   private motionCapabilities: readonly string[] = []
@@ -37,7 +40,7 @@ export class Anime25DPlayer {
   private readonly target: Anime25DDriver = { ...IDENTITY_DRIVER }
 
   private readonly irisRebound = new Anime25DIrisRebound()
-  private readonly closedEyes = new ClosedEyePresentation()
+  private readonly closedEyes = new Anime25DClosedEyePresentation()
   private readonly motion = new Anime25DMotionComposer(
     this.current,
     this.closedEyes,
@@ -76,12 +79,12 @@ export class Anime25DPlayer {
     const motion = this.motion
     const driving: Anime25DDriving<MotionFigure> = {
       directedBodyWeight: control => motion.directedBodyWeight(control),
-      get jawEmphasis() { return motion.jawEmphasis },
-      get stylizedMotion() { return motion.stylizedMotion },
-      get stylizedHeadShare() { return motion.stylizedHeadShare },
-      get sillyMouthShare() { return motion.sillyMouthShare },
+      get jawBoost() { return motion.jawBoost },
+      get stickerFaceMotion() { return motion.stickerFaceMotion },
+      get stickerFaceHeadShare() { return motion.stickerFaceHeadShare },
+      get stickerMouthShare() { return motion.stickerMouthShare },
       step: (dt, time) => this.stepMotion(dt, time),
-      thinkingLevel: () => this.thinkingLevel(),
+      spinnerLevel: () => this.thinkingLevel(),
       drawn: () => this.sampleTouch(),
       frame: sample => this.trace.frame(sample),
       measure: measureMotionFigure,
@@ -142,7 +145,7 @@ export class Anime25DPlayer {
 
   setTarget(partial: Partial<Anime25DDriver>): void {
     const patch = sanitizeDriverPatch(partial)
-    this.thinkingExpression.apply(this.target, patch, this.speechActive || (patch.talk ?? this.target.talk))
+    this.thinkingExpression.apply(this.target, patch, this.speechActive || (patch.talking ?? this.target.talking))
   }
 
   replaceTarget(driver: Anime25DDriver): void {
@@ -266,7 +269,8 @@ export class Anime25DPlayer {
   }
 
   debugSnapshot(): Anime25DDebugSnapshot {
-    return this.stage.debugSnapshot(this.motion.motionEnvelopeResult.transferredEnergy)
+    const snapshot = this.stage.debugSnapshot()
+    return { ...snapshot, motionEnvelope: { ...snapshot.motionEnvelope, transferredEnergy: this.motion.motionEnvelopeResult.transferredEnergy } }
   }
 
   resize(cssWidth: number, cssHeight: number, devicePixelRatio: number): void {
@@ -301,7 +305,7 @@ export class Anime25DPlayer {
 
   /** How strongly the thinking sticker shows: none while she talks. */
   private thinkingLevel(): number {
-    return this.speechActive || this.target.talk ? 0 : this.target.thinking ? 1 : this.motion.performanceExpression.getThinkingLevel()
+    return this.speechActive || this.target.talking ? 0 : this.target.thinking ? 1 : this.motion.performanceExpression.getThinkingLevel()
   }
 
   /** The motion's substep, which writes `current` for the stage. */

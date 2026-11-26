@@ -1,5 +1,5 @@
-import type { CharacterAssetProfile } from '@myriad/figure-player/internals'
-import { CHARACTER_ASSET_PROFILES } from '@myriad/figure-player/internals'
+import type { CharacterAssetProfile } from '@myriad-you/figure-player/internals'
+import { CHARACTER_ASSET_PROFILES } from '@myriad-you/figure-player/internals'
 
 /** What importing a decomposed PSD keeps, frames and pivots on, per asset profile. */
 export interface Anime25DImportProfile {

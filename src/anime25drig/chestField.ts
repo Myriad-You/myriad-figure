@@ -1,7 +1,7 @@
 // The chest profile the importer derives from a package's geometry, read by the stage's chest physics.
-import type { Anime25DPlayback } from '@myriad/figure-player'
-import type { Anime25DChestProfile } from '@myriad/figure-player/internals'
-import { isAnime25DLiningPiece } from '@myriad/figure-player/internals'
+import type { Anime25DPlayback } from '@myriad-you/figure-player'
+import type { Anime25DChestProfile } from '@myriad-you/figure-player/internals'
+import { isAnime25DLiningPiece } from '@myriad-you/figure-player/internals'
 
 const DEFAULT_SUPPORT_SCALE = 0.45
 

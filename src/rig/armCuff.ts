@@ -1,4 +1,4 @@
-import type { Anime25DVec3 } from '@myriad/figure-player/internals'
+import type { Anime25DVec3 } from '@myriad-you/figure-player/internals'
 import type { P2 } from './armRaster'
 import { add2, dot2, linspace, median, mul2, sub2, unit2 } from './armRaster'
 

@@ -1,7 +1,7 @@
 // Expression mouths painted in a portrait's own lips.
-import type { LipCut, MouthExpressionKind, PaintedLips } from '@myriad/figure-player/internals'
+import type { Anime25DLipParting, MouthExpressionKind, PaintedLips } from '@myriad-you/figure-player/internals'
 import type { MouthExpressionSize } from './mouthShared'
-import { LIP_CUT_OFFSET, lipCut, mouthExpressionOuterPath, paintLipMouth, soften } from '@myriad/figure-player/internals'
+import { LIP_PARTING_OFFSET, lipParting, mouthExpressionOuterPath, paintLipMouth, softenPaintedEdges } from '@myriad-you/figure-player/internals'
 
 type Point = readonly [x: number, y: number]
 
@@ -17,7 +17,7 @@ export const LIP_MOUTH_KINDS: ReadonlySet<MouthExpressionKind> = new Set(['open'
  * Where the lips part in an expression mouth. A wail and a laugh open wide
  * inside thin lips; a tongue out shows no teeth.
  */
-const EXPRESSION_LIP_CUTS: Readonly<Partial<Record<MouthExpressionKind, LipCut>>> = {
+const EXPRESSION_LIP_CUTS: Readonly<Partial<Record<MouthExpressionKind, Anime25DLipParting>>> = {
   cry: { openingX: 0.8, openingY: 0.72, lineX: 0.86, lineY: 0.8, teethMinimum: 0.16 },
   maniac: { openingX: 0.88, openingY: 0.84, lineX: 0.92, lineY: 0.89, teethMinimum: 0.2 },
   silly: { openingX: 0.76, openingY: 0.66, lineX: 0.83, lineY: 0.74, teethMinimum: 0 },
@@ -47,9 +47,9 @@ export function createLipMouthBitmap(
   const width = Math.max(16, Math.min(large ? 360 : 200, Math.round(requestedSize.width)))
   const height = Math.max(10, Math.min(large ? 300 : 160, Math.round(requestedSize.height)))
   const outer = mouthExpressionOuterPath(kind)
-  const cut = EXPRESSION_LIP_CUTS[kind] ?? lipCut(kind === 'narrow' ? 1 : 0, kind === 'round' ? 1 : 0)
-  const opening = scalePath(outer, cut.openingX, cut.openingY, LIP_CUT_OFFSET)
-  const lipLine = scalePath(outer, cut.lineX, cut.lineY, LIP_CUT_OFFSET)
+  const cut = EXPRESSION_LIP_CUTS[kind] ?? lipParting(kind === 'narrow' ? 1 : 0, kind === 'round' ? 1 : 0)
+  const opening = scalePath(outer, cut.openingX, cut.openingY, LIP_PARTING_OFFSET)
+  const lipLine = scalePath(outer, cut.lineX, cut.lineY, LIP_PARTING_OFFSET)
   const data = new Uint8ClampedArray(width * height * 4)
   const openingTop = Math.min(...opening.map(([, y]) => y))
   const openingBottom = Math.max(...opening.map(([, y]) => y))
@@ -67,7 +67,7 @@ export function createLipMouthBitmap(
     inLipLine: (x, y) => pointInPolygon(x, y, lipLine),
     inOpening: (x, y) => pointInPolygon(x, y, opening),
   })
-  return { width, height, data: soften(data, width, height) }
+  return { width, height, data: softenPaintedEdges(data, width, height) }
 }
 
 function scalePath(path: readonly Point[], scaleX: number, scaleY: number, offsetY: number): Point[] {

@@ -1,8 +1,8 @@
-import type { Anime25DDriver } from '@myriad/figure-player'
+import type { Anime25DDriver } from '@myriad-you/figure-player'
 import type { BodyControl } from '../performance/types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { IDENTITY_DRIVER } from '@myriad/figure-player'
+import { IDENTITY_DRIVER } from '@myriad-you/figure-player'
 import { BODY_CONTROLS, FACE_PRESETS, tierExtent } from '../events/performanceContract'
 import { DirectedPoseController } from './directedPose'
 
