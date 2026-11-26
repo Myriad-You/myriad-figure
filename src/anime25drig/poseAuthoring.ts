@@ -16,14 +16,14 @@ export function appendPoseCorrectionPatch(current: readonly PoseCorrection[], ca
 }
 
 export function poseCorrectionPreviewDriver(correction: PoseCorrection, current: Anime25DDriver = WORKBENCH_DRIVER): Anime25DDriver {
-  // A correction's axes keep the package's names (angleX, angleY, mouthOpen); each moves its driver field.
-  const { eyeCloseL, eyeCloseR, angleX, angleY, mouthOpen } = correction.at
+  // Each axis moves its driver field; an eye's closing is one less its lid.
+  const { lidCloseL, lidCloseR, headYaw, headPitch, jaw } = correction.at
   return { ...current,
-    ...(angleX !== undefined ? { headYaw: angleX } : {}),
-    ...(angleY !== undefined ? { headPitch: angleY } : {}),
-    ...(mouthOpen !== undefined ? { jaw: mouthOpen } : {}),
-    ...(eyeCloseL !== undefined ? { lidL: 1 - eyeCloseL } : {}),
-    ...(eyeCloseR !== undefined ? { lidR: 1 - eyeCloseR } : {}),
+    ...(headYaw !== undefined ? { headYaw } : {}),
+    ...(headPitch !== undefined ? { headPitch } : {}),
+    ...(jaw !== undefined ? { jaw } : {}),
+    ...(lidCloseL !== undefined ? { lidL: 1 - lidCloseL } : {}),
+    ...(lidCloseR !== undefined ? { lidR: 1 - lidCloseR } : {}),
     headRoll: 0, torsoBreath: false, hairWind: false, autoBlink: false, idleSway: false, talking: false, followPointer: false, physics: false,
   }
 }
@@ -93,15 +93,14 @@ export function poseCorrectionCorner(
 ): { at: PoseCorrection['at'] } | { problem: PoseCorrectionProblem } {
   const round = (v: number) => Math.round(v * 100) / 100
   const at: PoseCorrection['at'] = {}
-  // A correction's axes keep the package's names; the driver's fields are read for them.
-  for (const [axis, field] of [['angleX', 'headYaw'], ['angleY', 'headPitch']] as const) {
-    if (Math.abs(driver[field]) >= 0.05) at[axis] = round(driver[field])
+  for (const axis of ['headYaw', 'headPitch'] as const) {
+    if (Math.abs(driver[axis]) >= 0.05) at[axis] = round(driver[axis])
   }
   if (!Object.keys(at).length) return { problem: 'needsTurn' }
   const region = surface === 'head' ? nearestPoseCorrectionRegion(playback, surface, point) : null
-  if (region === 'leftEye' && 1 - driver.lidL >= 0.05) at.eyeCloseL = round(1 - driver.lidL)
-  if (region === 'rightEye' && 1 - driver.lidR >= 0.05) at.eyeCloseR = round(1 - driver.lidR)
-  if (region === 'mouth' && driver.jaw >= 0.05) at.mouthOpen = round(driver.jaw)
+  if (region === 'leftEye' && 1 - driver.lidL >= 0.05) at.lidCloseL = round(1 - driver.lidL)
+  if (region === 'rightEye' && 1 - driver.lidR >= 0.05) at.lidCloseR = round(1 - driver.lidR)
+  if (region === 'mouth' && driver.jaw >= 0.05) at.jaw = round(driver.jaw)
   return Object.keys(at).length < 2 ? { problem: 'needsSecond' } : { at }
 }
 

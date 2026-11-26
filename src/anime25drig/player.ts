@@ -1,4 +1,4 @@
-import type { Anime25DArmAim, Anime25DArmSide, Anime25DDriver, Anime25DDriving, Anime25DInspection, Anime25DMotionEnvelopeProfile, Anime25DPlayback, Anime25DPose, MeropeRigManifest, Anime25DDebugSnapshot as StageDebugSnapshot, VisibleTouchHit } from '@myriad-you/figure-player'
+import type { Anime25DArmAim, Anime25DArmSide, Anime25DDriver, Anime25DDriving, Anime25DInspection, Anime25DMotionEnvelopeProfile, Anime25DPlaybackDocument, Anime25DPose, MeropeRigManifest, Anime25DDebugSnapshot as StageDebugSnapshot, VisibleTouchHit } from '@myriad-you/figure-player'
 
 import type { PoseCorrection, PoseCorrectionStageSource } from '@myriad-you/figure-player/workbench'
 import type { PresentedTouchReaction } from '../interaction/touchReaction'
@@ -72,7 +72,7 @@ export class Anime25DPlayer {
 
   constructor(
     canvas: HTMLCanvasElement,
-    playback: Anime25DPlayback,
+    playback: Anime25DPlaybackDocument,
     rigManifest?: MeropeRigManifest,
     private readonly trace: FigureTrace = NO_TRACE,
   ) {
@@ -107,7 +107,7 @@ export class Anime25DPlayer {
    * (Anime25DStage.replaceLivePackage).
    */
   replaceLivePackage(
-    playback: Anime25DPlayback,
+    playback: Anime25DPlaybackDocument,
     rigManifest: MeropeRigManifest | undefined,
     atlasUrl: string,
   ): Promise<void> {

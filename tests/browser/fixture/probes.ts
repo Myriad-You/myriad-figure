@@ -2,7 +2,7 @@
 // targets and ticks, then read what it drew (inspect(), pixels). Typed and
 // type-checked, so a renamed internal cannot turn a probe into a silent skip.
 // Each probe runs on a synthetic package in CI and on real art when given.
-import type { Anime25DDriver, Anime25DInspection, Anime25DLayerView, Anime25DPlayback, Anime25DPoint, Anime25DPose, MeropeRigManifest } from '@myriad-you/figure-player'
+import type { Anime25DDriver, Anime25DInspection, Anime25DLayerView, Anime25DPlaybackDocument, Anime25DPoint, Anime25DPose, MeropeRigManifest } from '@myriad-you/figure-player'
 import type { Anime25DArmModel } from '@myriad-you/figure-player/internals'
 import type { PoseCorrection } from '@myriad-you/figure-player/workbench'
 import type { MotionChannelPolicy } from '../../../src/motion/policy'
@@ -21,7 +21,7 @@ import { fixture, importPsd } from './synthetic'
 export type PackageRef = { synthetic: string, armed?: boolean } | { manifest: MeropeRigManifest, atlasUrl: string }
 
 interface FigurePackage {
-  playback: Anime25DPlayback
+  playback: Anime25DPlaybackDocument
   manifest?: MeropeRigManifest
   atlasUrl: string
 }
@@ -47,7 +47,7 @@ async function resolvePackage(ref: PackageRef): Promise<FigurePackage> {
 }
 
 /** The package with a gesture arm modelled on one of its drawn ones, so what is made for modelled arms is made here too. */
-function withModelledArm(playback: Anime25DPlayback): Anime25DPlayback {
+function withModelledArm<P extends Anime25DPlaybackDocument>(playback: P): P {
   const base = playback.layers.find(layer => layer.role === 'handwear' && layer.side)
   if (!base) throw new Error('no drawn arm to model')
   const { w, h } = base
@@ -538,7 +538,7 @@ async function correction(ref: PackageRef) {
     if (!eye) throw new Error('The package needs an eye anchor')
     const head = pkg.playback.shellProfile.head
     // A deliberately visible stroke: it proves authoring reaches pixels, not that it is the right pose.
-    const authored: PoseCorrection = { surface: 'head', at: { angleX: 0.8, angleY: -0.6, eyeCloseL: 1 },
+    const authored: PoseCorrection = { surface: 'head', at: { headYaw: 0.8, headPitch: -0.6, lidCloseL: 1 },
       patches: [poseCorrectionPatch(head, { x: eye.icx, y: eye.closeY }, { x: 0, y: 0 }, { x: 0, y: -16 }, { x: head.radiusX * 0.45, y: head.radiusY * 0.4 })] }
     const run = async (corrections: 'none' | 'authored' | 'released') => {
       const { player, gl, close } = await open(ref)

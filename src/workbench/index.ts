@@ -21,5 +21,6 @@ export { ANIME25D_PROJECT_NAME, ANIME25D_PROJECT_URL, CREDITED_AUTHORS } from '@
 export { WORKBENCH_DRIVER } from '@myriad-you/figure-player/workbench'
 export type { Anime25DMotionEnvelopeProbeId } from '@myriad-you/figure-player/workbench'
 export { ANIME25D_MOTION_ENVELOPE_PROBES } from '@myriad-you/figure-player/workbench'
-export { isPoseCorrections } from '@myriad-you/figure-player/workbench'
+export type { PoseCorrectionV7 } from '@myriad-you/figure-player/workbench'
+export { isPoseCorrections, isPoseCorrectionsV7, poseCorrectionsFromV7, poseCorrectionsToV7 } from '@myriad-you/figure-player/workbench'
 export { clientDeltaToPoseCorrection, pickPoseCorrectionAtClient, poseCorrectionStageRect, projectPoseCorrectionToClient } from '@myriad-you/figure-player/workbench'

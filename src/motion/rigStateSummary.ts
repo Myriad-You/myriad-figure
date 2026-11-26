@@ -1,4 +1,5 @@
-import type { Anime25DPlayback, MeropeRigManifest } from '@myriad-you/figure-player'
+import type { MeropeRigManifest } from '@myriad-you/figure-player'
+import type { Anime25DPlaybackContent } from '@myriad-you/figure-player/internals'
 import type {
   PerformanceBaseline,
   PerformanceCue,
@@ -89,7 +90,7 @@ export const RIG_STATE_CAPABILITY_LIMIT = new Set<string>([
   ...ARM_VARIANT_CAPABILITIES,
 ]).size
 
-export function playbackBodyCapabilities(playback: Pick<Anime25DPlayback, 'layers' | 'shellProfile'>): string[] {
+export function playbackBodyCapabilities(playback: Pick<Anime25DPlaybackContent<unknown>, 'layers' | 'shellProfile'>): string[] {
   const result: string[] = ['head-body']
   if (playback.shellProfile?.torso.enabled) result.push('torso-volume')
   for (const side of ['L', 'R'] as const) {

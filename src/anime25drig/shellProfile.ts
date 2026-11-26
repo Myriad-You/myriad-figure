@@ -11,9 +11,10 @@ const DEFAULT_CURVE: readonly Anime25DShellCurvePoint[] = [
 
 type ShellProfileSource = Pick<Anime25DPlayback, 'anchors' | 'layers'>
 
+/** The shell an import derives from the anchors, with no pose corrections: it fits a package of any version. */
 export function deriveAnime25DShellProfile(
   playback: Readonly<ShellProfileSource>,
-): Anime25DShellProfile {
+): Anime25DShellProfile<never> {
   const { anchors, layers } = playback
   const faceWidth = Math.max(1, anchors.face.x1 - anchors.face.x0)
   const faceHeight = Math.max(1, anchors.face.y1 - anchors.face.y0)

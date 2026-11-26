@@ -53,7 +53,7 @@ rig 契约和表演契约的源头在共用核心（[Myriad-You/myriad-core](htt
 
 ## 驱动参数的名字
 
-驱动参数（`Anime25DDriver`，`setTarget`、`getCurrent`、`inspect().driver` 等）用渲染层的名字：`headYaw`、`headPitch`、`headRoll`、`lidL`、`lidR`、`gazeX`、`gazeY`、`jaw`、`lipCurve`、`browLift`、`browTiltL`、`browTiltR`、`browTilt`、`bodyLean`、`torsoFollow`、`rearHairSway`。存下来和交换的格式不跟着改：姿势 JSON 里的 `driver`、包里姿势修正的轴（`angleX`、`angleY`、`mouthOpen`、`eyeCloseL`、`eyeCloseR`）仍是原来的键，在读写的地方换算；表演契约有自己的词表（`headTurn`、`mouthOpen`、`browLift` 等身体控制），由 `directedPose.ts` 的 `BODY_CONTROL_DRIVERS` 对到驱动参数。表演内部的姿势来源（呼吸、环境动作、思考、唱歌的律动、表演偏移）也保留各自的键，合成时由 `poseArbitration.ts` 的 `POSE_KEY_DRIVER_FIELDS` 写到驱动参数上。
+驱动参数（`Anime25DDriver`，`setTarget`、`getCurrent`、`inspect().driver` 等）用渲染层的名字：`headYaw`、`headPitch`、`headRoll`、`lidL`、`lidR`、`gazeX`、`gazeY`、`jaw`、`lipCurve`、`browLift`、`browTiltL`、`browTiltR`、`browTilt`、`bodyLean`、`torsoFollow`、`rearHairSway`。存下来和交换的格式按版本区分，规格见依赖的 `docs/format.md`：姿势 JSON 写版本 2，`driver` 用这些名字，版本 1（原来的键 `angleX` 等）也读；包的姿势修正的轴在版本 8 是 `headYaw`、`headPitch`、`lidCloseL`、`lidCloseR`、`jaw`，在版本 7 是 `angleX`、`angleY`、`eyeCloseL`、`eyeCloseR`、`mouthOpen`，读的时候按包的 `version` 换成前者。导入现在仍写版本 7（`buildAnime25DPlayback`），等所有读包的一方都认 8 再换；运行时和工作台里的 `PoseCorrection` 一律是版本 8 的轴，存回版本 7 的包之前用 `poseCorrectionsToV7` 换回去；表演契约有自己的词表（`headTurn`、`mouthOpen`、`browLift` 等身体控制），由 `directedPose.ts` 的 `BODY_CONTROL_DRIVERS` 对到驱动参数。表演内部的姿势来源（呼吸、环境动作、思考、唱歌的律动、表演偏移）也保留各自的键，合成时由 `poseArbitration.ts` 的 `POSE_KEY_DRIVER_FIELDS` 写到驱动参数上。
 
 ## 开发
 
