@@ -1,8 +1,8 @@
 import type { FaceLife } from '../events/performanceContract'
 import type { ResolvedScore } from '../motion/scoreTimeline'
 import type { BodyControl, ScoreMove } from '../performance/types'
+import { HEAD_TILT_RADIANS, headRollForRadians } from '@myriad/figure-player/internals'
 import { BODY_CONTROLS, SCORE_MOVES } from '../events/performanceContract'
-import { angleZForHeadRoll, HEAD_TILT_RADIANS } from './poseScale'
 import { scoreMoveOffsets, scoreMoveSeconds } from './scoreMoves'
 
 /**
@@ -70,11 +70,11 @@ export interface ActingSample {
  * directed head tilt says how much it should show, as a share of the full
  * tilt (HEAD_TILT_RADIANS): the director's slight (0.35) is about 8°, clear
  * (0.65) about 15° and strong the full 24°. Everyday motion keeps the low,
- * slow end of angleZ to itself.
+ * slow end of headRoll to itself.
  */
 export function mappedControlValue(key: BodyControl, value: number): number {
   if (key === 'gazeVertical') return -value
-  if (key === 'headTilt') return angleZForHeadRoll(value * HEAD_TILT_RADIANS)
+  if (key === 'headTilt') return headRollForRadians(value * HEAD_TILT_RADIANS)
   if (key === 'hairSway') return value * 1.5
   if (key === 'chestSway') return value * 4
   return value

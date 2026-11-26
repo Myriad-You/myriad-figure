@@ -1,4 +1,4 @@
-import type { Anime25DArmModel, Anime25DVec3 } from '../anime25drig/types'
+import type { Anime25DArmModel, Anime25DVec3 } from '@myriad/figure-player/internals'
 import type { P2 } from './armRaster'
 import {
   add2, area, closeSquare, components, convexMask, cropAround, dilateEllipse, dilateSquare, dist2, dist3, dot2, erodeEllipse,

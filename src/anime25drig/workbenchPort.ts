@@ -1,7 +1,6 @@
-import type { Anime25DDriver } from './driver'
+import type { Anime25DDriver } from '@myriad/figure-player'
+import type { PoseCorrection, PoseCorrectionSurface } from '@myriad/figure-player/workbench'
 import type { Anime25DDebugSnapshot } from './player'
-import type { PoseCorrection } from './poseCorrections'
-import type { PoseCorrectionSurface } from './poseCorrectionStage'
 
 /** A correctable point under the pointer: its surface and rest place in head radii. */
 export interface PoseCorrectionStagePick {

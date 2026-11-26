@@ -1,4 +1,5 @@
-import type { MeropeRigManifest, RigBone } from './types'
+import type { MeropeRigManifest } from '@myriad/figure-player'
+import type { RigBone } from '@myriad/figure-player/internals'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildRigSemantics, resolveRigSemantics } from './semantics'

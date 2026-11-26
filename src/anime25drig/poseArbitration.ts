@@ -1,3 +1,4 @@
+import type { Anime25DDriver } from '@myriad/figure-player'
 import type { MotionChannelPolicy } from '../motion/policy'
 import type { Anime25DBehaviorMotionSample } from './behaviorMotion'
 import type { PoseOccupancy } from './poseOccupancy'
@@ -23,6 +24,19 @@ export type PoseKey = keyof typeof POSE_CHANNEL_OF_KEY
 export type PoseChannel = (typeof POSE_CHANNEL_OF_KEY)[PoseKey]
 
 export const POSE_KEYS = Object.keys(POSE_CHANNEL_OF_KEY) as PoseKey[]
+
+/** The driver field each pose key moves: pose sources keep these keys, the composition writes the driver. */
+export const POSE_KEY_DRIVER_FIELDS = {
+  angleX: 'headYaw',
+  angleY: 'headPitch',
+  angleZ: 'headRoll',
+  body: 'bodyLean',
+  armY: 'armY',
+  armPos: 'armPos',
+  eyeX: 'gazeX',
+  eyeY: 'gazeY',
+  brow: 'browLift',
+} as const satisfies Record<PoseKey, keyof Anime25DDriver>
 
 export interface PoseChannelWeights {
   gaze: number

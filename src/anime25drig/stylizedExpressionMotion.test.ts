@@ -1,10 +1,7 @@
 import type { StylizedExpressionMotion } from './stylizedExpressionMotion'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {
-  SILLY_IRIS_DRIFT_LIMIT,
-  StylizedExpressionMotionController,
-} from './stylizedExpressionMotion'
+import { SILLY_IRIS_DRIFT_LIMIT, StylizedExpressionMotionController } from './stylizedExpressionMotion'
 
 const STEP = 1 / 60
 const LOOP_SECONDS = 6

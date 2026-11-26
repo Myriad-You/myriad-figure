@@ -1,3 +1,4 @@
+import { FigureError as StageError } from '@myriad/figure-player'
 import { formatTemplate } from './rig/formatTemplate'
 
 /**
@@ -26,6 +27,10 @@ export const FIGURE_ERROR_TEXT = {
 export type FigureErrorCode = keyof typeof FIGURE_ERROR_TEXT
 export type FigureErrorParams = Record<string, string | number>
 
+/**
+ * The figure's error. What the stage throws (its two codes, both in FIGURE_ERROR_TEXT) is one too:
+ * `error instanceof FigureError` holds for either, with the same `name`, `code` and `params`.
+ */
 export class FigureError extends Error {
   override readonly name = 'FigureError'
 
@@ -34,6 +39,12 @@ export class FigureError extends Error {
     readonly params: FigureErrorParams = {},
   ) {
     super(formatTemplate(FIGURE_ERROR_TEXT[code], params))
+  }
+
+  static [Symbol.hasInstance](value: unknown): boolean {
+    // On FigureError itself only: a subclass keeps the ordinary prototype check.
+    const own = Function.prototype[Symbol.hasInstance].call(this, value)
+    return this === FigureError ? own || value instanceof StageError : own
   }
 }
 

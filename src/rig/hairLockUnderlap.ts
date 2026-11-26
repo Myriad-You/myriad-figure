@@ -1,5 +1,5 @@
 import type { RasterLayer } from './anime25dImportTypes'
-import { insideDistance } from '../anime25drig/pixelMasks'
+import { insideDistance } from '@myriad/figure-player/internals'
 import { trimRaster } from './anime25dRaster'
 
 const LOCK = /^front-hair-\d+$/

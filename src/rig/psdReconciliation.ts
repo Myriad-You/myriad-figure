@@ -1,7 +1,4 @@
-import type {
-  Anime25DSourceReference,
-  RasterLayer,
-} from './anime25dImportTypes'
+import type { Anime25DSourceReference, RasterLayer } from './anime25dImportTypes'
 import type { EarAccessoryMasks } from './psdEarAccessory'
 import type { RigRect } from './types'
 import { earAccessoryMasks } from './psdEarAccessory'

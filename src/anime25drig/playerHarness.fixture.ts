@@ -1,7 +1,7 @@
-import type { MeropeRigManifest } from '../rig/types'
+import type { MeropeRigManifest } from '@myriad/figure-player'
+import { resetCachedAtlasImagesForTests } from '@myriad/figure-player/internals'
 import { mulberry32 } from '../rig/rigFuzz.fixture'
 import { Anime25DPlayer } from './player'
-import { resetCachedAtlasImagesForTests } from './webglRuntime'
 
 /** What a run of the player in Node showed. */
 export interface PlayerRun {
@@ -45,7 +45,7 @@ function play(player: Anime25DPlayer, frames: number): void {
   for (let frame = 0; frame < frames; frame += 1) {
     const at = frames > 1 ? (frame / (frames - 1)) * 2 - 1 : 1
     player.setTarget({
-      angleX: at, angleY: -at, angleZ: at, body: at, mouthOpen: Math.abs(at), eyeOpenL: 1 - Math.abs(at),
+      headYaw: at, headPitch: -at, headRoll: at, bodyLean: at, jaw: Math.abs(at), lidL: 1 - Math.abs(at),
       handWaveL: frame > 1 ? 1 : 0, eyeCry: frame === 2 ? 1 : 0, thinking: frame === 3,
     })
     player.tick(0.25)

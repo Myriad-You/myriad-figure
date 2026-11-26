@@ -1,3 +1,5 @@
+// The sticker faces' motion over time (maniac, silly, lovestruck, anger, speechless): what the performance hands
+// the stage each substep, of which the stage reads its own StylizedExpressionMotion fields.
 import type { StylizedExpressionTargets } from './expressionRegistry'
 import { resolveStylizedExpressionTargets } from './expressionRegistry'
 
@@ -416,6 +418,7 @@ const SILLY_IRIS_X_LEFT: readonly MotionKeyframe[] = [
   [0.88, -0.0825],
   [1, 0],
 ]
+
 const SILLY_IRIS_Y_LEFT: readonly MotionKeyframe[] = [
   [0, 0],
   [0.12, 0.01125],
@@ -426,6 +429,7 @@ const SILLY_IRIS_Y_LEFT: readonly MotionKeyframe[] = [
   [0.88, 0.015],
   [1, 0],
 ]
+
 const SILLY_IRIS_X_RIGHT: readonly MotionKeyframe[] = [
   [0, 0],
   [0.12, -0.01125],
@@ -436,6 +440,7 @@ const SILLY_IRIS_X_RIGHT: readonly MotionKeyframe[] = [
   [0.88, -0.03375],
   [1, 0],
 ]
+
 const SILLY_IRIS_Y_RIGHT: readonly MotionKeyframe[] = [
   [0, 0],
   [0.12, 0.0075],
@@ -446,6 +451,7 @@ const SILLY_IRIS_Y_RIGHT: readonly MotionKeyframe[] = [
   [0.88, -0.015],
   [1, 0],
 ]
+
 const SILLY_MOUTH_OPEN: readonly MotionKeyframe[] = [
   [0, 0.15],
   [0.08, 0.15],

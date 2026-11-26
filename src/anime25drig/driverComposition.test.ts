@@ -1,29 +1,10 @@
-import type { Anime25DDriver } from './driver'
+import type { Anime25DDriver } from '@myriad/figure-player'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { IDENTITY_DRIVER } from './driver'
-import {
-  applyAnime25DComposedPose,
-  applyAnime25DSillyMouthOwnership,
-  applyAnime25DStylizedExpression,
-  BLINK_SECONDS,
-  prepareAnime25DWorkingTarget,
-  resolveAnime25DStylizedTargets,
-  stepAnime25DBlink,
-  stepAnime25DDriverResponse,
-} from './driverComposition'
-import {
-  intentExpressionOffset,
-  mixBoundedExpressionChannel,
-} from './performanceExpression'
+import { IDENTITY_DRIVER } from '@myriad/figure-player'
+import { applyAnime25DComposedPose, applyAnime25DStylizedExpression, resolveAnime25DStylizedTargets } from './driverComposition'
+import { intentExpressionOffset, mixBoundedExpressionChannel } from './performanceExpression'
 import { zeroOccupancyOffset } from './poseCompositor'
-import { isContinuousPoseKey, PoseResponseController } from './poseResponse'
-import {
-  stepMouthForm,
-  stepMouthOpen,
-  stepMouthSeal,
-  stepMouthShape,
-} from './speechResponse'
 import { StylizedExpressionMotionController } from './stylizedExpressionMotion'
 
 test('all shared pose producers land through one channel-weighted composition', () => {
@@ -110,13 +91,12 @@ test('all shared pose producers land through one channel-weighted composition', 
     zeroOccupancyOffset(),
   )
 
-  assert.ok(target.angleX > 0.09, 'breath')
-  assert.ok(target.body > 0.07, 'breath body')
-  assert.ok(target.eyeX > 0.45, 'directed gaze')
-  assert.ok(target.angleZ < -0.15, 'semantic head plus expressive range')
-  assert.ok(target.brow > 0.23, 'semantic and co-speech brow')
+  assert.ok(target.headYaw > 0.09, 'breath')
+  assert.ok(target.bodyLean > 0.07, 'breath body')
+  assert.ok(target.gazeX > 0.45, 'directed gaze')
+  assert.ok(target.headRoll < -0.15, 'semantic head plus expressive range')
+  assert.ok(target.browLift > 0.23, 'semantic and co-speech brow')
 })
-
 test('semantic and staged expression extras honor independent ownership', () => {
   const target = { ...IDENTITY_DRIVER }
   const semantic = intentExpressionOffset('dizzy', 1)
@@ -130,9 +110,8 @@ test('semantic and staged expression extras honor independent ownership', () => 
 
   assert.equal(target.eyeDizzy, 0)
   assert.equal(target.maniac, 0)
-  assert.equal(target.mouthOpen, stylized.mouthOpen * 0.25)
+  assert.equal(target.jaw, stylized.mouthOpen * 0.25)
 })
-
 test('delight realizes its claimed bust resource through head/body ownership', () => {
   const target = { ...IDENTITY_DRIVER }
   const full = { gaze: 1, headBody: 1, expression: 1 }
@@ -217,65 +196,96 @@ test('delight realizes its claimed bust resource through head/body ownership', (
       1e-12,
   )
 })
-
-test('working target preparation reuses its output and preserves legacy math', () => {
-  const authored: Anime25DDriver = {
-    ...IDENTITY_DRIVER,
-    angleX: 0.2,
-    angleY: -0.1,
-    angleZ: 0.15,
-    eyeX: 0.1,
-    eyeY: -0.2,
-    body: 0.25,
-    mouse: true,
-    idle: true,
+test('the lovestruck mouth yields to a voice by degrees, not in one step', () => {
+  const controller = new StylizedExpressionMotionController()
+  let stylized = controller.sample(0, 0, 0, 0, 0, 1)
+  for (let frame = 1; frame <= 90; frame += 1) {
+    stylized = controller.sample(frame / 60, 0, 0, 0, 0, 1)
   }
-  const output = { ...IDENTITY_DRIVER }
-  const actual = prepareAnime25DWorkingTarget(
-    output,
-    authored,
-    { x: 0.46, y: -0.33, inside: true },
-    1,
-  )
+  assert.ok(stylized.lovestruckMouthOpen > 0, 'expected an open sticker mouth')
 
-  assert.equal(actual, output)
-  assert.equal(actual.angleX, 0.46 * 0.9)
-  assert.equal(actual.angleY, 0.33 * 0.7)
-  assert.equal(actual.angleZ, 0.15)
-  assert.equal(actual.eyeX, 0.46 * 1.2)
-  assert.equal(actual.eyeY, 0.33 * 0.8)
-  assert.equal(actual.body, 0.25)
-})
-
-test('pointer gaze is a weight, so leaving eases off instead of dropping', () => {
-  const authored: Anime25DDriver = {
-    ...IDENTITY_DRIVER,
-    angleX: -0.2,
-    angleY: 0.1,
-    eyeX: 0.05,
-    eyeY: -0.05,
-    mouse: true,
+  const semantic = intentExpressionOffset('delight', 0)
+  const openAt = (vocalRest: number): number => {
+    const target = { ...IDENTITY_DRIVER, jaw: 0 }
+    applyAnime25DStylizedExpression(target, semantic, stylized, vocalRest, 0, 1)
+    return target.jaw
   }
-  const pointer = { x: 0.46, y: -0.33, inside: true }
-  const at = (authority: number) =>
-    prepareAnime25DWorkingTarget({ ...IDENTITY_DRIVER }, authored, pointer, authority)
 
-  const held = at(1)
-  const half = at(0.5)
-  const released = at(0)
-  assert.equal(released.angleX, authored.angleX)
-  assert.equal(released.eyeY, authored.eyeY)
+  const free = openAt(1)
+  const taken = openAt(0)
+  assert.ok(free > taken)
+  const half = openAt(0.5)
   assert.ok(
-    Math.abs(half.angleX - (authored.angleX + held.angleX) / 2) < 1e-12,
+    Math.abs(half - (free + taken) / 2) < 1e-12,
+    `half share gave ${half}, between ${taken} and ${free}`,
   )
-  assert.ok(Math.abs(half.eyeX - (authored.eyeX + held.eyeX) / 2) < 1e-12)
-  const ignored = prepareAnime25DWorkingTarget(
-    { ...IDENTITY_DRIVER },
-    { ...authored, mouse: false },
-    pointer,
-    1,
+  for (const rest of [-1, 2]) {
+    assert.ok(openAt(rest) >= taken && openAt(rest) <= free)
+  }
+})
+test('an idle mood colours a free mouth but yields it to a voice or a song', () => {
+  const none = { gaze: 0, headBody: 0, expression: 0 }
+  const random = { gaze: 1, headBody: 1, expression: 1 }
+  const stylized = new StylizedExpressionMotionController().sample(0, 0, 0, 0, 0, 0)
+  const compose = (speechMouth: number, grooveMouth: number) => {
+    const target = { ...IDENTITY_DRIVER }
+    applyAnime25DComposedPose(
+      target,
+      { ambient: none, random, groove: none, thinking: none, performance: none, stylized: none, coSpeech: none, speechMouth, grooveMouth },
+      {
+        ambient: { angleX: 0, angleY: 0, angleZ: 0, body: 0, eyeX: 0, eyeY: 0 },
+        randomAction: {
+          angleX: 0, angleY: 0, angleZ: 0, body: 0, eyeX: 0, eyeY: 0, brow: 0, browAngSym: 0,
+          eyeOpen: -0.2, irisScale: 0, eyeSmile: 0.3, eyeWide: 0, wink: 0, mouthForm: 0.4, mouthOpen: 0.3, mouthRound: 0.2,
+          armY: 0, armPos: 0, ambientScale: 1,
+        },
+        groove: { angleX: 0, angleY: 0, angleZ: 0, body: 0, armY: 0, armPos: 0, eyeX: 0, brow: 0 },
+        thinking: { angleX: 0, angleY: 0, angleZ: 0, eyeX: 0, eyeY: 0, brow: 0, mouthCY: 0, mouthCAng: 0, mouthScale: 0 },
+        breath: { angleX: 0, angleY: 0, angleZ: 0, body: 0 },
+        performance: intentExpressionOffset('think', 0),
+        stylized,
+        coSpeech: { brow: 0, eyeOpen: 0, angleY: 0, angleZ: 0, body: 0 },
+      },
+      zeroOccupancyOffset(),
+    )
+    return target
+  }
+  const idle = compose(0, 0)
+  assert.ok(idle.lipCurve > 0.3 && idle.jaw > 0.2 && idle.mouthRound > 0.1)
+  for (const owned of [compose(1, 0), compose(0, 1)]) {
+    assert.equal(owned.lipCurve, IDENTITY_DRIVER.lipCurve)
+    assert.equal(owned.jaw, IDENTITY_DRIVER.jaw)
+    assert.equal(owned.mouthRound, IDENTITY_DRIVER.mouthRound)
+    // The eyes still carry the mood while she talks.
+    assert.ok(owned.lidL < 1)
+  }
+})
+test('a wink closes one eye and leaves the other open', () => {
+  const none = { gaze: 0, headBody: 0, expression: 0 }
+  const random = { gaze: 1, headBody: 1, expression: 1 }
+  const stylized = new StylizedExpressionMotionController().sample(0, 0, 0, 0, 0, 0)
+  const target = { ...IDENTITY_DRIVER }
+  applyAnime25DComposedPose(
+    target,
+    { ambient: none, random, groove: none, thinking: none, performance: none, stylized: none, coSpeech: none, speechMouth: 0, grooveMouth: 0 },
+    {
+      ambient: { angleX: 0, angleY: 0, angleZ: 0, body: 0, eyeX: 0, eyeY: 0 },
+      randomAction: {
+        angleX: 0, angleY: 0, angleZ: 0, body: 0, eyeX: 0, eyeY: 0, brow: 0, browAngSym: 0,
+        eyeOpen: 0, irisScale: 0, eyeSmile: 0, eyeWide: 0, wink: 0.95, mouthForm: 0, mouthOpen: 0, mouthRound: 0,
+        armY: 0, armPos: 0, ambientScale: 1,
+      },
+      groove: { angleX: 0, angleY: 0, angleZ: 0, body: 0, armY: 0, armPos: 0, eyeX: 0, brow: 0 },
+      thinking: { angleX: 0, angleY: 0, angleZ: 0, eyeX: 0, eyeY: 0, brow: 0, mouthCY: 0, mouthCAng: 0, mouthScale: 0 },
+      breath: { angleX: 0, angleY: 0, angleZ: 0, body: 0 },
+      performance: intentExpressionOffset('think', 0),
+      stylized,
+      coSpeech: { brow: 0, eyeOpen: 0, angleY: 0, angleZ: 0, body: 0 },
+    },
+    zeroOccupancyOffset(),
   )
-  assert.equal(ignored.angleX, authored.angleX)
+  assert.ok(target.lidL < 0.1, `${target.lidL}`)
+  assert.equal(target.lidR, IDENTITY_DRIVER.lidR)
 })
 
 test('stylized target resolution reuses output and keeps special-eye blocking', () => {
@@ -352,349 +362,4 @@ test('stylized target resolution reuses output and keeps special-eye blocking', 
         0,
       ) * blocker,
   })
-})
-
-test('silly mouth ownership only attenuates owned speech channels', () => {
-  const target: Anime25DDriver = {
-    ...IDENTITY_DRIVER,
-    mouthOpen: 0.8,
-    mouthWide: 0.6,
-    mouthRound: 0.4,
-    mouthNarrow: 0.2,
-    mouthSeal: 0.1,
-    mouthForm: -0.3,
-    mouthCY: 0.25,
-  }
-  applyAnime25DSillyMouthOwnership(target, 0.75)
-  assert.deepEqual(
-    {
-      mouthOpen: target.mouthOpen,
-      mouthWide: target.mouthWide,
-      mouthRound: target.mouthRound,
-      mouthNarrow: target.mouthNarrow,
-      mouthSeal: target.mouthSeal,
-      mouthForm: target.mouthForm,
-      mouthCY: target.mouthCY,
-    },
-    {
-      mouthOpen: 0.2,
-      mouthWide: 0.15,
-      mouthRound: 0.1,
-      mouthNarrow: 0.05,
-      mouthSeal: 0.025,
-      mouthForm: -0.3,
-      mouthCY: 0.25,
-    },
-  )
-})
-
-test('a blink shuts fast, stays shut a moment and opens a little slower', () => {
-  const state = { activeSeconds: -1, nextAtSeconds: 0 }
-  const lids: number[] = []
-  for (let frame = 0; frame < 60; frame += 1) {
-    const target = { ...IDENTITY_DRIVER }
-    stepAnime25DBlink(target, state, (frame + 1) / 120, 1 / 120, true, false, () => 0.5)
-    lids.push(target.eyeOpenL)
-  }
-  const shutFrom = lids.findIndex((open) => open === 0)
-  const shutUntil = lids.findLastIndex((open) => open === 0)
-  const openedAt = lids.findIndex((open, index) => index > shutUntil && open === 1)
-  // Closing and holding take a little over a tenth of a second; the whole blink about a quarter.
-  assert.ok(shutFrom >= 7 && shutFrom <= 9, `shut at ${shutFrom}`)
-  assert.ok(shutUntil - shutFrom >= 3 && shutUntil - shutFrom <= 6, `held ${shutUntil - shutFrom}`)
-  assert.ok(Math.abs(openedAt / 120 - BLINK_SECONDS) < 0.02, `opened at ${openedAt / 120}`)
-  // The lid drops gathering speed and lifts quick at first.
-  assert.ok(1 - lids[1] < lids[3] - lids[5], `${lids.slice(0, 8)}`)
-  const lift = lids.slice(shutUntil + 1, openedAt)
-  assert.ok(lift[1] - lift[0] > lift.at(-1)! - lift.at(-2)!, `${lift}`)
-})
-
-test('a double blink leaves the eye open a moment between the two', () => {
-  const state = { activeSeconds: -1, nextAtSeconds: 0 }
-  // The second draw chooses the double blink.
-  const draws = [0.5, 0.1, 0.5, 0.9]
-  let draw = 0
-  const random = () => draws[draw++ % draws.length]
-  const lids: number[] = []
-  for (let frame = 0; frame < 120; frame += 1) {
-    const target = { ...IDENTITY_DRIVER }
-    stepAnime25DBlink(target, state, (frame + 1) / 120, 1 / 120, true, false, random)
-    lids.push(target.eyeOpenL)
-  }
-  let closures = 0
-  let openRun = 0
-  let longestGap = 0
-  for (let index = 1; index < lids.length; index += 1) {
-    if (lids[index] === 0 && lids[index - 1] > 0) closures += 1
-    if (closures === 1 && lids[index] === 1) openRun += 1
-    if (closures === 1 && lids[index] < 1) {
-      longestGap = Math.max(longestGap, openRun)
-      openRun = 0
-    }
-  }
-  assert.equal(closures, 2)
-  assert.ok(longestGap / 120 >= 0.08, `open between blinks ${longestGap / 120}`)
-})
-
-test('new pose response leaves mouth, expression, blink and physics flags unchanged', () => {
-  const actual = { ...IDENTITY_DRIVER }
-  const expected = { ...IDENTITY_DRIVER }
-  const authored = { ...IDENTITY_DRIVER }
-  const target = { ...IDENTITY_DRIVER }
-  const expectedSecondary = { angleX: 0, angleY: 0, angleZ: 0, body: 0 }
-  const secondaryTarget = { ...expectedSecondary }
-  const response = new PoseResponseController()
-  const keys = Object.keys(IDENTITY_DRIVER) as Array<keyof Anime25DDriver>
-
-  for (let frame = 0; frame < 180; frame += 1) {
-    for (let index = 0; index < keys.length; index += 1) {
-      const key = keys[index]
-      if (typeof target[key] === 'boolean') {
-        continue
-      }
-      ;(target as unknown as Record<string, number>)[key] =
-        Math.sin(frame * 0.073 + index * 0.41) * 0.72
-    }
-    target.eyeOpenL = (Math.sin(frame * 0.09) + 1) * 0.5
-    target.eyeOpenR = (Math.cos(frame * 0.11) + 1) * 0.5
-    target.irisScale = 0.9 + Math.sin(frame * 0.03) * 0.2
-    target.mouthScale = 1 + Math.cos(frame * 0.05) * 0.25
-    authored.idle = frame % 2 === 0
-    authored.blink = frame % 3 !== 0
-    authored.rand = frame % 5 !== 0
-    authored.thinking = frame % 7 === 0
-    authored.singing = frame % 11 === 0
-    authored.talk = frame % 13 !== 0
-    authored.mouse = frame % 17 === 0
-    authored.phys = frame % 19 !== 0
-    secondaryTarget.angleX = Math.sin(frame * 0.04)
-    secondaryTarget.angleY = Math.cos(frame * 0.05)
-    secondaryTarget.angleZ = Math.sin(frame * 0.06 + 0.4)
-    secondaryTarget.body = Math.cos(frame * 0.03 + 0.7)
-    const dt = frame % 23 === 0 ? 1 / 30 : 1 / 60
-
-    stepAnime25DDriverResponse(actual, authored, target, response, dt)
-    legacyStepDriverResponse(
-      expected,
-      authored,
-      target,
-      expectedSecondary,
-      secondaryTarget,
-      dt,
-    )
-    for (const key of keys) {
-      if (!isContinuousPoseKey(key))
-        assert.equal(actual[key], expected[key], `${key} at frame ${frame}`)
-    }
-  }
-})
-
-function legacyStepDriverResponse(
-  current: Anime25DDriver,
-  authored: Readonly<Anime25DDriver>,
-  target: Readonly<Anime25DDriver>,
-  secondaryCurrent: {
-    angleX: number
-    angleY: number
-    angleZ: number
-    body: number
-  },
-  secondaryTarget: Readonly<{
-    angleX: number
-    angleY: number
-    angleZ: number
-    body: number
-  }>,
-  dt: number,
-): void {
-  const rate = Math.min(1, dt * 14)
-  const flags = [
-    'idle',
-    'blink',
-    'rand',
-    'thinking',
-    'singing',
-    'talk',
-    'mouse',
-    'phys',
-  ] as const
-  for (const key of Object.keys(IDENTITY_DRIVER) as Array<
-    keyof Anime25DDriver
-  >) {
-    if (flags.includes(key as (typeof flags)[number])) {
-      current[key] = authored[key] as never
-      continue
-    }
-    const from = current[key] as number
-    const to = target[key] as number
-    if (key === 'mouthOpen') {
-      current.mouthOpen = stepMouthOpen(from, to, dt)
-    } else if (key === 'mouthForm') {
-      current.mouthForm = stepMouthForm(from, to, dt)
-    } else if (key === 'mouthSeal') {
-      current.mouthSeal = stepMouthSeal(from, to, dt)
-    } else if (
-      key === 'mouthWide' ||
-      key === 'mouthRound' ||
-      key === 'mouthNarrow'
-    ) {
-      current[key] = stepMouthShape(from, to, dt)
-    } else if (key === 'eyeCry') {
-      const response = to > from ? 6 : 4.5
-      current.eyeCry = from + (to - from) * (1 - Math.exp(-response * dt))
-    } else if (key === 'maniac') {
-      const response = to > from ? 7.2 : 4.4
-      current.maniac = from + (to - from) * (1 - Math.exp(-response * dt))
-    } else if (key === 'silly') {
-      const response = to > from ? 7 : 4.2
-      current.silly = from + (to - from) * (1 - Math.exp(-response * dt))
-    } else if (key === 'lovestruck') {
-      const response = to > from ? 6.6 : 3.8
-      current.lovestruck = from + (to - from) * (1 - Math.exp(-response * dt))
-    } else {
-      ;(current[key] as number) = from + (to - from) * rate
-    }
-  }
-  secondaryCurrent.angleX +=
-    (secondaryTarget.angleX - secondaryCurrent.angleX) * rate
-  secondaryCurrent.angleY +=
-    (secondaryTarget.angleY - secondaryCurrent.angleY) * rate
-  secondaryCurrent.angleZ +=
-    (secondaryTarget.angleZ - secondaryCurrent.angleZ) * rate
-  secondaryCurrent.body += (secondaryTarget.body - secondaryCurrent.body) * rate
-}
-
-test('an interrupted blink finishes instead of springing open', () => {
-  for (const interruption of ['suppressed', 'disabled'] as const) {
-    const state = { activeSeconds: -1, nextAtSeconds: 0 }
-    const random = () => 0.5
-    const lid = (time: number, enabled: boolean, suppressed: boolean) => {
-      const target = { ...IDENTITY_DRIVER, eyeOpenL: 1, eyeOpenR: 1 }
-      stepAnime25DBlink(target, state, time, 1 / 60, enabled, suppressed, random)
-      return target.eyeOpenL
-    }
-    let time = 1 / 60
-    lid(time, true, false)
-    for (let frame = 0; frame < 4; frame += 1) {
-      time += 1 / 60
-      lid(time, true, false)
-    }
-    const shut = lid(time, true, false)
-    assert.ok(shut < 0.2, `${interruption}: expected shut lids, got ${shut}`)
-
-    time += 1 / 60
-    const interrupted = lid(
-      time,
-      interruption !== 'disabled',
-      interruption === 'suppressed',
-    )
-    assert.ok(
-      interrupted < 0.2,
-      `${interruption}: lids sprang to ${interrupted} mid-blink`,
-    )
-
-    for (let frame = 0; frame < 60; frame += 1) {
-      time += 1 / 60
-      lid(time, interruption !== 'disabled', interruption === 'suppressed')
-    }
-    assert.equal(state.activeSeconds, -1)
-    assert.equal(
-      lid(time, interruption !== 'disabled', interruption === 'suppressed'),
-      1,
-    )
-  }
-})
-
-test('the lovestruck mouth yields to a voice by degrees, not in one step', () => {
-  const controller = new StylizedExpressionMotionController()
-  let stylized = controller.sample(0, 0, 0, 0, 0, 1)
-  for (let frame = 1; frame <= 90; frame += 1) {
-    stylized = controller.sample(frame / 60, 0, 0, 0, 0, 1)
-  }
-  assert.ok(stylized.lovestruckMouthOpen > 0, 'expected an open sticker mouth')
-
-  const semantic = intentExpressionOffset('delight', 0)
-  const openAt = (vocalRest: number): number => {
-    const target = { ...IDENTITY_DRIVER, mouthOpen: 0 }
-    applyAnime25DStylizedExpression(target, semantic, stylized, vocalRest, 0, 1)
-    return target.mouthOpen
-  }
-
-  const free = openAt(1)
-  const taken = openAt(0)
-  assert.ok(free > taken)
-  const half = openAt(0.5)
-  assert.ok(
-    Math.abs(half - (free + taken) / 2) < 1e-12,
-    `half share gave ${half}, between ${taken} and ${free}`,
-  )
-  for (const rest of [-1, 2]) {
-    assert.ok(openAt(rest) >= taken && openAt(rest) <= free)
-  }
-})
-
-test('an idle mood colours a free mouth but yields it to a voice or a song', () => {
-  const none = { gaze: 0, headBody: 0, expression: 0 }
-  const random = { gaze: 1, headBody: 1, expression: 1 }
-  const stylized = new StylizedExpressionMotionController().sample(0, 0, 0, 0, 0, 0)
-  const compose = (speechMouth: number, grooveMouth: number) => {
-    const target = { ...IDENTITY_DRIVER }
-    applyAnime25DComposedPose(
-      target,
-      { ambient: none, random, groove: none, thinking: none, performance: none, stylized: none, coSpeech: none, speechMouth, grooveMouth },
-      {
-        ambient: { angleX: 0, angleY: 0, angleZ: 0, body: 0, eyeX: 0, eyeY: 0 },
-        randomAction: {
-          angleX: 0, angleY: 0, angleZ: 0, body: 0, eyeX: 0, eyeY: 0, brow: 0, browAngSym: 0,
-          eyeOpen: -0.2, irisScale: 0, eyeSmile: 0.3, eyeWide: 0, wink: 0, mouthForm: 0.4, mouthOpen: 0.3, mouthRound: 0.2,
-          armY: 0, armPos: 0, ambientScale: 1,
-        },
-        groove: { angleX: 0, angleY: 0, angleZ: 0, body: 0, armY: 0, armPos: 0, eyeX: 0, brow: 0 },
-        thinking: { angleX: 0, angleY: 0, angleZ: 0, eyeX: 0, eyeY: 0, brow: 0, mouthCY: 0, mouthCAng: 0, mouthScale: 0 },
-        breath: { angleX: 0, angleY: 0, angleZ: 0, body: 0 },
-        performance: intentExpressionOffset('think', 0),
-        stylized,
-        coSpeech: { brow: 0, eyeOpen: 0, angleY: 0, angleZ: 0, body: 0 },
-      },
-      zeroOccupancyOffset(),
-    )
-    return target
-  }
-  const idle = compose(0, 0)
-  assert.ok(idle.mouthForm > 0.3 && idle.mouthOpen > 0.2 && idle.mouthRound > 0.1)
-  for (const owned of [compose(1, 0), compose(0, 1)]) {
-    assert.equal(owned.mouthForm, IDENTITY_DRIVER.mouthForm)
-    assert.equal(owned.mouthOpen, IDENTITY_DRIVER.mouthOpen)
-    assert.equal(owned.mouthRound, IDENTITY_DRIVER.mouthRound)
-    // The eyes still carry the mood while she talks.
-    assert.ok(owned.eyeOpenL < 1)
-  }
-})
-
-test('a wink closes one eye and leaves the other open', () => {
-  const none = { gaze: 0, headBody: 0, expression: 0 }
-  const random = { gaze: 1, headBody: 1, expression: 1 }
-  const stylized = new StylizedExpressionMotionController().sample(0, 0, 0, 0, 0, 0)
-  const target = { ...IDENTITY_DRIVER }
-  applyAnime25DComposedPose(
-    target,
-    { ambient: none, random, groove: none, thinking: none, performance: none, stylized: none, coSpeech: none, speechMouth: 0, grooveMouth: 0 },
-    {
-      ambient: { angleX: 0, angleY: 0, angleZ: 0, body: 0, eyeX: 0, eyeY: 0 },
-      randomAction: {
-        angleX: 0, angleY: 0, angleZ: 0, body: 0, eyeX: 0, eyeY: 0, brow: 0, browAngSym: 0,
-        eyeOpen: 0, irisScale: 0, eyeSmile: 0, eyeWide: 0, wink: 0.95, mouthForm: 0, mouthOpen: 0, mouthRound: 0,
-        armY: 0, armPos: 0, ambientScale: 1,
-      },
-      groove: { angleX: 0, angleY: 0, angleZ: 0, body: 0, armY: 0, armPos: 0, eyeX: 0, brow: 0 },
-      thinking: { angleX: 0, angleY: 0, angleZ: 0, eyeX: 0, eyeY: 0, brow: 0, mouthCY: 0, mouthCAng: 0, mouthScale: 0 },
-      breath: { angleX: 0, angleY: 0, angleZ: 0, body: 0 },
-      performance: intentExpressionOffset('think', 0),
-      stylized,
-      coSpeech: { brow: 0, eyeOpen: 0, angleY: 0, angleZ: 0, body: 0 },
-    },
-    zeroOccupancyOffset(),
-  )
-  assert.ok(target.eyeOpenL < 0.1, `${target.eyeOpenL}`)
-  assert.equal(target.eyeOpenR, IDENTITY_DRIVER.eyeOpenR)
 })

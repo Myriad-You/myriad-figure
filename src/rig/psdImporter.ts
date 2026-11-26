@@ -1,6 +1,6 @@
+import type { CharacterAssetProfile } from '@myriad/figure-player/internals'
 import type { PreparedAnime25DRigImport } from './anime25dImporter'
 import type { AuthoredExpressionKind } from './authoredExpression'
-import type { CharacterAssetProfile } from './contract'
 import type { ArmVariantSource } from './psdImportClient'
 import type { DetectedSkeleton } from './skeleton'
 import { FigureError } from '../errors'

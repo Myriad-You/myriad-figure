@@ -1,23 +1,25 @@
+import type { Anime25DDriver } from '@myriad/figure-player'
 import type { FaceLife, FaceShift } from '../events/performanceContract'
 import type { MotionChannelPolicy } from '../motion/policy'
 import type { ResolvedScore } from '../motion/scoreTimeline'
 import type { BodyControl, BodyPose } from '../performance/types'
-import type { Anime25DDriver } from './driver'
 import type { PerformanceExpressionOffset } from './performanceExpressionShared'
+import type { PoseKey } from './poseArbitration'
 import { BODY_CONTROLS, faceLife, facePose, faceShift, sanitizeBodyPose } from '../events/performanceContract'
 import { ActingField, mappedControlValue } from './actingField'
 import { ARCS, carriesMomentum, shiftTiming } from './faceShift'
+import { POSE_KEY_DRIVER_FIELDS } from './poseArbitration'
 import { STANDING_IDLE_ROLL_SHARE } from './standing'
 
 // Semantic goals are mapped only here, never interpreted as arbitrary drivers.
 export const BODY_CONTROL_DRIVERS = {
-  headTurn: 'angleX', headNod: 'angleY', headTilt: 'angleZ',
-  torsoTurn: 'torsoTurn', torsoLean: 'body', torsoRise: 'bodyLift', torsoPitch: 'bodyPitch',
-  gazeHorizontal: 'eyeX', gazeVertical: 'eyeY',
+  headTurn: 'headYaw', headNod: 'headPitch', headTilt: 'headRoll',
+  torsoTurn: 'torsoTurn', torsoLean: 'bodyLean', torsoRise: 'bodyLift', torsoPitch: 'bodyPitch',
+  gazeHorizontal: 'gazeX', gazeVertical: 'gazeY',
   leftArmRaise: 'armRaiseL', rightArmRaise: 'armRaiseR', leftArmSwing: 'armSwingL', rightArmSwing: 'armSwingR',
-  eyeOpenLeft: 'eyeOpenL', eyeOpenRight: 'eyeOpenR', eyeSmile: 'eyeSmile', eyeWide: 'eyeWide',
-  browLift: 'brow', browTiltLeft: 'browAngL', browTiltRight: 'browAngR',
-  mouthSmile: 'mouthForm', mouthOpen: 'mouthOpen', mouthWide: 'mouthWide', mouthRound: 'mouthRound',
+  eyeOpenLeft: 'lidL', eyeOpenRight: 'lidR', eyeSmile: 'eyeSmile', eyeWide: 'eyeWide',
+  browLift: 'browLift', browTiltLeft: 'browTiltL', browTiltRight: 'browTiltR',
+  mouthSmile: 'lipCurve', mouthOpen: 'jaw', mouthWide: 'mouthWide', mouthRound: 'mouthRound',
   mouthNarrow: 'mouthNarrow', mouthSeal: 'mouthSeal',
   angry: 'anger', speechless: 'speechless', maniac: 'maniac', silly: 'silly', lovestruck: 'lovestruck',
   cry: 'eyeCry', dizzy: 'eyeDizzy', hairSway: 'fhAmp', chestSway: 'bust',
@@ -324,7 +326,7 @@ export class DirectedPoseController {
    * What is `riding` (her breath, the beats of her voice) stays on top of a directed
    * axis instead of being held still with the rest: a held tilt still nods as she talks.
    */
-  write(target: Anime25DDriver, vocalizing: boolean, riding?: Readonly<Partial<Record<keyof Anime25DDriver, number>>>, final = riding !== undefined): void {
+  write(target: Anime25DDriver, vocalizing: boolean, riding?: Readonly<Partial<Record<PoseKey, number>>>, final = riding !== undefined): void {
     for (const [key, axis] of this.axes) {
       const driver = BODY_CONTROL_DRIVERS[key]
       if (this.policy?.[controlChannel(key)] === 'preview') continue
@@ -334,16 +336,16 @@ export class DirectedPoseController {
       // A held goal is not an interaction lock: immediate contact reactions
       // temporarily take their existing performance share, then the goal resumes.
       const weight = this.heldWeight(key)
-      target[driver] += (axis.value - target[driver] + (riding?.[driver] ?? 0)) * weight
-      if (key === 'hairSway') target.physAmp += (axis.value * 0.5 - target.physAmp) * weight
+      target[driver] += (axis.value - target[driver] + ridden(riding, driver)) * weight
+      if (key === 'hairSway') target.rearHairSway += (axis.value * 0.5 - target.rearHairSway) * weight
     }
     // The director's beats, over the standing pose, each as strongly as it plays.
     for (const [key, sample] of this.acting.values) {
       if (vocalizing && isArticulation(key)) continue
       const driver = BODY_CONTROL_DRIVERS[key]
       const weight = sample.weight * (1 - this.interruption(key))
-      target[driver] += (sample.value - target[driver] + (riding?.[driver] ?? 0)) * weight
-      if (key === 'hairSway') target.physAmp += (sample.value * 0.5 - target.physAmp) * weight
+      target[driver] += (sample.value - target[driver] + ridden(riding, driver)) * weight
+      if (key === 'hairSway') target.rearHairSway += (sample.value * 0.5 - target.rearHairSway) * weight
     }
     for (const [key, offset] of this.acting.offsets) {
       const driver = BODY_CONTROL_DRIVERS[key]
@@ -394,7 +396,28 @@ function transientOffsetKey(key: BodyControl): keyof PerformanceExpressionOffset
   if (['headTurn', 'torsoTurn', 'torsoRise', 'torsoPitch', 'hairSway',
     'mouthOpen', 'mouthWide', 'mouthRound', 'mouthNarrow', 'mouthSeal'].includes(key)) { return null
 }
-  return BODY_CONTROL_DRIVERS[key] as keyof PerformanceExpressionOffset
+  const field: string = BODY_CONTROL_DRIVERS[key]
+  return (OFFSET_KEY_OF_DRIVER_FIELD[field] ?? field) as keyof PerformanceExpressionOffset
+}
+
+/** The performance offsets' own key for a driver field where the two vocabularies name it differently. */
+const OFFSET_KEY_OF_DRIVER_FIELD: Readonly<Record<string, string>> = {
+  headYaw: 'angleX',
+  headPitch: 'angleY',
+  headRoll: 'angleZ',
+  lidL: 'eyeOpenL',
+  lidR: 'eyeOpenR',
+  gazeX: 'eyeX',
+  gazeY: 'eyeY',
+  jaw: 'mouthOpen',
+  lipCurve: 'mouthForm',
+  browLift: 'brow',
+  browTiltL: 'browAngL',
+  browTiltR: 'browAngR',
+  browTilt: 'browAngSym',
+  bodyLean: 'body',
+  torsoFollow: 'bodyYaw',
+  rearHairSway: 'physAmp',
 }
 
 /** A damped spring toward `goal`, exactly over `dt`: critical without `zeta`, past the goal and back below 1. */
@@ -434,4 +457,14 @@ function standingLife(life: FaceLife): FaceLife {
         : beat
     }),
   }
+}
+
+/** The pose key that moves each driver field, for what rides on a held axis (pose sources keep their own keys). */
+const POSE_KEY_OF_DRIVER_FIELD: Readonly<Partial<Record<keyof Anime25DDriver, PoseKey>>> = Object.fromEntries(
+  Object.entries(POSE_KEY_DRIVER_FIELDS).map(([key, field]) => [field, key]),
+)
+
+function ridden(riding: Readonly<Partial<Record<PoseKey, number>>> | undefined, driver: keyof Anime25DDriver): number {
+  const key = POSE_KEY_OF_DRIVER_FIELD[driver]
+  return (key && riding?.[key]) ?? 0
 }

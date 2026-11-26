@@ -1,4 +1,4 @@
-import type { RgbColor } from './dizzyEye'
+import type { RgbColor } from '@myriad/figure-player/internals'
 
 /**
  * Small drawn accents that sit beside her face and say a mood at a glance:

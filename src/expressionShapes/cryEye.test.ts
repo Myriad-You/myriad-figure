@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {
-  createCryEyeBitmap,
-  cryEyeDisplayScale,
-  cryEyeGeneratedSize,
-} from './cryEye'
+import { createCryEyeBitmap, cryEyeGeneratedSize } from './cryEye'
 
 test('builds asymmetric crying replacements with a stable dark eye and blue lower stream', () => {
   const tint = { red: 42, green: 31, blue: 68 }
@@ -30,7 +26,6 @@ test('builds asymmetric crying replacements with a stable dark eye and blue lowe
   }
   assert.ok(mirroredAlphaDifference > 20_000)
 })
-
 test('sizes each crying replacement from its own eye bounds', () => {
   assert.deepEqual(cryEyeGeneratedSize({ x0: 10, x1: 90, y0: 20, y1: 52 }), {
     width: 88,
@@ -41,13 +36,6 @@ test('sizes each crying replacement from its own eye bounds', () => {
     height: 98,
   })
 })
-
-test('display scale only enlarges undersized authored crying art', () => {
-  const eye = { x0: 10, x1: 90 }
-  assert.ok(cryEyeDisplayScale(36, eye) > 2)
-  assert.equal(cryEyeDisplayScale(88, eye), 1)
-})
-
 function visibleColorCount(
   bitmap: { width: number; height: number; data: Uint8ClampedArray },
   startY: number,

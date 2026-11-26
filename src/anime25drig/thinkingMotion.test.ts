@@ -125,19 +125,19 @@ test('sampling reuses its output object', () => {
 
 test('check-ins counter the authored gaze and answer handoff starts immediately', () => {
   const motion = new ThinkingMotionController(() => 0.5)
-  const base = { eyeX: 0.58, eyeY: -0.42 }
+  const base = { gazeX: 0.58, gazeY: -0.42 }
   let checked = false
   let returned = false
   for (let frame = 0; frame <= 900; frame++) {
     const pose = motion.sample(frame / 60, true, base)
     if (
       frame > 60 &&
-      Math.abs(base.eyeX + pose.eyeX) < 0.02 &&
-      Math.abs(base.eyeY + pose.eyeY) < 0.02
+      Math.abs(base.gazeX + pose.eyeX) < 0.02 &&
+      Math.abs(base.gazeY + pose.eyeY) < 0.02
     ) {
       checked = true
     }
-    if (checked && base.eyeX + pose.eyeX > 0.3) returned = true
+    if (checked && base.gazeX + pose.eyeX > 0.3) returned = true
   }
   assert.ok(checked && returned)
   const before = { ...motion.sample(15, true, base) }

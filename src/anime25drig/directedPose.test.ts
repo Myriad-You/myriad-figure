@@ -1,8 +1,10 @@
+import type { Anime25DPlayback } from '@myriad/figure-player'
+import type { Anime25DPlaybackLayer, Anime25DRenderFrame } from '@myriad/figure-player/internals'
 import type { BodyControl, BodyPose } from '../performance/types'
-import type { Anime25DRenderFrame } from './renderer'
-import type { Anime25DPlayback, Anime25DPlaybackLayer } from './types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { Anime25DIrisRebound, ClosedEyePresentation, IDENTITY_DRIVER } from '@myriad/figure-player'
+import { Anime25DBodyFrames, applyBodyLift, deformAnime25DUpstreamFeaturePoint, deriveAnime25DMotionEnvelopeProfile, FIGURE_PITCH_BACK, FIGURE_PITCH_FORWARD, PoseResponseController } from '@myriad/figure-player/internals'
 import { BODY_CONTROLS, faceLife, sanitizeBodyPose } from '../events/performanceContract'
 import { TouchGestureTracker } from '../interaction/touchGesture'
 import { RigMotionCoordinator } from '../motion/coordinator'
@@ -12,19 +14,10 @@ import { TouchMotionSource } from '../motion/touchSource'
 import { mappedControlValue } from './actingField'
 import { completeBehaviorQuality } from './behaviorMotion'
 import { realizeAnime25DBehaviorPlan } from './behaviorRealizer'
-import { Anime25DBodyFrames } from './bodyFrames'
-import { applyBodyLift } from './bodyLift'
-import { ClosedEyePresentation } from './closedEyePresentation'
 import { BODY_CONTROL_DRIVERS, DirectedPoseController, INDEPENDENT_BODY_CONTROLS } from './directedPose'
-import { IDENTITY_DRIVER } from './driver'
-import { FIGURE_PITCH_BACK, FIGURE_PITCH_FORWARD } from './figurePitch'
-import { Anime25DIrisRebound } from './irisRebound'
-import { deformAnime25DUpstreamFeaturePoint } from './layerDeformation'
 import { Anime25DMotionComposer } from './motionComposer'
-import { deriveAnime25DMotionEnvelopeProfile } from './motionEnvelope'
 import { intentExpressionOffset } from './performanceExpression'
 import { ZERO_OFFSET } from './performanceExpressionShared'
-import { PoseResponseController } from './poseResponse'
 import { deriveAnime25DShellProfile } from './shellProfile'
 import { STANDING_IDLE_ROLL_SHARE } from './standing'
 import { anime25DPlaybackSource } from './types'
@@ -85,9 +78,9 @@ test('opposed head/torso, fixed gaze and one-sided arms remain independent', () 
   value.set(pose({ headTurn: -0.9, torsoTurn: 0.8, gazeHorizontal: 0, torsoPitch: 0.65,
     torsoRise: -0.5, leftArmRaise: 0.85, rightArmRaise: 0, rightArmSwing: -0.4 }), 0)
   const target = advance(value, 1)
-  assert.ok(target.angleX < -0.89 && target.torsoTurn > 0.79)
+  assert.ok(target.headYaw < -0.89 && target.torsoTurn > 0.79)
   assert.ok(target.bodyPitch > 0.64 && target.bodyLift < -0.49)
-  assert.equal(target.eyeX, 0)
+  assert.equal(target.gazeX, 0)
   assert.ok(target.armRaiseL > 0.84)
   assert.equal(target.armRaiseR, 0)
   assert.ok(target.armSwingR < -0.39)
@@ -100,25 +93,25 @@ test('retargeting carries motion instead of jumping to rest or discarding veloci
   value.set(pose({ headTurn: -1 }), 0.1)
   const after = { ...IDENTITY_DRIVER }
   value.apply(1e-6, 0.100001, after, false)
-  assert.ok(after.angleX > before.angleX, 'the old velocity still carries the turn on its first instant')
-  assert.ok(Math.abs(after.angleX - before.angleX) < 0.0001)
-  assert.ok(advance(value, 1, 0.100001).angleX < -0.99)
+  assert.ok(after.headYaw > before.headYaw, 'the old velocity still carries the turn on its first instant')
+  assert.ok(Math.abs(after.headYaw - before.headYaw) < 0.0001)
+  assert.ok(advance(value, 1, 0.100001).headYaw < -0.99)
 })
 
 test('identical restatement does not restart expiry; explicit empty pose releases continuously', () => {
   const value = controller()
   const direction = pose({ headTilt: 0.8 }, 500)
   value.set(direction, 0)
-  assert.ok(advance(value, 0.4).angleZ > 0.79)
+  assert.ok(advance(value, 0.4).headRoll > 0.79)
   value.set(direction, 0.4)
-  assert.ok(Math.abs(advance(value, 1, 0.4).angleZ) < 0.001)
+  assert.ok(Math.abs(advance(value, 1, 0.4).headRoll) < 0.001)
   value.set(pose({ headTilt: -0.7 }), 1.4)
-  assert.ok(advance(value, 0.5, 1.4).angleZ < -0.69)
+  assert.ok(advance(value, 0.5, 1.4).headRoll < -0.69)
   value.set(pose({}), 1.9)
   const initial = { ...IDENTITY_DRIVER }
   value.apply(1e-6, 1.900001, initial, false)
-  assert.ok(initial.angleZ < -0.69)
-  assert.ok(Math.abs(advance(value, 1, 1.900001).angleZ) < 0.001)
+  assert.ok(initial.headRoll < -0.69)
+  assert.ok(Math.abs(advance(value, 1, 1.900001).headRoll) < 0.001)
 })
 
 test('missing asset capability and preview ownership cannot be bypassed', () => {
@@ -126,13 +119,13 @@ test('missing asset capability and preview ownership cannot be bypassed', () => 
   value.setCapabilities(['head-body'])
   value.set(pose({ headTurn: 0.8, torsoTurn: 1, leftArmRaise: 1, cry: 1 }), 0)
   const target = advance(value, 1)
-  assert.ok(target.angleX > 0.79)
+  assert.ok(target.headYaw > 0.79)
   assert.equal(target.torsoTurn, 0)
   assert.equal(target.armRaiseL, 0)
   assert.equal(target.eyeCry, 0)
   value.setPolicy({ ...IDLE_MOTION_POLICY, headBody: 'preview' })
   const preview = advance(value, 0.1, 1)
-  assert.equal(preview.angleX, 0)
+  assert.equal(preview.headYaw, 0)
   assert.equal(value.weight('headTurn'), 0)
 })
 
@@ -140,25 +133,25 @@ test('speech retains articulation while pose can colour eyes, brows and smile', 
   const value = controller()
   value.set(pose({ mouthOpen: 1, mouthRound: 1, mouthSeal: 1, maniac: 1, mouthSmile: 0.7, eyeSmile: 0.8 }), 0)
   advance(value, 1)
-  const target = { ...IDENTITY_DRIVER, mouthOpen: 0.25, mouthRound: 0.3, mouthSeal: 0.1 }
+  const target = { ...IDENTITY_DRIVER, jaw: 0.25, mouthRound: 0.3, mouthSeal: 0.1 }
   value.apply(1 / 120, 1.01, target, true)
-  assert.equal(target.mouthOpen, 0.25)
+  assert.equal(target.jaw, 0.25)
   assert.equal(target.mouthRound, 0.3)
   assert.equal(target.mouthSeal, 0.1)
   assert.equal(target.maniac, 0)
-  assert.ok(target.mouthForm > 0.69 && target.eyeSmile > 0.79)
+  assert.ok(target.lipCurve > 0.69 && target.eyeSmile > 0.79)
 })
 
 test('her breath and the beats of her voice ride on a held axis; the rest of what moved there is held still', () => {
   const value = controller()
   value.set(pose({ headTilt: 0.5, headTurn: -0.4 }), 0)
   advance(value, 2)
-  const held = { ...IDENTITY_DRIVER, angleZ: 0.3, angleY: 0.2, angleX: 0.25 }
+  const held = { ...IDENTITY_DRIVER, headRoll: 0.3, headPitch: 0.2, headYaw: 0.25 }
   value.step(1 / 120, 2.01, held)
   value.write(held, true, { angleZ: 0.06, angleY: 0.04 })
-  assert.ok(Math.abs(held.angleZ - (mappedControlValue('headTilt', 0.5) + 0.06)) < 1e-3, 'the voice nods the tilted head')
-  assert.ok(Math.abs(held.angleX + 0.4) < 1e-3, 'a glance does not move a held turn')
-  assert.equal(held.angleY, 0.2, 'an axis not held is left as composed')
+  assert.ok(Math.abs(held.headRoll - (mappedControlValue('headTilt', 0.5) + 0.06)) < 1e-3, 'the voice nods the tilted head')
+  assert.ok(Math.abs(held.headYaw + 0.4) < 1e-3, 'a glance does not move a held turn')
+  assert.equal(held.headPitch, 0.2, 'an axis not held is left as composed')
 })
 
 test('a held pose yields to immediate touch and resumes without replaying its goal', () => {
@@ -167,15 +160,15 @@ test('a held pose yields to immediate touch and resumes without replaying its go
   advance(value, 1)
   value.setPolicy({ ...IDLE_MOTION_POLICY, headBody: 'performance', gaze: 'performance', expression: 'performance' })
   value.setTouchShare(1)
-  const touched = { ...IDENTITY_DRIVER, angleX: 0.4, eyeX: 0.3, eyeSmile: 0.2 }
+  const touched = { ...IDENTITY_DRIVER, headYaw: 0.4, gazeX: 0.3, eyeSmile: 0.2 }
   value.apply(1 / 120, 1.01, touched, false)
-  assert.equal(touched.angleX, 0.4)
-  assert.equal(touched.eyeX, 0.3)
+  assert.equal(touched.headYaw, 0.4)
+  assert.equal(touched.gazeX, 0.3)
   assert.equal(touched.eyeSmile, 0.2)
   assert.equal(value.weight('headTurn'), 0)
   value.setTouchShare(0)
   const resumed = advance(value, 0.1, 1.01)
-  assert.ok(resumed.angleX < -0.79 && resumed.eyeX < -0.69 && resumed.eyeSmile > 0.79)
+  assert.ok(resumed.headYaw < -0.79 && resumed.gazeX < -0.69 && resumed.eyeSmile > 0.79)
 })
 
 test('the production composer distinguishes listening from actual singing, humming and speech articulation', () => {
@@ -192,7 +185,7 @@ test('the production composer distinguishes listening from actual singing, hummi
         intensity: 1, quality: completeBehaviorQuality({}),
       }], 0, 0)
       const target = { ...IDENTITY_DRIVER, talk: false, blink: false, rand: false, idle: false,
-        singing: true, mouthOpen: 0.25, mouthRound: 0.2 }
+        singing: true, jaw: 0.25, mouthRound: 0.2 }
       const envelope = deriveAnime25DMotionEnvelopeProfile({ layers: [] })
       for (let i = 1; i <= 120; i++) { composer.step(1 / 120, {
         time: i / 120, target, policy: IDLE_MOTION_POLICY, mouse: { x: 0, y: 0, inside: false },
@@ -200,7 +193,7 @@ test('the production composer distinguishes listening from actual singing, hummi
       })
 }
       const articulated = speechActive || mode !== 'listen'
-      assert.ok(Math.abs(current.mouthOpen - (articulated ? 0.25 : 0.85)) < 0.001, `${mode}, speech=${speechActive}`)
+      assert.ok(Math.abs(current.jaw - (articulated ? 0.25 : 0.85)) < 0.001, `${mode}, speech=${speechActive}`)
       assert.ok(Math.abs(current.mouthRound - (articulated ? 0.2 : 0.9)) < 0.001, `${mode}, speech=${speechActive}`)
     }
   }
@@ -218,8 +211,8 @@ test('a brief cue borrows only its moving axes, then returns to the held pose wi
   assert.ok(value.weight('headTurn') > 0.99 && value.weight('torsoTurn') > 0.99)
   value.setTransientMotion(ZERO_OFFSET, 0)
   const returned = advance(value, 0.2, 0.8)
-  assert.ok(returned.angleY > 0.49 && returned.eyeSmile > 0.59 && returned.armRaiseL > 0.79)
-  assert.ok(Math.abs(advance(value, 2, 1).angleY) < 0.001, 'the brief cue must not extend a timed body pose')
+  assert.ok(returned.headPitch > 0.49 && returned.eyeSmile > 0.59 && returned.armRaiseL > 0.79)
+  assert.ok(Math.abs(advance(value, 2, 1).headPitch) < 0.001, 'the brief cue must not extend a timed body pose')
 })
 
 test('the production composer performs a real short cue over held axes and recovers to its ongoing goal', () => {
@@ -246,14 +239,14 @@ test('the production composer performs a real short cue over held axes and recov
   let smile = 0
   for (let i = 0; i < 120; i++) {
     step()
-    nod = Math.max(nod, Math.abs(current.angleY))
+    nod = Math.max(nod, Math.abs(current.headPitch))
     smile = Math.max(smile, current.eyeSmile)
-    assert.ok(current.angleX < -0.64 && current.torsoTurn > 0.69, 'the cue never borrowed head yaw or torso yaw')
+    assert.ok(current.headYaw < -0.64 && current.torsoTurn > 0.69, 'the cue never borrowed head yaw or torso yaw')
   }
   const authoredNod = Math.abs(intentExpressionOffset('delight', 1.3).angleY)
   assert.ok(nod > authoredNod * 0.9 && smile > 0.5, `${nod}, ${smile}: the held zero values must not erase the authored short reaction`)
   for (let i = 0; i < 240; i++) step()
-  assert.ok(Math.abs(current.angleY) < 0.001 && current.eyeSmile < 0.001)
+  assert.ok(Math.abs(current.headPitch) < 0.001 && current.eyeSmile < 0.001)
   assert.ok(current.armRaiseL > 0.69, 'the side arm goal remains alive after the cue')
 })
 
@@ -263,7 +256,7 @@ test('constant directed goals integrate consistently across 30/60/120 fps', () =
     return advance(value, 0.3, 0, fps)
   })
   for (const result of results) {
-    for (const key of ['angleX', 'eyeOpenL', 'bodyLift'] as const)
+    for (const key of ['headYaw', 'lidL', 'bodyLift'] as const)
       assert.ok(Math.abs(result[key] - results[0]![key]) < 1e-12, key)
   }
 })
@@ -320,10 +313,10 @@ test('production composer preserves broad independent targets while bounding hig
     musicSignal: null, motionEnvelopeProfile: envelope,
   })
 }
-  assert.ok(current.angleX < -0.75, 'director head target wins over opposite pointer gaze')
-  assert.ok(Math.abs(current.angleY) <= 0.8 + 1e-6, 'high collar retains its safe pitch cap')
+  assert.ok(current.headYaw < -0.75, 'director head target wins over opposite pointer gaze')
+  assert.ok(Math.abs(current.headPitch) <= 0.8 + 1e-6, 'high collar retains its safe pitch cap')
   assert.ok(current.torsoTurn > 0.7 && current.bodyLift > 0.69 && current.bodyPitch > 0.64)
-  assert.ok(Math.abs(current.eyeX) < 0.1 && current.eyeOpenL < 0.15 && current.eyeOpenR > 0.9)
+  assert.ok(Math.abs(current.gazeX) < 0.1 && current.lidL < 0.15 && current.lidR > 0.9)
   assert.ok(current.armRaiseL > 0.85 && Math.abs(current.armRaiseR) < 0.001)
   composer.directedPose.set(null, 1)
   for (let i = 121; i <= 360; i++) { composer.step(1 / 120, {
@@ -366,7 +359,7 @@ test('directed torso targets reach the production body shell and final-space vol
     body.stepPosture(1 / 120, time)
     body.prepareHeadFrame(time)
   }
-  assert.ok(current.angleX < 0 && current.angleY < 0)
+  assert.ok(current.headYaw < 0 && current.headPitch < 0)
   assert.ok(body.secondaryDeformationFrame.torsoShellRotation!.yawSine > 0.3, 'the actual torso shell opposes the head')
   assert.ok(Math.abs(frame.bodyLift!.amount - 0.7 * 15.75) < 0.01, 'automatic head-driven settling must not override directed rise')
   assert.ok(Math.abs(frame.bodyLift!.pitch! - 0.65 * 0.18) < 0.001, 'pitch reaches the final deformation field')
@@ -469,10 +462,10 @@ test('a standing figure leans on its bones, not in the shader; its head stays on
   const forward = settle({ torsoPitch: 0.65 })
   assert.equal(frame.bodyLift!.pitch, 0, 'the shader takes no part of a figure\'s lean')
   assert.ok(Math.abs(forward.pitch.angle - 0.65 * FIGURE_PITCH_FORWARD) < 0.002, `${forward.pitch.angle}`)
-  assert.ok(Math.abs(forward.current.angleY) < 0.002, 'leaning in, the head does not nod with it')
+  assert.ok(Math.abs(forward.current.headPitch) < 0.002, 'leaning in, the head does not nod with it')
   assert.ok(forward.pitch.head.scale > 1.05)
   const back = settle({ torsoPitch: -1 })
-  assert.ok(Math.abs(back.pitch.angle + FIGURE_PITCH_BACK) < 0.002 && back.pitch.head.scale < 0.95 && Math.abs(back.current.angleY) < 0.002)
+  assert.ok(Math.abs(back.pitch.angle + FIGURE_PITCH_BACK) < 0.002 && back.pitch.head.scale < 0.95 && Math.abs(back.current.headPitch) < 0.002)
   // Turned to the picture's right and leaning in, the head goes right; a nod alone leans it a little the way it nods.
   const turned = settle({ torsoPitch: 1, torsoTurn: 0.8 })
   assert.ok(turned.pitch.head.x - forward.pitch.head.x > 10, `${turned.pitch.head.x} ${forward.pitch.head.x}`)
@@ -539,11 +532,11 @@ test('score beats take over held controls on their moment, hold, and give back t
   const samples = sampleAt(value, 0, 3)
   const at = (seconds: number) => samples.find((sample) => sample.time >= seconds)!.target
   const standing = mappedControlValue('headTilt', 0.2)
-  assert.ok(Math.abs(at(0.45).angleZ - standing) < 0.03, 'the standing pose before the beat')
-  assert.ok(at(0.95).angleZ < mappedControlValue('headTilt', -0.6) * 0.9, 'the beat takes the tilt over')
-  assert.ok(at(1.4).eyeX > 0.7, 'a later beat on another control joins it')
-  assert.ok(Math.abs(at(2.9).angleZ - standing) < 0.05, 'after its hold the standing pose comes back')
-  assert.ok(at(2.9).eyeX > 0.7, 'a beat with no hold keeps going')
+  assert.ok(Math.abs(at(0.45).headRoll - standing) < 0.03, 'the standing pose before the beat')
+  assert.ok(at(0.95).headRoll < mappedControlValue('headTilt', -0.6) * 0.9, 'the beat takes the tilt over')
+  assert.ok(at(1.4).gazeX > 0.7, 'a later beat on another control joins it')
+  assert.ok(Math.abs(at(2.9).headRoll - standing) < 0.05, 'after its hold the standing pose comes back')
+  assert.ok(at(2.9).gazeX > 0.7, 'a beat with no hold keeps going')
 })
 
 test('a standing figure sways its head less with a look\'s life', () => {
@@ -554,7 +547,7 @@ test('a standing figure sways its head less with a look\'s life', () => {
     value.setCapabilities(capabilities)
     value.setStanding(standing)
     value.setFace('content', 0)
-    return Math.max(...sampleAt(value, 0, 6.5).map((sample) => Math.abs(sample.target.angleZ)))
+    return Math.max(...sampleAt(value, 0, 6.5).map((sample) => Math.abs(sample.target.headRoll)))
   }
   const tilt = faceLife('content')!.beats[0].pose!.targets.headTilt!
   assert.ok(Math.abs(swing(false) - mappedControlValue('headTilt', tilt)) < 0.02, 'a bust tilts as the look says')
@@ -565,7 +558,7 @@ test('a hair sway beat stirs the hair as a held one does', () => {
   const value = controller()
   value.setScore({ id: 1, beats: [{ id: '1:0', atMs: 0, pose: pose({ hairSway: 1 }, 1000, 200) }] }, 0, 0)
   const samples = sampleAt(value, 0, 0.6)
-  assert.ok(samples.at(-1)!.target.physAmp > 0.65, 'the physics amplitude rises above its rest with the beat')
+  assert.ok(samples.at(-1)!.target.rearHairSway > 0.65, 'the physics amplitude rises above its rest with the beat')
 })
 
 test('a move goes and comes back over what is held; a new score drops what the old had not begun', () => {
@@ -575,14 +568,14 @@ test('a move goes and comes back over what is held; a new score drops what the o
     { id: '1:1', atMs: 2000, move: { kind: 'shake', amount: 1, count: 1, tempo: 1 } },
   ] }, 0, 0)
   const nod = sampleAt(value, 0, 0.8)
-  assert.ok(Math.min(...nod.map((sample) => sample.target.angleY)) < -0.4, 'the head dips')
-  assert.ok(Math.abs(nod.at(-1)!.target.angleY) < 0.02, 'and comes back')
+  assert.ok(Math.min(...nod.map((sample) => sample.target.headPitch)) < -0.4, 'the head dips')
+  assert.ok(Math.abs(nod.at(-1)!.target.headPitch) < 0.02, 'and comes back')
   assert.ok(value.weight('headNod') === 0, 'a finished move no longer drives anything')
   // A new score before 2 s replaces the shake that had not started.
   value.setScore({ id: 2, beats: [{ id: '2:0', atMs: 2500, move: { kind: 'nod', amount: 1, count: 1, tempo: 1 } }] }, 1, 1000)
   const later = sampleAt(value, 1, 3.4)
-  assert.ok(later.every((sample) => Math.abs(sample.target.angleX) < 1e-6), 'the old shake never plays')
-  assert.ok(Math.min(...later.map((sample) => sample.target.angleY)) < -0.4, 'the new nod does')
+  assert.ok(later.every((sample) => Math.abs(sample.target.headYaw) < 1e-6), 'the old shake never plays')
+  assert.ok(Math.min(...later.map((sample) => sample.target.headPitch)) < -0.4, 'the new nod does')
 })
 
 test('a hand beat drives its arm through the directed arm weight, then lets go', () => {

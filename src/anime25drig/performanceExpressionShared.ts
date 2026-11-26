@@ -33,20 +33,20 @@ export interface PerformanceExpressionOffset {
 }
 
 export interface PerformanceExpressionTarget {
-  brow: number
-  browAngSym: number
-  eyeOpenL: number
-  eyeOpenR: number
+  browLift: number
+  browTilt: number
+  lidL: number
+  lidR: number
   eyeDizzy: number
   eyeSqueeze: number
   eyeCry: number
-  eyeX: number
-  eyeY: number
-  mouthForm: number
+  gazeX: number
+  gazeY: number
+  lipCurve: number
   irisScale: number
-  angleY: number
-  angleZ: number
-  body?: number
+  headPitch: number
+  headRoll: number
+  bodyLean?: number
   armY?: number
   armPos?: number
   eyeSmile?: number

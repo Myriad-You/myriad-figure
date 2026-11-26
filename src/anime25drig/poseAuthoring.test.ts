@@ -1,8 +1,8 @@
-import type { PoseCorrection } from './poseCorrections'
-import type { Anime25DPlayback } from './types'
+import type { Anime25DPlayback } from '@myriad/figure-player'
+import type { PoseCorrection } from '@myriad/figure-player/workbench'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { WORKBENCH_DRIVER } from './driver'
+import { WORKBENCH_DRIVER } from '@myriad/figure-player/workbench'
 import {
   appendPoseCorrectionPatch,
   clampPoseCorrectionPatch,
@@ -20,7 +20,7 @@ const playback = {
   layers: [{ role: 'face' }, { role: 'front-hair' }],
   shellProfile: { head: { centerX: 300, centerY: 250, radiusX: 180, radiusY: 240 } },
 } as Anime25DPlayback
-const driver = { ...WORKBENCH_DRIVER, angleX: 0.8, angleY: -0.6, eyeOpenL: 0 }
+const driver = { ...WORKBENCH_DRIVER, headYaw: 0.8, headPitch: -0.6, lidL: 0 }
 
 function capturePoseCorrection(p: Anime25DPlayback, d: typeof driver, region: Parameters<typeof poseCorrectionRegionPoint>[1]): PoseCorrection | null {
   const anchor = poseCorrectionRegionPoint(p, region)
@@ -61,23 +61,23 @@ test('adding patches reuses the existing corner without overwriting its calibrat
 
 test('selecting a correction freezes distracting motion and preserves unrelated expression controls', () => {
   const c = capturePoseCorrection(playback, driver, 'leftEye')!
-  const selected = poseCorrectionPreviewDriver(c, { ...WORKBENCH_DRIVER, mouthForm: 0.7, eyeOpenR: 0 })
-  assert.equal(selected.angleX, 0.8)
-  assert.equal(selected.angleY, -0.6)
-  assert.equal(selected.eyeOpenL, 0)
-  assert.equal(selected.eyeOpenR, 0)
-  assert.equal(selected.mouthForm, 0.7)
+  const selected = poseCorrectionPreviewDriver(c, { ...WORKBENCH_DRIVER, lipCurve: 0.7, lidR: 0 })
+  assert.equal(selected.headYaw, 0.8)
+  assert.equal(selected.headPitch, -0.6)
+  assert.equal(selected.lidL, 0)
+  assert.equal(selected.lidR, 0)
+  assert.equal(selected.lipCurve, 0.7)
   for (const key of ['idle', 'rand', 'blink', 'talk', 'mouse', 'phys'] as const) assert.equal(selected[key], false)
 })
 
 test('a pose needs a head turn, and a second condition the patch actually sits on', () => {
   const eye = poseCorrectionRegionPoint(playback, 'leftEye')!
-  assert.deepEqual(poseCorrectionCorner(playback, { ...WORKBENCH_DRIVER, eyeOpenL: 0 }, 'head', eye), { problem: 'needsTurn' })
-  assert.deepEqual(poseCorrectionCorner(playback, { ...WORKBENCH_DRIVER, angleX: 0.5 }, 'head', eye), { problem: 'needsSecond' })
+  assert.deepEqual(poseCorrectionCorner(playback, { ...WORKBENCH_DRIVER, lidL: 0 }, 'head', eye), { problem: 'needsTurn' })
+  assert.deepEqual(poseCorrectionCorner(playback, { ...WORKBENCH_DRIVER, headYaw: 0.5 }, 'head', eye), { problem: 'needsSecond' })
   // A closed eye counts for a patch on that eye, never for one on the hair.
-  assert.deepEqual(poseCorrectionCorner(playback, { ...WORKBENCH_DRIVER, angleX: 0.5, eyeOpenL: 0.2 }, 'head', eye), { at: { angleX: 0.5, eyeCloseL: 0.8 } })
-  assert.deepEqual(poseCorrectionCorner(playback, { ...WORKBENCH_DRIVER, angleX: 0.5, eyeOpenL: 0.2 }, 'front-hair', eye), { problem: 'needsSecond' })
-  assert.deepEqual(poseCorrectionCorner(playback, { ...WORKBENCH_DRIVER, angleX: 0.5, angleY: 0.3 }, 'front-hair', { x: 0, y: -0.9 }), { at: { angleX: 0.5, angleY: 0.3 } })
+  assert.deepEqual(poseCorrectionCorner(playback, { ...WORKBENCH_DRIVER, headYaw: 0.5, lidL: 0.2 }, 'head', eye), { at: { angleX: 0.5, eyeCloseL: 0.8 } })
+  assert.deepEqual(poseCorrectionCorner(playback, { ...WORKBENCH_DRIVER, headYaw: 0.5, lidL: 0.2 }, 'front-hair', eye), { problem: 'needsSecond' })
+  assert.deepEqual(poseCorrectionCorner(playback, { ...WORKBENCH_DRIVER, headYaw: 0.5, headPitch: 0.3 }, 'front-hair', { x: 0, y: -0.9 }), { at: { angleX: 0.5, angleY: 0.3 } })
 })
 
 test('a patch is named and sized by the feature it sits on', () => {
@@ -94,12 +94,12 @@ test('a patch is named and sized by the feature it sits on', () => {
 test('the transition check eases from facing front to the correction pose', () => {
   const c = capturePoseCorrection(playback, driver, 'leftEye')!
   const half = poseCorrectionTransitionDriver(c, WORKBENCH_DRIVER, 0.5)
-  assert.equal(half.angleX, 0.4)
-  assert.equal(half.angleY, -0.3)
-  assert.equal(half.eyeOpenL, 0.5)
+  assert.equal(half.headYaw, 0.4)
+  assert.equal(half.headPitch, -0.3)
+  assert.equal(half.lidL, 0.5)
   const front = poseCorrectionTransitionDriver(c, WORKBENCH_DRIVER, 0)
-  assert.equal(front.angleX, 0)
-  assert.equal(front.eyeOpenL, 1)
+  assert.equal(front.headYaw, 0)
+  assert.equal(front.lidL, 1)
 })
 
 test('unsaved changes count each spot added, removed or moved once', () => {

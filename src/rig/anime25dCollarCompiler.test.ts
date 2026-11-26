@@ -1,4 +1,4 @@
-import type { Anime25DRiggerAnchors } from '../anime25drig/playback'
+import type { Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
 import type { RasterLayer } from './anime25dImportTypes'
 import assert from 'node:assert/strict'
 import test from 'node:test'

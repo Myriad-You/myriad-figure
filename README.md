@@ -2,7 +2,8 @@
 
 Myriad 的 2.5D 形象：在浏览器里演她的 rig 的运行时，和从分层的图做出一套 rig 的处理工具。
 
-- **运行时**：`anime25drig/`（网格变形、头壳转头与关键形、头发和胸的物理、表情、嘴形、WebGL 渲染、播放器）、`motion/`（行为排程、表演、说话和唱歌时的身体、触摸）、`expressionShapes/`（特殊表情的形状）、`singing/`（音乐信号、节拍、歌词时间线）、`speech/`（韵律、口型、重音）、`interaction/`（触摸手势和反应）、`events/`（表演事件和表演契约）、`performance/`（表演类型、心情分档）。
+- **渲染层**：舞台（网格变形、头壳转头与关键形、头发和胸的物理、表情形状、WebGL 绘制、触摸命中、姿势）来自依赖 [`@myriad/figure-player`](https://github.com/Myriad-You/myriad-figure-player)（MIT），按提交钉在 `package.json` 里。本仓库只经它的入口取：`.`、`./workbench`，以及给表演系统和 rig 工具用的 `./internals`（不作稳定承诺）。
+- **运行时**：`anime25drig/`（表演驱动：把行为、说话、唱歌、导演的姿势和触摸合成为每帧的驱动参数，交给舞台；播放器 `Anime25DPlayer`）、`motion/`（行为排程、表演、说话和唱歌时的身体、触摸）、`expressionShapes/`（特殊表情的形状）、`singing/`（音乐信号、节拍、歌词时间线）、`speech/`（韵律、口型、重音）、`interaction/`（触摸手势和反应）、`events/`（表演事件和表演契约）、`performance/`（表演类型、心情分档）。
 - **处理工具**：`rig/`（PSD 与拆层导入、图集、骨骼、部件、补遮挡、转头和转身关键形的拟合与放置），PSD 解码在 Worker 里跑。
 - **通道、错误、记录**：`channel.ts`、`errors.ts`、`trace.ts`。形象没有页面级的状态：页面为它演的那一个形象建一个 `FigureChannel`，表演、说话、她的状态、对方在打字都派发在这条通道上，当前是哪一轮、她最后的状态也记在这里，再交给那个形象的运行时。报错是带错误码和参数的 `FigureError`，消息是英文兜底，页面按错误码换成自己的话。API 地址和一轮对话的记录（`FigureTrace`）由建播放器、协调器、运行时、导入的人在构造时给。
 
@@ -50,6 +51,10 @@ rig 契约和表演契约的源头在共用核心（[Myriad-You/myriad-core](htt
 
 副本不手改。契约在 myriad-core 里改，再在 Myriad 里跑 `scripts/extra/figure-contracts.sh sync` 拷过来；Myriad 的 CI 检查副本是 core 历史上出现过的某一版（core 可以单独往前升，但形象不能带一份核心没有过的契约）。本仓库常量与核心 Rust 源码的对照（行为词表、资源、心情分档）也在 Myriad 里检查，见那边的 `frontend/src/features/merope/figureCore.test.ts`。
 
+## 驱动参数的名字
+
+驱动参数（`Anime25DDriver`，`setTarget`、`getCurrent`、`inspect().driver` 等）用渲染层的名字：`headYaw`、`headPitch`、`headRoll`、`lidL`、`lidR`、`gazeX`、`gazeY`、`jaw`、`lipCurve`、`browLift`、`browTiltL`、`browTiltR`、`browTilt`、`bodyLean`、`torsoFollow`、`rearHairSway`。存下来和交换的格式不跟着改：姿势 JSON 里的 `driver`、包里姿势修正的轴（`angleX`、`angleY`、`mouthOpen`、`eyeCloseL`、`eyeCloseR`）仍是原来的键，在读写的地方换算；表演契约有自己的词表（`headTurn`、`mouthOpen`、`browLift` 等身体控制），由 `directedPose.ts` 的 `BODY_CONTROL_DRIVERS` 对到驱动参数。表演内部的姿势来源（呼吸、环境动作、思考、唱歌的律动、表演偏移）也保留各自的键，合成时由 `poseArbitration.ts` 的 `POSE_KEY_DRIVER_FIELDS` 写到驱动参数上。
+
 ## 开发
 
 ```sh
@@ -68,4 +73,4 @@ pnpm test:browser
 
 ## 许可
 
-AGPL-3.0-only，见 [LICENSE](LICENSE)。`src/anime25drig/vendor/` 是运行时参照的 Anime2.5DRig 的 MIT 许可和说明。
+AGPL-3.0-only，见 [LICENSE](LICENSE)。`src/anime25drig/vendor/` 是 `src/anime25drig/upstream/`（导入和对照测试参照的 Anime2.5DRig）的 MIT 许可和说明。依赖 `@myriad/figure-player` 是 MIT，许可和第三方说明随它自己的仓库。

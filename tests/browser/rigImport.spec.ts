@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test'
 interface TouchState {
   active: boolean
   form: string | undefined
-  pose: { eyeOpenL: number, eyeSqueeze: number, browAngSym: number, body: number }
+  pose: { lidL: number, eyeSqueeze: number, browTilt: number, bodyLean: number }
 }
 
 /**
@@ -88,11 +88,11 @@ test('a page cancel releases a held pointer and ignores its later pointer-up', a
 test('repeated hair clicks never reopen the settled happy eyes between presses', async ({ page }) => {
   const point = await touchSurface(page, 'hair')
   await click(page, point, 90)
-  expect((await touchedWithin(page, 1000, state => state.pose.eyeOpenL < 0.65)).pose.eyeOpenL).toBeLessThan(0.65)
+  expect((await touchedWithin(page, 1000, state => state.pose.lidL < 0.65)).pose.lidL).toBeLessThan(0.65)
   await page.evaluate(() => {
     const state = (window as any).touchSurfaceState
     state.eyeSamples = []
-    state.monitor = setInterval(() => state.eyeSamples.push(state.current().pose.eyeOpenL), 8)
+    state.monitor = setInterval(() => state.eyeSamples.push(state.current().pose.lidL), 8)
   })
   await page.clock.runFor(300)
   const settled = await page.evaluate(() => (window as any).touchSurfaceState.eyeSamples.length as number)
@@ -125,12 +125,12 @@ for (const region of ['hair', 'face']) {
     const form = region === 'hair' ? 'accept' : 'hesitate'
     expect((await touchedWithin(page, 200, state => state.form === form)).form).toBe(form)
     const eyes = region === 'hair' ? 0.7 : 0.85
-    expect((await touchedWithin(page, 1000, state => state.pose.eyeOpenL < eyes)).pose.eyeOpenL).toBeLessThan(eyes)
+    expect((await touchedWithin(page, 1000, state => state.pose.lidL < eyes)).pose.lidL).toBeLessThan(eyes)
     expect((await touched(page)).pose.eyeSqueeze).toBe(0)
     const brow = region === 'hair' ? 0.15 : 0.35
-    expect(Math.abs((await touchedWithin(page, 1000, state => Math.abs(state.pose.browAngSym) > brow)).pose.browAngSym)).toBeGreaterThan(brow)
+    expect(Math.abs((await touchedWithin(page, 1000, state => Math.abs(state.pose.browTilt) > brow)).pose.browTilt)).toBeGreaterThan(brow)
     expect((await touchedWithin(page, 3000, state => !state.active)).active).toBe(false)
-    expect((await touchedWithin(page, 3000, state => state.pose.eyeOpenL > 0.95)).pose.eyeOpenL).toBeGreaterThan(0.95)
+    expect((await touchedWithin(page, 3000, state => state.pose.lidL > 0.95)).pose.lidL).toBeGreaterThan(0.95)
     await page.evaluate(() => (window as any).touchSurfaceState.dispose())
   })
 }
@@ -148,7 +148,7 @@ test('three completed face clicks change hesitation into a visible frown', async
   await page.clock.runFor(600)
   expect(await touchEvents(page)).toContain('update:hold')
   expect((await touched(page)).form).toBe('withdraw')
-  expect((await touchedWithin(page, 1000, state => state.pose.browAngSym > 0.45)).pose.browAngSym).toBeGreaterThan(0.45)
+  expect((await touchedWithin(page, 1000, state => state.pose.browTilt > 0.45)).pose.browTilt).toBeGreaterThan(0.45)
   await page.mouse.up()
   await page.evaluate(() => (window as any).touchSurfaceState.dispose())
 })
@@ -164,8 +164,8 @@ test('real pointer contact reaches the shared director and releases on blur', as
   // Face contact expresses hesitation; its head answer is transient, not a
   // permanently positive nod. Assert the sustained rendered reaction instead.
   expect((await touchedWithin(page, 1000, state => state.form === 'hesitate')).form).toBe('hesitate')
-  expect((await touchedWithin(page, 1000, state => state.pose.browAngSym < -0.35)).pose.browAngSym).toBeLessThan(-0.35)
-  expect((await touchedWithin(page, 1000, state => state.pose.body < -0.02)).pose.body).toBeLessThan(-0.02)
+  expect((await touchedWithin(page, 1000, state => state.pose.browTilt < -0.35)).pose.browTilt).toBeLessThan(-0.35)
+  expect((await touchedWithin(page, 1000, state => state.pose.bodyLean < -0.02)).pose.bodyLean).toBeLessThan(-0.02)
   await page.evaluate(() => window.dispatchEvent(new Event('blur')))
   expect((await touched(page)).active).toBe(false)
   await expect(page.locator('#touch-character')).not.toHaveAttribute('data-merope-touch-active', 'true')
@@ -196,12 +196,12 @@ for (const expression of ['tense', 'withdrawn']) {
     const control = await page.evaluate(expression => (window as any).rigImportTest.directorReplay(true, false, 'control', 60, expression), expression)
     const held = result.frames.filter((f: any) => f.at > 0.7 && f.at < 1.25)
     expect(held.every((f: any) => f.owners.mouth === 'speech')).toBe(true)
-    expect(Math.max(...held.map((f: any) => f.mouthOpen))).toBeGreaterThan(0.05)
+    expect(Math.max(...held.map((f: any) => f.jaw))).toBeGreaterThan(0.05)
     for (const f of held) {
-      const original = control.frames[Math.round(f.at * 60)].browAngSym
-      expect(Math.sign(original) * f.browAngSym).toBeGreaterThan(Math.abs(original) * 0.7)
+      const original = control.frames[Math.round(f.at * 60)].browTilt
+      expect(Math.sign(original) * f.browTilt).toBeGreaterThan(Math.abs(original) * 0.7)
     }
-    expect(Math.max(...held.map((f: any) => Math.abs(f.eyeX - control.frames[Math.round(f.at * 60)].eyeX)))).toBeGreaterThan(0.02)
+    expect(Math.max(...held.map((f: any) => Math.abs(f.gazeX - control.frames[Math.round(f.at * 60)].gazeX)))).toBeGreaterThan(0.02)
     expect(result.glError).toBe(0)
     expect(result.rejected).toBe(0)
   })
@@ -215,8 +215,8 @@ for (const [fps, decision] of [[30, 'withdraw'], [60, 'withdraw'], [120, 'withdr
     const control = await page.evaluate(fps =>
       (window as any).rigImportTest.directorReplay(true, false, 'control', fps), fps)
     const frames = result.frames as Array<{
-      at: number; angleX: number; angleY: number; angleZ: number; body: number; eyeX: number
-      mouthOpen: number; touchForm: string | null; presentedTouch: string | null; touchApplied: number
+      at: number; headYaw: number; headPitch: number; headRoll: number; bodyLean: number; gazeX: number
+      jaw: number; touchForm: string | null; presentedTouch: string | null; touchApplied: number
       owners: { mouth: string; headBody: string }; active: string[]
     }>
     expect(result.rejected).toBe(0)
@@ -229,12 +229,12 @@ for (const [fps, decision] of [[30, 'withdraw'], [60, 'withdraw'], [120, 'withdr
     if (decision === 'withdraw') expect(frames.some(f => f.presentedTouch === 'withdraw')).toBe(true)
     expect(frames.filter(f => f.at > 3).every(f => f.presentedTouch === null)).toBe(true)
     expect(frames.filter(f => f.at < 2).every(f => f.owners.mouth === 'speech')).toBe(true)
-    expect(Math.max(...frames.filter(f => f.at > 0.6 && f.at < 1.6).map(f => f.mouthOpen))).toBeGreaterThan(0.05)
+    expect(Math.max(...frames.filter(f => f.at > 0.6 && f.at < 1.6).map(f => f.jaw))).toBeGreaterThan(0.05)
     expect(frames.filter(f => f.at > 3 && f.at < 4).every(f => f.owners.headBody === 'music')).toBe(true)
     expect(frames.filter(f => f.at > 2.4).every(f => f.touchForm === null)).toBe(true)
     expect(frames.at(-1)!.active.some(f => ['accept:', 'withdraw:', 'hesitate:', 'notice:'].some(prefix => f.startsWith(prefix)))).toBe(false)
     const metrics: Record<string, { speed: number; acceleration: number; peakAt: number }> = {}
-    for (const key of ['angleX', 'angleY', 'angleZ', 'body', 'eyeX'] as const) {
+    for (const key of ['headYaw', 'headPitch', 'headRoll', 'bodyLean', 'gazeX'] as const) {
       let lastVelocity = 0
       metrics[key] = { speed: 0, acceleration: 0, peakAt: 0 }
       for (let i = 2; i < frames.length; i++) {
@@ -253,7 +253,7 @@ for (const [fps, decision] of [[30, 'withdraw'], [60, 'withdraw'], [120, 'withdr
       expect(metrics[key].speed, `${key}: ${JSON.stringify(metrics)}`).toBeLessThan(6)
       // Normalized driver units/s²: gaze uses the existing 16Hz response,
       // head/body 7–9.5Hz. These are regression budgets, not human-motion claims.
-      expect(metrics[key].acceleration, `${key}: ${JSON.stringify(metrics)}`).toBeLessThan(key === 'eyeX' ? 180 : 100)
+      expect(metrics[key].acceleration, `${key}: ${JSON.stringify(metrics)}`).toBeLessThan(key === 'gazeX' ? 180 : 100)
     }
   })
 }
@@ -314,9 +314,9 @@ test('speech and music share the director outlet and release their channels', as
     (window as any).rigImportTest.directorReplay(true),
   )
   const frames = result.frames as Array<{
-    mouthOpen: number
-    angleX: number
-    angleY: number
+    jaw: number
+    headYaw: number
+    headPitch: number
     maniac: number
     owners: { mouth: string; headBody: string }
     active: string[]
@@ -326,14 +326,14 @@ test('speech and music share the director outlet and release their channels', as
     true,
   )
   expect(
-    Math.max(...frames.slice(0, 120).map((f) => f.mouthOpen)),
+    Math.max(...frames.slice(0, 120).map((f) => f.jaw)),
   ).toBeGreaterThan(0.05)
   expect(frames.some((f) => f.musicBehaviors > 0)).toBe(true)
   expect(Math.max(...frames.map((f) => f.maniac))).toBeGreaterThan(0.2)
   expect(
     frames.slice(180, 240).some((f) => f.owners.headBody === 'music'),
   ).toBe(true)
-  const musicPoses = frames.slice(180, 240).map((f) => f.angleY)
+  const musicPoses = frames.slice(180, 240).map((f) => f.headPitch)
   expect(Math.max(...musicPoses) - Math.min(...musicPoses)).toBeGreaterThan(
     0.001,
   )
@@ -356,14 +356,14 @@ test('director source reaches rendered replacement and recovery without replayin
   expect(result.replacementMutation).toBe(false)
   expect(result.duplicateWrites).toBe(0)
   const frames = result.frames as Array<{
-    angleX: number
-    angleY: number
-    angleZ: number
+    headYaw: number
+    headPitch: number
+    headRoll: number
     maniac: number
     active: string[]
     pixelSum: number
   }>
-  expect(frames.slice(0, 12).some((f) => Math.abs(f.angleY) > 0.001)).toBe(true)
+  expect(frames.slice(0, 12).some((f) => Math.abs(f.headPitch) > 0.001)).toBe(true)
   expect(frames.slice(12, 30).some((f) => f.maniac > 0.01)).toBe(true)
   expect(frames.some((f) => f.active.includes('respond:recovering'))).toBe(true)
   expect(Math.max(...frames.map((f) => f.maniac))).toBeGreaterThan(0.2)
@@ -377,7 +377,7 @@ test('director source reaches rendered replacement and recovery without replayin
   ).toBe(false)
   expect(new Set(frames.map((f) => f.pixelSum)).size).toBeGreaterThan(20)
   for (let i = 1; i < frames.length; i++) {
-    for (const key of ['angleX', 'angleY', 'angleZ'] as const)
+    for (const key of ['headYaw', 'headPitch', 'headRoll'] as const)
       expect(Math.abs(frames[i][key] - frames[i - 1][key])).toBeLessThan(0.2)
   }
   expect(result.glError).toBe(0)

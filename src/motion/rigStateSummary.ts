@@ -1,4 +1,4 @@
-import type { Anime25DPlayback } from '../anime25drig/types'
+import type { Anime25DPlayback, MeropeRigManifest } from '@myriad/figure-player'
 import type {
   PerformanceBaseline,
   PerformanceCue,
@@ -8,7 +8,6 @@ import type {
   RigMusicEnergy,
   RigStateSummary,
 } from '../performance/types'
-import type { MeropeRigManifest } from '../rig/types'
 import type { MusicMotionSignal } from '../singing/musicSignal'
 import type { BehaviorSnapshot } from './behavior'
 import type { MotionSourceId } from './channels'

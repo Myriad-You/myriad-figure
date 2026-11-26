@@ -42,10 +42,10 @@ test('a cue to a gesture the side was not drawn with is passed over', () => {
 })
 
 test('the body is driven to each cue in its beats and keeps what a later cue does not name', () => {
-  const score = { bpm: 60, arms: [], body: [{ at: 0, over: 2, drive: { torsoTurn: 0.4, body: 0.5 } }, { at: 4, drive: { torsoTurn: -0.4 } }] }
-  assert.deepEqual(armScoreAt(score, 3, aimOf).drive, { torsoTurn: 0.4, body: 0.5 })
+  const score = { bpm: 60, arms: [], body: [{ at: 0, over: 2, drive: { torsoTurn: 0.4, bodyLean: 0.5 } }, { at: 4, drive: { torsoTurn: -0.4 } }] }
+  assert.deepEqual(armScoreAt(score, 3, aimOf).drive, { torsoTurn: 0.4, bodyLean: 0.5 })
   assert.ok(Math.abs(armScoreAt(score, 1, aimOf).drive.torsoTurn! - 0.2) < 1e-9)
-  assert.deepEqual(armScoreAt(score, 6, aimOf).drive, { torsoTurn: -0.4, body: 0.5 })
+  assert.deepEqual(armScoreAt(score, 6, aimOf).drive, { torsoTurn: -0.4, bodyLean: 0.5 })
 })
 
 test('an arm let down and raised again wears only the new gesture’s hand', () => {

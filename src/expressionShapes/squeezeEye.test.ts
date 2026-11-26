@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {
-  createSqueezeEyeBitmap,
-  squeezeEyeDisplayScale,
-  squeezeEyeGeneratedSize,
-} from './squeezeEye'
+import { createSqueezeEyeBitmap, squeezeEyeGeneratedSize } from './squeezeEye'
 
 test('generates thick, slightly irregular inward-facing chevrons', () => {
   const tint = { red: 42, green: 31, blue: 68 }
@@ -41,20 +37,12 @@ test('generates thick, slightly irregular inward-facing chevrons', () => {
   assert.ok(alphaAt(left, 0.82, 0.49) > 128, 'left eye points inward as >')
   assert.ok(alphaAt(right, 0.19, 0.51) > 128, 'right eye points inward as <')
 })
-
 test('fits generated chevrons to each eye without forcing a square', () => {
   assert.deepEqual(
     squeezeEyeGeneratedSize({ x0: 10, x1: 90, y0: 20, y1: 52 }),
     { width: 83, height: 42 },
   )
 })
-
-test('display scale enlarges undersized marks and leaves fitted art alone', () => {
-  const eye = { x0: 10, x1: 90 }
-  assert.ok(squeezeEyeDisplayScale(28, eye) > 2)
-  assert.equal(squeezeEyeDisplayScale(83.2, eye), 1)
-})
-
 function alphaAt(
   bitmap: { width: number; height: number; data: Uint8ClampedArray },
   normalizedX: number,

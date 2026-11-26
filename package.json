@@ -27,6 +27,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@myriad/figure-player": "github:Myriad-You/myriad-figure-player#345ec3a7a755603d24f8acdf0ca651f387b9b720",
     "ag-psd": "^31.0.3",
     "pinyin-pro": "3.29.5"
   },

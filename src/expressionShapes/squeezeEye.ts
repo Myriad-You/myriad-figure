@@ -1,4 +1,6 @@
-import type { RgbColor } from './dizzyEye'
+// The squeezed-shut eyes the importer draws for a face.
+import type { RgbColor } from '@myriad/figure-player/internals'
+import { SQUEEZE_EYE_WIDTH_FIT } from '@myriad/figure-player/internals'
 
 export type SqueezeEyeSide = 'left' | 'right'
 
@@ -7,13 +9,15 @@ export interface SqueezeEyeSize {
   height: number
 }
 
-export const SQUEEZE_EYE_WIDTH_FIT = 1.04
 export const SQUEEZE_EYE_HEIGHT_FIT = 0.82
+
 const SQUEEZE_EYE_MIN_WIDTH = 18
+
 const SQUEEZE_EYE_MIN_HEIGHT = 14
+
 const SQUEEZE_EYE_MAX_WIDTH = 192
+
 const SQUEEZE_EYE_MAX_HEIGHT = 128
-const SQUEEZE_EYE_MAX_DISPLAY_SCALE = 2.2
 
 export function squeezeEyeGeneratedSize(eye: {
   x0: number
@@ -36,19 +40,6 @@ export function squeezeEyeGeneratedSize(eye: {
       SQUEEZE_EYE_MAX_HEIGHT,
     ),
   }
-}
-
-export function squeezeEyeDisplayScale(
-  layerWidth: number,
-  eye: { x0: number; x1: number },
-): number {
-  const eyeWidth = eye.x1 - eye.x0
-  if (layerWidth <= 0 || eyeWidth <= 0) return 1
-  return clamp(
-    (eyeWidth * SQUEEZE_EYE_WIDTH_FIT) / layerWidth,
-    1,
-    SQUEEZE_EYE_MAX_DISPLAY_SCALE,
-  )
 }
 
 export function createSqueezeEyeBitmap(

@@ -9,38 +9,38 @@ export function applyPerformanceExpressionOffset(
   offset: Readonly<PerformanceExpressionOffset>,
   gaze = 1,
 ): void {
-  target.brow = mixBoundedExpressionChannel(target.brow, offset.brow, -1, 1, 0)
-  target.eyeX = mixBoundedExpressionChannel(
-    target.eyeX,
+  target.browLift = mixBoundedExpressionChannel(target.browLift, offset.brow, -1, 1, 0)
+  target.gazeX = mixBoundedExpressionChannel(
+    target.gazeX,
     offset.eyeX * gaze,
     -1,
     1,
     0,
   )
-  target.eyeY = mixBoundedExpressionChannel(
-    target.eyeY,
+  target.gazeY = mixBoundedExpressionChannel(
+    target.gazeY,
     offset.eyeY * gaze,
     -1,
     1,
     0,
   )
-  target.angleY = mixBoundedExpressionChannel(
-    target.angleY,
+  target.headPitch = mixBoundedExpressionChannel(
+    target.headPitch,
     offset.angleY,
     -1,
     1,
     0,
   )
-  target.angleZ = mixBoundedExpressionChannel(
-    target.angleZ,
+  target.headRoll = mixBoundedExpressionChannel(
+    target.headRoll,
     offset.angleZ,
     -1,
     1,
     0,
   )
-  if (typeof target.body === 'number') {
-    target.body = mixBoundedExpressionChannel(
-      target.body,
+  if (typeof target.bodyLean === 'number') {
+    target.bodyLean = mixBoundedExpressionChannel(
+      target.bodyLean,
       offset.body,
       -1,
       1,
@@ -74,15 +74,15 @@ export function applyPerformanceExpressionExtras(
   amount = 1,
 ): void {
   const weight = clamp(amount, 0, 1)
-  target.browAngSym = mixBoundedExpressionChannel(
-    target.browAngSym,
+  target.browTilt = mixBoundedExpressionChannel(
+    target.browTilt,
     offset.browAngSym * weight,
     -1,
     1,
     0,
   )
-  target.eyeOpenL = mixEyeOpen(target.eyeOpenL, offset.eyeOpen * weight)
-  target.eyeOpenR = mixEyeOpen(target.eyeOpenR, offset.eyeOpen * weight)
+  target.lidL = mixEyeOpen(target.lidL, offset.eyeOpen * weight)
+  target.lidR = mixEyeOpen(target.lidR, offset.eyeOpen * weight)
   target.eyeDizzy = mixBoundedExpressionChannel(
     target.eyeDizzy,
     offset.eyeDizzy * weight,
@@ -104,8 +104,8 @@ export function applyPerformanceExpressionExtras(
     1,
     0,
   )
-  target.mouthForm = mixBoundedExpressionChannel(
-    target.mouthForm,
+  target.lipCurve = mixBoundedExpressionChannel(
+    target.lipCurve,
     offset.mouthForm * weight,
     -1,
     1,

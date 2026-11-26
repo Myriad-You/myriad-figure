@@ -1,12 +1,12 @@
-import type { Anime25DDriver } from './driver'
+import type { Anime25DDriver } from '@myriad/figure-player'
 
 type ActivityExpressionDriver = Pick<
   Anime25DDriver,
-  | 'angleX'
-  | 'angleY'
-  | 'angleZ'
-  | 'eyeOpenL'
-  | 'eyeOpenR'
+  | 'headYaw'
+  | 'headPitch'
+  | 'headRoll'
+  | 'lidL'
+  | 'lidR'
   | 'eyeDizzy'
   | 'eyeSqueeze'
   | 'eyeCry'
@@ -15,21 +15,21 @@ type ActivityExpressionDriver = Pick<
   | 'maniac'
   | 'silly'
   | 'lovestruck'
-  | 'eyeX'
-  | 'eyeY'
+  | 'gazeX'
+  | 'gazeY'
   | 'irisScale'
-  | 'brow'
-  | 'browAngL'
-  | 'browAngR'
-  | 'browAngSym'
+  | 'browLift'
+  | 'browTiltL'
+  | 'browTiltR'
+  | 'browTilt'
 >
 
 const NEUTRAL_ACTIVITY_EXPRESSION: Readonly<ActivityExpressionDriver> = {
-  angleX: 0,
-  angleY: 0,
-  angleZ: 0,
-  eyeOpenL: 1,
-  eyeOpenR: 1,
+  headYaw: 0,
+  headPitch: 0,
+  headRoll: 0,
+  lidL: 1,
+  lidR: 1,
   eyeDizzy: 0,
   eyeSqueeze: 0,
   eyeCry: 0,
@@ -38,22 +38,22 @@ const NEUTRAL_ACTIVITY_EXPRESSION: Readonly<ActivityExpressionDriver> = {
   maniac: 0,
   silly: 0,
   lovestruck: 0,
-  eyeX: 0,
-  eyeY: 0,
+  gazeX: 0,
+  gazeY: 0,
   irisScale: 1,
-  brow: 0,
-  browAngL: 0,
-  browAngR: 0,
-  browAngSym: 0,
+  browLift: 0,
+  browTiltL: 0,
+  browTiltR: 0,
+  browTilt: 0,
 }
 
 export const THINKING_ACTIVITY_EXPRESSION: Readonly<ActivityExpressionDriver> =
   {
-    angleX: -0.12,
-    angleY: 0.1,
-    angleZ: -0.18,
-    eyeOpenL: 0.78,
-    eyeOpenR: 0.9,
+    headYaw: -0.12,
+    headPitch: 0.1,
+    headRoll: -0.18,
+    lidL: 0.78,
+    lidR: 0.9,
     eyeDizzy: 0,
     eyeSqueeze: 0,
     eyeCry: 0,
@@ -62,13 +62,13 @@ export const THINKING_ACTIVITY_EXPRESSION: Readonly<ActivityExpressionDriver> =
     maniac: 0,
     silly: 0,
     lovestruck: 0,
-    eyeX: 0.58,
-    eyeY: -0.42,
+    gazeX: 0.58,
+    gazeY: -0.42,
     irisScale: 0.94,
-    brow: 0.24,
-    browAngL: 0.48,
-    browAngR: -0.12,
-    browAngSym: 0,
+    browLift: 0.24,
+    browTiltL: 0.48,
+    browTiltR: -0.12,
+    browTilt: 0,
   }
 
 export const DIZZY_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
@@ -81,8 +81,8 @@ export const SQUEEZE_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
 
 export const CRY_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
   eyeCry: 1,
-  brow: 0.28,
-  browAngSym: -0.34,
+  browLift: 0.28,
+  browTilt: -0.34,
 }
 
 export const ANGRY_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
@@ -99,8 +99,8 @@ export const MANIAC_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
   anger: 0,
   speechless: 0,
   maniac: 1,
-  eyeOpenL: 1,
-  eyeOpenR: 0.94,
+  lidL: 1,
+  lidR: 0.94,
 }
 
 export const SILLY_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
@@ -116,20 +116,20 @@ export const LOVESTRUCK_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
   maniac: 0,
   silly: 0,
   lovestruck: 1,
-  eyeOpenL: 1,
-  eyeOpenR: 1,
+  lidL: 1,
+  lidR: 1,
 }
 
 export const THINKING_EXPRESSION_PRESET: Readonly<Partial<Anime25DDriver>> = {
   ...THINKING_ACTIVITY_EXPRESSION,
   thinking: true,
-  angleX: -0.15,
-  angleY: 0.12,
-  angleZ: -0.22,
-  eyeX: 0.68,
-  eyeY: -0.48,
-  mouthOpen: 0,
-  mouthForm: -0.16,
+  headYaw: -0.15,
+  headPitch: 0.12,
+  headRoll: -0.22,
+  gazeX: 0.68,
+  gazeY: -0.48,
+  jaw: 0,
+  lipCurve: -0.16,
 }
 
 export function activityExpressionDriverPatch(
@@ -138,10 +138,10 @@ export function activityExpressionDriverPatch(
   return thinking ? THINKING_ACTIVITY_EXPRESSION : NEUTRAL_ACTIVITY_EXPRESSION
 }
 
-type ThinkingExpressionKey = keyof ActivityExpressionDriver | 'mouthForm'
+type ThinkingExpressionKey = keyof ActivityExpressionDriver | 'lipCurve'
 const THINKING_EXPRESSION_KEYS: readonly ThinkingExpressionKey[] = [
   ...Object.keys(THINKING_ACTIVITY_EXPRESSION) as (keyof ActivityExpressionDriver)[],
-  'mouthForm',
+  'lipCurve',
 ]
 
 /** Ownership follows writes, never numeric coincidence with a preset. */

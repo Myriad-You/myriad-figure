@@ -1,9 +1,9 @@
 import type { Anime25DPlaybackBuildLayer } from './playback'
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import { isAnime25DPlayback } from '@myriad/figure-player'
 import { analyzeAnime25DMouthProfile } from './mouthProfile'
 import { buildAnime25DPlayback, remapRiggerAnchors } from './playback'
-import { isAnime25DPlayback } from './types'
 
 function layer(
   partial: Omit<

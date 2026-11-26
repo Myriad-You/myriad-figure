@@ -1,8 +1,8 @@
-import type { Anime25DRiggerAnchors } from '../anime25drig/playback'
+import type { Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
 import type { RasterLayer } from './anime25dImportTypes'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { resolveAnime25DFaceFrame } from '../expressionShapes/faceFrame'
+import { resolveAnime25DFaceFrame } from '@myriad/figure-player/internals'
 import { EXPRESSION_ACCENT_ROLES, synthesizeMissingExpressionAccents } from './expressionAccentLayers'
 
 const anchors = {

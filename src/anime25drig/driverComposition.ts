@@ -1,89 +1,30 @@
+// The performance's half of the per-frame driver composition: poses, special expressions and speech landed on the
+// driver. The stage's own response and blink steps come from @myriad/figure-player/internals.
+import type { Anime25DDriver } from '@myriad/figure-player'
+import type { IdleBreathOffset } from '@myriad/figure-player/internals'
 import type { SingingGroovePose } from '../singing/singingGroove'
 import type { AmbientPose } from './ambientMotion'
-import type { CryMouthMotion } from './cryMotion'
-import type { Anime25DDriver } from './driver'
-import type { IdleBreathOffset } from './idleBreath'
 import type { PerformanceExpressionOffset } from './performanceExpression'
 import type { PoseGate } from './poseArbitration'
 import type { OccupancyOffset } from './poseCompositor'
-import type { PoseResponseController } from './poseResponse'
 import type { RandomActionFrame } from './randomAction'
 import type { CoSpeechExpressionOffset } from './speechExpression'
 import type { AutoSpeechPose } from './speechMotion'
 import type { StylizedExpressionMotion } from './stylizedExpressionMotion'
 import type { ThinkingMotionPose } from './thinkingMotion'
-import { sampleCryMouthMotion } from './cryMotion'
-import { IDENTITY_DRIVER } from './driver'
-import {
-  semanticRollMotionOffset,
-  semanticVerticalMotionOffset,
-  speechBrowMotionOffset,
-  speechHeadMotionOffset,
-} from './expressiveMotionEnvelope'
-import {
-  applyPerformanceExpressionExtras,
-  mixBoundedExpressionChannel,
-  mixEyeOpen,
-} from './performanceExpression'
-import { POSE_KEYS } from './poseArbitration'
-import {
-  accumulateOccupancyOffset,
-  accumulatePoseChannel,
-} from './poseCompositor'
-import { isContinuousPoseKey } from './poseResponse'
-import {
-  stepMouthForm,
-  stepMouthOpen,
-  stepMouthSeal,
-  stepMouthShape,
-} from './speechResponse'
+import { IDENTITY_DRIVER } from '@myriad/figure-player'
+import { semanticRollMotionOffset, semanticVerticalMotionOffset, speechBrowMotionOffset, speechHeadMotionOffset } from './expressiveMotionEnvelope'
+import { applyPerformanceExpressionExtras, mixBoundedExpressionChannel, mixEyeOpen } from './performanceExpression'
+import { POSE_KEY_DRIVER_FIELDS, POSE_KEYS } from './poseArbitration'
+import { accumulateOccupancyOffset, accumulatePoseChannel } from './poseCompositor'
 
-export interface Anime25DPointerPose {
-  x: number
-  y: number
-  inside: boolean
-}
-
+/** The stylized expressions' targets once each blocks the others. */
 export interface Anime25DStylizedTargets {
   anger: number
   speechless: number
   maniac: number
   silly: number
   lovestruck: number
-}
-
-export interface Anime25DBlinkState {
-  activeSeconds: number
-  nextAtSeconds: number
-}
-
-type RandomSource = () => number
-
-const DRIVER_KEYS = Object.keys(IDENTITY_DRIVER) as Array<keyof Anime25DDriver>
-
-/** `authority` is a weight. Pointer gaze crossfades like every other head source. */
-export function prepareAnime25DWorkingTarget(
-  output: Anime25DDriver,
-  authored: Readonly<Anime25DDriver>,
-  pointer: Readonly<Anime25DPointerPose>,
-  authority: number,
-): Anime25DDriver {
-  Object.assign(output, authored)
-  if (!authored.mouse) return output
-  const amount = clamp(Number.isFinite(authority) ? authority : 0, 0, 1)
-  if (amount <= 0) return output
-  output.angleX = mixPointer(authored.angleX, pointer.x * 0.9, amount)
-  output.angleY = mixPointer(authored.angleY, -pointer.y * 0.7, amount)
-  output.eyeX = mixPointer(authored.eyeX, pointer.x * 1.2, amount)
-  output.eyeY = mixPointer(authored.eyeY, -pointer.y * 0.8, amount)
-  return output
-}
-
-function mixPointer(base: number, tracked: number, amount: number): number {
-  const bounded = clamp(tracked, -1, 1)
-  // Full authority is the tracked value itself, not a lerp that lands one
-  // float away from it — the legacy pointer math is asserted exactly.
-  return amount >= 1 ? bounded : base + (bounded - base) * amount
 }
 
 /** Resolves the mutually blocked stylized-expression inputs without allocating. */
@@ -204,8 +145,9 @@ export function applyAnime25DComposedPose(
     gate.coSpeech,
   )
   for (const key of POSE_KEYS) {
-    target[key] = mixBoundedExpressionChannel(
-      target[key],
+    const field = POSE_KEY_DRIVER_FIELDS[key]
+    target[field] = mixBoundedExpressionChannel(
+      target[field],
       scratch[key],
       -1,
       1,
@@ -240,30 +182,30 @@ function applyRandomActionExpressionExtras(
   target.eyeSmile = mixBoundedExpressionChannel(target.eyeSmile, frame.eyeSmile * weight, 0, 1, 0)
   target.eyeWide = mixBoundedExpressionChannel(target.eyeWide, frame.eyeWide * weight, 0, 1, 0)
   if (frame.wink !== 0) {
-    target.eyeOpenL = mixEyeOpen(target.eyeOpenL, -Math.max(0, frame.wink) * weight)
-    target.eyeOpenR = mixEyeOpen(target.eyeOpenR, -Math.max(0, -frame.wink) * weight)
+    target.lidL = mixEyeOpen(target.lidL, -Math.max(0, frame.wink) * weight)
+    target.lidR = mixEyeOpen(target.lidR, -Math.max(0, -frame.wink) * weight)
   }
   const mouth = weight * clamp(mouthFree, 0, 1)
   if (mouth > 0) {
-    target.mouthForm = mixBoundedExpressionChannel(
-      target.mouthForm,
+    target.lipCurve = mixBoundedExpressionChannel(
+      target.lipCurve,
       frame.mouthForm * mouth,
       -1,
       1,
       0,
     )
-    target.mouthOpen = Math.max(target.mouthOpen, frame.mouthOpen * mouth)
+    target.jaw = Math.max(target.jaw, frame.mouthOpen * mouth)
     target.mouthRound = Math.max(target.mouthRound, frame.mouthRound * mouth)
   }
-  target.browAngSym = mixBoundedExpressionChannel(
-    target.browAngSym,
+  target.browTilt = mixBoundedExpressionChannel(
+    target.browTilt,
     frame.browAngSym * weight,
     -1,
     1,
     0,
   )
-  target.eyeOpenL = mixEyeOpen(target.eyeOpenL, frame.eyeOpen * weight)
-  target.eyeOpenR = mixEyeOpen(target.eyeOpenR, frame.eyeOpen * weight)
+  target.lidL = mixEyeOpen(target.lidL, frame.eyeOpen * weight)
+  target.lidR = mixEyeOpen(target.lidR, frame.eyeOpen * weight)
   target.irisScale = mixBoundedExpressionChannel(
     target.irisScale,
     frame.irisScale * weight,
@@ -315,33 +257,33 @@ export function applyAnime25DStylizedExpression(
   const semanticWeight = clamp(semanticAmount, 0, 1)
   const stylizedWeight = clamp(stylizedAmount, 0, 1)
   applyPerformanceExpressionExtras(target, semantic, semanticWeight)
-  target.browAngL = mixBoundedExpressionChannel(
-    target.browAngL,
+  target.browTiltL = mixBoundedExpressionChannel(
+    target.browTiltL,
     stylized.browAngL * stylizedWeight,
     -1,
     1,
     0,
   )
-  target.browAngR = mixBoundedExpressionChannel(
-    target.browAngR,
+  target.browTiltR = mixBoundedExpressionChannel(
+    target.browTiltR,
     stylized.browAngR * stylizedWeight,
     -1,
     1,
     0,
   )
-  target.browAngSym = mixBoundedExpressionChannel(
-    target.browAngSym,
+  target.browTilt = mixBoundedExpressionChannel(
+    target.browTilt,
     stylized.browAngSym * stylizedWeight,
     -1,
     1,
     0,
   )
-  target.eyeOpenL = mixEyeOpen(
-    target.eyeOpenL,
+  target.lidL = mixEyeOpen(
+    target.lidL,
     stylized.eyeOpen * stylizedWeight,
   )
-  target.eyeOpenR = mixEyeOpen(
-    target.eyeOpenR,
+  target.lidR = mixEyeOpen(
+    target.lidR,
     stylized.eyeOpen * stylizedWeight,
   )
   target.irisScale = mixBoundedExpressionChannel(
@@ -351,21 +293,21 @@ export function applyAnime25DStylizedExpression(
     1.3,
     1,
   )
-  target.mouthForm = mixBoundedExpressionChannel(
-    target.mouthForm,
+  target.lipCurve = mixBoundedExpressionChannel(
+    target.lipCurve,
     stylized.mouthForm * stylizedWeight,
     -1,
     1,
     0,
   )
-  target.mouthOpen = Math.max(
-    target.mouthOpen,
+  target.jaw = Math.max(
+    target.jaw,
     stylized.mouthOpen * stylizedWeight,
   )
   // Lovestruck mouth share is an eased ratio, not a boolean 0.82 step.
   const lovestruckMouthShare = 0.18 + 0.82 * clamp(vocalRest, 0, 1)
-  target.mouthOpen = Math.max(
-    target.mouthOpen,
+  target.jaw = Math.max(
+    target.jaw,
     stylized.lovestruckMouthOpen * lovestruckMouthShare * stylizedWeight,
   )
   target.mouthRound = Math.max(
@@ -397,46 +339,6 @@ export function applyAnime25DStylizedExpression(
   )
 }
 
-export function applyAnime25DCryMouth(
-  target: Anime25DDriver,
-  currentEyeCry: number,
-  timeSeconds: number,
-  elapsedSeconds: number,
-  output: CryMouthMotion,
-): void {
-  const cryResponseRate = target.eyeCry > currentEyeCry ? 6 : 4.5
-  const cryAmount = clamp(
-    currentEyeCry +
-      (target.eyeCry - currentEyeCry) *
-        (1 - Math.exp(-cryResponseRate * elapsedSeconds)),
-    0,
-    1,
-  )
-  sampleCryMouthMotion(cryAmount, timeSeconds, output)
-  target.mouthOpen = Math.max(target.mouthOpen, output.mouthOpen)
-  target.mouthForm = mixBoundedExpressionChannel(
-    target.mouthForm,
-    output.mouthForm,
-    -1,
-    1,
-    0,
-  )
-  target.mouthCY = mixBoundedExpressionChannel(
-    target.mouthCY,
-    output.mouthCY,
-    -1,
-    1,
-    0,
-  )
-  target.mouthScale = mixBoundedExpressionChannel(
-    target.mouthScale,
-    output.mouthScale,
-    0.5,
-    1.5,
-    1,
-  )
-}
-
 export function applyAnime25DSpeechExtras(
   target: Anime25DDriver,
   speech: Readonly<AutoSpeechPose>,
@@ -449,173 +351,14 @@ export function applyAnime25DSpeechExtras(
     speech.mouthNarrow > 0 ||
     speech.mouthSeal > 0
   ) {
-    target.mouthOpen = Math.max(target.mouthOpen, speech.mouthOpen)
+    target.jaw = Math.max(target.jaw, speech.mouthOpen)
     target.mouthWide = Math.max(target.mouthWide, speech.mouthWide)
     target.mouthRound = Math.max(target.mouthRound, speech.mouthRound)
     target.mouthNarrow = Math.max(target.mouthNarrow, speech.mouthNarrow)
     target.mouthSeal = Math.max(target.mouthSeal, speech.mouthSeal)
   }
-  target.eyeOpenL = mixEyeOpen(target.eyeOpenL, expression.eyeOpen)
-  target.eyeOpenR = mixEyeOpen(target.eyeOpenR, expression.eyeOpen)
-}
-
-export function applyAnime25DSillyMouthOwnership(
-  target: Anime25DDriver,
-  ownership: number,
-): void {
-  if (ownership <= 0) return
-  const retained = 1 - ownership
-  target.mouthOpen *= retained
-  target.mouthWide *= retained
-  target.mouthRound *= retained
-  target.mouthNarrow *= retained
-  target.mouthSeal *= retained
-}
-
-/**
- * A blink as a person makes it: the lid drops fast, gathering speed, stays
- * shut for a moment only, and lifts a little slower, quick at first. About a
- * quarter of a second in all; a longer one reads as drowsy.
- */
-const BLINK_CLOSE_SECONDS = 0.07
-const BLINK_SHUT_SECONDS = 0.04
-const BLINK_OPEN_SECONDS = 0.16
-export const BLINK_SECONDS = BLINK_CLOSE_SECONDS + BLINK_SHUT_SECONDS + BLINK_OPEN_SECONDS
-/** A double blink leaves the eye open this long between the two. */
-const DOUBLE_BLINK_GAP_SECONDS = 0.12
-
-/**
- * Advances the blink and closes `target`'s eyes by it. Apply it to the eyes as
- * shown, after any smoothing: smoothed, a quarter-second blink never shuts.
- */
-export function stepAnime25DBlink(
-  target: Anime25DDriver,
-  state: Anime25DBlinkState,
-  timeSeconds: number,
-  elapsedSeconds: number,
-  enabled: boolean,
-  suppressed: boolean,
-  random: RandomSource = Math.random,
-): void {
-  // 进行中的眨眼必须写完眼皮；抑制或关掉自动化也不能从半闭处弹开。
-  if (suppressed || !enabled) {
-    if (suppressed) state.nextAtSeconds = timeSeconds + 1.8
-    if (state.activeSeconds < 0) return
-  } else {
-    if (state.activeSeconds < 0 && timeSeconds > state.nextAtSeconds) {
-      state.activeSeconds = 0
-      state.nextAtSeconds = timeSeconds + 1.6 + random() * 3.8
-      if (random() < 0.18) state.nextAtSeconds = timeSeconds + BLINK_SECONDS + DOUBLE_BLINK_GAP_SECONDS
-    }
-    if (state.activeSeconds < 0) return
-  }
-  state.activeSeconds += elapsedSeconds
-  const elapsed = state.activeSeconds
-  let open = 1
-  if (elapsed < BLINK_CLOSE_SECONDS) {
-    const t = elapsed / BLINK_CLOSE_SECONDS
-    open = 1 - t * t
-  } else if (elapsed < BLINK_CLOSE_SECONDS + BLINK_SHUT_SECONDS) {
-    open = 0
-  } else if (elapsed < BLINK_SECONDS) {
-    const t = (elapsed - BLINK_CLOSE_SECONDS - BLINK_SHUT_SECONDS) / BLINK_OPEN_SECONDS
-    open = 1 - (1 - t) * (1 - t)
-  } else {
-    state.activeSeconds = -1
-  }
-  target.eyeOpenL = Math.min(target.eyeOpenL, open)
-  target.eyeOpenR = Math.min(target.eyeOpenR, open)
-}
-
-/** Applies the final driver and secondary-motion response without allocations. */
-export function stepAnime25DDriverResponse(
-  current: Anime25DDriver,
-  authored: Readonly<Anime25DDriver>,
-  target: Readonly<Anime25DDriver>,
-  poseResponse: PoseResponseController,
-  elapsedSeconds: number,
-  responseScale = 1,
-): void {
-  poseResponse.step(current, target, elapsedSeconds, responseScale)
-  const rate = Math.min(1, elapsedSeconds * 14)
-  for (const key of DRIVER_KEYS) {
-    if (isContinuousPoseKey(key)) continue
-    if (isAutomationFlag(key)) {
-      current[key] = authored[key]
-      continue
-    }
-    const from = current[key]
-    const to = target[key]
-    if (key === 'mouthOpen') {
-      current.mouthOpen = stepMouthOpen(from, to, elapsedSeconds)
-      continue
-    }
-    if (key === 'mouthForm') {
-      current.mouthForm = stepMouthForm(from, to, elapsedSeconds)
-      continue
-    }
-    if (key === 'mouthSeal') {
-      current.mouthSeal = stepMouthSeal(from, to, elapsedSeconds)
-      continue
-    }
-    if (key === 'mouthWide' || key === 'mouthRound' || key === 'mouthNarrow') {
-      current[key] = stepMouthShape(from, to, elapsedSeconds)
-      continue
-    }
-    if (key === 'eyeCry') {
-      const response = to > from ? 6 : 4.5
-      current.eyeCry =
-        from + (to - from) * (1 - Math.exp(-response * elapsedSeconds))
-      continue
-    }
-    if (key === 'maniac') {
-      const response = to > from ? 7.2 : 4.4
-      current.maniac =
-        from + (to - from) * (1 - Math.exp(-response * elapsedSeconds))
-      continue
-    }
-    if (key === 'silly') {
-      const response = to > from ? 7 : 4.2
-      current.silly =
-        from + (to - from) * (1 - Math.exp(-response * elapsedSeconds))
-      continue
-    }
-    if (key === 'lovestruck') {
-      const response = to > from ? 6.6 : 3.8
-      current.lovestruck =
-        from + (to - from) * (1 - Math.exp(-response * elapsedSeconds))
-      continue
-    }
-    current[key] = from + (to - from) * rate
-  }
-}
-
-function isAutomationFlag(
-  key: keyof Anime25DDriver,
-): key is
-  | 'idle'
-  | 'blink'
-  | 'rand'
-  | 'thinking'
-  | 'singing'
-  | 'talk'
-  | 'mouse'
-  | 'phys' {
-  return (
-    key === 'idle' ||
-    key === 'blink' ||
-    key === 'rand' ||
-    key === 'thinking' ||
-    key === 'singing' ||
-    key === 'talk' ||
-    key === 'mouse' ||
-    key === 'phys'
-  )
-}
-
-export function smoothAnime25DUnit(value: number): number {
-  const bounded = clamp(value, 0, 1)
-  return bounded * bounded * (3 - 2 * bounded)
+  target.lidL = mixEyeOpen(target.lidL, expression.eyeOpen)
+  target.lidR = mixEyeOpen(target.lidR, expression.eyeOpen)
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

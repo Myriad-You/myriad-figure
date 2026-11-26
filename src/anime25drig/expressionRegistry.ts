@@ -1,5 +1,5 @@
-import type { Anime25DDriver } from './driver'
-import type { Anime25DFade } from './types'
+import type { Anime25DDriver } from '@myriad/figure-player'
+import type { Anime25DFade } from '@myriad/figure-player/internals'
 
 export type StylizedExpressionKey = Extract<
   keyof Anime25DDriver,

@@ -1,8 +1,7 @@
-import type { Anime25DDriver } from './driver'
-import type { PoseCorrection } from './poseCorrections'
-import type { Anime25DPlayback } from './types'
-import { WORKBENCH_DRIVER } from './driver'
-import { isPoseCorrections, poseCorrectionCornerKey } from './poseCorrections'
+import type { Anime25DDriver, Anime25DPlayback } from '@myriad/figure-player'
+import type { PoseCorrection } from '@myriad/figure-player/workbench'
+import { poseCorrectionCornerKey } from '@myriad/figure-player/internals'
+import { isPoseCorrections, WORKBENCH_DRIVER } from '@myriad/figure-player/workbench'
 
 export const POSE_CORRECTION_REGIONS = ['leftEye', 'rightEye', 'mouth', 'chin', 'frontCrown', 'rearCrown'] as const
 export type PoseCorrectionRegion = typeof POSE_CORRECTION_REGIONS[number]
@@ -17,11 +16,15 @@ export function appendPoseCorrectionPatch(current: readonly PoseCorrection[], ca
 }
 
 export function poseCorrectionPreviewDriver(correction: PoseCorrection, current: Anime25DDriver = WORKBENCH_DRIVER): Anime25DDriver {
-  const { eyeCloseL, eyeCloseR, ...angles } = correction.at
-  return { ...current, ...angles,
-    ...(eyeCloseL !== undefined ? { eyeOpenL: 1 - eyeCloseL } : {}),
-    ...(eyeCloseR !== undefined ? { eyeOpenR: 1 - eyeCloseR } : {}),
-    angleZ: 0, idle: false, blink: false, rand: false, talk: false, mouse: false, phys: false,
+  // A correction's axes keep the package's names (angleX, angleY, mouthOpen); each moves its driver field.
+  const { eyeCloseL, eyeCloseR, angleX, angleY, mouthOpen } = correction.at
+  return { ...current,
+    ...(angleX !== undefined ? { headYaw: angleX } : {}),
+    ...(angleY !== undefined ? { headPitch: angleY } : {}),
+    ...(mouthOpen !== undefined ? { jaw: mouthOpen } : {}),
+    ...(eyeCloseL !== undefined ? { lidL: 1 - eyeCloseL } : {}),
+    ...(eyeCloseR !== undefined ? { lidR: 1 - eyeCloseR } : {}),
+    headRoll: 0, idle: false, blink: false, rand: false, talk: false, mouse: false, phys: false,
   }
 }
 
@@ -90,14 +93,15 @@ export function poseCorrectionCorner(
 ): { at: PoseCorrection['at'] } | { problem: PoseCorrectionProblem } {
   const round = (v: number) => Math.round(v * 100) / 100
   const at: PoseCorrection['at'] = {}
-  for (const axis of ['angleX', 'angleY'] as const) {
-    if (Math.abs(driver[axis]) >= 0.05) at[axis] = round(driver[axis])
+  // A correction's axes keep the package's names; the driver's fields are read for them.
+  for (const [axis, field] of [['angleX', 'headYaw'], ['angleY', 'headPitch']] as const) {
+    if (Math.abs(driver[field]) >= 0.05) at[axis] = round(driver[field])
   }
   if (!Object.keys(at).length) return { problem: 'needsTurn' }
   const region = surface === 'head' ? nearestPoseCorrectionRegion(playback, surface, point) : null
-  if (region === 'leftEye' && 1 - driver.eyeOpenL >= 0.05) at.eyeCloseL = round(1 - driver.eyeOpenL)
-  if (region === 'rightEye' && 1 - driver.eyeOpenR >= 0.05) at.eyeCloseR = round(1 - driver.eyeOpenR)
-  if (region === 'mouth' && driver.mouthOpen >= 0.05) at.mouthOpen = round(driver.mouthOpen)
+  if (region === 'leftEye' && 1 - driver.lidL >= 0.05) at.eyeCloseL = round(1 - driver.lidL)
+  if (region === 'rightEye' && 1 - driver.lidR >= 0.05) at.eyeCloseR = round(1 - driver.lidR)
+  if (region === 'mouth' && driver.jaw >= 0.05) at.mouthOpen = round(driver.jaw)
   return Object.keys(at).length < 2 ? { problem: 'needsSecond' } : { at }
 }
 

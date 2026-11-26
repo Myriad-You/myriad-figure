@@ -173,7 +173,7 @@ test('agent turns get a semantic rig summary, not per-frame drivers', () => {
   const runtime = new MotionRuntime(new RigMotionCoordinator())
   runtime.mood.set(40, 'thinking', 70)
   const summary = JSON.stringify(captureRigStateSummary(runtime))
-  for (const driver of ['mouthOpen', 'angleX', 'angleY', 'eyeOpenL', 'bodyLift']) {
+  for (const driver of ['jaw', 'headYaw', 'headPitch', 'lidL', 'bodyLift']) {
     assert.ok(!summary.includes(`"${driver}"`), driver)
   }
 })

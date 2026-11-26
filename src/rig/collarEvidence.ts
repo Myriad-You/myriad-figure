@@ -1,4 +1,4 @@
-import type { Anime25DRiggerAnchors } from '../anime25drig/playback'
+import type { Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
 import type { Anime25DSourceReference, RasterLayer } from './anime25dImportTypes'
 import { ALPHA_COMPONENT_THRESHOLD, HIGH_COLLAR_UPPER_FRACTION, perceptualColorDistance, rasterPixelIndex } from './collarCommon'
 

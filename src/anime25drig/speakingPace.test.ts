@@ -1,12 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { Anime25DIrisRebound, ClosedEyePresentation, IDENTITY_DRIVER } from '@myriad/figure-player'
+import { deriveAnime25DMotionEnvelopeProfile, headRollRadians } from '@myriad/figure-player/internals'
 import { IDLE_MOTION_POLICY } from '../motion/policy'
-import { ClosedEyePresentation } from './closedEyePresentation'
-import { IDENTITY_DRIVER } from './driver'
-import { Anime25DIrisRebound } from './irisRebound'
 import { Anime25DMotionComposer } from './motionComposer'
-import { deriveAnime25DMotionEnvelopeProfile } from './motionEnvelope'
-import { headRollRadians } from './poseScale'
 
 const HZ = 60
 const SECONDS = 120
@@ -32,7 +29,7 @@ function headRoll(speaking: boolean, seed: number): number[] {
     for (let frame = 1; frame <= HZ * SECONDS; frame += 1) {
       composer.step(1 / HZ, { time: frame / HZ, target, policy: IDLE_MOTION_POLICY, mouse: { x: 0, y: 0, inside: false },
         speechActive: false, musicSignal: null, motionEnvelopeProfile: envelope })
-      if (frame > HZ * 2) roll.push((headRollRadians(current.angleZ) * 180) / Math.PI)
+      if (frame > HZ * 2) roll.push((headRollRadians(current.headRoll) * 180) / Math.PI)
     }
     return roll
   } finally {

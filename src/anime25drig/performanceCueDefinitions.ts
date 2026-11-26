@@ -1,8 +1,8 @@
+import type { Anime25DDriver } from '@myriad/figure-player'
 import type { CueIntent, PerformanceCueFootprint } from '../motion/performanceCues'
-import type { Anime25DDriver } from './driver'
 import type { PerformanceExpressionOffset } from './performanceExpression'
+import { IDENTITY_DRIVER } from '@myriad/figure-player'
 import { PERFORMANCE_CUE_FOOTPRINTS } from '../motion/performanceCues'
-import { IDENTITY_DRIVER } from './driver'
 
 export { cueIsSticker, performanceCueChannels } from '../motion/performanceCues'
 export type { CueIntent } from '../motion/performanceCues'
@@ -19,7 +19,7 @@ interface PerformanceCueMotion {
 const PERFORMANCE_CUE_MOTION = {
   greet: {
     driver: (poseAmount) => ({
-      body: 0.22 * poseAmount * bodyParticipation(poseAmount),
+      bodyLean: 0.22 * poseAmount * bodyParticipation(poseAmount),
       armY: 0.3 * poseAmount * bodyParticipation(poseAmount),
     }),
     expression: (amount, poseAmount) => ({
@@ -28,7 +28,7 @@ const PERFORMANCE_CUE_MOTION = {
     }),
   },
   respond: {
-    driver: (poseAmount) => ({ body: 0.2 * poseAmount }),
+    driver: (poseAmount) => ({ bodyLean: 0.2 * poseAmount }),
     expression: (amount, poseAmount) => ({
       angleY: -0.12 * poseAmount,
       angleZ: -0.045 * poseAmount,
@@ -36,7 +36,7 @@ const PERFORMANCE_CUE_MOTION = {
     }),
   },
   question: {
-    driver: (poseAmount) => ({ body: 0.18 * poseAmount }),
+    driver: (poseAmount) => ({ bodyLean: 0.18 * poseAmount }),
     expression: (amount, poseAmount) => ({
       angleZ: 0.15 * poseAmount,
       brow: 0.26 * amount,
@@ -46,7 +46,7 @@ const PERFORMANCE_CUE_MOTION = {
   },
   delight: {
     driver: (poseAmount) => ({
-      body: 0.16 * poseAmount * bodyParticipation(poseAmount),
+      bodyLean: 0.16 * poseAmount * bodyParticipation(poseAmount),
       armY: 0.4 * poseAmount * bodyParticipation(poseAmount),
       bust: IDENTITY_DRIVER.bust + 0.26 * poseAmount,
     }),
@@ -62,7 +62,7 @@ const PERFORMANCE_CUE_MOTION = {
   },
   emphasize: {
     driver: (poseAmount) => ({
-      body: 0.4 * poseAmount * bodyParticipation(poseAmount),
+      bodyLean: 0.4 * poseAmount * bodyParticipation(poseAmount),
     }),
     expression: (amount, poseAmount) => ({
       angleY: 0.12 * poseAmount,
@@ -70,14 +70,14 @@ const PERFORMANCE_CUE_MOTION = {
     }),
   },
   listen: {
-    driver: (poseAmount) => ({ body: 0.12 * poseAmount }),
+    driver: (poseAmount) => ({ bodyLean: 0.12 * poseAmount }),
     expression: (amount, poseAmount) => ({
       angleY: 0.15 * poseAmount,
       brow: 0.12 * amount,
     }),
   },
   notify: {
-    driver: (poseAmount) => ({ body: 0.32 * poseAmount }),
+    driver: (poseAmount) => ({ bodyLean: 0.32 * poseAmount }),
     expression: (amount, poseAmount) => ({
       angleZ: -0.11 * poseAmount,
       brow: 0.22 * amount,
@@ -112,23 +112,23 @@ const PERFORMANCE_CUE_MOTION = {
     }),
   },
   angry: {
-    driver: (poseAmount) => ({ body: 0.22 * poseAmount }),
+    driver: (poseAmount) => ({ bodyLean: 0.22 * poseAmount }),
     expression: (amount) => ({ anger: amount }),
   },
   speechless: {
-    driver: (poseAmount) => ({ body: -0.18 * poseAmount }),
+    driver: (poseAmount) => ({ bodyLean: -0.18 * poseAmount }),
     expression: (amount) => ({ speechless: amount }),
   },
   maniac: {
-    driver: (poseAmount) => ({ body: 0.17 * poseAmount }),
+    driver: (poseAmount) => ({ bodyLean: 0.17 * poseAmount }),
     expression: (amount) => ({ maniac: amount }),
   },
   silly: {
-    driver: (poseAmount) => ({ body: -0.15 * poseAmount }),
+    driver: (poseAmount) => ({ bodyLean: -0.15 * poseAmount }),
     expression: (amount) => ({ silly: amount }),
   },
   lovestruck: {
-    driver: (poseAmount) => ({ body: -0.14 * poseAmount }),
+    driver: (poseAmount) => ({ bodyLean: -0.14 * poseAmount }),
     expression: (amount) => ({ lovestruck: amount }),
   },
 } satisfies Record<CueIntent, PerformanceCueMotion>
@@ -161,7 +161,7 @@ export function intentExpressionPatch(
   const driver = definition.driver(poseAmount)
   return {
     ...definition.expression(amount, poseAmount),
-    ...(typeof driver.body === 'number' ? { body: driver.body } : {}),
+    ...(typeof driver.bodyLean === 'number' ? { body: driver.bodyLean } : {}),
     ...(typeof driver.armY === 'number' ? { armY: driver.armY } : {}),
     ...(typeof driver.armPos === 'number' ? { armPos: driver.armPos } : {}),
     ...(typeof driver.bust === 'number'

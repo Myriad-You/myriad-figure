@@ -1,10 +1,10 @@
+import type { Anime25DDriver } from '@myriad/figure-player'
 import type { TouchReaction } from '../interaction/touchReaction'
 import type { BehaviorQuality } from '../motion/behavior'
 import type { PerformanceBaseline } from '../performance/types'
 import type { Anime25DMotionUnit } from './behaviorMotion'
-import type { Anime25DDriver } from './driver'
 import type { PerformanceExpressionOffset, ScheduledExpressionCue } from './performanceExpressionShared'
-import { IDENTITY_DRIVER } from './driver'
+import { IDENTITY_DRIVER } from '@myriad/figure-player'
 import { cueEnvelope, motionUnitKey, releaseScheduledCue, scheduledCueFromUnit } from './performanceCueSchedule'
 import { writeBaselineOffset } from './performanceExpressionApply'
 import { clamp, OFFSET_KEYS, ZERO_OFFSET } from './performanceExpressionShared'
@@ -13,6 +13,9 @@ import { touchExpressionPatch } from './touchExpression'
 export { performanceUnitAmount } from './performanceCueSchedule'
 export { applyPerformanceExpressionExtras, applyPerformanceExpressionOffset, mixBoundedExpressionChannel } from './performanceExpressionApply'
 export { intentExpressionOffset, mixEyeOpen, type PerformanceExpressionOffset, type PerformanceExpressionTarget } from './performanceExpressionShared'
+
+/** The driver fields the offsets' brow keys move. */
+const BROW_DRIVER_FIELDS = { brow: 'browLift', browAngSym: 'browTilt' } as const
 
 const AMBIENT_SCALE_RATE = 5.2
 const LIVE_CUE_AMBIENT_DAMP = 0.3
@@ -166,13 +169,13 @@ export class PerformanceExpressionController {
     let special = 0
     for (const key of EMOTIONAL_EYE_KEYS) special = Math.max(special, Math.abs((base[key] ?? 0) + (this.output[key] ?? 0)))
     const protection = clamp(Math.max(special,
-      Math.abs((base.browAngSym ?? 0) + this.output.browAngSym) / 0.6), 0, 1)
+      Math.abs((base.browTilt ?? 0) + this.output.browAngSym) / 0.6), 0, 1)
     for (const key of OFFSET_KEYS) {
       let addition = this.touchOffset[key] ?? 0
       if (key === 'brow' || key === 'browAngSym' || key === 'eyeOpen') {
         addition *= 1 - 0.75 * protection
         if (key !== 'eyeOpen') {
-          const underlying = (base[key] ?? 0) + (this.output[key] ?? 0)
+          const underlying = (base[BROW_DRIVER_FIELDS[key]] ?? 0) + (this.output[key] ?? 0)
           if (addition * underlying < 0) {
             addition = Math.sign(addition) * Math.min(Math.abs(addition),
               Math.abs(underlying) * 0.25 + Math.abs(addition) * (1 - protection))
@@ -243,13 +246,13 @@ export function bearingDriverPatch(
 ): Partial<Anime25DDriver> {
   const offset = baseline ? baselineExpressionOffset(baseline) : ZERO_OFFSET
   return {
-    brow: offset.brow,
-    browAngSym: offset.browAngSym,
-    eyeOpenL: IDENTITY_DRIVER.eyeOpenL + offset.eyeOpen,
-    eyeOpenR: IDENTITY_DRIVER.eyeOpenR + offset.eyeOpen,
-    mouthForm: offset.mouthForm,
+    browLift: offset.brow,
+    browTilt: offset.browAngSym,
+    lidL: IDENTITY_DRIVER.lidL + offset.eyeOpen,
+    lidR: IDENTITY_DRIVER.lidR + offset.eyeOpen,
+    lipCurve: offset.mouthForm,
     irisScale: IDENTITY_DRIVER.irisScale + offset.irisScale,
-    body: offset.body,
+    bodyLean: offset.body,
     armY: offset.armY,
     armPos: offset.armPos,
   }

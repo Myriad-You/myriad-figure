@@ -1,10 +1,10 @@
+import type { Anime25DDriver } from '@myriad/figure-player'
 import type { BodyControl } from '../performance/types'
-import type { Anime25DDriver } from './driver'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { IDENTITY_DRIVER } from '@myriad/figure-player'
 import { BODY_CONTROLS, FACE_PRESETS, tierExtent } from '../events/performanceContract'
 import { DirectedPoseController } from './directedPose'
-import { IDENTITY_DRIVER } from './driver'
 
 const FPS = 60
 
@@ -40,19 +40,19 @@ test('a change of face carries on from where she is: nothing jumps, and the last
     pose.set(look('sleepy'), 0, 'sleepy', null)
     const before = play(pose, 0, 2.6)
     // Nodding off, part way down.
-    assert.ok(before.at(-1)!.angleY < -0.5)
+    assert.ok(before.at(-1)!.headPitch < -0.5)
     pose.set(look('excited'), 2.6, 'excited', 'ease')
     const after = play(pose, 2.6, 4.6)
     const step = (frames: Anime25DDriver[], index: number, key: keyof Anime25DDriver) =>
       Math.abs((frames[index][key] as number) - (index ? (frames[index - 1][key] as number) : (before.at(-1)![key] as number)))
-    for (const key of ['angleY', 'eyeOpenL', 'eyeWide'] as const) {
+    for (const key of ['headPitch', 'lidL', 'eyeWide'] as const) {
       assert.ok(step(after, 0, key) < 0.05, `${key} jumped at the change: ${step(after, 0, key)}`)
     }
     // The head comes up from the nod within a second (before the new look's own nod at 0.9 s),
     // not after the old nod would have run its course.
     const settled = after[Math.round(FPS * 0.8)]
-    assert.ok(settled.angleY > -0.1, `${settled.angleY}`)
-    assert.ok(settled.eyeOpenL > 0.9, `${settled.eyeOpenL}`)
+    assert.ok(settled.headPitch > -0.1, `${settled.headPitch}`)
+    assert.ok(settled.lidL > 0.9, `${settled.lidL}`)
   } finally {
     Math.random = random
   }
@@ -67,9 +67,9 @@ test('a change of face goes through her in order: the eyes first, the head after
     const frames = play(pose, 0.5, 2.5)
     return frames.findIndex((frame) => Math.abs(frame[control] as number) > 0.05) / FPS
   }
-  assert.ok(started('ease', 'eyeX') < started('ease', 'angleX'))
-  assert.ok(started('pause', 'eyeX') > started('ease', 'eyeX') + 0.25)
-  assert.ok(started('snap', 'angleX') < started('slow', 'angleX'))
+  assert.ok(started('ease', 'gazeX') < started('ease', 'headYaw'))
+  assert.ok(started('pause', 'gazeX') > started('ease', 'gazeX') + 0.25)
+  assert.ok(started('snap', 'headYaw') < started('slow', 'headYaw'))
 })
 
 test('a change may pass through looks on the way, bending through them without stopping', () => {
@@ -83,7 +83,7 @@ test('a change may pass through looks on the way, bending through them without s
     pose.set(look('excited'), 1.5, 'excited', 'ease', ['surprised'])
     const frames = play(pose, 1.5, 4)
     const wide = frames.map((frame) => frame.eyeWide)
-    const mouth = frames.map((frame) => frame.mouthOpen)
+    const mouth = frames.map((frame) => frame.jaw)
     const peak = Math.max(...wide)
     assert.ok(peak > 0.75, `surprised on the way: ${peak}`)
     assert.ok(Math.max(...mouth) > 0.2 && mouth.at(-1)! < 0.05, `the mouth opened on the way and closed: ${Math.max(...mouth)} ${mouth.at(-1)}`)
@@ -95,7 +95,7 @@ test('a change may pass through looks on the way, bending through them without s
     pose.set(look('content'), 4, 'content', 'ease', ['plain', 'surprised'])
     pose.set(look('shy'), 4.1, 'shy', 'ease')
     const after = play(pose, 4.1, 7.2)
-    assert.ok(after.at(-1)!.eyeX > 0.3, 'shy, not content, at the end')
+    assert.ok(after.at(-1)!.gazeX > 0.3, 'shy, not content, at the end')
   } finally {
     Math.random = random
   }

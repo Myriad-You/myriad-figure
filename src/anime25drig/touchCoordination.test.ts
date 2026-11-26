@@ -1,6 +1,9 @@
 import type { Anime25DMotionUnit } from './behaviorMotion'
+import type { PoseKey } from './poseArbitration'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { IDENTITY_DRIVER } from '@myriad/figure-player'
+import { deriveAnime25DMotionEnvelopeProfile, PoseResponseController, projectAnime25DMotionEnvelope } from '@myriad/figure-player/internals'
 import { TouchGestureTracker } from '../interaction/touchGesture'
 import { applySingingWrite } from '../motion/applySnapshot'
 import { RigMotionCoordinator } from '../motion/coordinator'
@@ -12,16 +15,10 @@ import { restSingingArticulation } from '../singing/singingClock'
 import { SingingGrooveController } from '../singing/singingGroove'
 import { completeBehaviorQuality } from './behaviorMotion'
 import { realizeAnime25DBehaviorPlan } from './behaviorRealizer'
-import { IDENTITY_DRIVER } from './driver'
-import {
-  deriveAnime25DMotionEnvelopeProfile,
-  projectAnime25DMotionEnvelope,
-} from './motionEnvelope'
 import { PerformanceExpressionController } from './performanceExpression'
-import { PoseGateController, resolvePoseGate } from './poseArbitration'
+import { POSE_KEY_DRIVER_FIELDS, PoseGateController, resolvePoseGate } from './poseArbitration'
 import { composeOccupancyOffsets } from './poseCompositor'
 import { occupancyTargets } from './poseOccupancy'
-import { PoseResponseController } from './poseResponse'
 
 function unit(
   family: 'performance' | 'touch',
@@ -50,6 +47,11 @@ function unit(
   }
 }
 
+/** A pose source's sample as the driver fields it moves. */
+function asDriverPatch(pose: object): Record<string, number> {
+  return Object.fromEntries(Object.entries(pose).map(([key, value]) => [POSE_KEY_DRIVER_FIELDS[key as PoseKey] ?? key, value]))
+}
+
 test('touch preserves authored emotional brows and special eyes while still acknowledging with gaze and body', () => {
   for (const form of ['angry', 'cry', 'speechless', 'maniac']) {
     const alone = new PerformanceExpressionController()
@@ -60,14 +62,14 @@ test('touch preserves authored emotional brows and special eyes while still ackn
       0,
       0,
     )
-    const base = { browAngSym: 0.8, mouthForm: -0.5 }
+    const base = { browTilt: 0.8, lipCurve: -0.5 }
     for (let i = 0; i <= 120; i++) {
       const a = alone.sample(i / 60, base)
       const b = together.sample(i / 60, base)
-      const original = base.browAngSym + a.browAngSym
+      const original = base.browTilt + a.browAngSym
       if (Math.abs(original) >= 0.6) {
         assert.ok(
-          Math.sign(original) * (base.browAngSym + b.browAngSym) >=
+          Math.sign(original) * (base.browTilt + b.browAngSym) >=
             Math.abs(original) * 0.75,
         )
 }
@@ -241,24 +243,24 @@ for (const strongExpression of [false, true]) {
           { offset: musicPose, weights: gate.groove },
           { offset: expression.sample(now / 1000), weights: gate.performance },
         ])
-        const target = { ...IDENTITY_DRIVER, ...offset }
+        const target = { ...IDENTITY_DRIVER, ...asDriverPatch(offset) }
         projectAnime25DMotionEnvelope(target, profile, {
           clippedEnergy: 0,
           transferredEnergy: 0,
         })
         response.step(displayed, target, 1 / fps)
         assert.ok(
-          Math.abs(displayed.body - previousBody) < 0.16,
+          Math.abs(displayed.bodyLean - previousBody) < 0.16,
           `${fps}: displayed body discontinuity`,
         )
         assert.ok(
-          Math.abs(displayed.angleY) <= 1 && Math.abs(displayed.angleZ) <= 1,
+          Math.abs(displayed.headPitch) <= 1 && Math.abs(displayed.headRoll) <= 1,
         )
         if (i >= fps * 2 && i < fps * 3) {
           retainedMotion +=
             Math.abs(musicPose.body * gate.groove.headBody) / fps
         }
-        previousBody = displayed.body
+        previousBody = displayed.bodyLean
         previousGroove = gate.groove.headBody
       }
       source.release()

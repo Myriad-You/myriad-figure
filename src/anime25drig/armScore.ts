@@ -1,4 +1,4 @@
-import type { Anime25DArmAim } from './arm3dReach'
+import type { Anime25DArmAim } from '@myriad/figure-player'
 
 /**
  * A stage phrase for the arms, written against the beat: where each hand is on which beat and how long it takes
@@ -28,7 +28,7 @@ export interface Anime25DBodyCue {
   at: number
   /** Beats it takes (1 unless given). */
   over?: number
-  /** Drivers to be at (`body`, `torsoTurn`, …); one not named stays where it was. */
+  /** Drivers to be at (`bodyLean`, `torsoTurn`, …); one not named stays where it was. */
   drive: Readonly<Record<string, number>>
 }
 

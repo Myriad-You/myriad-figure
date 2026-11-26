@@ -1,13 +1,11 @@
-import type {
-  PreparedLayer,
-  RasterLayer,
-  RigCanvasFrame,
-} from './anime25dImportTypes'
+import type { PreparedLayer, RasterLayer, RigCanvasFrame } from './anime25dImportTypes'
 import type { ImportTimer } from './importTiming'
+import { ANIME25D_ATLAS_MIP_GUTTER_PX } from '@myriad/figure-player/internals'
 import { FigureError } from '../errors'
 import { trimRaster } from './anime25dRaster'
 
-const ATLAS_PADDING = 8
+/** The gutter around each layer: the stage's mipmap clamp is set for it. */
+const ATLAS_PADDING = ANIME25D_ATLAS_MIP_GUTTER_PX
 const MAX_ATLAS_EDGE = 8192
 const MIN_ATLAS_EDGE = 256
 /** Prefer staying under common mobile MAX_TEXTURE_SIZE when the sprites fit. */

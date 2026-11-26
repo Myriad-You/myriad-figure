@@ -1,14 +1,8 @@
-import type { Anime25DArmVariant } from '../anime25drig/types'
-import type { Anime25DLayerRole } from './anime25d'
-import type { RigPoint, RigRect } from './types'
+// What the importer passes between its steps: raster layers, source references, prepared layers, anchors.
+import type { Anime25DArmVariant, Anime25DLayerRole, RigPoint } from '@myriad/figure-player/internals'
+import type { RigRect } from './types'
 
 export type EyeSide = 'left' | 'right'
-
-export interface Anime25DSourceReference {
-  width: number
-  height: number
-  data: Uint8ClampedArray
-}
 
 export interface HairStrand {
   x: number
@@ -44,6 +38,12 @@ export interface RasterLayer {
   documentStrands?: HairStrand[]
   /** A gesture arm (armVariants), hidden until raised. */
   armVariant?: Anime25DArmVariant
+}
+
+export interface Anime25DSourceReference {
+  width: number
+  height: number
+  data: Uint8ClampedArray
 }
 
 export interface PreparedLayer extends RasterLayer {

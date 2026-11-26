@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { IDENTITY_DRIVER } from '@myriad/figure-player'
+import { PoseResponseController, stepAnime25DDriverResponse } from '@myriad/figure-player/internals'
 import {
   AutoSpeechController,
   speechPhraseAmplitudeScale,
@@ -360,4 +362,25 @@ test('says once when a sentence ends and its pause begins, so she can blink in i
   }
   assert.equal(pauses.length, 1, 'once, not each frame of the pause')
   assert.ok(pauses[0]! > 0.18 && pauses[0]! < 0.26, `as the first sentence ends: ${pauses[0]}`)
+})
+
+test('keeps the complete preview response consistent at 30 and 60 fps', () => {
+  const run = (framesPerSecond: number) => {
+    const speech = new AutoSpeechController(() => 0.5)
+    const current = { ...IDENTITY_DRIVER }
+    const target = { ...IDENTITY_DRIVER }
+    const response = new PoseResponseController()
+    speech.sample(0, true)
+    for (let frame = 1; frame <= framesPerSecond * 12; frame += 1) {
+      const pose = speech.sample(frame / framesPerSecond, true)
+      target.jaw = pose.mouthOpen
+      target.lipCurve = pose.mouthForm
+      stepAnime25DDriverResponse(current, target, target, response, 1 / framesPerSecond)
+    }
+    return { jaw: current.jaw, lipCurve: current.lipCurve }
+  }
+  const at30 = run(30)
+  const at60 = run(60)
+  assert.ok(Math.abs(at30.jaw - at60.jaw) < 0.01)
+  assert.ok(Math.abs(at30.lipCurve - at60.lipCurve) < 0.01)
 })

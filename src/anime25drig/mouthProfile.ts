@@ -1,19 +1,6 @@
-import type {
-  Anime25DMouthBridgeTuning,
-  Anime25DMouthMaterial,
-  Anime25DMouthProfile,
-  Anime25DMouthSilhouette,
-  Anime25DPlaybackAnchors,
-} from './types'
-
-export const ANIME25D_MOUTH_MATERIALS: readonly Anime25DMouthMaterial[] = [
-  'mouthClose',
-  'mouthOpen',
-  'mouthWide',
-  'mouthRound',
-  'mouthNarrow',
-  'mouthManiac',
-]
+// The importer's measurement of a package's mouth: silhouettes and bridges between its drawn mouths.
+import type { Anime25DMouthBridgeTuning, Anime25DMouthMaterial, Anime25DMouthProfile, Anime25DMouthSilhouette, Anime25DPlaybackAnchors } from '@myriad/figure-player/internals'
+import { ANIME25D_MOUTH_MATERIALS } from '@myriad/figure-player/internals'
 
 interface MouthRasterLayer {
   role: string

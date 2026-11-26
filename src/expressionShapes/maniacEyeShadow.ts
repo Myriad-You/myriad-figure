@@ -1,4 +1,4 @@
-import type { RgbColor } from './dizzyEye'
+import type { RgbColor } from '@myriad/figure-player/internals'
 
 export interface ManiacEyeShadowSize {
   width: number
