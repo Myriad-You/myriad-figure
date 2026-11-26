@@ -185,8 +185,8 @@ the render layer's TypeScript, so `nodeCompileRun.ts` runs under `tsx`).
   the atlas); Firefox rounds the premultiplied value the other way, one level.
 - The reference picture (only a vision model looks at it) is drawn between
   pixels. Node smooths those draws as Chromium does (bilinear in sixteenths of
-  a pixel, edges not smoothed): at most 8 levels off Chromium's, 0.17 on
-  average. WebKit and Firefox smooth the edges, so edge pixels there are
+  a pixel, edges not smoothed): at most 8 levels off Chromium's on macOS and
+  11 on Linux, 0.17 on average. WebKit and Firefox smooth the edges, so edge pixels there are
   further off.
 - The stretch that fits a portrait onto the PSD is held on its own: a 97 × 83
   picture with fine texture and fading alpha, stretched at its size, twice,

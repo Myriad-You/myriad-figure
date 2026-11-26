@@ -148,7 +148,7 @@ interface Bounds {
 /**
  * The bounds, measured and given some room. Unstretched, the portrait is the
  * same pixels to both, and only the reference picture's smoothing differs
- * (Chromium's: 8 levels at most, 0.17 on average; WebKit and Firefox smooth the
+ * (Chromium's: 8 levels at most on macOS and 11 on Linux, 0.17 on average; WebKit and Firefox smooth the
  * edges too). Stretched, it is each one's own resampling, and a pixel moved
  * across a threshold moves a repair: Node follows Chromium's (on a bust with
  * gesture arms, 1% of the rig's values and 0.07% of the atlas's pixels differ);
@@ -159,7 +159,7 @@ interface Bounds {
  */
 function boundsFor(browserName: string, stretched: boolean): Bounds {
   const chromium = browserName === 'chromium'
-  const fromPicture = (synthetic: boolean) => ({ max: chromium ? 10 : 255, mean: chromium ? 0.25 : synthetic ? 0.3 : 0.6 })
+  const fromPicture = (synthetic: boolean) => ({ max: chromium ? 16 : 255, mean: chromium ? 0.25 : synthetic ? 0.3 : 0.6 })
   if (!stretched) return { sameRig: true, rigDiffering: 0, sameFindings: true, atlasBeyondRounding: 0, reference: fromPicture(true) }
   return chromium
     ? { sameRig: false, rigDiffering: 0.03, sameFindings: false, atlasBeyondRounding: 0.002, reference: { max: 255, mean: 0.5 } }
