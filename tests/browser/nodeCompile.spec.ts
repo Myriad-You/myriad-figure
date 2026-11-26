@@ -238,9 +238,10 @@ const PLACE_BOUND = { max: 2, mean: 0.3 }
  * most). On this picture's fine texture Chromium is 61 levels off at most, 2.9
  * on average; on a portrait (4:2:0 at quality 90) it was 20 levels at most and
  * 0.4 on average, and 3 and 0.3 for a JPEG that keeps its colour whole.
- * Recorded here, and bound only so that a JPEG read wrong would fail.
+ * Bound with some room over what was measured, so that a JPEG read any worse
+ * fails.
  */
-const JPEG_BOUND = { max: 255, mean: 12 }
+const JPEG_BOUND = { max: 80, mean: 4 }
 
 test('a portrait stretched onto the PSD is stretched as the browser\'s canvas does', async ({ page, browserName }, testInfo) => {
   test.setTimeout(60_000)

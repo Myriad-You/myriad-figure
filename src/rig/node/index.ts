@@ -22,6 +22,7 @@ import { compileRigPsd } from '../psdCompile'
 import { MAX_PSD_BYTES } from '../psdDecode'
 import { isDocumentTurnKeyforms } from '../turnKeyformImport'
 import { MAX_PICTURE_BYTES, MAX_PICTURE_EDGE, MAX_PICTURE_PIXELS, readPictureHeader } from './picture'
+import { holdPsdInflation } from './psd'
 import { nodeRigRaster } from './raster'
 
 export type { AuthoredExpressionKind, DocumentTurnKeyforms, ImportLap, PreparedAnime25DRigImport, RigPsdImportStage }
@@ -110,6 +111,8 @@ export async function compileRigPsdInNode(
   armVariants.forEach(({ picture }, index) => held(picture, `armVariants.${index}`))
   // Its own copy, as the worker gets one.
   const buffer = psd instanceof ArrayBuffer ? psd.slice(0) : new Uint8Array(psd).buffer
+  // Its zip-compressed channels, held to their size before ag-psd inflates them whole.
+  holdPsdInflation(buffer)
   const pictures: RigPicture[] = []
   const named = (picture: RigPicture) => `picture:${pictures.push(picture) - 1}`
   const { prepared, laps } = await compileRigPsd({

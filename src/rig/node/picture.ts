@@ -1,6 +1,6 @@
 import type { RgbaPixels } from '../rigRaster'
 import { Buffer } from 'node:buffer'
-import { inflateSync } from 'node:zlib'
+import { crc32, inflateSync } from 'node:zlib'
 import { convertIndexedToRgb, decode as decodePng } from 'fast-png'
 import jpeg from 'jpeg-js'
 import { FigureError } from '../../errors'
@@ -75,9 +75,24 @@ function pngHeader(bytes: Uint8Array): PictureHeader {
   return { format: 'png', width, height, orientation }
 }
 
+/**
+ * The most scans a JPEG may have. jpeg-js goes over every block of the
+ * picture in each scan, so a file of many empty scans would take minutes; an
+ * encoder writes one (baseline) or about ten (progressive).
+ */
+export const MAX_JPEG_SCANS = 64
+
+/**
+ * A JPEG's markers, the whole file: its one frame (a second is refused, as
+ * libjpeg does), with 1 to 4 for each sampling factor (as libjpeg allows; jpeg-js
+ * would take up to 15 and allocate for them), and no more than MAX_JPEG_SCANS
+ * scans. Every other segment jpeg-js reads is bounded by its 16-bit length.
+ */
 function jpegHeader(bytes: Uint8Array): PictureHeader {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   let orientation = 1
+  let frame: { width: number; height: number } | null = null
+  let scans = 0
   let at = 2
   while (at + 4 <= bytes.length) {
     if (bytes[at] !== 0xFF) refuse('unreadable')
@@ -90,23 +105,40 @@ function jpegHeader(bytes: Uint8Array): PictureHeader {
       at += 2
       continue
     }
-    if (marker === 0xD9 || marker === 0xDA) break
+    if (marker === 0xD9) break
     const length = view.getUint16(at + 2)
     if (length < 2 || at + 2 + length > bytes.length) refuse('unreadable')
     const body = at + 4
-    if (marker === 0xE1 && length >= 8 && String.fromCharCode(...bytes.subarray(body, body + 6)) === 'Exif\0\0') {
-      orientation = tiffOrientation(bytes, body + 6, at + 2 + length)
+    const end = at + 2 + length
+    if (marker === 0xE1 && !frame && length >= 8 && String.fromCharCode(...bytes.subarray(body, body + 6)) === 'Exif\0\0') {
+      orientation = tiffOrientation(bytes, body + 6, end)
     }
     if (marker >= 0xC0 && marker <= 0xCF && marker !== 0xC4 && marker !== 0xC8 && marker !== 0xCC) {
+      if (frame) refuse('unreadable')
       if (length < 8) refuse('unreadable')
       // jpeg-js reads 8-bit Huffman JPEGs, baseline or progressive, grey or YCbCr.
       const components = bytes[body + 5]!
       if (marker > 0xC2 || bytes[body] !== 8 || (components !== 1 && components !== 3)) refuse('unsupported')
-      return { format: 'jpeg', width: view.getUint16(body + 3), height: view.getUint16(body + 1), orientation }
+      if (length < 8 + components * 3) refuse('unreadable')
+      for (let i = 0; i < components; i += 1) {
+        const sampling = bytes[body + 7 + i * 3]!
+        const across = sampling >> 4
+        const down = sampling & 15
+        if (across < 1 || across > 4 || down < 1 || down > 4) refuse('unreadable')
+      }
+      frame = { width: view.getUint16(body + 3), height: view.getUint16(body + 1) }
     }
-    at += 2 + length
+    at = end
+    if (marker === 0xDA) {
+      if (!frame) refuse('unreadable')
+      scans += 1
+      if (scans > MAX_JPEG_SCANS) refuse('unsupported')
+      // The scan's coded data, up to the next marker that is not a restart (0xFF00 is a stuffed 0xFF).
+      while (at + 1 < bytes.length && !(bytes[at] === 0xFF && bytes[at + 1] !== 0 && bytes[at + 1] !== 0xFF && !(bytes[at + 1]! >= 0xD0 && bytes[at + 1]! <= 0xD7))) at += 1
+    }
   }
-  return refuse('unreadable')
+  if (!frame || scans === 0) refuse('unreadable')
+  return { format: 'jpeg', width: frame.width, height: frame.height, orientation }
 }
 
 /** What a picture's header says, held to the limits; refuses anything but a PNG or a JPEG this can read. */
@@ -123,26 +155,79 @@ export function readPictureHeader(bytes: Uint8Array): PictureHeader {
   return header
 }
 
+const PNG_TYPE = { IHDR: 0x49484452, PLTE: 0x504C5445, tRNS: 0x74524E53, IDAT: 0x49444154, IEND: 0x49454E44 }
+
+/** The bytes a PNG's pixels inflate to: each row's filter byte and its samples, for each of interlacing's passes. */
+function pngPixelBytes(width: number, height: number, depth: number, colour: number, interlaced: boolean): number {
+  const channels = [1, 0, 3, 1, 2, 0, 4][colour] ?? 4
+  const rows = (w: number, h: number) => (w > 0 && h > 0 ? h * (1 + Math.ceil((w * channels * depth) / 8)) : 0)
+  if (!interlaced) return rows(width, height)
+  // Adam7: each pass's first column and row and its step across and down.
+  const passes = [[0, 0, 8, 8], [4, 0, 8, 8], [0, 4, 4, 8], [2, 0, 4, 4], [0, 2, 2, 4], [1, 0, 2, 2], [0, 1, 1, 2]]
+  return passes.reduce((sum, [x, y, across, down]) => sum + rows(Math.ceil((width - x!) / across!), Math.ceil((height - y!) / down!)), 0)
+}
+
 /**
- * The PNG's pixel data, inflated with a cap first: a stream that inflates
- * past what its header's size can hold is refused before fast-png reads it.
+ * The PNG as fast-png is given it: its first IHDR, the palette of a
+ * palette-coloured one, a tRNS before the pixels, the first run of IDATs, and
+ * an IEND. Every other chunk is left out, so nothing fast-png would inflate or
+ * allocate for is left but the pixels (a profile, iCCP, is inflated whole; a
+ * second IHDR would size them anew; a truecolour picture's suggested palette
+ * would be read as its colours). A chunk must fit the file; a critical one
+ * whose CRC is wrong is refused, a tRNS whose CRC is wrong is left out, as
+ * libpng does. The pixels are inflated with a cap first: a stream that inflates
+ * past what the header's size needs is refused before fast-png reads it.
  */
-function holdPngInflation(bytes: Uint8Array, header: PictureHeader): void {
+export function pngForDecoder(bytes: Uint8Array): Uint8Array {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-  const parts: Uint8Array[] = []
-  for (let at = 8; at + 12 <= bytes.length;) {
+  const kept: Uint8Array[] = [bytes.subarray(0, 8)]
+  const idat: Uint8Array[] = []
+  const colour = bytes[25]!
+  let palette = false
+  let transparency = false
+  let ended = false
+  let lastWasIdat = false
+  for (let at = 8; at < bytes.length && !ended;) {
+    if (at + 12 > bytes.length) refuse('unreadable')
     const length = view.getUint32(at)
-    if (at + 12 + length > bytes.length) break
-    if (view.getUint32(at + 4) === 0x49444154) parts.push(bytes.subarray(at + 8, at + 8 + length))
+    const type = view.getUint32(at + 4)
+    if (length > 0x7FFFFFFF || at + 12 + length > bytes.length) refuse('unreadable')
+    const whole = bytes.subarray(at, at + 12 + length)
+    const sound = () => crc32(whole.subarray(4, 8 + length)) === view.getUint32(at + 8 + length)
+    const pixelsBegun = idat.length > 0
+    if (at === 8) {
+      if (type !== PNG_TYPE.IHDR || length !== 13 || !sound()) refuse('unreadable')
+      kept.push(whole)
+    } else if (type === PNG_TYPE.IDAT) {
+      // Only the first run: IDATs after another chunk are not the picture's.
+      if (!pixelsBegun || lastWasIdat) {
+        if (!sound()) refuse('unreadable')
+        idat.push(whole.subarray(8, 8 + length))
+        kept.push(whole)
+      }
+    } else if (type === PNG_TYPE.IEND) {
+      ended = true
+    } else if (type === PNG_TYPE.PLTE && colour === 3 && !palette && !pixelsBegun) {
+      if (length === 0 || length > 768 || length % 3 !== 0 || !sound()) refuse('unreadable')
+      palette = true
+      kept.push(whole)
+    } else if (type === PNG_TYPE.tRNS && !transparency && !pixelsBegun && (colour !== 3 || palette) && sound()) {
+      transparency = true
+      kept.push(whole)
+    }
+    lastWasIdat = type === PNG_TYPE.IDAT
     at += 12 + length
   }
-  // Each row's filter byte and up to 8 bytes a pixel (16-bit RGBA), and as much again for interlacing's passes.
-  const most = 2 * header.height * (1 + header.width * 8) + 1024
+  if (idat.length === 0 || (colour === 3 && !palette)) refuse('unreadable')
+  const most = pngPixelBytes(view.getUint32(16), view.getUint32(20), bytes[24]!, colour, bytes[28] === 1)
   try {
-    inflateSync(Buffer.concat(parts), { maxOutputLength: most })
+    // A stream that ends with a few bytes to spare is still read, as libpng does.
+    inflateSync(Buffer.concat(idat), { maxOutputLength: most + 1024 })
   } catch {
     refuse('unreadable')
   }
+  kept.push(Uint8Array.of(0, 0, 0, 0, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82))
+  return Buffer.concat(kept)
 }
 
 function pngPixels(bytes: Uint8Array): RgbaPixels {
@@ -162,7 +247,9 @@ function pngPixels(bytes: Uint8Array): RgbaPixels {
     return { width, height, data: out }
   }
   const { channels, depth } = png
-  if (png.data.length < Math.ceil((width * channels * depth) / 8) * height) refuse('unreadable')
+  // Below 8 bits the data is packed bytes, each row starting on a byte; from 8 bits on, one element a sample.
+  const needed = depth < 8 ? Math.ceil((width * channels * depth) / 8) * height : width * height * channels
+  if (png.data.length < needed) refuse('unreadable')
   const samples = depth < 8 ? unpackSamples(png.data, width, height, depth) : png.data
   const max = (1 << depth) - 1
   // To 8 bits, rounded.
@@ -239,8 +326,7 @@ export function decodePicture(bytes: Uint8Array): RgbaPixels {
   let pixels: RgbaPixels
   try {
     if (header.format === 'png') {
-      holdPngInflation(bytes, header)
-      pixels = pngPixels(bytes)
+      pixels = pngPixels(pngForDecoder(bytes))
     } else {
       const { width, height, data } = jpeg.decode(bytes, {
         useTArray: true,
