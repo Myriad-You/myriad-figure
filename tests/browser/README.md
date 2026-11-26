@@ -167,6 +167,42 @@ Both bounds were checked against a broken player: one frame in 37 left without
 its 3D arm failed the flicker scan (0.29), and the hanging arm moved 6 document
 pixels sideways failed the upright bound.
 
+## Node import
+
+`nodeCompile.spec.ts` holds the Node import (`@myriad/figure/rig/node`) to the
+browser's: the same PSD and portrait go through the page's import and its
+worker, and through Node in a process of its own (the test runner cannot load
+the render layer's TypeScript, so `nodeCompileRun.ts` runs under `tsx`).
+
+- The rig is the same, every field (as JSON, the way it is uploaded), and both
+  pass `isAnime25DPlayback`.
+- The atlas differs only by a canvas's rounding: each browser keeps a
+  half-transparent pixel premultiplied in 8 bits, and Node rounds to nearest.
+  WebKit gives back exactly what Node does; Chromium is at most one level off
+  unpremultiplied and the same once premultiplied again (as the player uploads
+  the atlas); Firefox rounds the premultiplied value the other way, one level.
+- The reference picture (only a vision model looks at it) is drawn between
+  pixels. Node smooths those draws as Chromium does (bilinear in sixteenths of
+  a pixel, edges not smoothed): on the synthetic PSDs it is at most 8 levels off
+  Chromium's (0.17 on average). WebKit and Firefox smooth the edges, so edge
+  pixels there are further off.
+
+The synthetic PSDs are the ordinary one, its variants, and one shaded with
+faded edges whose portrait is drawn from its own layers, at its size and at
+half (which the import enlarges).
+
+Real figures run where `FIGURE_IMPORT_BENCH` names the import bench's cases.
+A portrait at the PSD's own size is the same pixels to both, and the rig and
+atlas are held as above. A portrait stretched onto the PSD is each one's own
+resampling: Chromium enlarges with a Mitchell cubic and shrinks to half or more
+bilinearly, which Node does to within a level, but shrinking further it does
+what Node only comes near; WebKit and Firefox resample in ways of their own. A
+pixel that lands on the other side of a threshold changes a repair, so there
+the rig may differ in some values (at most a quarter of them) and the atlas in
+a few pixels (at most 1%). The browsers differ from each other the same way:
+on a bust with gesture arms, Node's rig differed from Chromium's in 186 of
+about 18,000 values, Chromium's from WebKit's in 1,617.
+
 ## Import bench
 
 `importBench.spec.ts` imports real figures in the production worker and says

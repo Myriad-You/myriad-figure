@@ -53,5 +53,32 @@ export function fixture(kind: string): Psd {
       })
     }
   }
+  if (kind === 'painted') paint(psd)
   return psd
+}
+
+/**
+ * Every layer shaded across and down, and its edges faded out over three
+ * pixels, so its pixels are neither one colour nor all opaque.
+ */
+function paint(psd: Psd): void {
+  for (const [n, layer] of psd.children!.entries()) {
+    const { width, height, data } = layer.imageData!
+    const opaque = data.map((value, i) => (i % 4 === 3 ? value : 0))
+    const shown = (x: number, y: number) => x >= 0 && y >= 0 && x < width && y < height && opaque[(y * width + x) * 4 + 3]! > 0
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4
+        if (!shown(x, y)) continue
+        let edge = 4
+        for (let r = 1; r < edge; r++) {
+          if (!shown(x + r, y) || !shown(x - r, y) || !shown(x, y + r) || !shown(x, y - r)) edge = r
+        }
+        data[i] = (40 + n * 13 + x) & 255
+        data[i + 1] = (90 + y * 2) & 255
+        data[i + 2] = (200 - n * 9 + ((x * y) >> 5)) & 255
+        data[i + 3] = [0, 70, 150, 220, 255][edge]!
+      }
+    }
+  }
 }

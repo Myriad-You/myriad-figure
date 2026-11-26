@@ -4,7 +4,7 @@ Myriad 的 2.5D 形象：在浏览器里演她的 rig 的运行时，和从分�
 
 - **渲染层**：舞台（网格变形、头壳转头与关键形、头发和胸的物理、表情形状、WebGL 绘制、触摸命中、姿势）来自依赖 [`@myriad-you/figure-player`](https://github.com/Myriad-You/myriad-figure-player)（MIT），按提交钉在 `package.json` 里。本仓库只经它的入口取：`.`、`./workbench`，以及给表演系统和 rig 工具用的 `./internals`（不作稳定承诺）。
 - **运行时**：`anime25drig/`（表演驱动：把行为、说话、唱歌、导演的姿势和触摸合成为每帧的驱动参数，交给舞台；播放器 `Anime25DPlayer`）、`motion/`（行为排程、表演、说话和唱歌时的身体、触摸）、`expressionShapes/`（特殊表情的形状）、`singing/`（音乐信号、节拍、歌词时间线）、`speech/`（韵律、口型、重音）、`interaction/`（触摸手势和反应）、`events/`（表演事件和表演契约）、`performance/`（表演类型、心情分档）。
-- **处理工具**：`rig/`（PSD 与拆层导入、图集、骨骼、部件、补遮挡、转头和转身关键形的拟合与放置），PSD 解码在 Worker 里跑。
+- **处理工具**：`rig/`（PSD 与拆层导入、图集、骨骼、部件、补遮挡、转头和转身关键形的拟合与放置）。浏览器里导入在 Worker 里跑，画图集用 2D canvas；没有浏览器的地方（服务端）经 `rig/node` 跑同一套导入，画图用它自己的光栅。
 - **通道、错误、记录**：`channel.ts`、`errors.ts`、`trace.ts`。形象没有页面级的状态：页面为它演的那一个形象建一个 `FigureChannel`，表演、说话、她的状态、对方在打字都派发在这条通道上，当前是哪一轮、她最后的状态也记在这里，再交给那个形象的运行时。报错是带错误码和参数的 `FigureError`，消息是英文兜底，页面按错误码换成自己的话。API 地址和一轮对话的记录（`FigureTrace`）由建播放器、协调器、运行时、导入的人在构造时给。
 
 谁在用：[Myriad](https://github.com/Myriad-You/Myriad) 的站点以子模块 `figure/` 钉住本仓库，作为 pnpm workspace 包 `@myriad/figure` 引用。Myriad 的 macOS 原生 App 和 Android XR 端按钉住的提交照本仓库移植。
@@ -17,6 +17,7 @@ Myriad 的 2.5D 形象：在浏览器里演她的 rig 的运行时，和从分�
 - 演她的页面用：`anime25drig`（播放器和它的驱动补丁）、`motion`（运行时、协调器、动作源、把一帧写到 rig）、`events`（表演和状态事件）、`speech`（说话事件、韵律、口型）、`singing`（音乐信号、歌词）、`interaction`（触摸）、`performance`（导演写给她、她回报的类型）、`rig`（导入、清单、诊断）。
 - `workbench`：调 rig 的工作台才需要的（表情预设、姿势修正与它在屏幕上的位置、动作包络探针、表情与节拍词表、PSD 对账颜色、预览范围）。演她的页面不需要。
 - `testing`：从外面驱动形象的测试用的夹具和零件。生产页面不用，随测试改。
+- `rig/node`：在 Node 里做 rig，不要浏览器（没有 Worker、canvas、DOM）。`compileRigPsdInNode(psd, options)` 收拆层的 PSD 字节、它切自的那张肖像（PNG 或 JPEG 字节）和页面导入收的同样几样（表情重画、手势手臂、骨架、身形、转头关键形），给出页面导入给页面的那份结果（rig、图集和参考图的 PNG、诊断）。它引 Node 的模块，别的入口都不引它，站点的页面打包不会带上它。本仓库和 `@myriad/figure-player` 都按 TypeScript 源码发布，Node 里要经 `tsx` 之类的加载器跑，或者先打包。画出来的和浏览器的差多少见 `tests/browser/README.md` 的「Node 导入」。
 
 入口列出的就是对外的全部，目录里别的文件都是内部的，可以随时改名、拆分。站点要用一个还没列出的东西，先在这里想清楚它属于哪个用途，再加进那个入口。
 
