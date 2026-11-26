@@ -18,6 +18,8 @@ export interface RigPsdCompileEnvironment<Picture extends { width: number; heigh
   /** The file at an address the request names (the portrait, a redraw, a gesture arm); rejects when it is not there. */
   read: (url: string) => Promise<Blob>
   onStage?: (stage: RigPsdImportStage) => void
+  /** Checked between the steps; the import stops with its reason. */
+  signal?: AbortSignal
 }
 
 export interface RigPsdCompiled {
@@ -32,7 +34,7 @@ export interface RigPsdCompiled {
  */
 export async function compileRigPsd<Picture extends { width: number; height: number }>(
   request: RigPsdImportRequest,
-  { raster, read, onStage }: RigPsdCompileEnvironment<Picture>,
+  { raster, read, onStage, signal }: RigPsdCompileEnvironment<Picture>,
 ): Promise<RigPsdCompiled> {
   const {
     buffer,
@@ -45,6 +47,7 @@ export async function compileRigPsd<Picture extends { width: number; height: num
     skeleton,
     timing,
   } = request
+  signal?.throwIfAborted()
   const timer = timing ? new ImportTimer() : undefined
   const psd = (() => {
     try {
@@ -69,14 +72,19 @@ export async function compileRigPsd<Picture extends { width: number; height: num
     if (!reference) throw new FigureError('psdPreviewFailed')
     return { size, reference }
   })()
+  signal?.throwIfAborted()
   timer?.lap('reference.portrait')
   const expressionReferences = await alignExpressions(expressions ?? [], master.size, fit)
   timer?.lap('reference.expressions')
   const armVariantReferences = await alignArmVariants(armVariants ?? [], psd.width, psd.height, master.size, fit)
+  signal?.throwIfAborted()
   timer?.lap('reference.armVariants')
   const prepared = await prepareAnime25DRigPsd(psd, {
     sourceMasterAssetId,
-    onStage,
+    onStage: (stage) => {
+      signal?.throwIfAborted()
+      onStage?.(stage)
+    },
     timer,
     sourceGenerationFingerprint,
     sourceReference: master.reference,
@@ -88,6 +96,7 @@ export async function compileRigPsd<Picture extends { width: number; height: num
       : undefined,
     raster,
   })
+  signal?.throwIfAborted()
   return timer ? { prepared, laps: timer.laps() } : { prepared }
 }
 

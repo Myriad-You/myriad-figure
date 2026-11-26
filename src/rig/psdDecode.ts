@@ -4,7 +4,7 @@ import { initializeCanvas, readPsd } from 'ag-psd'
 
 export const MAX_PSD_BYTES = 96 * 1024 * 1024
 /** A standing figure decomposed in tiles is stitched at up to 4096 px tall. */
-const MAX_EDGE = 4096
+export const MAX_EDGE = 4096
 const MAX_LAYERS = 64
 const MAX_PIXELS = 128 * 1024 * 1024
 

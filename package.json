@@ -21,6 +21,9 @@
     "./testing": "./src/testing/index.ts",
     "./workbench": "./src/workbench/index.ts"
   },
+  "engines": {
+    "node": ">=22.2"
+  },
   "scripts": {
     "lint": "eslint .",
     "test": "tsx --test \"src/**/*.test.ts\"",

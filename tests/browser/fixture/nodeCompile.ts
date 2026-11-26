@@ -1,6 +1,9 @@
 import type { RigPsdImportOptions } from '../../../src/rig/psdImporter'
+import type { PlaceCase } from '../nodeCompileRun'
 import { isAnime25DPlayback } from '@myriad/figure-player'
 import { writePsd } from 'ag-psd'
+import { browserRigRaster } from '../../../src/rig/rigRaster'
+import { findingsOf } from './findings'
 import { fixture, importPsd } from './synthetic'
 
 // The browser's import of a PSD, through the page's own entry and its worker,
@@ -14,6 +17,8 @@ type Files = Record<'psd' | 'portrait' | 'atlas' | 'analysisReference', Uint8Arr
 
 export interface BrowserImport {
   source: string
+  /** The rest of what the import gives besides the pictures: the findings against the portrait, the frame. */
+  findings: string
   playbackValid: boolean
   sizes: Record<keyof Files, number>
 }
@@ -71,6 +76,7 @@ async function run(psd: Blob, portrait: Blob, options: Omit<RigPsdImportOptions,
     return {
       // With the portrait's address as the asset, which the Node import is given in its place.
       source: JSON.stringify({ ...prepared.source, sourceMasterAssetId: 'portrait' }),
+      findings: JSON.stringify(findingsOf(prepared)),
       playbackValid: isAnime25DPlayback(prepared.source.anime25dPlayback),
       sizes: Object.fromEntries(Object.entries(kept).map(([name, bytes]) => [name, bytes.byteLength])) as BrowserImport['sizes'],
     }
@@ -94,6 +100,55 @@ async function served(
   return run(psd!, portrait!, options)
 }
 
+/**
+ * A picture with texture fine and coarse and an alpha that fades across it,
+ * as a PNG, and as a JPEG on white (the browser's own encoding, its colour
+ * halved across and down), stretched onto each case's frame by the import's
+ * own browser raster. Gives both files and each frame's RGBA, as base64.
+ */
+async function place(cases: PlaceCase[]): Promise<{ png: string; jpeg: string; frames: Record<string, string> }> {
+  const width = 97
+  const height = 83
+  const data = new Uint8ClampedArray(width * height * 4)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4
+      data[i] = (x * 5 + ((x * y) % 7) * 9) & 255
+      data[i + 1] = Math.round(128 + 120 * Math.sin(x / 4) * Math.cos(y / 6))
+      data[i + 2] = ((x ^ y) * 3) & 255
+      data[i + 3] = Math.max(0, Math.min(255, Math.round(300 - Math.hypot(x - 48, y - 41) * 5)))
+    }
+  }
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  canvas.getContext('2d')!.putImageData(new ImageData(data, width, height), 0, 0)
+  const png = await canvasBlob(canvas)
+  const onWhite = document.createElement('canvas')
+  onWhite.width = width
+  onWhite.height = height
+  const whiteContext = onWhite.getContext('2d')!
+  whiteContext.fillStyle = '#fff'
+  whiteContext.fillRect(0, 0, width, height)
+  whiteContext.drawImage(canvas, 0, 0)
+  const jpeg = await new Promise<Blob>((resolve, reject) => onWhite.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('no JPEG'))), 'image/jpeg', 0.9))
+  const base64 = (bytes: Uint8Array | Uint8ClampedArray) => {
+    let text = ''
+    for (let i = 0; i < bytes.length; i += 8192) text += String.fromCharCode(...bytes.subarray(i, i + 8192))
+    return btoa(text)
+  }
+  const frames: Record<string, string> = {}
+  for (const { name, jpeg: fromJpeg, width: frameWidth, height: frameHeight, to } of cases) {
+    const picture = await browserRigRaster.decode(fromJpeg ? jpeg : png)
+    try {
+      frames[name] = base64(browserRigRaster.place(picture, frameWidth, frameHeight, to)!.data)
+    } finally {
+      browserRigRaster.release(picture)
+    }
+  }
+  return { png: base64(await bytesOf(png)), jpeg: base64(await bytesOf(jpeg)), frames }
+}
+
 /** A stretch of one of the last import's files, as base64. */
 function bytes(which: keyof Files, from: number, length: number): string {
   if (!kept) throw new Error('nothing imported yet')
@@ -104,8 +159,8 @@ function bytes(which: keyof Files, from: number, length: number): string {
 
 declare global {
   interface Window {
-    nodeCompile: { synthetic: typeof synthetic; served: typeof served; bytes: typeof bytes }
+    nodeCompile: { synthetic: typeof synthetic; served: typeof served; bytes: typeof bytes; place: typeof place }
   }
 }
 
-window.nodeCompile = { synthetic, served, bytes }
+window.nodeCompile = { synthetic, served, bytes, place }

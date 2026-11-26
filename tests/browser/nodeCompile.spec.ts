@@ -1,6 +1,6 @@
 import type { Page, TestInfo } from '@playwright/test'
 import type { BrowserImport, SyntheticPortrait } from './fixture/nodeCompile'
-import type { NodeCompileRequest, NodeCompileResult } from './nodeCompileRun'
+import type { NodeCompileRequest, NodeCompileResult, NodePlaceRequest, PlaceCase } from './nodeCompileRun'
 import { Buffer } from 'node:buffer'
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
@@ -133,10 +133,37 @@ interface Bounds {
   /** The rig must be the same to the last value; else this share of its values may differ. */
   sameRig: boolean
   rigDiffering: number
+  /**
+   * The findings against the portrait must be the same to the last value. A
+   * stretched portrait is each one's own resampling, and its heatmap differs
+   * where the pixels do; those findings are recorded only.
+   */
+  sameFindings: boolean
   /** Share of the atlas's pixels that may be off by more than the engine's rounding. */
   atlasBeyondRounding: number
   /** How far off the reference picture may be, in any channel and on average. */
   reference: { max: number; mean: number }
+}
+
+/**
+ * The bounds, measured and given some room. Unstretched, the portrait is the
+ * same pixels to both, and only the reference picture's smoothing differs
+ * (Chromium's: 8 levels at most, 0.17 on average; WebKit and Firefox smooth the
+ * edges too). Stretched, it is each one's own resampling, and a pixel moved
+ * across a threshold moves a repair: Node follows Chromium's (on a bust with
+ * gesture arms, 1% of the rig's values and 0.07% of the atlas's pixels differ);
+ * WebKit and Firefox are as far from Node as from Chromium (9% and 21% there).
+ * The synthetic portrait at half size is stretched, but its flat shapes leave
+ * nothing near a threshold, and it is held as unstretched, but for its
+ * findings (its heatmap: 2% of the values differ from Chromium's).
+ */
+function boundsFor(browserName: string, stretched: boolean): Bounds {
+  const chromium = browserName === 'chromium'
+  const fromPicture = (synthetic: boolean) => ({ max: chromium ? 10 : 255, mean: chromium ? 0.25 : synthetic ? 0.3 : 0.6 })
+  if (!stretched) return { sameRig: true, rigDiffering: 0, sameFindings: true, atlasBeyondRounding: 0, reference: fromPicture(true) }
+  return chromium
+    ? { sameRig: false, rigDiffering: 0.03, sameFindings: false, atlasBeyondRounding: 0.002, reference: { max: 255, mean: 0.5 } }
+    : { sameRig: false, rigDiffering: 0.25, sameFindings: false, atlasBeyondRounding: 0.01, reference: fromPicture(false) }
 }
 
 /** Holds the Node import to the browser's, and notes how far apart their pictures are. */
@@ -156,6 +183,9 @@ async function holdToBrowser(
   expect.soft(node.playbackValid, 'the Node import plays').toBe(true)
   const rig = { browser: JSON.parse(browser.source), node: JSON.parse(node.source) }
   const leaves = differingLeaves(rig.browser, rig.node)
+  const findings = { browser: JSON.parse(browser.findings), node: JSON.parse(node.findings) }
+  // The findings hold the portrait's part: how far the layers agree with it, where they do not.
+  if (bounds.sameFindings) expect.soft(findings.node, 'the findings against the portrait').toEqual(findings.browser)
   if (bounds.sameRig) expect.soft(rig.node, 'the rig').toEqual(rig.browser)
   else expect.soft(leaves.differing / leaves.total, 'share of the rig\'s values that differ').toBeLessThanOrEqual(bounds.rigDiffering)
   const rounding = ATLAS_ROUNDING[browserName] ?? { straight: 255, premultiplied: 1 }
@@ -163,6 +193,7 @@ async function holdToBrowser(
   const reference = await difference(files.analysisReference, node.analysisReference, rounding)
   testInfo.annotations.push(
     { type: 'rig', description: JSON.stringify(leaves) },
+    { type: 'findings', description: JSON.stringify(differingLeaves(findings.browser, findings.node)) },
     { type: 'atlas', description: JSON.stringify(atlas) },
     { type: 'analysisReference', description: JSON.stringify(reference) },
     { type: 'node', description: JSON.stringify({ ms: Math.round(node.ms), peakRssMB: Math.round(node.peakRssBytes / 2 ** 20) }) },
@@ -178,6 +209,75 @@ async function portraitStretched(psd: Buffer, portrait: Buffer): Promise<boolean
   const placed = psdPlacement({ width, height }, psd.readUInt32BE(18), psd.readUInt32BE(14))
   return placed.width !== width || placed.height !== height
 }
+
+/** A 97 × 83 picture stretched onto frames, as the import fits a portrait onto a PSD. */
+const PLACES: PlaceCase[] = [
+  { name: 'identity', width: 97, height: 83, to: { x: 0, y: 0, width: 97, height: 83 } },
+  { name: 'twice', width: 200, height: 170, to: { x: 3, y: 2, width: 194, height: 166 } },
+  { name: 'enlarged-off-grid', width: 140, height: 120, to: { x: 2.5, y: 1.25, width: 132.89, height: 113.71 } },
+  { name: 'three-quarters', width: 80, height: 70, to: { x: 1, y: 1, width: 72.75, height: 62.25 } },
+  { name: 'half', width: 60, height: 50, to: { x: 0, y: 0, width: 48.5, height: 41.5 } },
+  { name: 'wider-and-shorter', width: 140, height: 80, to: { x: 0, y: 0, width: 126.1, height: 66.4 } },
+  { name: 'under-half', width: 40, height: 40, to: { x: 0, y: 0, width: 29.1, height: 24.9 } },
+  { name: 'jpeg', jpeg: true, width: 97, height: 83, to: { x: 0, y: 0, width: 97, height: 83 } },
+]
+
+/**
+ * How far Node's stretch may be from Chromium's, premultiplied (as it is
+ * drawn): the most a channel is off, and on average. Measured: one level at
+ * most at every scale; on average under 0.04, and 0.16–0.25 where two mip
+ * levels are blended (each rounds on its own side). WebKit and Firefox stretch
+ * in ways of their own and are only recorded.
+ */
+const PLACE_BOUND = { max: 2, mean: 0.3 }
+
+/**
+ * A JPEG whose colour is halved across and down (4:2:0, as browsers and most
+ * encoders write it) is not decoded alike: Chromium (libjpeg-turbo) smooths
+ * the colour back up, jpeg-js repeats it (as Firefox does: 3 levels from it at
+ * most). On this picture's fine texture Chromium is 61 levels off at most, 2.9
+ * on average; on a portrait (4:2:0 at quality 90) it was 20 levels at most and
+ * 0.4 on average, and 3 and 0.3 for a JPEG that keeps its colour whole.
+ * Recorded here, and bound only so that a JPEG read wrong would fail.
+ */
+const JPEG_BOUND = { max: 255, mean: 12 }
+
+test('a portrait stretched onto the PSD is stretched as the browser\'s canvas does', async ({ page, browserName }, testInfo) => {
+  test.setTimeout(60_000)
+  await page.goto('/nodeCompile.html')
+  await page.waitForFunction(() => 'nodeCompile' in window)
+  const browser = await page.evaluate((cases) => window.nodeCompile.place(cases), PLACES)
+  const out = testInfo.outputPath('place')
+  await mkdir(out, { recursive: true })
+  const request: NodePlaceRequest = { place: PLACES, png: `${out}/picture.png`, jpeg: `${out}/picture.jpg`, out }
+  await writeFile(request.png, Buffer.from(browser.png, 'base64'))
+  await writeFile(request.jpeg, Buffer.from(browser.jpeg, 'base64'))
+  await writeFile(`${out}/request.json`, JSON.stringify(request))
+  await run(process.execPath, ['--import', 'tsx', 'tests/browser/nodeCompileRun.ts', `${out}/request.json`], { cwd: root })
+  for (const { name, jpeg } of PLACES) {
+    const ours = await readFile(`${out}/${name}.rgba`)
+    const theirs = Buffer.from(browser.frames[name]!, 'base64')
+    await writeFile(`${out}/${name}.browser.rgba`, theirs)
+    expect(ours.length, name).toBe(theirs.length)
+    let max = 0
+    let sum = 0
+    for (let i = 0; i < ours.length; i += 1) {
+      const alpha = i - (i % 4) + 3
+      const d = i % 4 === 3
+        ? Math.abs(ours[i]! - theirs[i]!)
+        : Math.abs(Math.round(ours[i]! * ours[alpha]! / 255) - Math.round(theirs[i]! * theirs[alpha]! / 255))
+      max = Math.max(max, d)
+      sum += d
+    }
+    const measured = { premultipliedMax: max, premultipliedMean: sum / ours.length }
+    testInfo.annotations.push({ type: `place ${name}`, description: JSON.stringify(measured) })
+    // Only Chromium's stretch is the one Node follows; the others are recorded.
+    if (browserName !== 'chromium') continue
+    const bound = jpeg ? JPEG_BOUND : PLACE_BOUND
+    expect.soft(measured.premultipliedMax, `${name}, most off`).toBeLessThanOrEqual(bound.max)
+    expect.soft(measured.premultipliedMean, `${name}, mean`).toBeLessThanOrEqual(bound.mean)
+  }
+})
 
 const SYNTHETIC: Array<[kind: string, portrait: SyntheticPortrait]> = [
   ['ordinary', 'flat'],
@@ -197,7 +297,9 @@ for (const [kind, portrait] of SYNTHETIC) {
     const browser = await page.evaluate(([kind, portrait]) => window.nodeCompile.synthetic(kind, portrait), [kind, portrait] as const)
     const files = await readBack(page, browser.sizes)
     const node = await compileInNode(testInfo, files, { sourceMasterAssetId: 'portrait', sourceGenerationFingerprint: 'fixture-generation' })
-    await holdToBrowser(testInfo, browserName, browser, files, node, { sameRig: true, rigDiffering: 0, atlasBeyondRounding: 0, reference: { max: 255, mean: 1 } })
+    // Drawn from its own layers, the portrait agrees with them: a portrait read or placed wrong would not.
+    if (portrait !== 'flat') expect(JSON.parse(browser.findings).reconciliation.status).toBe('reconciled')
+    await holdToBrowser(testInfo, browserName, browser, files, node, { ...boundsFor(browserName, false), sameFindings: portrait !== 'layers-half' })
   })
 }
 
@@ -254,9 +356,7 @@ test('real figures: the Node import makes what the browser\'s does', async ({ pa
       // Unstretched, the portrait is the same pixels to both; stretched, it is each one's own resampling.
       const stretched = await portraitStretched(files.psd, files.portrait)
       testInfo.annotations.push({ type: 'case', description: JSON.stringify({ name: one.name, stretched }) })
-      await holdToBrowser(testInfo, browserName, browser, files, node, stretched
-        ? { sameRig: false, rigDiffering: 0.25, atlasBeyondRounding: 0.01, reference: { max: 255, mean: 1 } }
-        : { sameRig: true, rigDiffering: 0, atlasBeyondRounding: 0, reference: { max: 255, mean: 1 } })
+      await holdToBrowser(testInfo, browserName, browser, files, node, boundsFor(browserName, stretched))
     })
   }
 })

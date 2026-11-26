@@ -17,7 +17,10 @@ Myriad 的 2.5D 形象：在浏览器里演她的 rig 的运行时，和从分�
 - 演她的页面用：`anime25drig`（播放器和它的驱动补丁）、`motion`（运行时、协调器、动作源、把一帧写到 rig）、`events`（表演和状态事件）、`speech`（说话事件、韵律、口型）、`singing`（音乐信号、歌词）、`interaction`（触摸）、`performance`（导演写给她、她回报的类型）、`rig`（导入、清单、诊断）。
 - `workbench`：调 rig 的工作台才需要的（表情预设、姿势修正与它在屏幕上的位置、动作包络探针、表情与节拍词表、PSD 对账颜色、预览范围）。演她的页面不需要。
 - `testing`：从外面驱动形象的测试用的夹具和零件。生产页面不用，随测试改。
-- `rig/node`：在 Node 里做 rig，不要浏览器（没有 Worker、canvas、DOM）。`compileRigPsdInNode(psd, options)` 收拆层的 PSD 字节、它切自的那张肖像（PNG 或 JPEG 字节）和页面导入收的同样几样（表情重画、手势手臂、骨架、身形、转头关键形），给出页面导入给页面的那份结果（rig、图集和参考图的 PNG、诊断）。它引 Node 的模块，别的入口都不引它，站点的页面打包不会带上它。本仓库和 `@myriad/figure-player` 都按 TypeScript 源码发布，Node 里要经 `tsx` 之类的加载器跑，或者先打包。画出来的和浏览器的差多少见 `tests/browser/README.md` 的「Node 导入」。
+- `rig/node`：在 Node 里做 rig，不要浏览器（没有 Worker、canvas、DOM）。`compileRigPsdInNode(psd, options)` 收拆层的 PSD 字节、它切自的那张肖像（PNG 或 JPEG 字节）和页面导入收的同样几样（表情重画、手势手臂、骨架、身形、转头关键形），给出页面导入给页面的那份结果（rig、图集和参考图的 PNG、诊断）。它引 Node 的模块（要 Node 22.2 以上），别的入口都不引它，站点的页面打包不会带上它。本仓库和 `@myriad/figure-player` 都按 TypeScript 源码发布，Node 里要经 `tsx` 之类的加载器跑，或者先打包。
+  - 收的图可以来自任何人：每张图先读文件头，超过 32 MB、一边超过 8192、总像素超过 4096 × 4096，或者不是这里读得了的 PNG（隔行的只收每样 8 位以上的）和 JPEG（8 位、基线或渐进、灰或彩色；CMYK 不收）的，都在解码之前拒掉；表情重画最多三张、手势手臂最多八张。拒的是 `psdPreviewFailed`，参数说哪张（`picture`）、为什么（`reason`）。图按 EXIF 方向摆正，像浏览器一样；内嵌的颜色配置不用。
+  - 导入是同步的 CPU 活：一个半身几秒，4096 高的全身二十秒上下，峰值内存 0.5–1.5 GB。服务端要把它放在单独的 worker 线程或子进程里跑，给内存上限和超时，超时就杀掉；`signal` 只在两步之间停。本入口不带这层包装：本仓库按 TypeScript 源码发布，worker 的脚本怎么加载由部署决定。
+  - 画出来的和浏览器的差多少见 `tests/browser/README.md` 的「Node 导入」。肖像贴到 PSD 上的拉伸照 Chromium 做，各种比例下都在一级以内；4:2:0 的 JPEG 解出来的颜色和 Chromium 的不一样（jpeg-js 不把减半的颜色平滑回去，一张肖像上最多差 20 级、平均 0.4），服务端最好给 PNG。
 
 入口列出的就是对外的全部，目录里别的文件都是内部的，可以随时改名、拆分。站点要用一个还没列出的东西，先在这里想清楚它属于哪个用途，再加进那个入口。
 

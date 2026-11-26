@@ -174,8 +174,10 @@ browser's: the same PSD and portrait go through the page's import and its
 worker, and through Node in a process of its own (the test runner cannot load
 the render layer's TypeScript, so `nodeCompileRun.ts` runs under `tsx`).
 
-- The rig is the same, every field (as JSON, the way it is uploaded), and both
-  pass `isAnime25DPlayback`.
+- The rig is the same, every field (as JSON, the way it is uploaded); both pass
+  `isAnime25DPlayback`. So are the findings against the portrait (how far the
+  layers agree with it and where not, the frame) when the portrait is at the
+  PSD's size; stretched, its heatmap is each one's resampling, and is recorded.
 - The atlas differs only by a canvas's rounding: each browser keeps a
   half-transparent pixel premultiplied in 8 bits, and Node rounds to nearest.
   WebKit gives back exactly what Node does; Chromium is at most one level off
@@ -183,25 +185,34 @@ the render layer's TypeScript, so `nodeCompileRun.ts` runs under `tsx`).
   the atlas); Firefox rounds the premultiplied value the other way, one level.
 - The reference picture (only a vision model looks at it) is drawn between
   pixels. Node smooths those draws as Chromium does (bilinear in sixteenths of
-  a pixel, edges not smoothed): on the synthetic PSDs it is at most 8 levels off
-  Chromium's (0.17 on average). WebKit and Firefox smooth the edges, so edge
-  pixels there are further off.
+  a pixel, edges not smoothed): at most 8 levels off Chromium's, 0.17 on
+  average. WebKit and Firefox smooth the edges, so edge pixels there are
+  further off.
+- The stretch that fits a portrait onto the PSD is held on its own: a 97 × 83
+  picture with fine texture and fading alpha, stretched at its size, twice,
+  1.37 times off the pixel grid, 0.75, 0.5, 1.3 × 0.8 and 0.3 times. Node
+  stretches as Chromium does (a Mitchell cubic enlarging; shrinking, bilinear
+  from mip levels blended half a level below the scale), one level off at
+  most, premultiplied. WebKit and Firefox stretch in ways of their own and are
+  recorded.
+- A JPEG is held too, at its size: its colour halved across and down (4:2:0),
+  Chromium smooths it back up and jpeg-js does not, as Firefox does not. On
+  that picture's texture Chromium is 61 levels off at most, 2.9 on average; on
+  a portrait at quality 90, 20 and 0.4.
 
 The synthetic PSDs are the ordinary one, its variants, and one shaded with
 faded edges whose portrait is drawn from its own layers, at its size and at
-half (which the import enlarges).
+half (which the import enlarges): that portrait must be found to agree with the
+layers, so a portrait read or placed wrong fails.
 
 Real figures run where `FIGURE_IMPORT_BENCH` names the import bench's cases.
-A portrait at the PSD's own size is the same pixels to both, and the rig and
-atlas are held as above. A portrait stretched onto the PSD is each one's own
-resampling: Chromium enlarges with a Mitchell cubic and shrinks to half or more
-bilinearly, which Node does to within a level, but shrinking further it does
-what Node only comes near; WebKit and Firefox resample in ways of their own. A
-pixel that lands on the other side of a threshold changes a repair, so there
-the rig may differ in some values (at most a quarter of them) and the atlas in
-a few pixels (at most 1%). The browsers differ from each other the same way:
-on a bust with gesture arms, Node's rig differed from Chromium's in 186 of
-about 18,000 values, Chromium's from WebKit's in 1,617.
+A portrait at the PSD's own size is the same pixels to both, and is held as
+above. A portrait stretched onto the PSD is each one's own resampling, and a
+pixel that lands on the other side of a threshold changes a repair: on a bust
+with gesture arms, Node's rig differed from Chromium's in 1% of its values and
+the atlas in 0.07% of its pixels; Chromium's from WebKit's in 9% of the values,
+from Firefox's in 21%. The spec holds Chromium to 3% and 0.2%, the others to
+25% and 1%.
 
 ## Import bench
 

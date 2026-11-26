@@ -332,12 +332,17 @@ export async function packAnime25DAtlas(
           : [],
     })
   }
-  const pngs = [
-    raster.paint(packedWidth, packedHeight, atlasDraws),
-    raster.paint(analysisWidth, analysisHeight, analysisDraws),
-  ]
+  const atlasPng = raster.paint(packedWidth, packedHeight, atlasDraws)
+  let referencePng: Promise<Blob>
+  try {
+    referencePng = raster.paint(analysisWidth, analysisHeight, analysisDraws)
+  } catch (error) {
+    // The atlas's PNG is not waited for any more; its failure is this one's.
+    atlasPng.catch(() => {})
+    throw error
+  }
   timer?.lap('pack.draw')
-  const [blob, analysisReference] = await Promise.all(pngs)
+  const [blob, analysisReference] = await Promise.all([atlasPng, referencePng])
   timer?.lap('pack.png')
   return {
     atlas: blob,
