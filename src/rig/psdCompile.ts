@@ -3,6 +3,7 @@ import type { Anime25DSourceReference } from './anime25dImportTypes'
 import type { ArmVariantReference } from './armVariants'
 import type { AuthoredExpressionReference } from './authoredExpression'
 import type { ImportLap } from './importTiming'
+import type { HoldZipChannel } from './psdDecode'
 import type { RigPsdImportRequest, RigPsdImportStage } from './psdImportClient'
 import type { RigRaster } from './rigRaster'
 import { FigureError } from '../errors'
@@ -20,6 +21,8 @@ export interface RigPsdCompileEnvironment<Picture extends { width: number; heigh
   onStage?: (stage: RigPsdImportStage) => void
   /** Checked between the steps; the import stops with its reason. */
   signal?: AbortSignal
+  /** Holds each zip-compressed PSD channel before it is inflated (see `decodeRigPsd`). */
+  holdZipChannel?: HoldZipChannel
 }
 
 export interface RigPsdCompiled {
@@ -34,7 +37,7 @@ export interface RigPsdCompiled {
  */
 export async function compileRigPsd<Picture extends { width: number; height: number }>(
   request: RigPsdImportRequest,
-  { raster, read, onStage, signal }: RigPsdCompileEnvironment<Picture>,
+  { raster, read, onStage, signal, holdZipChannel }: RigPsdCompileEnvironment<Picture>,
 ): Promise<RigPsdCompiled> {
   const {
     buffer,
@@ -51,7 +54,7 @@ export async function compileRigPsd<Picture extends { width: number; height: num
   const timer = timing ? new ImportTimer() : undefined
   const psd = (() => {
     try {
-      return decodeRigPsd(buffer, timer)
+      return decodeRigPsd(buffer, timer, holdZipChannel)
     } catch (error) {
       const code = error instanceof Error ? error.message : ''
       throw new FigureError(code === 'psdTooLarge' || code === 'psdLayerCountInvalid' ? code : 'psdSpecInvalid')

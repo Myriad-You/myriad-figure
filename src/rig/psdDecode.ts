@@ -1,6 +1,6 @@
 import type { Layer, Psd } from 'ag-psd'
 import type { ImportTimer } from './importTiming'
-import { initializeCanvas, readPsd } from 'ag-psd'
+import { decodeLayerPixels, initializeCanvas, readPsd } from 'ag-psd'
 
 export const MAX_PSD_BYTES = 96 * 1024 * 1024
 /** A standing figure decomposed in tiles is stitched at up to 4096 px tall. */
@@ -57,7 +57,33 @@ export function validateRigPsdStructure(psd: Psd): void {
   if (!visible || visible > MAX_LAYERS) throw new Error('psdLayerCountInvalid')
 }
 
-export function decodeRigPsd(buffer: ArrayBuffer, timer?: ImportTimer): Psd {
+/** Most bytes the layers' pixels and masks may take, as 8-bit RGBA. */
+const MAX_PIXEL_BYTES = 512 * 1024 * 1024
+
+/**
+ * A zip-compressed channel, held before it is inflated: `most` is the bytes its
+ * rectangle holds. Throws to refuse it. ag-psd inflates a zip channel whole,
+ * with nothing to stop it; a host that can inflate with a cap (Node) holds it here.
+ */
+export type HoldZipChannel = (data: Uint8Array, most: number) => void
+
+interface RawChannels {
+  rawData?: { channels: Array<{ id: number; compression: number; data?: Uint8Array }> }
+}
+
+function area(rect: { top?: number; left?: number; bottom?: number; right?: number } | undefined) {
+  return rect ? Math.max(0, (rect.right ?? 0) - (rect.left ?? 0)) * Math.max(0, (rect.bottom ?? 0) - (rect.top ?? 0)) : 0
+}
+
+/**
+ * The PSD's layers with their pixels. It is read whole first with each
+ * channel's bytes kept as they are (nothing is inflated while it is read, so a
+ * read that fails has inflated nothing), then the pixels and masks of the
+ * layers in its tree are decoded one by one, each zip channel held first by
+ * `holdZipChannel` and all of them held to MAX_PIXEL_BYTES. A group's closing
+ * divider is not in the tree, and is never decoded.
+ */
+export function decodeRigPsd(buffer: ArrayBuffer, timer?: ImportTimer, holdZipChannel?: HoldZipChannel): Psd {
   validateRigPsdHeader(buffer)
   const options = {
     useImageData: true,
@@ -80,7 +106,24 @@ export function decodeRigPsd(buffer: ArrayBuffer, timer?: ImportTimer): Psd {
       colorSpace: 'srgb',
     }),
   )
-  const psd = readPsd(buffer, options)
+  const psd = readPsd(buffer, { ...options, useRawData: true })
+  let left = MAX_PIXEL_BYTES
+  const decode = (layers: Layer[]) => {
+    for (const layer of layers) {
+      const channels = (layer as RawChannels).rawData?.channels ?? []
+      const rectOf = (id: number) => (id === -2 ? layer.mask : id === -3 ? layer.realMask : layer)
+      for (const { id, compression, data } of channels) {
+        if ((compression === 2 || compression === 3) && data?.length) holdZipChannel?.(data, area(rectOf(id)))
+      }
+      // What ag-psd allocates: the layer, and each mask that has its channel.
+      const has = (id: number) => channels.some((channel) => channel.id === id && channel.data)
+      left -= 4 * (area(layer) + (has(-2) ? area(layer.mask) : 0) + (has(-3) ? area(layer.realMask) : 0))
+      if (left < 0) throw new Error('Exceeded memory limit')
+      decodeLayerPixels(layer, true)
+      decode(layer.children ?? [])
+    }
+  }
+  decode(psd.children ?? [])
   timer?.lap('psd.pixels')
   return psd
 }

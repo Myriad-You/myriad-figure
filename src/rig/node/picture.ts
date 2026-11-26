@@ -83,59 +83,97 @@ function pngHeader(bytes: Uint8Array): PictureHeader {
 export const MAX_JPEG_SCANS = 64
 
 /**
- * A JPEG's markers, the whole file: its one frame (a second is refused, as
- * libjpeg does), with 1 to 4 for each sampling factor (as libjpeg allows; jpeg-js
- * would take up to 15 and allocate for them), and no more than MAX_JPEG_SCANS
- * scans. Every other segment jpeg-js reads is bounded by its 16-bit length.
+ * A JPEG's markers, the whole file, walked as jpeg-js walks them (its marker
+ * loop in `lib/decoder.js`), so that nothing it reads is hidden from this:
+ *
+ * - The segments jpeg-js reads by what is in them rather than by their length
+ *   (a frame, a scan's header, quantization and Huffman tables, a restart
+ *   interval, a line count) must be exactly as long as what is in them.
+ * - A scan's coded data runs to the first marker that is not a stuffed 0xFF
+ *   (0xFF00) or a restart (0xFFD0–D7), as jpeg-js's scan ends. A run of fill
+ *   bytes (0xFF) before a marker is passed, as jpeg-js passes it.
+ * - Any other marker (one jpeg-js does not know, a stray restart or 0xFF00
+ *   between segments, a byte that is not a marker) is refused, where jpeg-js
+ *   would guess at it.
+ *
+ * Then: its one frame (a second is refused, as libjpeg does), with 1 to 4 for
+ * each sampling factor (as libjpeg allows; jpeg-js would take up to 15 and
+ * allocate for them), each scan of 1 to 4 of its components, and no more than
+ * MAX_JPEG_SCANS scans. Every other segment jpeg-js reads is a view of its bytes.
  */
 function jpegHeader(bytes: Uint8Array): PictureHeader {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   let orientation = 1
-  let frame: { width: number; height: number } | null = null
+  let frame: { width: number; height: number; components: Set<number> } | null = null
   let scans = 0
   let at = 2
-  while (at + 4 <= bytes.length) {
-    if (bytes[at] !== 0xFF) refuse('unreadable')
+  for (;;) {
+    // Fill bytes before a marker.
+    while (at + 1 < bytes.length && bytes[at] === 0xFF && bytes[at + 1] === 0xFF) at += 1
+    if (at + 2 > bytes.length || bytes[at] !== 0xFF) refuse('unreadable')
     const marker = bytes[at + 1]!
-    if (marker === 0xFF) {
-      at += 1
-      continue
-    }
-    if (marker === 0x01 || (marker >= 0xD0 && marker <= 0xD7)) {
-      at += 2
-      continue
-    }
     if (marker === 0xD9) break
+    const known = (marker >= 0xE0 && marker <= 0xEF) || marker === 0xFE || marker === 0xDB || marker === 0xC4
+      || marker === 0xDD || marker === 0xDC || marker === 0xDA || (marker >= 0xC0 && marker <= 0xCF && marker !== 0xC8 && marker !== 0xCC)
+    if (!known) refuse('unreadable')
+    if (at + 4 > bytes.length) refuse('unreadable')
     const length = view.getUint16(at + 2)
-    if (length < 2 || at + 2 + length > bytes.length) refuse('unreadable')
     const body = at + 4
     const end = at + 2 + length
+    if (length < 2 || end > bytes.length) refuse('unreadable')
+    /** The segment must end where what is in it ends. */
+    const exactly = (contents: number) => {
+      if (body + contents !== end) refuse('unreadable')
+    }
     if (marker === 0xE1 && !frame && length >= 8 && String.fromCharCode(...bytes.subarray(body, body + 6)) === 'Exif\0\0') {
       orientation = tiffOrientation(bytes, body + 6, end)
-    }
-    if (marker >= 0xC0 && marker <= 0xCF && marker !== 0xC4 && marker !== 0xC8 && marker !== 0xCC) {
-      if (frame) refuse('unreadable')
-      if (length < 8) refuse('unreadable')
+    } else if (marker === 0xDB) {
+      // Tables of 64 values, 8- or 16-bit, as many as fit.
+      let table = body
+      while (table < end) table += 1 + ((bytes[table]! >> 4) === 0 ? 64 : 128)
+      exactly(table - body)
+    } else if (marker === 0xC4) {
+      // Tables of 16 counts and as many values as they add to.
+      let table = body
+      while (table < end) {
+        if (table + 17 > end) refuse('unreadable')
+        let values = 0
+        for (let i = 1; i <= 16; i += 1) values += bytes[table + i]!
+        table += 17 + values
+      }
+      exactly(table - body)
+    } else if (marker === 0xDD || marker === 0xDC) {
+      exactly(2)
+    } else if (marker >= 0xC0 && marker <= 0xCF && marker !== 0xC4) {
+      if (frame || length < 8) refuse('unreadable')
       // jpeg-js reads 8-bit Huffman JPEGs, baseline or progressive, grey or YCbCr.
-      const components = bytes[body + 5]!
-      if (marker > 0xC2 || bytes[body] !== 8 || (components !== 1 && components !== 3)) refuse('unsupported')
-      if (length < 8 + components * 3) refuse('unreadable')
-      for (let i = 0; i < components; i += 1) {
+      const count = bytes[body + 5]!
+      if (marker > 0xC2 || bytes[body] !== 8 || (count !== 1 && count !== 3)) refuse('unsupported')
+      exactly(6 + count * 3)
+      const components = new Set<number>()
+      for (let i = 0; i < count; i += 1) {
         const sampling = bytes[body + 7 + i * 3]!
         const across = sampling >> 4
         const down = sampling & 15
         if (across < 1 || across > 4 || down < 1 || down > 4) refuse('unreadable')
+        components.add(bytes[body + 6 + i * 3]!)
       }
-      frame = { width: view.getUint16(body + 3), height: view.getUint16(body + 1) }
-    }
-    at = end
-    if (marker === 0xDA) {
+      frame = { width: view.getUint16(body + 3), height: view.getUint16(body + 1), components }
+    } else if (marker === 0xDA) {
       if (!frame) refuse('unreadable')
+      const count = bytes[body]!
+      if (count < 1 || count > 4) refuse('unreadable')
+      exactly(1 + count * 2 + 3)
+      for (let i = 0; i < count; i += 1) { if (!frame.components.has(bytes[body + 1 + i * 2]!)) refuse('unreadable')
+}
       scans += 1
       if (scans > MAX_JPEG_SCANS) refuse('unsupported')
-      // The scan's coded data, up to the next marker that is not a restart (0xFF00 is a stuffed 0xFF).
-      while (at + 1 < bytes.length && !(bytes[at] === 0xFF && bytes[at + 1] !== 0 && bytes[at + 1] !== 0xFF && !(bytes[at + 1]! >= 0xD0 && bytes[at + 1]! <= 0xD7))) at += 1
+      // The scan's coded data, up to the first marker that is not a stuffed 0xFF or a restart.
+      at = end
+      while (at + 1 < bytes.length && !(bytes[at] === 0xFF && bytes[at + 1] !== 0 && !(bytes[at + 1]! >= 0xD0 && bytes[at + 1]! <= 0xD7))) at += 1
+      continue
     }
+    at = end
   }
   if (!frame || scans === 0) refuse('unreadable')
   return { format: 'jpeg', width: frame.width, height: frame.height, orientation }
@@ -169,7 +207,8 @@ function pngPixelBytes(width: number, height: number, depth: number, colour: num
 
 /**
  * The PNG as fast-png is given it: its first IHDR, the palette of a
- * palette-coloured one, a tRNS before the pixels, the first run of IDATs, and
+ * palette-coloured one, a tRNS before the pixels (but for a picture with an
+ * alpha channel, which browsers ignore it for and fast-png refuses), the first run of IDATs, and
  * an IEND. Every other chunk is left out, so nothing fast-png would inflate or
  * allocate for is left but the pixels (a profile, iCCP, is inflated whole; a
  * second IHDR would size them anew; a truecolour picture's suggested palette
@@ -211,7 +250,7 @@ export function pngForDecoder(bytes: Uint8Array): Uint8Array {
       if (length === 0 || length > 768 || length % 3 !== 0 || !sound()) refuse('unreadable')
       palette = true
       kept.push(whole)
-    } else if (type === PNG_TYPE.tRNS && !transparency && !pixelsBegun && (colour !== 3 || palette) && sound()) {
+    } else if (type === PNG_TYPE.tRNS && (colour === 0 || colour === 2 || palette) && !transparency && !pixelsBegun && sound()) {
       transparency = true
       kept.push(whole)
     }

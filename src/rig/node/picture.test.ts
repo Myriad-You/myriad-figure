@@ -179,6 +179,57 @@ test('a JPEG with a second frame, sampling past 4 or too many scans is refused b
   assert.equal(readPictureHeader(coded).format, 'jpeg')
 })
 
+test('nothing can be hidden inside a JPEG segment\'s length: the walk ends each segment where jpeg-js does', () => {
+  const plain = jpegHeaderOnly(0xC0)
+  const frameEnd = 2 + 4 + 15
+  const frame = plain.subarray(2, frameEnd)
+  const end = plain.subarray(plain.length - 2)
+  /** A scan whose length says it holds `hidden` too: jpeg-js reads its header and then `hidden` as what follows. */
+  const hiding = (hidden: Uint8Array) => {
+    const length = 8 + hidden.length
+    return Buffer.concat([Buffer.from([0xFF, 0xDA, length >> 8, length & 0xFF, 1, 1, 0, 0, 63, 0]), hidden])
+  }
+  const manyScans = Buffer.concat(Array.from({ length: MAX_JPEG_SCANS + 1 }, () => Buffer.from(EMPTY_SCAN)))
+  const hiddenScans = Buffer.concat([plain.subarray(0, frameEnd), hiding(manyScans), end])
+  assert.equal(refusal(() => readPictureHeader(hiddenScans)).reason, 'unreadable')
+  const hiddenFrame = Buffer.concat([plain.subarray(0, frameEnd), hiding(Buffer.from(frame)), end])
+  assert.equal(refusal(() => readPictureHeader(hiddenFrame)).reason, 'unreadable')
+  // The same for every segment jpeg-js reads by what is in it: a frame, tables, a restart interval.
+  const dqt = [0xFF, 0xDB, 0, 67, 0, ...Array.from({ length: 64 }, () => 1)]
+  const dht = [0xFF, 0xC4, 0, 20, 0, 1, ...Array.from({ length: 15 }, () => 0), 0]
+  const dri = [0xFF, 0xDD, 0, 4, 0, 1]
+  for (const [name, segment] of Object.entries({ dqt, dht, dri })) {
+    const fits = Buffer.concat([plain.subarray(0, frameEnd), Buffer.from(segment), plain.subarray(frameEnd)])
+    assert.equal(readPictureHeader(fits).format, 'jpeg', name)
+    const short = Buffer.from(fits)
+    short[frameEnd + 3] = short[frameEnd + 3]! - 1
+    assert.equal(refusal(() => readPictureHeader(short)).reason, 'unreadable', `${name} shorter than it holds`)
+    const long = Buffer.from(fits)
+    long[frameEnd + 3] = long[frameEnd + 3]! + 1
+    assert.equal(refusal(() => readPictureHeader(long)).reason, 'unreadable', `${name} longer than it holds`)
+  }
+  const longFrame = Buffer.from(plain)
+  longFrame[2 + 3] = longFrame[2 + 3]! + 3
+  assert.equal(refusal(() => readPictureHeader(longFrame)).reason, 'unreadable')
+  // A marker jpeg-js does not know, a stray restart, and 0xFF00, between segments.
+  for (const stray of [[0xFF, 0xF0, 0, 2], [0xFF, 0xD0], [0xFF, 0x00]]) {
+    assert.equal(refusal(() => readPictureHeader(Buffer.concat([plain.subarray(0, frameEnd), Buffer.from(stray), plain.subarray(frameEnd)]))).reason, 'unreadable', JSON.stringify(stray))
+  }
+  // Fill bytes before a marker are passed, as jpeg-js passes them.
+  assert.equal(readPictureHeader(Buffer.concat([plain.subarray(0, frameEnd), Buffer.from([0xFF, 0xFF, 0xFF]), plain.subarray(frameEnd + 1)])).format, 'jpeg')
+  // A scan of a component the frame does not have.
+  const stranger = Buffer.from(plain)
+  stranger[frameEnd + 5] = 9
+  assert.equal(refusal(() => readPictureHeader(stranger)).reason, 'unreadable')
+})
+
+test('a tRNS on a PNG that has an alpha channel is left out, as browsers ignore it', () => {
+  const plain = encodePng({ width: 16, height: 8, data: halves(), channels: 4 })
+  const keyed = withChunks(plain, [chunk('tRNS', new Uint8Array([0, 255, 0, 0, 0, 0]))])
+  assert.deepEqual(chunkTypes(pngForDecoder(keyed)), ['IHDR', 'IDAT', 'IEND'])
+  assert.equal(colourAt(decodePicture(keyed), 2, 4), 'red')
+})
+
 /** 16 × 8: the left half red, the right half blue. */
 function halves(): Uint8Array {
   const data = new Uint8Array(16 * 8 * 4)
