@@ -1,5 +1,5 @@
 // Building a playback package from imported layers: what the stage draws, assembled by the rig tools.
-import type { Anime25DPlayback } from '@myriad-you/figure-player'
+import type { Anime25DPlaybackV7 } from '@myriad-you/figure-player'
 import type { Anime25DArmVariant, Anime25DEyeAnchor, Anime25DFade, Anime25DLayerRole, Anime25DMouthProfile, Anime25DPlaybackAnchors, Anime25DPlaybackLayer, Anime25DSourceAnchors } from '@myriad-you/figure-player/internals'
 import { ANIME25D_LAYER_DEPTH } from '@myriad-you/figure-player/internals'
 import { FigureError } from '../errors'
@@ -93,7 +93,7 @@ function shiftEyeAnchor(
 
 export function buildAnime25DPlayback(
   input: Anime25DPlaybackBuildInput,
-): Anime25DPlayback {
+): Anime25DPlaybackV7 {
   const width = Math.max(1, input.frameWidth)
   const height = Math.max(1, input.frameHeight)
   const layers = input.layers.map((layer, index) =>

@@ -1,5 +1,5 @@
 // What an import produces before it is a package: layer sources, bone handles, the import source.
-import type { Anime25DPlayback } from '@myriad-you/figure-player'
+import type { Anime25DPlaybackV7 } from '@myriad-you/figure-player'
 import type { CharacterAssetProfile, RigBone, RigMotionProfile, RigOutfitProfile, RigPoint, RigSemanticAnchor, RigSemantics, RigSize, RigSpatialProfile } from '@myriad-you/figure-player/internals'
 
 export type RigRect = RigPoint & RigSize
@@ -50,5 +50,5 @@ export interface MeropeRigImportSource {
   semanticAnchors?: Record<string, RigSemanticAnchor>
   semantics?: RigSemantics
   spatialProfile?: RigSpatialProfile
-  anime25dPlayback?: Anime25DPlayback
+  anime25dPlayback?: Anime25DPlaybackV7
 }

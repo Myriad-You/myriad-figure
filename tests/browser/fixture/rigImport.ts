@@ -166,8 +166,9 @@ async function livePackage(slowUrl: string) {
     canvases.push(canvas)
     return new Anime25DPlayer(canvas, playback)
   }
-  const internals = (player: Anime25DPlayer) => (player as unknown as { stage: { atlasTexture: unknown, playback: { engineUrl: string } } }).stage
-  // Each load carries its own marker where the engine URL goes, to tell which one landed.
+  const internals = (player: Anime25DPlayer) => (player as unknown as { stage: { atlasTexture: unknown, playback: { credits?: Array<{ url?: string }> } } }).stage
+  // Each load carries its own marker where the credited project's URL goes, to tell which one landed.
+  const markerOf = (player: Anime25DPlayer) => internals(player).playback.credits?.[0]?.url
   const marked = (marker: string) => ({ ...playback, engineUrl: marker }) as unknown as typeof playback
   try {
     const player = make()
@@ -177,14 +178,14 @@ async function livePackage(slowUrl: string) {
     const swapped = {
       sameTexture: internals(player).atlasTexture === first,
       bound: internals(player).atlasTexture !== null,
-      engineUrl: internals(player).playback.engineUrl,
+      marker: markerOf(player),
     }
     // A slow load is overtaken by a later one: it rejects as aborted and never lands.
     const abortName = (error: unknown) => error instanceof Error ? error.name : String(error)
     const slow = player.replaceLivePackage(marked('slow'), undefined, slowUrl).then(() => 'landed', abortName)
     const fast = player.replaceLivePackage(marked('fast'), undefined, url)
     const [slowOutcome] = await Promise.all([slow, fast])
-    const superseded = { slow: slowOutcome, engineUrl: internals(player).playback.engineUrl }
+    const superseded = { slow: slowOutcome, marker: markerOf(player) }
     player.dispose()
     // A load still in flight when the player is disposed must not bind anything.
     const late = make()
@@ -192,7 +193,7 @@ async function livePackage(slowUrl: string) {
     const pending = late.replaceLivePackage(marked('late'), undefined, slowUrl)
     late.dispose()
     await pending.catch(() => {})
-    const afterDispose = { texture: internals(late).atlasTexture, engineUrl: internals(late).playback.engineUrl }
+    const afterDispose = { texture: internals(late).atlasTexture, marker: markerOf(late) }
     return { swapped, superseded, afterDispose }
   } finally {
     for (const canvas of canvases) canvas.remove()

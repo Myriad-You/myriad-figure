@@ -1,4 +1,4 @@
-import type { Anime25DPlayback, MeropeRigManifest } from '@myriad-you/figure-player'
+import type { Anime25DPlaybackV7, MeropeRigManifest } from '@myriad-you/figure-player'
 import type { Anime25DArmModel, Anime25DPartProfile, Anime25DTurnKeyforms, CharacterAssetProfile } from '@myriad-you/figure-player/internals'
 import type { MeropeRigImportSource } from './types'
 import { CHARACTER_ASSET_PROFILES } from '@myriad-you/figure-player/internals'
@@ -74,7 +74,7 @@ function manifestOf(source: MeropeRigImportSource, profile: CharacterAssetProfil
   }
 }
 
-function dressPlayback(playback: Anime25DPlayback, profile: CharacterAssetProfile): void {
+function dressPlayback(playback: Anime25DPlaybackV7, profile: CharacterAssetProfile): void {
   const { width, height } = playback.pixelCanvas
   const { face } = playback.anchors
   const lattice = (box: [number, number, number, number], dx: number, grid: number) => ({
@@ -134,7 +134,7 @@ function dressPlayback(playback: Anime25DPlayback, profile: CharacterAssetProfil
   })
 }
 
-function partProfile(playback: Anime25DPlayback): Anime25DPartProfile {
+function partProfile(playback: Anime25DPlaybackV7): Anime25DPartProfile {
   const host = playback.layers.find((layer) => layer.role === 'front-hair') ?? playback.layers[0]
   const skirt = playback.layers.find((layer) => layer.role === 'bottomwear') ?? host
   const part = (layer: typeof host, bone: string, motion: 'sway' | 'dangle') => ({

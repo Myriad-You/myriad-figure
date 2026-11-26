@@ -14,7 +14,7 @@ const head = {
 }
 const correction: PoseCorrection = {
   surface: 'head',
-  at: { angleX: 0.8, angleY: -0.6 },
+  at: { headYaw: 0.8, headPitch: -0.6 },
   patches: [{ x: 0, y: 0, radiusX: 0.6, radiusY: 0.4, dx: 0.05, dy: -0.04 }],
 }
 test('authoring captures a residual and scales with the asset, not canvas pixels', () => {

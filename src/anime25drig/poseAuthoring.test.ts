@@ -31,7 +31,7 @@ function capturePoseCorrection(p: Anime25DPlayback, d: typeof driver, region: Pa
 
 test('capture uses actual asset anchors and pose conditions, not avatar names', () => {
   const c = capturePoseCorrection(playback, driver, 'leftEye')!
-  assert.deepEqual(c.at, { angleX: 0.8, angleY: -0.6, eyeCloseL: 1 })
+  assert.deepEqual(c.at, { headYaw: 0.8, headPitch: -0.6, lidCloseL: 1 })
   assert.equal(c.surface, 'head')
   assert.equal(c.patches[0].x, -0.5)
   assert.equal(c.patches[0].y, Math.round(10 / 240 * 1000) / 1000)
@@ -46,12 +46,12 @@ test('adding patches reuses the existing corner without overwriting its calibrat
   const c = capturePoseCorrection(playback, driver, 'leftEye')!
   c.patches[0].dx = 0.1
   const current = [c]
-  const candidate = { ...c, at: { ...c.at, angleX: 1 }, patches: [{ ...c.patches[0], dx: 0 }] }
+  const candidate = { ...c, at: { ...c.at, headYaw: 1 }, patches: [{ ...c.patches[0], dx: 0 }] }
   const result = appendPoseCorrectionPatch(current, candidate)!
   assert.equal(result.index, 0)
   assert.equal(result.patch, 1)
   assert.equal(result.corrections.length, 1)
-  assert.equal(result.corrections[0].at.angleX, 0.8)
+  assert.equal(result.corrections[0].at.headYaw, 0.8)
   assert.equal(result.corrections[0].patches[0].dx, 0.1)
   assert.equal(current[0].patches.length, 1)
   result.corrections[0].patches[0].dx = 0.2
@@ -75,9 +75,9 @@ test('a pose needs a head turn, and a second condition the patch actually sits o
   assert.deepEqual(poseCorrectionCorner(playback, { ...WORKBENCH_DRIVER, lidL: 0 }, 'head', eye), { problem: 'needsTurn' })
   assert.deepEqual(poseCorrectionCorner(playback, { ...WORKBENCH_DRIVER, headYaw: 0.5 }, 'head', eye), { problem: 'needsSecond' })
   // A closed eye counts for a patch on that eye, never for one on the hair.
-  assert.deepEqual(poseCorrectionCorner(playback, { ...WORKBENCH_DRIVER, headYaw: 0.5, lidL: 0.2 }, 'head', eye), { at: { angleX: 0.5, eyeCloseL: 0.8 } })
+  assert.deepEqual(poseCorrectionCorner(playback, { ...WORKBENCH_DRIVER, headYaw: 0.5, lidL: 0.2 }, 'head', eye), { at: { headYaw: 0.5, lidCloseL: 0.8 } })
   assert.deepEqual(poseCorrectionCorner(playback, { ...WORKBENCH_DRIVER, headYaw: 0.5, lidL: 0.2 }, 'front-hair', eye), { problem: 'needsSecond' })
-  assert.deepEqual(poseCorrectionCorner(playback, { ...WORKBENCH_DRIVER, headYaw: 0.5, headPitch: 0.3 }, 'front-hair', { x: 0, y: -0.9 }), { at: { angleX: 0.5, angleY: 0.3 } })
+  assert.deepEqual(poseCorrectionCorner(playback, { ...WORKBENCH_DRIVER, headYaw: 0.5, headPitch: 0.3 }, 'front-hair', { x: 0, y: -0.9 }), { at: { headYaw: 0.5, headPitch: 0.3 } })
 })
 
 test('a patch is named and sized by the feature it sits on', () => {
