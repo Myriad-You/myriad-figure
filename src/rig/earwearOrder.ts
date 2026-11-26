@@ -1,4 +1,4 @@
-import type { RasterLayer } from '@myriad/figure-player/internals'
+import type { RasterLayer } from './anime25dImportTypes'
 import { alphaAt } from './psdRepairMasks'
 
 /** A lock over this share of an ear ornament at rest is drawn over it on purpose. */

@@ -1,5 +1,5 @@
-import type { Anime25DEyeAnchor, Anime25DRiggerAnchors, EyeSide, RasterLayer } from '@myriad/figure-player/internals'
-import type { Anime25DSourceReference } from './anime25dImportTypes'
+import type { Anime25DEyeAnchor, Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
+import type { Anime25DSourceReference, EyeSide, RasterLayer } from './anime25dImportTypes'
 import { ANIME25D_LAYER_DESCRIPTORS } from '@myriad/figure-player/internals'
 import { trimRaster, uniquePartId } from './anime25dRaster'
 

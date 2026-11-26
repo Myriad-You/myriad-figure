@@ -1,4 +1,5 @@
-import type { Anime25DFaceFrame, Anime25DRiggerAnchors, MouthExpressionKind, RasterLayer } from '@myriad/figure-player/internals'
+import type { Anime25DFaceFrame, Anime25DRiggerAnchors, MouthExpressionKind } from '@myriad/figure-player/internals'
+import type { RasterLayer } from './anime25dImportTypes'
 import { detectPaintedLips, sampleMouthExpressionPalette } from '@myriad/figure-player/internals'
 import { placeFaceBitmap } from '../expressionShapes/faceFrame'
 import { createLipMouthBitmap, LIP_MOUTH_KINDS, lipMouthSize } from '../expressionShapes/lipMouth'

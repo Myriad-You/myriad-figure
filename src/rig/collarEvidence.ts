@@ -1,5 +1,5 @@
-import type { Anime25DRiggerAnchors, RasterLayer } from '@myriad/figure-player/internals'
-import type { Anime25DSourceReference } from './anime25dImportTypes'
+import type { Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
+import type { Anime25DSourceReference, RasterLayer } from './anime25dImportTypes'
 import { ALPHA_COMPONENT_THRESHOLD, HIGH_COLLAR_UPPER_FRACTION, perceptualColorDistance, rasterPixelIndex } from './collarCommon'
 
 const HIGH_COLLAR_MIN_COVERAGE = 0.88

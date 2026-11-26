@@ -29,7 +29,7 @@ import { baselineDriverPatch, restEnergyDriverPatch } from './performanceMotion'
 export type { Anime25DDebugSnapshot } from '@myriad/figure-player'
 export type { Anime25DInspection, Anime25DLayerView, Anime25DPoint } from '@myriad/figure-player'
 
-/** The stage (stage.ts) driven by her performance: speech, song, directed poses, behaviors and touch. */
+/** The stage (Anime25DStage from @myriad/figure-player) driven by her performance: speech, song, directed poses, behaviors and touch. */
 export class Anime25DPlayer {
   private readonly stage: Anime25DStage<MotionFigure>
   private motionCapabilities: readonly string[] = []
@@ -274,8 +274,9 @@ export class Anime25DPlayer {
   }
 
   /**
-   * Her own frame drawn last, as data (pose.ts), also while another is shown: drawn again it is the same picture to
-   * the pixel. Null until one is drawn, and for another outfit until its own.
+   * Her own frame drawn last, as data (an Anime25DPose: poseToJSON and poseFromJSON write and read it), also while
+   * another is shown: drawn again it is the same picture to the pixel. Null until one is drawn, and for another outfit
+   * until its own.
    */
   getPose(): Anime25DPose | null {
     return this.stage.getPose()

@@ -1,6 +1,6 @@
-// How much of a standing figure's weight shift rolls its head.
+// The share of a bust's idle head roll a standing figure takes.
 /**
- * ...and the head roll its looks and random actions bring takes this share:
+ * On a standing figure the head roll its looks and random actions bring takes this share:
  * a bust's idle tilt, seen on a whole standing figure, tips the figure off
  * its upright and reads as slouching from side to side.
  */

@@ -1,6 +1,5 @@
-import type { EyeSide, RasterLayer } from '@myriad/figure-player/internals'
 import type { Layer, Psd } from 'ag-psd'
-import type { Anime25DSourceReference } from './anime25dImportTypes'
+import type { Anime25DSourceReference, EyeSide, RasterLayer } from './anime25dImportTypes'
 import { canonicalAnime25DLayerName } from '@myriad/figure-player/internals'
 import { rasterBounds, trimRaster, uniquePartId } from './anime25dRaster'
 import { splitRasterAlongSeam } from './limbSeam'

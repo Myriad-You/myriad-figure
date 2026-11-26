@@ -1,5 +1,5 @@
 import { FigureError as StageError } from '@myriad/figure-player'
-import { formatTemplate } from '@myriad/figure-player/internals'
+import { formatTemplate } from './rig/formatTemplate'
 
 /**
  * Why the figure could not play or import, in English. The page shows its own
@@ -42,7 +42,9 @@ export class FigureError extends Error {
   }
 
   static [Symbol.hasInstance](value: unknown): boolean {
-    return Function.prototype[Symbol.hasInstance].call(FigureError, value) || value instanceof StageError
+    // On FigureError itself only: a subclass keeps the ordinary prototype check.
+    const own = Function.prototype[Symbol.hasInstance].call(this, value)
+    return this === FigureError ? own || value instanceof StageError : own
   }
 }
 

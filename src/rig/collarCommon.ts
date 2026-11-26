@@ -1,4 +1,4 @@
-import type { RasterLayer } from '@myriad/figure-player/internals'
+import type { RasterLayer } from './anime25dImportTypes'
 
 export const ALPHA_COMPONENT_THRESHOLD = 16
 export const HIGH_COLLAR_UPPER_FRACTION = 0.35

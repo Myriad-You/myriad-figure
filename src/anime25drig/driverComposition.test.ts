@@ -1,8 +1,9 @@
+import type { Anime25DDriver } from '@myriad/figure-player'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { IDENTITY_DRIVER } from '@myriad/figure-player'
-import { applyAnime25DComposedPose, applyAnime25DStylizedExpression } from './driverComposition'
-import { intentExpressionOffset } from './performanceExpression'
+import { applyAnime25DComposedPose, applyAnime25DStylizedExpression, resolveAnime25DStylizedTargets } from './driverComposition'
+import { intentExpressionOffset, mixBoundedExpressionChannel } from './performanceExpression'
 import { zeroOccupancyOffset } from './poseCompositor'
 import { StylizedExpressionMotionController } from './stylizedExpressionMotion'
 
@@ -285,4 +286,80 @@ test('a wink closes one eye and leaves the other open', () => {
   )
   assert.ok(target.lidL < 0.1, `${target.lidL}`)
   assert.equal(target.lidR, IDENTITY_DRIVER.lidR)
+})
+
+test('stylized target resolution reuses output and keeps special-eye blocking', () => {
+  const target: Anime25DDriver = {
+    ...IDENTITY_DRIVER,
+    eyeCry: 0.18,
+    eyeDizzy: 0.1,
+    anger: 0.44,
+    speechless: 0.2,
+    maniac: 0.35,
+    silly: 0.28,
+    lovestruck: 0.16,
+  }
+  const semantic = {
+    brow: 0,
+    browAngSym: 0,
+    eyeOpen: 0,
+    eyeDizzy: 0.12,
+    eyeSqueeze: 0.08,
+    eyeCry: 0.15,
+    eyeX: 0,
+    eyeY: 0,
+    mouthForm: 0,
+    irisScale: 0,
+    angleY: 0,
+    angleZ: 0,
+    anger: 0.21,
+    speechless: 0.13,
+    maniac: 0.19,
+    silly: 0.17,
+    lovestruck: 0.11,
+  }
+  const output = { anger: 0, speechless: 0, maniac: 0, silly: 0, lovestruck: 0 }
+  const actual = resolveAnime25DStylizedTargets(output, target, semantic)
+  const blocker =
+    1 -
+    Math.max(
+      mixBoundedExpressionChannel(target.eyeDizzy, semantic.eyeDizzy, 0, 1, 0),
+      mixBoundedExpressionChannel(
+        target.eyeSqueeze,
+        semantic.eyeSqueeze,
+        0,
+        1,
+        0,
+      ),
+      mixBoundedExpressionChannel(target.eyeCry, semantic.eyeCry, 0, 1, 0),
+    )
+
+  assert.equal(actual, output)
+  assert.deepEqual(actual, {
+    anger:
+      mixBoundedExpressionChannel(target.anger, semantic.anger, 0, 1, 0) *
+      blocker,
+    speechless:
+      mixBoundedExpressionChannel(
+        target.speechless,
+        semantic.speechless,
+        0,
+        1,
+        0,
+      ) * blocker,
+    maniac:
+      mixBoundedExpressionChannel(target.maniac, semantic.maniac, 0, 1, 0) *
+      blocker,
+    silly:
+      mixBoundedExpressionChannel(target.silly, semantic.silly, 0, 1, 0) *
+      blocker,
+    lovestruck:
+      mixBoundedExpressionChannel(
+        target.lovestruck,
+        semantic.lovestruck,
+        0,
+        1,
+        0,
+      ) * blocker,
+  })
 })

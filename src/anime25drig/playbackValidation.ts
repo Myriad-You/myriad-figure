@@ -2,7 +2,7 @@
 import type { Anime25DPlaybackLayer } from '@myriad/figure-player/internals'
 import { resolveAnime25DLayerSemantics } from '@myriad/figure-player/internals'
 
-/** Locks of front hair are laid together in one picture (unionDrawing): its pixels, and those times the locks read for each. */
+/** Locks of front hair are laid together in one picture when the stage binds them: its pixels, and those times the locks read for each. */
 const MAX_FRINGE_PIXELS = 2 * 4096 ** 2
 
 const MAX_FRINGE_READS = 16 * MAX_FRINGE_PIXELS

@@ -1,4 +1,5 @@
-import type { Anime25DFaceFrame, Anime25DRiggerAnchors, RasterLayer } from '@myriad/figure-player/internals'
+import type { Anime25DFaceFrame, Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
+import type { RasterLayer } from './anime25dImportTypes'
 import { sampleDizzyEyeTint } from '@myriad/figure-player/internals'
 import { createCryEyeBitmap, cryEyeGeneratedSize } from '../expressionShapes/cryEye'
 import { createDizzyEyeBitmap, dizzyEyeGeneratedSize } from '../expressionShapes/dizzyEye'

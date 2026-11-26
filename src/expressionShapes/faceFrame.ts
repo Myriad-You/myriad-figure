@@ -1,5 +1,6 @@
 // Placing drawn expression art on a face: points, contours and bitmaps in the face's frame.
-import type { Anime25DFaceFrame, Anime25DRiggerAnchors, RasterLayer } from '@myriad/figure-player/internals'
+import type { Anime25DFaceFrame, Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
+import type { RasterLayer } from '../rig/anime25dImportTypes'
 
 const FACE_ALPHA_THRESHOLD = 8
 

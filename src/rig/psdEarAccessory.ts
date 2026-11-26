@@ -1,4 +1,4 @@
-import type { RasterLayer } from '@myriad/figure-player/internals'
+import type { RasterLayer } from './anime25dImportTypes'
 import type { ContentBounds } from './psdReconciliation'
 
 /**

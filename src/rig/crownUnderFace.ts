@@ -1,5 +1,4 @@
-import type { RasterLayer } from '@myriad/figure-player/internals'
-import type { Anime25DSourceReference } from './anime25dImportTypes'
+import type { Anime25DSourceReference, RasterLayer } from './anime25dImportTypes'
 import { alphaAt, closeMask, components } from './psdRepairMasks'
 
 /** The crown: rows of the face this far down from its top (the eyes sit near half). */

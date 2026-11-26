@@ -1,4 +1,5 @@
-import type { Anime25DRiggerAnchors, RasterLayer } from '@myriad/figure-player/internals'
+import type { Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
+import type { RasterLayer } from './anime25dImportTypes'
 import { resolveAnime25DFaceFrame } from '@myriad/figure-player/internals'
 import { synthesizeMissingExpressionSymbols, synthesizeMissingLovestruckEffects } from './expressionEffectLayers'
 import { synthesizeMissingCryEyes, synthesizeMissingDizzyEyes, synthesizeMissingManiacEyeShadows, synthesizeMissingSillyEyes, synthesizeMissingSqueezeEyes } from './expressionEyeLayers'

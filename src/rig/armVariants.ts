@@ -1,5 +1,5 @@
-import type { Anime25DArmLift, ArmVariantGesture, EyeSide, RasterLayer } from '@myriad/figure-player/internals'
-import type { Anime25DSourceReference } from './anime25dImportTypes'
+import type { Anime25DArmLift, ArmVariantGesture } from '@myriad/figure-player/internals'
+import type { Anime25DSourceReference, EyeSide, RasterLayer } from './anime25dImportTypes'
 import type { ArmCuffReading } from './armCuff'
 import type { ImportTimer } from './importTiming'
 import type { PsdSkeleton } from './skeleton'

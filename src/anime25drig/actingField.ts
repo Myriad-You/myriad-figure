@@ -1,9 +1,8 @@
 import type { FaceLife } from '../events/performanceContract'
 import type { ResolvedScore } from '../motion/scoreTimeline'
 import type { BodyControl, ScoreMove } from '../performance/types'
-import { HEAD_TILT_RADIANS } from '@myriad/figure-player/internals'
+import { HEAD_TILT_RADIANS, headRollForRadians } from '@myriad/figure-player/internals'
 import { BODY_CONTROLS, SCORE_MOVES } from '../events/performanceContract'
-import { headRollForRadians } from './poseScale'
 import { scoreMoveOffsets, scoreMoveSeconds } from './scoreMoves'
 
 /**

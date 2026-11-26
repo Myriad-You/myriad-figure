@@ -1,4 +1,5 @@
 import type { MeropeRigManifest } from '@myriad/figure-player'
+import { resetCachedAtlasImagesForTests } from '@myriad/figure-player/internals'
 import { mulberry32 } from '../rig/rigFuzz.fixture'
 import { Anime25DPlayer } from './player'
 
@@ -149,8 +150,10 @@ function installFakeDom(): () => void {
   set('HTMLCanvasElement', Canvas)
   set('Image', FakeImage)
   set('document', { createElement: () => new Canvas() })
+  resetCachedAtlasImagesForTests()
   return () => {
     Math.random = random
+    resetCachedAtlasImagesForTests()
     for (const [name, value] of previous) {
       if (value === undefined) delete (globalThis as Record<string, unknown>)[name]
       else Object.defineProperty(globalThis, name, { value, configurable: true, writable: true })

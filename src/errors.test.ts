@@ -23,3 +23,12 @@ test('the figure\'s own errors keep every code; other errors are not FigureError
   assert.equal((null as unknown) instanceof FigureError, false)
   assert.equal(isFigureErrorCode('psdTooLarge'), true)
 })
+
+test('a subclass of FigureError matches only its own instances', () => {
+  class NarrowError extends FigureError {}
+  const narrow = new NarrowError('psdTooLarge')
+  assert.ok(narrow instanceof NarrowError)
+  assert.ok(narrow instanceof FigureError)
+  assert.equal(new FigureError('psdTooLarge') instanceof NarrowError, false)
+  assert.equal(new StageError('anime25dWebglFailed') instanceof NarrowError, false)
+})

@@ -1,5 +1,4 @@
-import type { RasterLayer } from '@myriad/figure-player/internals'
-import type { Anime25DSourceReference } from './anime25dImportTypes'
+import type { Anime25DSourceReference, RasterLayer } from './anime25dImportTypes'
 import { rasterBounds, trimRaster, uniquePartId } from './anime25dRaster'
 import { alphaAt, closeMask, components } from './psdRepairMasks'
 
