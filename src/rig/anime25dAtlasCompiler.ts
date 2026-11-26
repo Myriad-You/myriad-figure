@@ -1,8 +1,10 @@
 import type { PreparedLayer, RasterLayer, RigCanvasFrame } from './anime25dImportTypes'
 import type { ImportTimer } from './importTiming'
+import type { RasterDraw, RigRaster } from './rigRaster'
 import { ANIME25D_ATLAS_MIP_GUTTER_PX } from '@myriad-you/figure-player/internals'
 import { FigureError } from '../errors'
 import { trimRaster } from './anime25dRaster'
+import { browserRigRaster } from './rigRaster'
 
 /** The gutter around each layer: the stage's mipmap clamp is set for it. */
 const ATLAS_PADDING = ANIME25D_ATLAS_MIP_GUTTER_PX
@@ -267,6 +269,7 @@ export async function packAnime25DAtlas(
   frame: RigCanvasFrame,
   layers: RasterLayer[],
   timer?: ImportTimer,
+  raster: Pick<RigRaster, 'paint'> = browserRigRaster,
 ): Promise<{
   atlas: Blob
   analysisReference: Blob
@@ -284,49 +287,25 @@ export async function packAnime25DAtlas(
       apart: layer.armVariant !== undefined || layer.role === 'arm-variant-hand',
     })))
   timer?.lap('pack.layout')
-  const createCanvas = () =>
-    typeof document === 'undefined'
-      ? new OffscreenCanvas(1, 1)
-      : document.createElement('canvas')
-  const requiredContext = (canvas: HTMLCanvasElement | OffscreenCanvas) => {
-    const context = canvas.getContext('2d', { willReadFrequently: true }) as
-      CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null
-    if (!context) throw new FigureError('canvasUnsupported')
-    return context
-  }
-  const atlas = createCanvas()
-  atlas.width = packedWidth
-  atlas.height = packedHeight
-  const context = requiredContext(atlas)
-  const analysisCanvas = createCanvas()
-  analysisCanvas.width = Math.max(1, Math.round(frame.width))
-  analysisCanvas.height = Math.max(1, Math.round(frame.height))
-  const analysisContext = requiredContext(analysisCanvas)
-  const analysisScaleX = analysisCanvas.width / Math.max(1, frame.width)
-  const analysisScaleY = analysisCanvas.height / Math.max(1, frame.height)
-  const layerCanvas = createCanvas()
+  const analysisWidth = Math.max(1, Math.round(frame.width))
+  const analysisHeight = Math.max(1, Math.round(frame.height))
+  const analysisScaleX = analysisWidth / Math.max(1, frame.width)
+  const analysisScaleY = analysisHeight / Math.max(1, frame.height)
+  const atlasDraws: RasterDraw[] = []
+  const analysisDraws: RasterDraw[] = []
   const prepared: PreparedLayer[] = []
   for (const [index, layer] of trimmed.entries()) {
     const drawX = places[index].x
     const drawY = places[index].y
-    layerCanvas.width = layer.width
-    layerCanvas.height = layer.height
-    const imageBytes = new Uint8ClampedArray(layer.data.length)
-    imageBytes.set(layer.data)
-    requiredContext(layerCanvas).putImageData(
-      new ImageData(imageBytes, layer.width, layer.height),
-      0,
-      0,
-    )
-    context.drawImage(layerCanvas, drawX, drawY)
+    atlasDraws.push({ pixels: layer, x: drawX, y: drawY })
     if (visibleInAnalysisReference(layer)) {
-      analysisContext.drawImage(
-        layerCanvas,
-        (layer.left - frame.x) * analysisScaleX,
-        (layer.top - frame.y) * analysisScaleY,
-        layer.width * analysisScaleX,
-        layer.height * analysisScaleY,
-      )
+      analysisDraws.push({
+        pixels: layer,
+        x: (layer.left - frame.x) * analysisScaleX,
+        y: (layer.top - frame.y) * analysisScaleY,
+        width: layer.width * analysisScaleX,
+        height: layer.height * analysisScaleY,
+      })
     }
     const bounds = {
       x: (layer.left - frame.x) / frame.width,
@@ -353,11 +332,12 @@ export async function packAnime25DAtlas(
           : [],
     })
   }
+  const pngs = [
+    raster.paint(packedWidth, packedHeight, atlasDraws),
+    raster.paint(analysisWidth, analysisHeight, analysisDraws),
+  ]
   timer?.lap('pack.draw')
-  const [blob, analysisReference] = await Promise.all([
-    canvasPng(atlas),
-    canvasPng(analysisCanvas),
-  ])
+  const [blob, analysisReference] = await Promise.all(pngs)
   timer?.lap('pack.png')
   return {
     atlas: blob,
@@ -392,17 +372,4 @@ export function visibleInAnalysisReference(layer: RasterLayer): boolean {
     return false
   }
   return layer.slot !== 'mouth' || layer.variant === 'closed'
-}
-
-function canvasPng(
-  canvas: HTMLCanvasElement | OffscreenCanvas,
-): Promise<Blob> {
-  if ('convertToBlob' in canvas)
-    return canvas.convertToBlob({ type: 'image/png' })
-  return new Promise<Blob>((resolve, reject) =>
-    canvas.toBlob(
-      (value) => (value ? resolve(value) : reject(new FigureError('rigAtlasFailed'))),
-      'image/png',
-    ),
-  )
 }
