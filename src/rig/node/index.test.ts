@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { isAnime25DPlayback } from '@myriad/figure-player'
+import { isAnime25DPlayback } from '@myriad-you/figure-player'
 import { writePsd } from 'ag-psd'
 import { decode, encode } from 'fast-png'
 import { FigureError } from '../../errors'

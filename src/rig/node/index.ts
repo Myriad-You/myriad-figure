@@ -7,7 +7,7 @@
 // memory limit and a deadline after which it is killed; `signal` only stops it
 // between steps.
 
-import type { CharacterAssetProfile } from '@myriad/figure-player/internals'
+import type { CharacterAssetProfile } from '@myriad-you/figure-player/internals'
 import type { PreparedAnime25DRigImport } from '../anime25dImporter'
 import type { AuthoredExpressionKind } from '../authoredExpression'
 import type { ImportLap } from '../importTiming'

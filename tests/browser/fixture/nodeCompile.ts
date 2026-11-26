@@ -1,6 +1,6 @@
 import type { RigPsdImportOptions } from '../../../src/rig/psdImporter'
 import type { PlaceCase } from '../nodeCompileRun'
-import { isAnime25DPlayback } from '@myriad/figure-player'
+import { isAnime25DPlayback } from '@myriad-you/figure-player'
 import { writePsd } from 'ag-psd'
 import { browserRigRaster } from '../../../src/rig/rigRaster'
 import { findingsOf } from './findings'
