@@ -1,8 +1,5 @@
-import type {
-  PreparedLayer,
-  RasterLayer,
-  RigCanvasFrame,
-} from './anime25dImportTypes'
+import type { RasterLayer } from '@myriad/figure-player/internals'
+import type { PreparedLayer, RigCanvasFrame } from './anime25dImportTypes'
 import type { ImportTimer } from './importTiming'
 import { FigureError } from '../errors'
 import { trimRaster } from './anime25dRaster'

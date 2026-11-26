@@ -1,4 +1,4 @@
-import type { MeropeRigManifest } from '../rig/types'
+import type { MeropeRigManifest } from '@myriad/figure-player'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { RigMotionCoordinator } from './coordinator'
@@ -27,7 +27,7 @@ test('summary keeps only semantic fields and drops drivers', () => {
         function: 'attend',
         lifecycle: 'holding',
         source: 'performance',
-        resources: ['face.gaze', 'angleX'],
+        resources: ['face.gaze', 'headYaw'],
         remainingMs: 900,
       },
       {
@@ -49,18 +49,18 @@ test('summary keeps only semantic fields and drops drivers', () => {
     musicPlaying: true,
     music: { energy: 'present', beat: 'downbeat' },
     capabilities: ['dizzy-eye', 'head-body', 'psd-layer'],
-    recentIntents: ['delight', 'angleX'],
+    recentIntents: ['delight', 'headYaw'],
     motionStyle: 'restrained',
     pageVisible: true,
     faceVisible: true,
-    angleX: 0.4,
-    driver: { mouthOpen: 1 },
+    headYaw: 0.4,
+    driver: { jaw: 1 },
   })
   assert.ok(summary)
   const encoded = JSON.stringify(summary)
-  assert.equal(encoded.includes('angleX'), false)
+  assert.equal(encoded.includes('headYaw'), false)
   assert.equal(encoded.includes('driver'), false)
-  assert.equal(encoded.includes('mouthOpen'), false)
+  assert.equal(encoded.includes('jaw'), false)
   assert.equal(summary?.owners.mouth, 'speech')
   assert.equal(summary?.owners.headBody, 'music')
   assert.equal(summary?.acting.function, 'attend')
@@ -77,7 +77,7 @@ test('summary keeps only semantic fields and drops drivers', () => {
   assert.equal(
     sanitizeRigStateSummary({
       owners: {
-        mouth: 'angleX',
+        mouth: 'headYaw',
         expression: {},
         gaze: 'ambient',
         headBody: 'music',
@@ -105,7 +105,7 @@ test('capture samples the runtime once and never includes per-frame driver keys'
   assert.equal(summary.faceVisible, true)
   assert.ok(summary.capabilities.includes('head-body'))
   const keys = Object.keys(summary)
-  assert.equal(keys.includes('angleX'), false)
+  assert.equal(keys.includes('headYaw'), false)
   assert.equal(keys.includes('driver'), false)
   release()
 })

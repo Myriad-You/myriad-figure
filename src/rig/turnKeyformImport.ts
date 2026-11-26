@@ -1,6 +1,5 @@
-import type { Anime25DTurnKey, Anime25DTurnKeyforms, Anime25DTurnLattice } from '../anime25drig/turnKeyforms'
-import { isAnime25DTurnKeyforms } from '../anime25drig/turnKeyforms'
-import { everyItem } from './lists'
+import type { Anime25DTurnKey, Anime25DTurnKeyforms, Anime25DTurnLattice } from '@myriad/figure-player/internals'
+import { everyItem, isAnime25DTurnKeyforms } from '@myriad/figure-player/internals'
 
 /** Keys measured on a decomposition, in its document's pixels. */
 export interface DocumentTurnKeyforms {

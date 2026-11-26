@@ -1,4 +1,4 @@
-import type { RasterLayer } from './anime25dImportTypes'
+import type { RasterLayer } from '@myriad/figure-player/internals'
 
 /** Skin: opaque face or neck. */
 const SKIN_ALPHA = 250

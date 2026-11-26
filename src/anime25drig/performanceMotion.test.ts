@@ -22,11 +22,11 @@ test('keeps semantic face ownership out of the non-manual energy patch', () => {
     motionEnergy: 1.4,
     attention: 0.8,
   })
-  assert.equal(patch.mouthOpen, undefined)
+  assert.equal(patch.jaw, undefined)
   assert.equal(patch.talk, undefined)
-  assert.equal(patch.mouthForm, undefined)
-  assert.equal(patch.brow, undefined)
-  assert.equal(patch.eyeOpenL, undefined)
+  assert.equal(patch.lipCurve, undefined)
+  assert.equal(patch.browLift, undefined)
+  assert.equal(patch.lidL, undefined)
 })
 
 test('directed thinking has a readable face without borrowing angry or speechless artwork', () => {
@@ -77,7 +77,7 @@ test('leaves posture to the per-frame pose offset', () => {
       motionEnergy: 1,
       attention: 1,
     })
-    assert.equal(Object.hasOwn(patch, 'body'), false)
+    assert.equal(Object.hasOwn(patch, 'bodyLean'), false)
     assert.equal(Object.hasOwn(patch, 'armY'), false)
     assert.equal(Object.hasOwn(patch, 'armPos'), false)
   }
@@ -96,7 +96,7 @@ test('carries motionEnergy into secondary motion', () => {
     motionEnergy: 1.4,
     attention: 1,
   })
-  assert.ok((lively.physAmp ?? 0) > (still.physAmp ?? 0))
+  assert.ok((lively.rearHairSway ?? 0) > (still.rearHairSway ?? 0))
   assert.ok((lively.fhAmp ?? 0) > (still.fhAmp ?? 0))
   assert.ok((lively.soft ?? 0) > (still.soft ?? 0))
 })
@@ -109,7 +109,7 @@ test('centers semantic hair energy on the runtime sway defaults', () => {
     attention: 1,
   })
   assert.equal(patch.fhAmp, 1)
-  assert.equal(patch.physAmp, 0.5)
+  assert.equal(patch.rearHairSway, 0.5)
 })
 
 test('restores performance pose without taking speech, face, or gaze ownership', () => {
@@ -124,21 +124,21 @@ test('restores performance pose without taking speech, face, or gaze ownership',
   )
   for (const key of [
     'talk',
-    'mouthOpen',
-    'mouthForm',
-    'eyeOpenL',
-    'eyeOpenR',
-    'eyeX',
-    'eyeY',
-    'angleX',
-    'angleY',
-    'angleZ',
-    'brow',
+    'jaw',
+    'lipCurve',
+    'lidL',
+    'lidR',
+    'gazeX',
+    'gazeY',
+    'headYaw',
+    'headPitch',
+    'headRoll',
+    'browLift',
   ]) {
     assert.equal(Object.hasOwn(patch, key), false)
   }
-  assert.equal(patch.body, 0)
-  assert.equal(performanceRestDriverPatch(null, true).body, 0)
+  assert.equal(patch.bodyLean, 0)
+  assert.equal(performanceRestDriverPatch(null, true).bodyLean, 0)
   assert.equal(performanceRestDriverPatch(null, true).rand, false)
   assert.equal(performanceRestDriverPatch(null, true).thinking, true)
   assert.equal(performanceRestDriverPatch(null, true).idle, true)
@@ -162,8 +162,8 @@ test('keeps active speech channels out of a full base refresh', () => {
   assert.deepEqual(idleSpeechDriverPatch(70, true), {})
   assert.deepEqual(idleSpeechDriverPatch(70, false), {
     talk: false,
-    mouthOpen: 0,
-    mouthForm: 0.07,
+    jaw: 0,
+    lipCurve: 0.07,
     eyeSmile: 0.1125,
   })
 })

@@ -1,15 +1,10 @@
-import type { Anime25DRiggerAnchors } from '../anime25drig/playback'
-import type { RasterLayer } from '../rig/anime25dImportTypes'
+import type { Anime25DRiggerAnchors, RasterLayer } from '@myriad/figure-player/internals'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { resolveAnime25DFaceFrame } from '@myriad/figure-player/internals'
 import { compileAnime25DExpressionLayers } from '../rig/anime25dExpressionCompiler'
 import { rgbaPrincipalAngleDegrees } from '../rig/closedEyeCompensation'
-import {
-  estimateAnime25DMouthAnchor,
-  faceContourAlongEyeLine,
-  placeFaceBitmap,
-  resolveAnime25DFaceFrame,
-} from './faceFrame'
+import { estimateAnime25DMouthAnchor, faceContourAlongEyeLine, placeFaceBitmap } from './faceFrame'
 
 const FACE = { cx: 200, cy: 200, x0: 100, x1: 300, y0: 80, y1: 330 }
 

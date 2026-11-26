@@ -1,5 +1,4 @@
-import type { Anime25DRiggerAnchors } from '../anime25drig/playback'
-import type { RasterLayer } from './anime25dImportTypes'
+import type { Anime25DRiggerAnchors, RasterLayer } from '@myriad/figure-player/internals'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { splitHighCollarOcclusion } from './anime25dCollarCompiler'

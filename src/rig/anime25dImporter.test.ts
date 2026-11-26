@@ -1,11 +1,11 @@
+import type { CharacterAssetProfile } from '@myriad/figure-player/internals'
 import type { Layer, Psd } from 'ag-psd'
-import type { CharacterAssetProfile } from './contract'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { CHARACTER_ASSET_PROFILES } from '@myriad/figure-player/internals'
 import { anime25DBaseRole, isAnime25DDocument, normalizeAnime25DLayerName, prepareAnime25DRigPsd } from './anime25dImporter'
 import { syntheticSeeThroughPsd } from './anime25dImporter.fixture'
 import { gridMesh } from './anime25dSkeletonCompiler'
-import { CHARACTER_ASSET_PROFILES } from './contract'
 
 test('matches Anime2.5DRig normalization without merging numbered hair groups', () => {
   assert.equal(normalizeAnime25DLayerName('eyeclose2_L'), 'eye-close2-l')

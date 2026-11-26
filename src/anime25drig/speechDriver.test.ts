@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { IDENTITY_DRIVER } from './driver'
+import { IDENTITY_DRIVER } from '@myriad/figure-player'
 import { bearingDriverPatch } from './performanceExpression'
 import {
   speechArticulationDriverPatch,
@@ -9,7 +9,7 @@ import {
 
 test('keeps authored energy separate from preview speech', () => {
   assert.deepEqual(speechEnergyDriverPatch(null), {
-    mouthOpen: 0,
+    jaw: 0,
     mouthWide: 0,
     mouthRound: 0,
     mouthNarrow: 0,
@@ -17,7 +17,7 @@ test('keeps authored energy separate from preview speech', () => {
     talk: false,
   })
   assert.deepEqual(speechEnergyDriverPatch(1.4), {
-    mouthOpen: 1,
+    jaw: 1,
     mouthWide: 0,
     mouthRound: 0,
     mouthNarrow: 0,
@@ -25,7 +25,7 @@ test('keeps authored energy separate from preview speech', () => {
     talk: false,
   })
   assert.deepEqual(speechEnergyDriverPatch(Number.NaN), {
-    mouthOpen: 0,
+    jaw: 0,
     mouthWide: 0,
     mouthRound: 0,
     mouthNarrow: 0,
@@ -38,7 +38,7 @@ test('maps authored visemes without enabling random speech', () => {
   assert.deepEqual(
     speechArticulationDriverPatch({ energy: null, viseme: 'rest', amount: 1 }),
     {
-      mouthOpen: 0,
+      jaw: 0,
       mouthWide: 0,
       mouthRound: 0,
       mouthNarrow: 0,
@@ -53,7 +53,7 @@ test('maps authored visemes without enabling random speech', () => {
       amount: 0.8,
     }),
     {
-      mouthOpen: 0.54 * 0.8,
+      jaw: 0.54 * 0.8,
       mouthWide: 0.8,
       mouthRound: 0,
       mouthNarrow: 0,
@@ -68,7 +68,7 @@ test('maps authored visemes without enabling random speech', () => {
       amount: 0.5,
     }),
     {
-      mouthOpen: 0.64 * 0.5,
+      jaw: 0.64 * 0.5,
       mouthWide: 0,
       mouthRound: 0.5,
       mouthNarrow: 0,
@@ -101,18 +101,18 @@ test('speech, singing and musical rest preserve the current negative bearing', (
         viseme,
         amount: 0.8,
       })
-      assert.equal(Object.hasOwn(articulation, 'mouthForm'), false)
+      assert.equal(Object.hasOwn(articulation, 'lipCurve'), false)
       Object.assign(driver, articulation)
-      assert.equal(driver.mouthForm, bearing.mouthForm)
-      assert.equal(driver.browAngSym, bearing.browAngSym)
-      if (viseme === 'open') assert.ok(driver.mouthOpen > 0.5)
-      if (viseme === 'rest') assert.equal(driver.mouthOpen, 0)
+      assert.equal(driver.lipCurve, bearing.lipCurve)
+      assert.equal(driver.browTilt, bearing.browTilt)
+      if (viseme === 'open') assert.ok(driver.jaw > 0.5)
+      if (viseme === 'rest') assert.equal(driver.jaw, 0)
     }
   }
-  driver.mouthForm = 0.3
+  driver.lipCurve = 0.3
   Object.assign(
     driver,
     speechArticulationDriverPatch({ energy: 0.8, viseme: 'open', amount: 1 }),
   )
-  assert.equal(driver.mouthForm, 0.3)
+  assert.equal(driver.lipCurve, 0.3)
 })

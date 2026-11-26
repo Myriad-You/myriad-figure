@@ -1,4 +1,5 @@
-import { formatTemplate } from './rig/formatTemplate'
+import { FigureError as StageError } from '@myriad/figure-player'
+import { formatTemplate } from '@myriad/figure-player/internals'
 
 /**
  * Why the figure could not play or import, in English. The page shows its own
@@ -26,6 +27,10 @@ export const FIGURE_ERROR_TEXT = {
 export type FigureErrorCode = keyof typeof FIGURE_ERROR_TEXT
 export type FigureErrorParams = Record<string, string | number>
 
+/**
+ * The figure's error. What the stage throws (its two codes, both in FIGURE_ERROR_TEXT) is one too:
+ * `error instanceof FigureError` holds for either, with the same `name`, `code` and `params`.
+ */
 export class FigureError extends Error {
   override readonly name = 'FigureError'
 
@@ -34,6 +39,10 @@ export class FigureError extends Error {
     readonly params: FigureErrorParams = {},
   ) {
     super(formatTemplate(FIGURE_ERROR_TEXT[code], params))
+  }
+
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return Function.prototype[Symbol.hasInstance].call(FigureError, value) || value instanceof StageError
   }
 }
 

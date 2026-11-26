@@ -1,7 +1,5 @@
-import type {
-  Anime25DSourceReference,
-  RasterLayer,
-} from './anime25dImportTypes'
+import type { RasterLayer } from '@myriad/figure-player/internals'
+import type { Anime25DSourceReference } from './anime25dImportTypes'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { repairAnime25DPsd } from './psdRepair'

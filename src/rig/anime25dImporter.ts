@@ -1,31 +1,31 @@
+import type { CharacterAssetProfile } from '@myriad/figure-player/internals'
 import type { Psd } from 'ag-psd'
 import type { Anime25DSourceReference } from './anime25dImportTypes'
 import type { ArmVariantReference } from './armVariants'
 import type { AuthoredExpressionReference } from './authoredExpression'
-import type { CharacterAssetProfile } from './contract'
 import type { ImportTimer } from './importTiming'
 import type { MotionExposureFinding } from './motionExposure'
 import type { Anime25DPsdReconciliation } from './psdReconciliation'
 import type { PsdSkeleton } from './skeleton'
 import type { MeropeRigImportSource } from './types'
+import { anime25DBaseRole, CHARACTER_ASSET_PROFILES, MAX_RIG_PARTS, normalizeAnime25DLayerName, resolveAnime25DFaceFrame } from '@myriad/figure-player/internals'
 import { analyzeAnime25DMouthProfile } from '../anime25drig/mouthProfile'
 import { buildAnime25DPlayback, remapRiggerAnchors } from '../anime25drig/playback'
 import { rigger as Rigger } from '../anime25drig/upstream/rigger'
 import { FigureError } from '../errors'
-import { estimateAnime25DMouthAnchor, resolveAnime25DFaceFrame } from '../expressionShapes/faceFrame'
+import { estimateAnime25DMouthAnchor } from '../expressionShapes/faceFrame'
 import { paintAccessoriesFromReference } from './accessoryPaint'
 import { validateAnime25DCharacterLayers } from './anime25dAssetValidation'
 import { packAnime25DAtlas, visibleInAnalysisReference } from './anime25dAtlasCompiler'
 import { splitHighCollarOcclusion } from './anime25dCollarCompiler'
 import { compileAnime25DExpressionLayers } from './anime25dExpressionCompiler'
 import { anime25DImportProfile } from './anime25dImportProfile'
-import { anime25DBaseRole, normalizeAnime25DLayerName } from './anime25dLayerSemantics'
 import { buildAnime25DBonesAndHandles, buildAnime25DLayerSources } from './anime25dSkeletonCompiler'
 import { cutArmVariantLayers } from './armVariants'
 import { addAuthoredExpressionLayers } from './authoredExpression'
 import { compensateSyntheticClosedEyeAngles } from './closedEyeCompensation'
 import { keepClosedEyeLines } from './closedEyeLines'
-import { CHARACTER_ASSET_PROFILES, MAX_RIG_PARTS, RIG_IR_VERSION } from './contract'
+import { RIG_IR_VERSION } from './contract'
 import { revealCrownUnderFace } from './crownUnderFace'
 import { raiseEarwearOverFrontHair } from './earwearOrder'
 import { synthesizeMissingExpressionAccents } from './expressionAccentLayers'
@@ -44,8 +44,9 @@ import { tuckGarmentOffLegsByReference, tuckGarmentOffNeckByReference, tuckLinin
 import { dropTopSkinOverNeck } from './topSkinOverNeck'
 import { splitTrouserLegsIfNeeded } from './trouserLegs'
 
-export { ANIME25D_LAYER_DEPTH, type Anime25DLayerRole } from './anime25d'
 export type { Anime25DSourceReference } from './anime25dImportTypes'
+export { ANIME25D_LAYER_DEPTH } from '@myriad/figure-player/internals'
+export type { Anime25DLayerRole } from '@myriad/figure-player/internals'
 
 export interface PreparedAnime25DRigImport {
   atlas: Blob
@@ -59,10 +60,7 @@ export interface PreparedAnime25DRigImport {
   /** The document and where the playback frame cuts it, for keys measured on the document. */
   documentFrame: { width: number; height: number; x: number; y: number }
 }
-export {
-  anime25DBaseRole,
-  normalizeAnime25DLayerName,
-} from './anime25dLayerSemantics'
+export { anime25DBaseRole, normalizeAnime25DLayerName } from '@myriad/figure-player/internals'
 
 export function isAnime25DDocument(psd: Psd): boolean {
   const names = flattenVisibleLayers(psd.children ?? []).map((layer) =>

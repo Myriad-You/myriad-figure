@@ -1,4 +1,4 @@
-import type { MeropeRigManifest } from './types'
+import type { MeropeRigManifest } from '@myriad/figure-player'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { anime25DFacialVariantsComplete, diagnoseRig, offAnglePortrait } from './diagnostics'

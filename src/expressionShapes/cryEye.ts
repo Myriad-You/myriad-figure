@@ -1,4 +1,5 @@
-import type { RgbColor } from './dizzyEye'
+// The crying eyes the importer draws for a face.
+import type { RgbColor } from '@myriad/figure-player/internals'
 import type { SqueezeEyeSide } from './squeezeEye'
 import { createSqueezeEyeBitmap } from './squeezeEye'
 
@@ -10,15 +11,21 @@ export interface CryEyeSize {
 }
 
 const CRY_EYE_WIDTH_FIT = 1.1
+
 const CRY_EYE_HEIGHT_FIT = 1.64
+
 const CRY_EYE_MIN_WIDTH = 24
+
 const CRY_EYE_MIN_HEIGHT = 32
+
 const CRY_EYE_MAX_WIDTH = 224
+
 const CRY_EYE_MAX_HEIGHT = 288
-const CRY_EYE_MAX_DISPLAY_SCALE = 2.2
 
 const TEAR_OUTLINE = { red: 76, green: 161, blue: 224 }
+
 const TEAR_FILL = { red: 157, green: 220, blue: 250 }
+
 const TEAR_HIGHLIGHT = { red: 239, green: 251, blue: 255 }
 
 type TearNode = readonly [x: number, y: number, radius: number]
@@ -44,20 +51,6 @@ export function cryEyeGeneratedSize(eye: {
       CRY_EYE_MAX_HEIGHT,
     ),
   }
-}
-
-/** Enlarge undersized authored crying eyes without shrinking deliberate art. */
-export function cryEyeDisplayScale(
-  layerWidth: number,
-  eye: { x0: number; x1: number },
-): number {
-  const eyeWidth = eye.x1 - eye.x0
-  if (layerWidth <= 0 || eyeWidth <= 0) return 1
-  return clamp(
-    (eyeWidth * CRY_EYE_WIDTH_FIT) / layerWidth,
-    1,
-    CRY_EYE_MAX_DISPLAY_SCALE,
-  )
 }
 
 export function createCryEyeBitmap(

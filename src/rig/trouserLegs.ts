@@ -1,4 +1,4 @@
-import type { RasterLayer } from './anime25dImportTypes'
+import type { RasterLayer } from '@myriad/figure-player/internals'
 import { trimRaster, uniquePartId } from './anime25dRaster'
 
 /** Alpha above which a pixel is drawn. */

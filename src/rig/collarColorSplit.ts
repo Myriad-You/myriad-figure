@@ -1,4 +1,4 @@
-import type { RasterLayer } from './anime25dImportTypes'
+import type { RasterLayer } from '@myriad/figure-player/internals'
 import type { CollarColorMask, CollarReferenceMask } from './collarCommon'
 import { ALPHA_COMPONENT_THRESHOLD, clamp, COLLAR_REFERENCE_FRONT, COLLAR_REFERENCE_REAR, HIGH_COLLAR_UPPER_FRACTION, rasterAlphaAt, rasterPixelIndex } from './collarCommon'
 

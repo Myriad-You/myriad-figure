@@ -1,4 +1,4 @@
-import type { RasterLayer } from './anime25dImportTypes'
+import type { RasterLayer } from '@myriad/figure-player/internals'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { liftHairShadowOffSkin as liftWith } from './hairShadow'

@@ -2,12 +2,10 @@ import type { PerformanceDirective } from '../performance/types'
 import type { RigMotionPort } from '../rig/motionPort'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { Anime25DIrisRebound, ClosedEyePresentation, IDENTITY_DRIVER } from '@myriad/figure-player'
+import { deriveAnime25DMotionEnvelopeProfile } from '@myriad/figure-player/internals'
 import { realizeAnime25DBehaviorPlan } from '../anime25drig/behaviorRealizer'
-import { ClosedEyePresentation } from '../anime25drig/closedEyePresentation'
-import { IDENTITY_DRIVER } from '../anime25drig/driver'
-import { Anime25DIrisRebound } from '../anime25drig/irisRebound'
 import { Anime25DMotionComposer } from '../anime25drig/motionComposer'
-import { deriveAnime25DMotionEnvelopeProfile } from '../anime25drig/motionEnvelope'
 import { bearingDriverPatch } from '../anime25drig/performanceExpression'
 import { FigureChannel } from '../channel'
 import { dispatchMeropePerformance } from '../events/performanceEvents'
@@ -71,16 +69,16 @@ test('model pose → channel → lifecycle → bearing → production writer →
     assert.deepEqual(runtime.frame().bearing?.pose, performance.plan.baseline!.pose)
     advance(1)
     assert.equal(writes, 1, 'a stable bearing must not restart the pose every render frame')
-    assert.ok(current.angleX < -0.84 && current.torsoTurn > 0.79 && current.bodyLift > 0.69)
+    assert.ok(current.headYaw < -0.84 && current.torsoTurn > 0.79 && current.bodyLift > 0.69)
     assert.ok(current.armRaiseL > 0.89 && Math.abs(current.armRaiseR) < 0.0001)
     deliver({ ...performance, plan: { baseline: {
       ...performance.plan.baseline!, pose: { targets: { torsoRise: -0.7, headTurn: 0.8 }, transitionMs: 250, holdMs: 0 },
     }, cues: [] } })
-    const before = current.angleX
+    const before = current.headYaw
     advance(1 / 120)
-    assert.ok(Math.abs(current.angleX - before) < 0.05, 'revision starts at the actual ongoing pose')
+    assert.ok(Math.abs(current.headYaw - before) < 0.05, 'revision starts at the actual ongoing pose')
     advance(1)
-    assert.ok(current.angleX > 0.79 && current.bodyLift < -0.69)
+    assert.ok(current.headYaw > 0.79 && current.bodyLift < -0.69)
     dispatchMeropeSpeech(figureChannel, { phase: 'cancel', messageId: 'directed-reply', source: 'reply' })
     advance(1)
     assert.ok(Math.abs(current.torsoTurn) < 0.001 && Math.abs(current.bodyLift) < 0.001)

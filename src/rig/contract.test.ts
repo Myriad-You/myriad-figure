@@ -1,23 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {
-  CHARACTER_ASSET_PROFILES,
-  characterAssetProfileOf,
-  MAX_RIG_BONES,
-  MIN_SUPPORTED_RIG_IR_VERSION,
-  RIG_IR_VERSION,
-  RIG_MATRIX_CAPACITY,
-  RIG_PRESENTATION_SLOTS,
-} from './contract'
+import { CHARACTER_ASSET_PROFILES } from '@myriad/figure-player/internals'
+import { characterAssetProfileOf, MIN_SUPPORTED_RIG_IR_VERSION, RIG_IR_VERSION, RIG_PRESENTATION_SLOTS } from './contract'
 
 test('keeps one explicit legacy IR readable while new imports use current IR', () => {
   assert.equal(MIN_SUPPORTED_RIG_IR_VERSION, 2)
   assert.equal(RIG_IR_VERSION, 4)
 })
-
 const CHARACTER_ASSET_REQUIRED_CAPABILITIES =
   CHARACTER_ASSET_PROFILES.bust.rig.requiredCapabilities
-
 test('the two asset profiles version apart and a profile-less manifest is a bust', () => {
   assert.equal(CHARACTER_ASSET_PROFILES.bust.contractVersion, 13)
   assert.equal(CHARACTER_ASSET_PROFILES.fullBody.contractVersion, 1)
@@ -33,7 +24,6 @@ test('the two asset profiles version apart and a profile-less manifest is a bust
     CHARACTER_ASSET_PROFILES.bust.rig.maxRigidArmRotationDegrees,
   )
 })
-
 test('character imports require independent generated expression variants', () => {
   assert.ok(CHARACTER_ASSET_REQUIRED_CAPABILITIES.includes('dizzy-eye-variant'))
   assert.ok(
@@ -76,9 +66,4 @@ test('character imports require independent generated expression variants', () =
   assert.ok(RIG_PRESENTATION_SLOTS.mouth.variants.includes('narrow'))
   assert.ok(RIG_PRESENTATION_SLOTS.mouth.variants.includes('maniac'))
   assert.ok(RIG_PRESENTATION_SLOTS.mouth.variants.includes('silly'))
-})
-
-test('GPU capacity covers every manifest bone accepted by the contract', () => {
-  assert.equal(MAX_RIG_BONES, 48)
-  assert.ok(RIG_MATRIX_CAPACITY >= MAX_RIG_BONES)
 })

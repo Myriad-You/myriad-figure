@@ -1,7 +1,7 @@
 import type { StylizedExpressionTargets } from './expressionRegistry'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ANIME25D_LAYER_DESCRIPTORS } from '../rig/anime25d'
+import { ANIME25D_LAYER_DESCRIPTORS } from '@myriad/figure-player/internals'
 import {
   resolveStylizedExpressionTargets,
   STYLIZED_EXPRESSION_DEFINITIONS,

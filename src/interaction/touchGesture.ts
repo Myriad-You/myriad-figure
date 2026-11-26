@@ -1,4 +1,4 @@
-import type { Anime25DTouchRegion } from '../anime25drig/touchVisibility'
+import type { Anime25DTouchRegion } from '@myriad/figure-player'
 
 /** Pointer evidence only */
 export type TouchRegion = Anime25DTouchRegion

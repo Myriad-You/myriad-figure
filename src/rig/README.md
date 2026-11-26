@@ -152,7 +152,7 @@ colour, gradient, rim, and catchlights, and a generated disc is used only when
 a portrait ships no separate iris layer at all.
 Import seeds the two irides at opposite offsets, and the runtime drifts each one
 on its own keyframe track, so the eyes lose focus separately.
-That divergence is impossible through the shared `eyeX`/`eyeY` gaze, which the
+That divergence is impossible through the shared `gazeX`/`gazeY` gaze, which the
 expression deliberately never touches.
 Import measures how far an iris can move before it reaches the drawn rim, spends
 a fixed share of that room on the resting divergence, and leaves the rest to the

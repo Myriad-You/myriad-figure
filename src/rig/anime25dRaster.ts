@@ -1,4 +1,4 @@
-import type { RasterLayer } from './anime25dImportTypes'
+import type { RasterLayer } from '@myriad/figure-player/internals'
 import type { RigRect } from './types'
 
 /** The box of what is drawn (alpha above 8): its first and last rows, then in the rows between only the pixels outside the columns already found. */

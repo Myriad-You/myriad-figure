@@ -1,4 +1,4 @@
-import type { RasterLayer } from './anime25dImportTypes'
+import type { RasterLayer } from '@myriad/figure-player/internals'
 import { components } from './psdRepairMasks'
 
 /** Drawn: a pixel of the art. */

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { RIG_OUTFIT_TOPOLOGIES } from '@myriad/figure-player/internals'
 import { createOutfitProfile, inferOutfitProfileFromPartIds } from './outfit'
-import { RIG_OUTFIT_TOPOLOGIES } from './types'
 
 test('owns a stable canonical topology order', () => {
   assert.deepEqual(RIG_OUTFIT_TOPOLOGIES, [

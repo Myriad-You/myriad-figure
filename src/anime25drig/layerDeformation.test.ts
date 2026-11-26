@@ -1,4 +1,4 @@
-import type { Anime25DPlaybackLayer } from './types'
+import type { Anime25DPlaybackLayer } from '@myriad/figure-player/internals'
 import type {
   UpstreamRuntimeExpression,
   UpstreamRuntimeFrame,
@@ -6,13 +6,8 @@ import type {
 } from './upstream/types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { IDENTITY_DRIVER } from './driver'
-import {
-  bindAnime25DUpstreamFeature,
-  deformAnime25DUpstreamFeaturePoint,
-  resolveAnime25DUpstreamFeature,
-} from './layerDeformation'
-import { writeAnime25DLayerGlobalTransform } from './layerTransform'
+import { IDENTITY_DRIVER } from '@myriad/figure-player'
+import { bindAnime25DUpstreamFeature, deformAnime25DUpstreamFeaturePoint, resolveAnime25DUpstreamFeature, writeAnime25DLayerGlobalTransform } from '@myriad/figure-player/internals'
 import { deformUpstreamRuntimeLayer } from './upstream/runtime'
 
 const FRAME: UpstreamRuntimeFrame = {
@@ -130,7 +125,7 @@ test('resolver excludes Myriad replacement expressions from the upstream stage',
 
 test('binding holds the live driver reference without per-frame reconstruction', () => {
   const source = featureLayers()[0]
-  const expression = runtimeExpression({})
+  const expression = driverOf(runtimeExpression({}))
   const binding = bindAnime25DUpstreamFeature(
     source,
     FRAME.anchors.eyeL,
@@ -139,8 +134,8 @@ test('binding holds the live driver reference without per-frame reconstruction',
   )!
   assert.equal(binding.kind, 'eye-open-iris')
   assert.equal(binding.expression, expression)
-  expression.eyeX = 0.73
-  assert.equal(binding.expression.eyeX, 0.73)
+  expression.gazeX = 0.73
+  assert.equal(binding.expression.gazeX, 0.73)
 })
 
 /**
@@ -161,7 +156,7 @@ test('a closing lid is hinged at the corners: they stay, the lashes ride down wh
   const middle = (eye.x0 + eye.x1) / 2
   const fixture = layer('eyelash', 'eyeOpen', 'L', eye.x0 - 8, eye.y0 - 10, eye.x1 - eye.x0 + 16, eye.y1 - eye.y0 + 12, 1.3)
   const at = (x: number, y: number, open: number) => {
-    const binding = bindAnime25DUpstreamFeature(fixture, eye, FRAME.faceScale, runtimeExpression({ eyeOpenL: open, eyeCY: 0, eyeCAng: 0, eyeScaleL: 1 }))!
+    const binding = bindAnime25DUpstreamFeature(fixture, eye, FRAME.faceScale, driverOf(runtimeExpression({ eyeOpenL: open, eyeCY: 0, eyeCAng: 0, eyeScaleL: 1 })))!
     const point = { x, y }
     deformAnime25DUpstreamFeaturePoint(point, binding)
     return point
@@ -245,7 +240,7 @@ function localFeatureVertices(
     source,
     eye,
     FRAME.faceScale,
-    expression,
+    driverOf(expression),
   )!
   const point = { x: 0, y: 0 }
   for (let index = 0; index < output.length; index += 2) {
@@ -272,8 +267,8 @@ function composePlayerTransforms(
       neckPivotX: FRAME.neckPivot.cx,
       neckPivotY: FRAME.neckPivot.cy,
       faceScale: FRAME.faceScale,
-      angleX: expression.angleX,
-      angleY: expression.angleY,
+      headYaw: expression.angleX,
+      headPitch: expression.angleY,
       depthOffset: source.depth - 1,
       faceCenterY: FRAME.faceCenter.y,
       specialOffsetY: 0,
@@ -320,7 +315,7 @@ function runtimeExpression(
   overrides: Partial<UpstreamRuntimeExpression>,
 ): UpstreamRuntimeExpression {
   return {
-    ...IDENTITY_DRIVER,
+    ...upstreamOf(IDENTITY_DRIVER),
     eyeOpenL: 0.37,
     eyeOpenR: 0.71,
     eyeX: -0.43,
@@ -376,7 +371,7 @@ test('a smiling closed eye bows up into ^, most at its middle', () => {
   const closed = { role: 'eye-close', fade: 'eyeClose', side: 'L', x: 70, y: 98, w: 45, h: 10 } as Pick<
     Anime25DPlaybackLayer, 'fade' | 'h' | 'role' | 'side' | 'w' | 'x' | 'y'>
   const at = (x: number, eyeSmile: number) => {
-    const feature = bindAnime25DUpstreamFeature(closed, eye, 1, { ...IDENTITY_DRIVER, eyeOpenL: 0, eyeSmile })!
+    const feature = bindAnime25DUpstreamFeature(closed, eye, 1, { ...IDENTITY_DRIVER, lidL: 0, eyeSmile })!
     const point = { x, y: eye.closeY }
     deformAnime25DUpstreamFeaturePoint(point, feature)
     return point.y
@@ -408,3 +403,34 @@ test('wide eyes lift the upper lid and tighten the iris', () => {
   const rim = (wide: number) => move('irides', eye.icx + 10, eye.icy, wide).x - eye.icx
   assert.ok(rim(1) < rim(0), 'the iris tightens')
 })
+
+/** The reference runtime's own names for the driver fields it reads under other names. */
+const UPSTREAM_NAMES: Readonly<Record<string, string>> = {
+  headYaw: 'angleX',
+  headPitch: 'angleY',
+  headRoll: 'angleZ',
+  lidL: 'eyeOpenL',
+  lidR: 'eyeOpenR',
+  gazeX: 'eyeX',
+  gazeY: 'eyeY',
+  jaw: 'mouthOpen',
+  lipCurve: 'mouthForm',
+  browLift: 'brow',
+  browTiltL: 'browAngL',
+  browTiltR: 'browAngR',
+  browTilt: 'browAngSym',
+  bodyLean: 'body',
+  torsoFollow: 'bodyYaw',
+  rearHairSway: 'physAmp',
+}
+const DRIVER_NAMES: Readonly<Record<string, string>> = Object.fromEntries(Object.entries(UPSTREAM_NAMES).map(([field, name]) => [name, field]))
+
+/** A driver under the reference runtime's names. */
+function upstreamOf(driver: object): UpstreamRuntimeExpression {
+  return Object.fromEntries(Object.entries(driver).map(([key, value]) => [UPSTREAM_NAMES[key] ?? key, value])) as unknown as UpstreamRuntimeExpression
+}
+
+/** The reference runtime's expression under the driver's names, for the stage's own functions. */
+function driverOf(expression: UpstreamRuntimeExpression): typeof IDENTITY_DRIVER & UpstreamRuntimeExpression {
+  return Object.fromEntries(Object.entries(expression).map(([key, value]) => [DRIVER_NAMES[key] ?? key, value])) as unknown as typeof IDENTITY_DRIVER & UpstreamRuntimeExpression
+}

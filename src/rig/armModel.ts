@@ -1,5 +1,4 @@
-import type { Anime25DArmModel, Anime25DVec3 } from '../anime25drig/types'
-import type { EyeSide } from './anime25dImportTypes'
+import type { Anime25DArmModel, Anime25DVec3, EyeSide } from '@myriad/figure-player/internals'
 import type { ArmCuffReading } from './armCuff'
 import type { P2 } from './armRaster'
 import type { ImportTimer } from './importTiming'

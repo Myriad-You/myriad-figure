@@ -1,4 +1,4 @@
-import type { EyeSide, RasterLayer } from './anime25dImportTypes'
+import type { EyeSide, RasterLayer } from '@myriad/figure-player/internals'
 
 /**
  * What a fading part uncovers. A decomposed portrait composites back to the

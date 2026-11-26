@@ -1,10 +1,9 @@
-import type { Anime25DRiggerAnchors } from '../anime25drig/playback'
-import type { Anime25DFaceFrame } from '../expressionShapes/faceFrame'
-import type { MouthExpressionKind } from '../expressionShapes/mouthExpression'
-import type { RasterLayer } from './anime25dImportTypes'
+import type { Anime25DFaceFrame, Anime25DRiggerAnchors, MouthExpressionKind, RasterLayer } from '@myriad/figure-player/internals'
+import { detectPaintedLips, sampleMouthExpressionPalette } from '@myriad/figure-player/internals'
 import { placeFaceBitmap } from '../expressionShapes/faceFrame'
-import { createLipMouthBitmap, detectPaintedLips, LIP_MOUTH_KINDS, lipMouthSize } from '../expressionShapes/lipMouth'
-import { createManiacMouthShadowBitmap, createMouthExpressionBitmap, mouthExpressionGeneratedSizes, sampleMouthExpressionPalette } from '../expressionShapes/mouthExpression'
+import { createLipMouthBitmap, LIP_MOUTH_KINDS, lipMouthSize } from '../expressionShapes/lipMouth'
+import { createManiacMouthShadowBitmap } from '../expressionShapes/maniacMouth'
+import { createMouthExpressionBitmap, mouthExpressionGeneratedSizes } from '../expressionShapes/mouthExpression'
 import { uniquePartId } from './anime25dRaster'
 
 export function synthesizeMissingMouthExpressions(

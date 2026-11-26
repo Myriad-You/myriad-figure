@@ -1,12 +1,8 @@
-import type { Anime25DRiggerAnchors } from '../anime25drig/playback'
-import type { Anime25DEyeAnchor } from '../anime25drig/types'
-import type { Anime25DFaceFrame } from '../expressionShapes/faceFrame'
-import type { RasterLayer } from './anime25dImportTypes'
-import { sampleDizzyEyeTint } from '../expressionShapes/dizzyEye'
+import type { Anime25DEyeAnchor, Anime25DFaceFrame, Anime25DRiggerAnchors, RasterLayer } from '@myriad/figure-player/internals'
+import { sampleDizzyEyeTint, sampleMouthExpressionPalette } from '@myriad/figure-player/internals'
 import { createAngerMarkBitmap, createSpeechlessSweatBitmap, expressionSymbolGeneratedSizes } from '../expressionShapes/expressionSymbols'
 import { faceContourAlongEyeLine, faceFramePoint, placeFaceBitmap } from '../expressionShapes/faceFrame'
 import { createLovestruckDroolBitmap, createLovestruckFaceEffectBitmap, createLovestruckHeartBitmap, LOVESTRUCK_CHEEK_ROW, lovestruckDroolGeneratedSize, lovestruckFaceEffectGeneratedSize, lovestruckHeartGeneratedSize } from '../expressionShapes/lovestruckExpression'
-import { sampleMouthExpressionPalette } from '../expressionShapes/mouthExpression'
 import { uniquePartId } from './anime25dRaster'
 
 export function synthesizeMissingLovestruckEffects(

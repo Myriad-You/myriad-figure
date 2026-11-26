@@ -1,16 +1,10 @@
-import type { Anime25DLayerRole } from '../rig/anime25d'
-import type {
-  Anime25DArmVariant,
-  Anime25DEyeAnchor,
-  Anime25DFade,
-  Anime25DMouthProfile,
-  Anime25DPlayback,
-  Anime25DPlaybackAnchors,
-  Anime25DPlaybackLayer,
-} from './types'
+// Building a playback package from imported layers: what the stage draws, assembled by the rig tools.
+import type { Anime25DPlayback } from '@myriad/figure-player'
+import type { Anime25DArmVariant, Anime25DEyeAnchor, Anime25DFade, Anime25DLayerRole, Anime25DMouthProfile, Anime25DPlaybackAnchors, Anime25DPlaybackLayer, Anime25DRiggerAnchors } from '@myriad/figure-player/internals'
+import { ANIME25D_LAYER_DEPTH } from '@myriad/figure-player/internals'
 import { FigureError } from '../errors'
-import { ANIME25D_LAYER_DEPTH, anime25DLayerFade } from '../rig/anime25d'
-import { deriveGeometryChestProfile } from './chestPhysics'
+import { anime25DLayerFade } from '../rig/anime25d'
+import { deriveGeometryChestProfile } from './chestField'
 import { deriveAnime25DShellProfile } from './shellProfile'
 import { anime25DPlaybackSource } from './types'
 
@@ -24,32 +18,6 @@ export interface Anime25DPlaybackBuildLayer {
   strands: Array<{ x: number; rootY: number; tipY: number }>
   synthetic?: boolean
   armVariant?: Anime25DArmVariant
-}
-
-export interface Anime25DRiggerAnchors {
-  face: {
-    cx: number
-    cy: number
-    x0: number
-    x1: number
-    y0: number
-    y1: number
-  }
-  eyeL?: Anime25DEyeAnchor
-  eyeR?: Anime25DEyeAnchor
-  mouth: {
-    x0: number
-    x1: number
-    y0: number
-    y1: number
-    cx: number
-    cy: number
-  }
-  neckPivot: { cx: number; cy: number }
-  neckTop: number
-  neckBottom: number
-  bodyPivot: { cx: number; cy: number }
-  faceScale: number
 }
 
 export interface Anime25DPlaybackBuildInput {

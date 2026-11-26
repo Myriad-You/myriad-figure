@@ -46,7 +46,7 @@ export class ThinkingMotionController {
   sample(
     timeSeconds: number,
     enabled: boolean,
-    baseGaze = { eyeX: 0, eyeY: 0 },
+    baseGaze = { gazeX: 0, gazeY: 0 },
   ): Readonly<ThinkingMotionPose> {
     const now = finiteTime(timeSeconds)
     if (!this.initialized) {
@@ -89,7 +89,7 @@ export class ThinkingMotionController {
 
   private beginThoughtShift(
     now: number,
-    baseGaze: { eyeX: number; eyeY: number },
+    baseGaze: { gazeX: number; gazeY: number },
   ): void {
     const returning = this.checking
     this.checking = !returning && now >= this.nextCheckAt
@@ -107,8 +107,8 @@ export class ThinkingMotionController {
       angleZ: moveHead ? -this.randomRange(0.035, 0.065) : this.output.angleZ,
       // A check-in cancels the authored gaze bias rather than merely zeroing
       // this overlay (which would leave the character looking off-screen).
-      eyeX: this.checking ? -baseGaze.eyeX : -this.randomRange(0.16, 0.24),
-      eyeY: this.checking ? -baseGaze.eyeY : this.randomRange(-0.06, 0.04),
+      eyeX: this.checking ? -baseGaze.gazeX : -this.randomRange(0.16, 0.24),
+      eyeY: this.checking ? -baseGaze.gazeY : this.randomRange(-0.06, 0.04),
       brow: moveFace ? this.randomRange(-0.025, 0.055) : this.output.brow,
       mouthCY: moveFace ? this.randomRange(-0.025, 0.035) : this.output.mouthCY,
       mouthCAng: moveFace

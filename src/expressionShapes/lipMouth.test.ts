@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createLipMouthBitmap, detectPaintedLips, LIP_MOUTH_KINDS, lipMouthSize } from './lipMouth'
+import { detectPaintedLips } from '@myriad/figure-player/internals'
+import { createLipMouthBitmap, LIP_MOUTH_KINDS, lipMouthSize } from './lipMouth'
 
 function mouth(width: number, height: number, paint: (x: number, y: number) => readonly [number, number, number] | null) {
   const data = new Uint8ClampedArray(width * height * 4)
@@ -12,7 +13,6 @@ function mouth(width: number, height: number, paint: (x: number, y: number) => r
   }
   return { width, height, data }
 }
-
 // A made-up smile: red lips around a band of teeth.
 const lipstick = mouth(60, 30, (x, y) => {
   const u = (x - 30) / 30
@@ -20,17 +20,6 @@ const lipstick = mouth(60, 30, (x, y) => {
   if (u * u + v * v > 1) return null
   return Math.abs(v) < 0.3 ? [238, 232, 230] : [170, 60, 80]
 })
-// A cel mouth: one thin pale stroke.
-const line = mouth(60, 12, (_x, y) => (y >= 5 && y <= 6 ? [220, 170, 170] : null))
-
-test('a painted mouth with lips is told apart from a cel line', () => {
-  const lips = detectPaintedLips(lipstick)
-  assert.ok(lips)
-  assert.ok(lips.lips.red > 150 && lips.lips.green < 90)
-  assert.ok(lips.teeth.red > 220 && lips.teeth.green > 220)
-  assert.equal(detectPaintedLips(line), null)
-})
-
 test('lip mouths are painted in the portrait\'s lips and teeth, with no dark cel rim', () => {
   const painted = detectPaintedLips(lipstick)!
   for (const kind of ['open', 'wide', 'round', 'narrow'] as const) {
@@ -56,7 +45,6 @@ test('lip mouths are painted in the portrait\'s lips and teeth, with no dark cel
     if (kind !== 'narrow') assert.ok(teethLike > 0, `${kind}: teeth`)
   }
 })
-
 test('a face with painted lips gets its crying, laughing and tongue-out mouths painted in them too', () => {
   const painted = { lips: { red: 176, green: 62, blue: 92 }, teeth: { red: 246, green: 240, blue: 238 } }
   for (const kind of ['cry', 'maniac', 'silly'] as const) {

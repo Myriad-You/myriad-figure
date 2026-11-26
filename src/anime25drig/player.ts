@@ -1,48 +1,33 @@
+import type { Anime25DArmAim, Anime25DArmSide, Anime25DDebugSnapshot, Anime25DDriver, Anime25DDriving, Anime25DInspection, Anime25DMotionEnvelopeProfile, Anime25DPlayback, Anime25DPose, MeropeRigManifest, VisibleTouchHit } from '@myriad/figure-player'
+
+import type { PoseCorrection, PoseCorrectionStageSource } from '@myriad/figure-player/workbench'
 import type { PresentedTouchReaction } from '../interaction/touchReaction'
+
 import type { MotionChannelPolicy } from '../motion/policy'
 import type { PerformanceBaseline } from '../performance/types'
-import type { MeropeRigManifest } from '../rig/types'
 import type { MusicMotionSignal } from '../singing/musicSignal'
 import type { SpeechProsodyPlan } from '../speech/prosody'
 import type { FigureTrace } from '../trace'
-import type { Anime25DArmAim } from './arm3dReach'
-import type { Anime25DArmSide } from './armVariantPresenter'
-
 import type { Anime25DMotionUnit } from './behaviorMotion'
-
-import type { Anime25DDriver } from './driver'
-import type { Anime25DDriving } from './driving'
 import type { MotionComposerInput, MotionFigure } from './motionComposer'
-import type { Anime25DMotionEnvelopeProfile } from './motionEnvelope'
+import { Anime25DIrisRebound, Anime25DStage, ClosedEyePresentation, IDENTITY_DRIVER } from '@myriad/figure-player'
 
-import type { Anime25DDebugSnapshot } from './playerDebug'
-import type { Anime25DInspection } from './playerInspection'
-import type { Anime25DPose } from './pose'
-import type { PoseCorrection } from './poseCorrections'
-import type { PoseCorrectionStageSource } from './poseCorrectionStage'
-import type { VisibleTouchHit } from './touchVisibility'
-import type { Anime25DPlayback } from './types'
+import { sanitizeDriverPatch } from '@myriad/figure-player/internals'
 import { IDLE_MOTION_POLICY } from '../motion/policy'
 import { boundRigCapabilities } from '../motion/rigStateSummary'
+
 import { NO_TRACE } from '../trace'
 
-import { ClosedEyePresentation } from './closedEyePresentation'
-
-import { IDENTITY_DRIVER, sanitizeDriverPatch } from './driver'
 import { ThinkingExpressionOwnership } from './expressionPresets'
 
-import { Anime25DIrisRebound } from './irisRebound'
-
 import { Anime25DMotionComposer, measureMotionFigure } from './motionComposer'
-
 import {
   bearingDriverPatch,
 } from './performanceExpression'
 import { baselineDriverPatch, restEnergyDriverPatch } from './performanceMotion'
-import { Anime25DStage } from './stage'
 
-export type { Anime25DDebugSnapshot } from './playerDebug'
-export type { Anime25DInspection, Anime25DLayerView, Anime25DPoint } from './playerInspection'
+export type { Anime25DDebugSnapshot } from '@myriad/figure-player'
+export type { Anime25DInspection, Anime25DLayerView, Anime25DPoint } from '@myriad/figure-player'
 
 /** The stage (stage.ts) driven by her performance: speech, song, directed poses, behaviors and touch. */
 export class Anime25DPlayer {

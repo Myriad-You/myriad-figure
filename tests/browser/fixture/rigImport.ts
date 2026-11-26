@@ -1,5 +1,4 @@
-import type { CollarClipMesh } from '../../../src/anime25drig/collarRuntime'
-import type { Anime25DGpuLayer } from '../../../src/anime25drig/layerGpuBinding'
+import type { Anime25DGpuLayer, CollarClipMesh } from '@myriad/figure-player/internals'
 import { writePsd } from 'ag-psd'
 import { realizeAnime25DBehaviorPlan } from '../../../src/anime25drig/behaviorRealizer'
 import { Anime25DPlayer } from '../../../src/anime25drig/player'
@@ -287,7 +286,7 @@ async function touchPicking(kind: string) {
     await player.loadAtlas(url)
     player.resize(256, 300, 1)
     for (const direction of [-0.7, 0, 0.7]) {
-      player.setTarget({ angleX: direction, angleY: direction * 0.4, idle: false, blink: false })
+      player.setTarget({ headYaw: direction, headPitch: direction * 0.4, idle: false, blink: false })
       for (let i = 0; i < 45; i++) player.tick(1 / 60)
       const rect = canvas.getBoundingClientRect()
       const pixels = new Uint8Array(canvas.width * canvas.height * 4)
@@ -437,7 +436,7 @@ async function directorReplay(parallel = false, race = false, touchCase = '', fp
       if (!v) player.clearSpeechText()
       player.setTarget({
         talk: v,
-        mouthOpen: 0,
+        jaw: 0,
         mouthWide: 0,
         mouthRound: 0,
         mouthNarrow: 0,
@@ -653,16 +652,16 @@ async function directorReplay(parallel = false, race = false, touchCase = '', fp
         touchForm: runtime.touch.current()?.behaviors[0].form.id ?? null,
         presentedTouch: player.getPresentedTouch()?.reaction ?? null,
         touchApplied,
-        body: pose.body,
-        eyeX: pose.eyeX,
-        angleX: pose.angleX,
-        angleY: pose.angleY,
-        angleZ: pose.angleZ,
+        bodyLean: pose.bodyLean,
+        gazeX: pose.gazeX,
+        headYaw: pose.headYaw,
+        headPitch: pose.headPitch,
+        headRoll: pose.headRoll,
         maniac: pose.maniac,
-        mouthOpen: pose.mouthOpen,
-        mouthForm: pose.mouthForm,
-        browAngSym: pose.browAngSym,
-        eyeOpenL: pose.eyeOpenL,
+        jaw: pose.jaw,
+        lipCurve: pose.lipCurve,
+        browTilt: pose.browTilt,
+        lidL: pose.lidL,
         owners: frame.snapshot.owners,
         active: frame.behaviors.map((b) => `${b.form.id}:${b.phase}`),
         musicBehaviors: frame.behaviors.filter((b) => b.source === 'music')
@@ -826,20 +825,20 @@ async function bodyReplay(kind: string, fps: number) {
     // Reverse before settling, stop at the current pose, then reverse again.
     // The driver path is deliberate here; this does not claim director coverage.
     const targets = [
-      { angleX: 0.7, angleY: -0.4, angleZ: 0.25 },
-      { angleX: -0.7, angleY: 0.4, angleZ: -0.25 },
+      { headYaw: 0.7, headPitch: -0.4, headRoll: 0.25 },
+      { headYaw: -0.7, headPitch: 0.4, headRoll: -0.25 },
       null,
-      { angleX: 0.45, angleY: -0.3, angleZ: 0.15 },
-      { angleX: 0, angleY: 0, angleZ: 0 },
+      { headYaw: 0.45, headPitch: -0.3, headRoll: 0.15 },
+      { headYaw: 0, headPitch: 0, headRoll: 0 },
     ]
     for (const target of targets) {
       const before = geometry()
       const current = player.getCurrent()
       player.setTarget(
         target ?? {
-          angleX: current.angleX,
-          angleY: current.angleY,
-          angleZ: current.angleZ,
+          headYaw: current.headYaw,
+          headPitch: current.headPitch,
+          headRoll: current.headRoll,
         },
       )
       const after = geometry()
@@ -990,14 +989,14 @@ async function eyeRuntime() {
       ordinaryBlink = Math.max(ordinaryBlink, opacity('eye-close', 'L'))
       alternateBlink = Math.max(alternateBlink, opacity('eye-close2', 'L'))
     }
-    player.setTarget({ eyeOpenL: 0 })
+    player.setTarget({ lidL: 0 })
     advance()
     const wink = {
       left: opacity('eye-close2', 'L'),
       ordinaryLeft: opacity('eye-close', 'L'),
       right: opacity('eye-close', 'R'),
     }
-    player.setTarget({ eyeOpenR: 0 })
+    player.setTarget({ lidR: 0 })
     advance()
     const both = {
       left: opacity('eye-close2', 'L'),
@@ -1006,14 +1005,14 @@ async function eyeRuntime() {
     player.setTarget({ eyeCry: 1 })
     advance()
     const cry = opacity('eye-close2', 'L')
-    player.setTarget({ eyeOpenL: 1, eyeOpenR: 1, eyeCry: 0, blink: true })
+    player.setTarget({ lidL: 1, lidR: 1, eyeCry: 0, blink: true })
     advance()
     player.blinkNow()
     let rebound = 0
     let reboundAreaError = 0
     for (let i = 0; i < 90; i++) {
       player.tick(1 / 60)
-      if (player.getCurrent().eyeOpenL > 0.6)
+      if (player.getCurrent().lidL > 0.6)
         rebound = Math.max(rebound, Math.abs(state.irisRebound.x - 1))
       reboundAreaError = Math.max(
         reboundAreaError,
@@ -1176,14 +1175,14 @@ async function eyePixels(fps: number) {
   ) => {
     phase = name
     player.setTarget(target)
-    let previousOpen = player.getCurrent().eyeOpenL
+    let previousOpen = player.getCurrent().lidL
     const direction =
-      target.eyeOpenL === undefined
+      target.lidL === undefined
         ? 0
-        : Math.sign(target.eyeOpenL - previousOpen)
+        : Math.sign(target.lidL - previousOpen)
     for (let frame = 0; frame < fps; frame++) {
       player.tick(1 / fps)
-      const open = player.getCurrent().eyeOpenL
+      const open = player.getCurrent().lidL
       if (direction && (open - previousOpen) * direction < -1e-6) reversals++
       previousOpen = open
       sample()
@@ -1206,15 +1205,15 @@ async function eyePixels(fps: number) {
       blink: false,
       phys: false,
     })
-    advance('open', { eyeOpenL: 1, eyeOpenR: 1 })
+    advance('open', { lidL: 1, lidR: 1 })
     player.blinkNow()
     advance('blink', {})
-    advance('wink', { eyeOpenL: 0 })
-    advance('closed', { eyeOpenR: 0 })
+    advance('wink', { lidL: 0 })
+    advance('closed', { lidR: 0 })
     advance('special', { eyeCry: 1 })
-    advance('reopen', { eyeCry: 0, eyeOpenL: 1, eyeOpenR: 1 })
-    advance('turn', { angleX: 0.6, angleY: -0.3, eyeX: 1 })
-    advance('reverse', { angleX: -0.6, angleY: 0.3, eyeX: -1 })
+    advance('reopen', { eyeCry: 0, lidL: 1, lidR: 1 })
+    advance('turn', { headYaw: 0.6, headPitch: -0.3, gazeX: 1 })
+    advance('reverse', { headYaw: -0.6, headPitch: 0.3, gazeX: -1 })
     return {
       endpoints,
       outsideMask,

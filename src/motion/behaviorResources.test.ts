@@ -74,7 +74,7 @@ test('every cue declares the fine-grained resources its pose actually writes', (
     if (expression.angleY || expression.angleZ) {
       assert.equal(resources.has('body.head'), true, `${intent}: head`)
     }
-    if (driver.body) {
+    if (driver.bodyLean) {
       assert.equal(resources.has('body.torso'), true, `${intent}: torso`)
     }
     if (driver.armY || driver.armPos) {

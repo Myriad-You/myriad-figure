@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@myriad/figure-player':
+        specifier: github:Myriad-You/myriad-figure-player#08a9aae9d9c8c648d7194338da4204c2fce8b1cd
+        version: https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/08a9aae9d9c8c648d7194338da4204c2fce8b1cd
       ag-psd:
         specifier: ^31.0.3
         version: 31.0.3
@@ -578,6 +581,10 @@ packages:
 
   '@keyv/serialize@1.1.1':
     resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
+
+  '@myriad/figure-player@https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/08a9aae9d9c8c648d7194338da4204c2fce8b1cd':
+    resolution: {gitHosted: true, integrity: sha512-Pbybf/hPDCu2mw5aiiTGCAqISUarvILf42CslKHVOwb/npkztkJqFzkKo4qbbfYBm/1d5Yn69D5cege82BMlJg==, tarball: https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/08a9aae9d9c8c648d7194338da4204c2fce8b1cd}
+    version: 0.0.0
 
   '@ota-meshi/ast-token-store@0.3.0':
     resolution: {integrity: sha512-XRO0zi2NIUKq2lUk3T1ecFSld1fMWRKE6naRFGkgkdeosx7IslyUKNv5Dcb5PJTja9tHJoFu0v/7yEpAkrkrTg==}
@@ -2420,6 +2427,8 @@ snapshots:
       keyv: 5.6.0
 
   '@keyv/serialize@1.1.1': {}
+
+  '@myriad/figure-player@https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/08a9aae9d9c8c648d7194338da4204c2fce8b1cd': {}
 
   '@ota-meshi/ast-token-store@0.3.0': {}
 

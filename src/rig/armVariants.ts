@@ -1,8 +1,9 @@
-import type { Anime25DArmLift } from '../anime25drig/types'
-import type { Anime25DSourceReference, EyeSide, RasterLayer } from './anime25dImportTypes'
+import type { Anime25DArmLift, ArmVariantGesture, EyeSide, RasterLayer } from '@myriad/figure-player/internals'
+import type { Anime25DSourceReference } from './anime25dImportTypes'
 import type { ArmCuffReading } from './armCuff'
 import type { ImportTimer } from './importTiming'
 import type { PsdSkeleton } from './skeleton'
+import { ARM_VARIANT_GESTURES } from '@myriad/figure-player/internals'
 import { trimRaster, uniquePartId } from './anime25dRaster'
 import { blurClamped, resampleRgb } from './armCutFilters'
 import { measureArmModel, placeArmModel } from './armModel'
@@ -17,8 +18,8 @@ import { components, morphSquare } from './armRaster'
  * model's joints on both pictures the arm is also measured as a 3D arm
  * (armModel), which the layer then only textures.
  */
-export const ARM_VARIANT_GESTURES = ['wave', 'point', 'chest', 'chin'] as const
-export type ArmVariantGesture = (typeof ARM_VARIANT_GESTURES)[number]
+export { ARM_VARIANT_GESTURES }
+export type { ArmVariantGesture }
 
 /** A raised hand moves whole; an arm across the body stays on its shoulder. */
 export const ARM_VARIANT_LIFT = {

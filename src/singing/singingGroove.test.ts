@@ -1,9 +1,11 @@
+import type { PoseKey } from '../anime25drig/poseArbitration'
 import type { BehaviorQuality } from '../motion/behavior'
 import type { MusicMode, MusicMotionSignal } from './musicSignal'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { IDENTITY_DRIVER } from '../anime25drig/driver'
-import { PoseResponseController } from '../anime25drig/poseResponse'
+import { IDENTITY_DRIVER } from '@myriad/figure-player'
+import { PoseResponseController } from '@myriad/figure-player/internals'
+import { POSE_KEY_DRIVER_FIELDS } from '../anime25drig/poseArbitration'
 import { MUSIC_QUALITY } from '../motion/musicReaction'
 import { musicSignalAt } from './musicSignal.test-support'
 import {
@@ -45,10 +47,15 @@ function play(
         mode,
       ),
     }
-    response.step(current, { ...IDENTITY_DRIVER, ...raw }, frame ? 1 / fps : 0)
+    response.step(current, { ...IDENTITY_DRIVER, ...asDriverPatch(raw) }, frame ? 1 / fps : 0)
     samples.push({ t, ...current, raw })
   }
   return samples
+}
+
+/** A pose source's sample as the driver fields it moves. */
+function asDriverPatch(pose: object): Record<string, number> {
+  return Object.fromEntries(Object.entries(pose).map(([key, value]) => [POSE_KEY_DRIVER_FIELDS[key as PoseKey] ?? key, value]))
 }
 
 test('full-body listening spans several beats with smooth shoulder and arm crossings', () => {
@@ -143,7 +150,7 @@ test('drum envelopes and repeated tempo corrections do not jerk the filtered hea
           },
         }),
     })
-    for (const key of ['angleX', 'angleY', 'angleZ'] as const) {
+    for (const key of ['headYaw', 'headPitch', 'headRoll'] as const) {
       let maxJerk = 0
       for (let i = 361; i < samples.length; i++) {
         const jerk =
@@ -158,8 +165,8 @@ test('drum envelopes and repeated tempo corrections do not jerk the filtered hea
     }
     const settled = samples.slice(600)
     const range =
-      Math.max(...settled.map((s) => s.angleZ)) -
-      Math.min(...settled.map((s) => s.angleZ))
+      Math.max(...settled.map((s) => s.headRoll)) -
+      Math.min(...settled.map((s) => s.headRoll))
     assert.ok(
       range > 0.9,
       `${scenario}: cannot pass smoothness by shrinking the performance (${range})`,
@@ -214,17 +221,17 @@ test('head accents use a slower metrical level at all supported tempi', () => {
 
 test('body and head retain visible range without allocating a face reaction', () => {
   const samples = play().slice(180)
-  const span = (key: 'body' | 'angleZ' | 'angleX') =>
+  const span = (key: 'bodyLean' | 'headRoll' | 'headYaw') =>
     Math.max(...samples.map((s) => s[key])) -
     Math.min(...samples.map((s) => s[key]))
-  assert.ok(span('body') > 0.8)
-  assert.ok(span('angleZ') > 0.9)
-  assert.ok(span('angleX') > 0.3)
+  assert.ok(span('bodyLean') > 0.8)
+  assert.ok(span('headRoll') > 0.9)
+  assert.ok(span('headYaw') > 0.3)
   for (const sample of samples) {
     assert.equal(sample.raw.eyeX, 0)
     assert.equal(sample.raw.brow, 0)
-    assert.ok(sample.angleY > -0.21 && sample.angleY < 0.18)
-    assert.ok(Math.abs(sample.angleZ) < 1)
+    assert.ok(sample.headPitch > -0.21 && sample.headPitch < 0.18)
+    assert.ok(Math.abs(sample.headRoll) < 1)
   }
 })
 
@@ -234,7 +241,7 @@ test('sway responds to music tempo, not only amplitude or an independent timer',
   const difference =
     slow
       .slice(180)
-      .reduce((sum, s, i) => sum + Math.abs(s.body - fast[i + 180].body), 0) /
+      .reduce((sum, s, i) => sum + Math.abs(s.bodyLean - fast[i + 180].bodyLean), 0) /
     (slow.length - 180)
   assert.ok(difference > 0.15, `tempo has no effect: ${difference}`)
 })
@@ -243,8 +250,8 @@ test('director extent reaches the actual body, not only the planned quality', ()
   const compact = play({ quality: { ...MUSIC_QUALITY.listen, extent: 0.8 } })
   const expansive = play({ quality: { ...MUSIC_QUALITY.listen, extent: 1.3 } })
   const range = (samples: ReturnType<typeof play>) =>
-    Math.max(...samples.map((s) => s.body)) -
-    Math.min(...samples.map((s) => s.body))
+    Math.max(...samples.map((s) => s.bodyLean)) -
+    Math.min(...samples.map((s) => s.bodyLean))
   assert.ok(range(expansive) > range(compact) * 1.5)
 })
 
@@ -267,10 +274,10 @@ test('measured silence settles but unavailable audio remains quiet listening', (
     signal: (t) => musicSignalAt(t, { audio: null, bpm: 0 }),
   })
   assert.ok(
-    Math.max(...silent.slice(11 * 60).map((s) => Math.abs(s.body))) < 0.001,
+    Math.max(...silent.slice(11 * 60).map((s) => Math.abs(s.bodyLean))) < 0.001,
   )
   assert.ok(
-    Math.max(...unknown.slice(11 * 60).map((s) => Math.abs(s.body))) > 0.003,
+    Math.max(...unknown.slice(11 * 60).map((s) => Math.abs(s.bodyLean))) > 0.003,
   )
 })
 
@@ -280,7 +287,7 @@ test('stale audio evidence fades instead of predicting forever', () => {
     duration: 10,
     signal: (t) => (t < 5 ? musicSignalAt(t) : frozen),
   })
-  assert.ok(Math.abs(samples.at(-1)!.body) < 0.001)
+  assert.ok(Math.abs(samples.at(-1)!.bodyLean) < 0.001)
 })
 
 test('phrase preparation starts before the vocal and releases after it', () => {
@@ -292,11 +299,11 @@ test('phrase preparation starts before the vocal and releases after it', () => {
   })
   const listening = play({ duration: 6 })
   assert.ok(
-    sung[Math.round(1.96 * 60)].angleY >
-      listening[Math.round(1.96 * 60)].angleY + 0.02,
+    sung[Math.round(1.96 * 60)].headPitch >
+      listening[Math.round(1.96 * 60)].headPitch + 0.02,
   )
   assert.ok(sung[4 * 60].raw.armY > listening[4 * 60].raw.armY + 0.1)
-  assert.ok(sung[5 * 60].angleY < sung[4 * 60].angleY)
+  assert.ok(sung[5 * 60].headPitch < sung[4 * 60].headPitch)
 })
 
 test('actual head accents are sparse, modest, and anticipate the audible pulse', () => {
@@ -305,9 +312,9 @@ test('actual head accents are sparse, modest, and anticipate the audible pulse',
   for (let i = 181; i < samples.length - 1; i++) {
     const s = samples[i]
     if (
-      s.angleY < -0.05 &&
-      s.angleY < samples[i - 1].angleY &&
-      s.angleY <= samples[i + 1].angleY
+      s.headPitch < -0.05 &&
+      s.headPitch < samples[i - 1].headPitch &&
+      s.headPitch <= samples[i + 1].headPitch
     ) {
       peaks.push(s.t)
     }
@@ -328,7 +335,7 @@ test('silence, resuming and mode replacement preserve actual pose continuity', (
   })
   let maxStep = 0
   for (let i = 1; i < samples.length; i++) {
-    for (const key of ['angleX', 'angleY', 'angleZ', 'body'] as const) {
+    for (const key of ['headYaw', 'headPitch', 'headRoll', 'bodyLean'] as const) {
       maxStep = Math.max(
         maxStep,
         Math.abs(samples[i][key] - samples[i - 1][key]),
@@ -336,9 +343,9 @@ test('silence, resuming and mode replacement preserve actual pose continuity', (
     }
   }
   assert.ok(maxStep < 0.07, `pose step ${maxStep}`)
-  assert.ok(Math.abs(samples[9 * 60].body) < 0.005)
+  assert.ok(Math.abs(samples[9 * 60].bodyLean) < 0.005)
   assert.ok(
-    Math.abs(samples[6 * 60].body) > 0.01,
+    Math.abs(samples[6 * 60].bodyLean) > 0.01,
     'does not reset to origin on handoff',
   )
 })
@@ -362,7 +369,7 @@ test('30, 60, and 120 fps keep the same slow musical movement', () => {
     const actual = play({ fps, duration: 24, signal: sample })
     const error =
       actual.reduce(
-        (sum, s, i) => sum + Math.abs(s.body - reference[(i * 120) / fps].body),
+        (sum, s, i) => sum + Math.abs(s.bodyLean - reference[(i * 120) / fps].bodyLean),
         0,
       ) / actual.length
     assert.ok(error < 0.045, `${fps} fps differs ${error}`)

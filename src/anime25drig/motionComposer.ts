@@ -1,41 +1,20 @@
+import type { Anime25DDriver, Anime25DIrisRebound, Anime25DMotionEnvelopeProfile, Anime25DPlayback, ClosedEyePresentation } from '@myriad/figure-player'
+import type { Anime25DBlinkState, Anime25DStylizedTargets } from '@myriad/figure-player/internals'
 import type { MotionChannelPolicy } from '../motion/policy'
 import type { MusicMotionSignal } from '../singing/musicSignal'
 import type { AmbientPose } from './ambientMotion'
-import type { ClosedEyePresentation } from './closedEyePresentation'
 import type { IndependentBodyControl } from './directedPose'
-import type { Anime25DDriver } from './driver'
-import type {
-  Anime25DBlinkState,
-  Anime25DStylizedTargets,
-} from './driverComposition'
-import type { Anime25DIrisRebound } from './irisRebound'
-import type { Anime25DMotionEnvelopeProfile } from './motionEnvelope'
 import type { RandomActionFrame } from './randomAction'
 import type { StylizedExpressionMotion } from './stylizedExpressionMotion'
-import type { Anime25DPlayback } from './types'
+import { IDENTITY_DRIVER } from '@myriad/figure-player'
+import { applyAnime25DCryMouth, applyAnime25DSillyMouthOwnership, bodyKeyShare, GazeShiftBlink, headRidesBody, idleBreathOffset, isStandingFigure, PoseResponseController, prepareAnime25DWorkingTarget, projectAnime25DMotionEnvelope, smoothAnime25DUnit, STANDING_HEAD_ROLL, STANDING_IDLE_SHARE, standingWeightShift, stepAnime25DBlink, stepAnime25DDriverResponse } from '@myriad/figure-player/internals'
 import { allowsPointerGaze } from '../motion/policy'
 import { SingingGrooveController } from '../singing/singingGroove'
 import { AmbientMotionController } from './ambientMotion'
 import { Anime25DBehaviorMotionController } from './behaviorMotion'
-import { bodyKeyShare, headRidesBody } from './bodyTurnKeyforms'
 import { BODY_CONTROL_DRIVERS, DirectedPoseController, INDEPENDENT_BODY_CONTROLS } from './directedPose'
-import { IDENTITY_DRIVER } from './driver'
-import {
-  applyAnime25DComposedPose,
-  applyAnime25DCryMouth,
-  applyAnime25DSillyMouthOwnership,
-  applyAnime25DSpeechExtras,
-  applyAnime25DStylizedExpression,
-  prepareAnime25DWorkingTarget,
-  resolveAnime25DStylizedTargets,
-  smoothAnime25DUnit,
-  stepAnime25DBlink,
-  stepAnime25DDriverResponse,
-} from './driverComposition'
+import { applyAnime25DComposedPose, applyAnime25DSpeechExtras, applyAnime25DStylizedExpression, resolveAnime25DStylizedTargets } from './driverComposition'
 import { expressiveEyeOpenOffset } from './expressiveMotionEnvelope'
-import { GazeShiftBlink } from './gazeBlink'
-import { idleBreathOffset } from './idleBreath'
-import { projectAnime25DMotionEnvelope } from './motionEnvelope'
 import { monotonicControlTime } from './motionPrediction'
 import { PerformanceExpressionController } from './performanceExpression'
 import {
@@ -45,17 +24,14 @@ import {
 } from './poseArbitration'
 import { zeroOccupancyOffset } from './poseCompositor'
 import { PoseOccupancyController } from './poseOccupancy'
-import {
-  PoseResponseController,
-  resolvePoseResponseScale,
-} from './poseResponse'
+import { resolvePoseResponseScale } from './poseResponse'
 import {
   DIRECTED_BODY_BLOCK_LEVEL,
   RandomActionController,
 } from './randomAction'
 import { CoSpeechExpressionController } from './speechExpression'
 import { AutoSpeechController } from './speechMotion'
-import { isStandingFigure, STANDING_HEAD_ROLL, STANDING_IDLE_ROLL_SHARE, STANDING_IDLE_SHARE, standingWeightShift } from './standing'
+import { STANDING_IDLE_ROLL_SHARE } from './standing'
 import { StylizedExpressionMotionController } from './stylizedExpressionMotion'
 import { ThinkingMotionController } from './thinkingMotion'
 
@@ -162,8 +138,8 @@ export class Anime25DMotionComposer {
   private standing = false
   private headRidesBody = 0
   private readonly cryMouth = {
-    mouthOpen: 0,
-    mouthForm: 0,
+    jaw: 0,
+    lipCurve: 0,
     mouthCY: 0,
     mouthScale: 0,
   }
@@ -286,7 +262,7 @@ export class Anime25DMotionComposer {
     const speechExpression = this.speechExpression.sample(
       controlTime,
       speaking,
-      input.speechActive && !target.talk ? tgt.mouthOpen : null,
+      input.speechActive && !target.talk ? tgt.jaw : null,
       speech.phraseActivity,
       speech.browAccent,
       speech.headAccent,
@@ -385,7 +361,7 @@ export class Anime25DMotionComposer {
     )
     this.directedPose.setTouchShare(this.performanceExpression.getTouchShare())
     this.directedPose.write(tgt, vocalizing, this.ridingPose)
-    tgt.angleX += tgt.torsoTurn * this.headRidesBody
+    tgt.headYaw += tgt.torsoTurn * this.headRidesBody
     projectAnime25DMotionEnvelope(
       tgt,
       input.motionEnvelopeProfile,
@@ -410,8 +386,8 @@ export class Anime25DMotionComposer {
     ])
     // The smoothing works on the eyes as they would be without the blink;
     // the blink is laid over what it gives, at its own quick pace.
-    this.current.eyeOpenL = this.unblinkedEyeOpenL
-    this.current.eyeOpenR = this.unblinkedEyeOpenR
+    this.current.lidL = this.unblinkedEyeOpenL
+    this.current.lidR = this.unblinkedEyeOpenR
     stepAnime25DDriverResponse(
       this.current,
       target,
@@ -426,15 +402,15 @@ export class Anime25DMotionComposer {
     this.directedAuthorityResponse.step(
       this.directedAuthority, this.directedAuthorityTarget, dt, this.responseScale,
     )
-    this.unblinkedEyeOpenL = this.current.eyeOpenL
-    this.unblinkedEyeOpenR = this.current.eyeOpenR
+    this.unblinkedEyeOpenL = this.current.lidL
+    this.unblinkedEyeOpenR = this.current.lidR
     const blinkSuppressed = stylizedTargets.maniac > 0.03 || stylizedTargets.silly > 0.03 || this.directedPose.lidsMoving()
     if (
       this.gazeBlink.step(
-        this.current.angleX,
-        this.current.angleY,
-        this.current.eyeX,
-        this.current.eyeY,
+        this.current.headYaw,
+        this.current.headPitch,
+        this.current.gazeX,
+        this.current.gazeY,
         dt,
         this.blinkState.activeSeconds >= 0,
         Math.random,
@@ -464,10 +440,10 @@ export class Anime25DMotionComposer {
     )
     this.irisRebound.step(
       dt,
-      Math.max(this.current.eyeOpenL, this.current.eyeOpenR),
+      Math.max(this.current.lidL, this.current.lidR),
       this.current.eyeWide,
-      this.current.eyeX,
-      this.current.eyeY,
+      this.current.gazeX,
+      this.current.gazeY,
       Math.max(
         stylizedTargets.maniac,
         stylizedTargets.silly,

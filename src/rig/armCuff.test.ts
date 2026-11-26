@@ -1,4 +1,4 @@
-import type { RasterLayer } from './anime25dImportTypes'
+import type { RasterLayer } from '@myriad/figure-player/internals'
 import type { ArmCuffPictures } from './armCuff'
 import type { P2 } from './armRaster'
 import assert from 'node:assert/strict'

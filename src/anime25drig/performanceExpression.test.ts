@@ -212,20 +212,20 @@ test('maps additive bearing offsets onto absolute driver neutrals', () => {
   })
   const cleared = bearingDriverPatch(null)
 
-  assert.equal(steady.eyeOpenL, 1)
-  assert.equal(steady.eyeOpenR, 1)
+  assert.equal(steady.lidL, 1)
+  assert.equal(steady.lidR, 1)
   assert.equal(steady.irisScale, 1)
-  assert.equal(withdrawn.eyeOpenL, 0.6)
-  assert.equal(withdrawn.eyeOpenR, 0.6)
+  assert.equal(withdrawn.lidL, 0.6)
+  assert.equal(withdrawn.lidR, 0.6)
   assert.equal(withdrawn.irisScale, 0.925)
   const tense = bearingDriverPatch({
     ...steadyBaseline,
     expression: 'tense',
   })
-  assert.ok((tense.brow ?? 0) <= -0.5)
-  assert.ok((tense.browAngSym ?? 0) >= 0.75)
-  assert.equal(tense.eyeOpenL, 0.92)
-  assert.equal(cleared.eyeOpenL, 1)
+  assert.ok((tense.browLift ?? 0) <= -0.5)
+  assert.ok((tense.browTilt ?? 0) >= 0.75)
+  assert.equal(tense.lidL, 0.92)
+  assert.equal(cleared.lidL, 1)
   assert.equal(cleared.irisScale, 1)
   assert.equal(Object.hasOwn(steady, 'bust'), false)
   assert.equal(Object.hasOwn(steady, 'eyeDizzy'), false)
@@ -233,21 +233,21 @@ test('maps additive bearing offsets onto absolute driver neutrals', () => {
 
 test('adds to manual channels without flattening left-right eye differences', () => {
   const target = {
-    brow: 0.3,
-    browAngSym: 0.1,
-    eyeOpenL: 0.72,
-    eyeOpenR: 0.91,
+    browLift: 0.3,
+    browTilt: 0.1,
+    lidL: 0.72,
+    lidR: 0.91,
     eyeDizzy: 0,
     eyeSqueeze: 0,
     eyeCry: 0,
-    mouthForm: -0.2,
+    lipCurve: -0.2,
     irisScale: 1.1,
-    angleX: 0.6,
-    angleY: 0.25,
-    angleZ: -0.3,
-    body: -0.4,
-    eyeX: 0.35,
-    eyeY: -0.25,
+    headYaw: 0.6,
+    headPitch: 0.25,
+    headRoll: -0.3,
+    bodyLean: -0.4,
+    gazeX: 0.35,
+    gazeY: -0.25,
   }
   applyPerformanceExpressionOffset(target, {
     brow: 0.05,
@@ -267,33 +267,33 @@ test('adds to manual channels without flattening left-right eye differences', ()
     armPos: 0,
   })
 
-  assert.ok(Math.abs(target.eyeOpenL - 0.68) < 1e-12)
-  assert.ok(Math.abs(target.eyeOpenR - 0.87) < 1e-12)
-  assert.ok(Math.abs(target.eyeOpenR - target.eyeOpenL - 0.19) < 1e-12)
-  assert.ok(Math.abs(target.mouthForm - -0.08) < 1e-12)
-  assert.ok(Math.abs(target.angleY - 0.22) < 1e-12)
-  assert.equal(target.angleX, 0.6)
-  assert.equal(target.body, -0.4)
-  assert.equal(target.eyeX, 0.35)
-  assert.equal(target.eyeY, -0.25)
-  assert.ok(Math.abs(target.browAngSym - 0.06) < 1e-12)
+  assert.ok(Math.abs(target.lidL - 0.68) < 1e-12)
+  assert.ok(Math.abs(target.lidR - 0.87) < 1e-12)
+  assert.ok(Math.abs(target.lidR - target.lidL - 0.19) < 1e-12)
+  assert.ok(Math.abs(target.lipCurve - -0.08) < 1e-12)
+  assert.ok(Math.abs(target.headPitch - 0.22) < 1e-12)
+  assert.equal(target.headYaw, 0.6)
+  assert.equal(target.bodyLean, -0.4)
+  assert.equal(target.gazeX, 0.35)
+  assert.equal(target.gazeY, -0.25)
+  assert.ok(Math.abs(target.browTilt - 0.06) < 1e-12)
 })
 
 test('never reopens an authored closed eye or closed-eye smile', () => {
   const wink = {
-    brow: 0.2,
-    browAngSym: 0,
-    eyeOpenL: 0,
-    eyeOpenR: 1,
+    browLift: 0.2,
+    browTilt: 0,
+    lidL: 0,
+    lidR: 1,
     eyeDizzy: 0,
     eyeSqueeze: 0,
     eyeCry: 0,
-    eyeX: 0,
-    eyeY: 0,
-    mouthForm: 0.7,
+    gazeX: 0,
+    gazeY: 0,
+    lipCurve: 0.7,
     irisScale: 1,
-    angleY: 0,
-    angleZ: 0,
+    headPitch: 0,
+    headRoll: 0,
   }
   applyPerformanceExpressionOffset(wink, {
     brow: 0.1,
@@ -313,8 +313,8 @@ test('never reopens an authored closed eye or closed-eye smile', () => {
     armPos: 0,
   })
 
-  assert.equal(wink.eyeOpenL, 0)
-  assert.equal(wink.eyeOpenR, 1)
+  assert.equal(wink.lidL, 0)
+  assert.equal(wink.lidR, 1)
   assert.equal(mixEyeOpen(0, 0.05), 0)
   assert.equal(mixEyeOpen(0, -0.05), 0)
   assert.ok(Math.abs(mixEyeOpen(0.04, -0.03) - 0.01) < 1e-12)

@@ -1,4 +1,4 @@
-import type { EyeSide, RasterLayer } from './anime25dImportTypes'
+import type { EyeSide, RasterLayer } from '@myriad/figure-player/internals'
 
 /** The seam keeps within this share of the layer's width either side of the middle. */
 const SEAM_REACH = 0.15

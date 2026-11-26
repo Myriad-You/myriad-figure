@@ -1,8 +1,8 @@
+import type { Anime25DDriver } from '@myriad/figure-player'
 import type {
   PerformanceBaseline,
 } from '../performance/types'
-import type { Anime25DDriver } from './driver'
-import { DEFAULT_FRONT_HAIR_SWAY, DEFAULT_REAR_HAIR_SWAY } from './driver'
+import { DEFAULT_FRONT_HAIR_SWAY, DEFAULT_REAR_HAIR_SWAY } from '@myriad/figure-player/internals'
 
 export type { ScheduledBodyCue } from '../motion/performanceCueTiming'
 export {
@@ -17,7 +17,7 @@ export { cueIsSticker } from './performanceCueDefinitions'
 
 type SpeechOwnedDriver = Pick<
   Anime25DDriver,
-  'eyeSmile' | 'mouthForm' | 'mouthOpen' | 'talk'
+  'eyeSmile' | 'lipCurve' | 'jaw' | 'talk'
 >
 
 /** This patch owns only what the per-frame offset cannot reach */
@@ -27,7 +27,7 @@ export function baselineDriverPatch(
   const energy = clamp(baseline.motionEnergy, 0.2, 1.4)
   const swayEnergy = 0.7 + energy * 0.3
   return {
-    physAmp: DEFAULT_REAR_HAIR_SWAY * swayEnergy,
+    rearHairSway: DEFAULT_REAR_HAIR_SWAY * swayEnergy,
     soft: 1.3 + energy * 0.6,
     fhAmp: DEFAULT_FRONT_HAIR_SWAY * swayEnergy,
     idle: true,
@@ -39,7 +39,7 @@ export function baselineDriverPatch(
 
 export function restEnergyDriverPatch(): Partial<Anime25DDriver> {
   return {
-    physAmp: DEFAULT_REAR_HAIR_SWAY,
+    rearHairSway: DEFAULT_REAR_HAIR_SWAY,
     soft: 2,
     fhAmp: DEFAULT_FRONT_HAIR_SWAY,
   }
@@ -51,11 +51,11 @@ export function performanceRestDriverPatch(
   thinking: boolean,
 ): Partial<Anime25DDriver> {
   return {
-    body: 0,
+    bodyLean: 0,
     armY: 0,
     armPos: 0,
     bust: 2.5,
-    physAmp: DEFAULT_REAR_HAIR_SWAY,
+    rearHairSway: DEFAULT_REAR_HAIR_SWAY,
     soft: 2,
     fhAmp: DEFAULT_FRONT_HAIR_SWAY,
     idle: true,
@@ -76,8 +76,8 @@ export function idleSpeechDriverPatch(
   const smile = Math.max(0, (mood - 50) / 80)
   return {
     talk: false,
-    mouthOpen: 0,
-    mouthForm: smile * 0.28,
+    jaw: 0,
+    lipCurve: smile * 0.28,
     // A good mood shows in the eyes too; it stays while she talks.
     eyeSmile: smile * 0.45,
   }

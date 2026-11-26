@@ -1,9 +1,9 @@
+import type { Anime25DDriver } from '@myriad/figure-player'
 import type { SpeechArticulation } from '../rig/articulation'
-import type { Anime25DDriver } from './driver'
 
 type EnergyDriverPatch = Pick<
   Anime25DDriver,
-  | 'mouthOpen'
+  | 'jaw'
   | 'mouthWide'
   | 'mouthRound'
   | 'mouthNarrow'
@@ -15,7 +15,7 @@ export function speechEnergyDriverPatch(
   energy: number | null,
 ): EnergyDriverPatch {
   return {
-    mouthOpen: energy == null ? 0 : clamp01(energy),
+    jaw: energy == null ? 0 : clamp01(energy),
     mouthWide: 0,
     mouthRound: 0,
     mouthNarrow: 0,
@@ -39,7 +39,7 @@ export function speechArticulationDriverPatch(
             ? 0.34
             : 0.78
   return {
-    mouthOpen: openness * amount,
+    jaw: openness * amount,
     mouthWide: articulation.viseme === 'wide' ? amount : 0,
     mouthRound: articulation.viseme === 'round' ? amount : 0,
     mouthNarrow: articulation.viseme === 'narrow' ? amount : 0,

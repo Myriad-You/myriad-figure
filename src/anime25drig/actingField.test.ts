@@ -2,8 +2,8 @@ import type { ResolvedScore } from '../motion/scoreTimeline'
 import type { BodyControl } from '../performance/types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { HEAD_TILT_RADIANS, headRollRadians } from '@myriad/figure-player/internals'
 import { ActingField, mappedControlValue } from './actingField'
-import { HEAD_TILT_RADIANS, headRollRadians } from './poseScale'
 
 const all = () => true
 function tilt(id: string, atMs: number, value: number, holdMs = 4000) {
@@ -70,7 +70,7 @@ test("a director's head tilt shows as its share of the full tilt, its slight one
     const seen = headRollRadians(mappedControlValue('headTilt', tilt))
     assert.ok(Math.abs(seen - tilt * HEAD_TILT_RADIANS) < 1e-9, `${tilt}: ${seen}`)
   }
-  // The slight tilt a director names (0.35) is about 8°, not the 3° of the everyday angleZ scale.
+  // The slight tilt a director names (0.35) is about 8°, not the 3° of the everyday headRoll scale.
   const slight = headRollRadians(mappedControlValue('headTilt', 0.35)) * 180 / Math.PI
   assert.ok(slight > 8 && slight < 9, `${slight}`)
   assert.equal(mappedControlValue('headTurn', 0.4), 0.4, 'other controls as they are')

@@ -1,5 +1,5 @@
+import type { MeropeRigManifest } from '@myriad/figure-player'
 import type { MotionExposureFinding } from './motionExposure'
-import type { MeropeRigManifest } from './types'
 import {
   ANIME25D_FACIAL_CAPABILITIES,
   hasAnime25DCapability,

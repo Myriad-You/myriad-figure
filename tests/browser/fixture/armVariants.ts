@@ -1,10 +1,9 @@
-import type { Anime25DArmAim } from '../../../src/anime25drig/arm3dReach'
-import type { Anime25DDriver } from '../../../src/anime25drig/driver'
+import type { Anime25DArmAim, Anime25DDriver } from '@myriad/figure-player'
 import type { ArmVariantSource } from '../../../src/rig/psdImportClient'
 import type { PreparedRigPsdImport } from '../../../src/rig/psdImporter'
 import type { DetectedSkeleton } from '../../../src/rig/skeleton'
-import { ARM_VARIANT_DRIVERS } from '../../../src/anime25drig/armVariantPresenter'
-import { IDENTITY_DRIVER } from '../../../src/anime25drig/driver'
+import { IDENTITY_DRIVER } from '@myriad/figure-player'
+import { ARM_VARIANT_DRIVERS } from '@myriad/figure-player/internals'
 import { Anime25DPlayer } from '../../../src/anime25drig/player'
 import { prepareRigPsdImport } from '../../../src/rig/psdImporter'
 
@@ -96,9 +95,9 @@ function png(stage: Stage): string {
 /** A script of poses the figure is held in, the same every run. */
 const SCRIPT: Array<[Partial<Anime25DDriver>, number]> = [
   [{}, 30],
-  [{ body: -1, angleX: -0.6 }, 40],
-  [{ body: 1, angleX: 0.6, torsoTurn: 0.5 }, 40],
-  [{ angleY: 0.8, bodyLift: 0.6 }, 30],
+  [{ bodyLean: -1, headYaw: -0.6 }, 40],
+  [{ bodyLean: 1, headYaw: 0.6, torsoTurn: 0.5 }, 40],
+  [{ headPitch: 0.8, bodyLift: 0.6 }, 30],
   [{}, 30],
 ]
 
@@ -259,7 +258,7 @@ async function rise(request: BustRequest, side: 'L' | 'R', gesture: string): Pro
     const rest = last
     run({ [key]: 1 }, 60, [2, 6, 10, 14, 18, 59], 'rise', true)
     const held = last
-    run({ [key]: 1, body: 1, angleX: 0.6 }, 40, [39], 'sway')
+    run({ [key]: 1, bodyLean: 1, headYaw: 0.6 }, 40, [39], 'sway')
     // Back upright before it goes down: the body settles slowly after a sway.
     run({ [key]: 1 }, 120)
     run({}, 40, [2, 6, 10, 14, 18, 39], 'lower', true)

@@ -1,11 +1,12 @@
+import type { Anime25DLayerRole, EyeSide, RasterLayer, RigPoint } from '@myriad/figure-player/internals'
 import type { Psd } from 'ag-psd'
-import type { Anime25DLayerRole } from './anime25d'
 import type { Anime25DImportProfile } from './anime25dImportProfile'
-import type { AnimeAnchors, EyeSide, PreparedLayer, RasterLayer, RigCanvasFrame } from './anime25dImportTypes'
-import type { MeropeRigImportSource, RigPoint } from './types'
+import type { AnimeAnchors, PreparedLayer, RigCanvasFrame } from './anime25dImportTypes'
+import type { MeropeRigImportSource } from './types'
+import { isAnime25DLiningPiece } from '@myriad/figure-player/internals'
 import { FigureError } from '../errors'
 import { anime25DImportProfile } from './anime25dImportProfile'
-import { anime25DLayerAffectsFraming, isAnime25DLiningPiece } from './anime25dLayerSemantics'
+import { anime25DLayerAffectsFraming } from './anime25dLayerSemantics'
 
 /** Removes model letterboxing, then pads (never stretches) into the profile's stage. */
 export function contentFrame(

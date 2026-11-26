@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {
-  createMouthExpressionBitmap,
-  mouthExpressionGeneratedSizes,
-  sampleMouthExpressionPalette,
-} from './mouthExpression'
+import { sampleMouthExpressionPalette } from '@myriad/figure-player/internals'
+import { createMouthExpressionBitmap, mouthExpressionGeneratedSizes } from './mouthExpression'
 
 test('builds distinct flat anime speaking and crying mouth glyphs', () => {
   const palette = sampleMouthExpressionPalette(
@@ -36,18 +33,6 @@ test('builds distinct flat anime speaking and crying mouth glyphs', () => {
   )
   assert.ok(countPinkPixels(cry.data) > 100, 'cry mouth is a flat pink symbol')
 })
-
-test('uses the source dark line while preventing a pale invisible outline', () => {
-  const dark = sampleMouthExpressionPalette(
-    new Uint8ClampedArray([44, 30, 58, 255, 244, 210, 215, 255]),
-  )
-  assert.ok(dark.line.red < 100)
-  const pale = sampleMouthExpressionPalette(
-    new Uint8ClampedArray([245, 220, 224, 255, 250, 228, 232, 255]),
-  )
-  assert.ok(pale.line.red < 150)
-})
-
 test('the narrow mouth is the open mouth drawn flatter, tongue included', () => {
   const palette = sampleMouthExpressionPalette(
     new Uint8ClampedArray([162, 102, 90, 255, 236, 176, 160, 255]),
@@ -68,7 +53,6 @@ test('the narrow mouth is the open mouth drawn flatter, tongue included', () => 
   assert.ok(tongue(narrow.data) > 30, `${tongue(narrow.data)}`)
   assert.ok(tongue(open.data) > 30)
 })
-
 test('a tiny painted mouth still speaks at a size its face can read', () => {
   const face = { width: 377, height: 457, mouthToChin: 70 }
   const tiny = mouthExpressionGeneratedSizes({ width: 25, height: 13 }, face)
@@ -82,7 +66,6 @@ test('a tiny painted mouth still speaks at a size its face can read', () => {
     mouthExpressionGeneratedSizes(drawn).open,
   )
 })
-
 test('the wide mouth is drawn level and symmetric', () => {
   const palette = sampleMouthExpressionPalette(undefined)
   const wide = createMouthExpressionBitmap('wide', { width: 80, height: 30 }, palette)
@@ -98,7 +81,6 @@ test('the wide mouth is drawn level and symmetric', () => {
   }
   assert.ok(difference / total < 0.02, `${difference / total}`)
 })
-
 function visibleColors(data: Uint8ClampedArray): Set<string> {
   const colors = new Set<string>()
   for (let index = 0; index < data.length; index += 4) {
@@ -107,7 +89,6 @@ function visibleColors(data: Uint8ClampedArray): Set<string> {
   }
   return colors
 }
-
 function countDarkPixels(data: Uint8ClampedArray): number {
   let count = 0
   for (let index = 0; index < data.length; index += 4) {
@@ -115,7 +96,6 @@ function countDarkPixels(data: Uint8ClampedArray): number {
   }
   return count
 }
-
 function countPinkPixels(data: Uint8ClampedArray): number {
   let count = 0
   for (let index = 0; index < data.length; index += 4) {

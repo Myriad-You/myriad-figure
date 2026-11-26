@@ -1,6 +1,8 @@
-import type { MouthExpressionKind, MouthExpressionPalette, MouthExpressionSize, Point, Rgb } from './mouthShared'
+import type { MouthExpressionKind, MouthExpressionPalette, Point, Rgb } from '@myriad/figure-player/internals'
+import type { MouthExpressionSize } from './mouthShared'
+import { mixColor } from '@myriad/figure-player/internals'
 import { paint, pointInPolygon, pointToPolylineDistance } from './mouthPaths'
-import { clamp, clampInt, mixColor } from './mouthShared'
+import { clamp, clampInt } from './mouthShared'
 
 const MANIAC_TONGUE_HIGHLIGHT_RAIL: readonly Point[] = [
   [-0.49, 0.68],
