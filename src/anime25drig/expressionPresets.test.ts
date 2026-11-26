@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { IDENTITY_DRIVER } from '@myriad/figure-player'
+import { IDENTITY_DRIVER } from '@myriad-you/figure-player'
 import {
   activityExpressionDriverPatch,
   CRY_EXPRESSION_PRESET,

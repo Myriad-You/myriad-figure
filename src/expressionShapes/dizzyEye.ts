@@ -1,6 +1,6 @@
 // The dizzy eyes the importer draws for a face.
-import type { Anime25DRgb } from '@myriad/figure-player/internals'
-import { DIZZY_EYE_FIT } from '@myriad/figure-player/internals'
+import type { Anime25DRgb } from '@myriad-you/figure-player/internals'
+import { DIZZY_EYE_FIT } from '@myriad-you/figure-player/internals'
 
 export type DizzyEyeSide = 'left' | 'right'
 

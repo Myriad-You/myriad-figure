@@ -1,9 +1,9 @@
 import type { CueIntent } from './performanceCueDefinitions'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { IDENTITY_DRIVER } from '@myriad-you/figure-player'
 import { completeBehaviorQuality } from './behaviorMotion'
-import { intentExpressionPatch } from './performanceCueDefinitions'
+import { intentExpressionPatch, PERFORMANCE_CUE_DEFINITIONS } from './performanceCueDefinitions'
 import { PerformanceExpressionController } from './performanceExpression'
 import {
   authoredCueEnvelope,
@@ -245,12 +245,15 @@ test('larger coordinated cues get travel time without delaying their scheduled s
 })
 
 test('a cue form never switches secondary physics off', () => {
-  // Hair and cloth are bounded overlays, not a fifth channel a cue may own.
-  const definitions = readFileSync(
-    new URL('./performanceCueDefinitions.ts', import.meta.url),
-    'utf8',
-  )
-  assert.doesNotMatch(definitions, /torsoBreath:|hairWind:|physics:/)
+  // Hair and cloth are bounded overlays, not a fifth channel a cue may own: no cue's patch touches a switch.
+  const switches = Object.keys(IDENTITY_DRIVER).filter(key => typeof IDENTITY_DRIVER[key as keyof typeof IDENTITY_DRIVER] === 'boolean')
+  for (const [intent, definition] of Object.entries(PERFORMANCE_CUE_DEFINITIONS)) {
+    for (const amount of [0, 0.72, 1, 1.4]) {
+      const patches = [definition.driver(amount), definition.expression(amount, amount)]
+      for (const patch of patches)
+        assert.deepEqual(Object.keys(patch).filter(key => switches.includes(key)), [], `${intent} at ${amount}`)
+    }
+  }
 })
 
 test('keeps directed body motion above idle scale at ordinary intensity', () => {

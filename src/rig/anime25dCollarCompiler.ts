@@ -1,4 +1,4 @@
-import type { Anime25DSourceAnchors } from '@myriad/figure-player/internals'
+import type { Anime25DSourceAnchors } from '@myriad-you/figure-player/internals'
 import type { Anime25DSourceReference, RasterLayer } from './anime25dImportTypes'
 import { uniquePartId } from './anime25dRaster'
 import { collarBoundaryRearAmount, collarColorMaskAt, collarStandaloneRearAmount, segmentRearCollarByColor } from './collarColorSplit'

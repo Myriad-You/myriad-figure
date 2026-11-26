@@ -1,9 +1,9 @@
-import type { Anime25DArmAim, Anime25DDriver } from '@myriad/figure-player'
+import type { Anime25DArmAim, Anime25DDriver } from '@myriad-you/figure-player'
 import type { ArmVariantSource } from '../../../src/rig/psdImportClient'
 import type { PreparedRigPsdImport } from '../../../src/rig/psdImporter'
 import type { DetectedSkeleton } from '../../../src/rig/skeleton'
-import { IDENTITY_DRIVER } from '@myriad/figure-player'
-import { ARM_VARIANT_DRIVERS } from '@myriad/figure-player/internals'
+import { IDENTITY_DRIVER } from '@myriad-you/figure-player'
+import { ARM_VARIANT_DRIVERS } from '@myriad-you/figure-player/internals'
 import { Anime25DPlayer } from '../../../src/anime25drig/player'
 import { prepareRigPsdImport } from '../../../src/rig/psdImporter'
 

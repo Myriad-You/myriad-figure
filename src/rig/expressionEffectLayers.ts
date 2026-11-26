@@ -1,6 +1,6 @@
-import type { Anime25DEyeAnchor, Anime25DFaceFrame, Anime25DSourceAnchors } from '@myriad/figure-player/internals'
+import type { Anime25DEyeAnchor, Anime25DFaceFrame, Anime25DSourceAnchors } from '@myriad-you/figure-player/internals'
 import type { RasterLayer } from './anime25dImportTypes'
-import { sampleDizzyEyeTint, sampleMouthExpressionPalette } from '@myriad/figure-player/internals'
+import { sampleDizzyEyeTint, sampleMouthExpressionPalette } from '@myriad-you/figure-player/internals'
 import { createAngerMarkBitmap, createSpeechlessSweatBitmap, expressionSymbolGeneratedSizes } from '../expressionShapes/expressionSymbols'
 import { faceContourAlongEyeLine, faceFramePoint, placeFaceBitmap } from '../expressionShapes/faceFrame'
 import { createLovestruckDroolBitmap, createLovestruckFaceEffectBitmap, createLovestruckHeartBitmap, LOVESTRUCK_CHEEK_ROW, lovestruckDroolGeneratedSize, lovestruckFaceEffectGeneratedSize, lovestruckHeartGeneratedSize } from '../expressionShapes/lovestruckExpression'

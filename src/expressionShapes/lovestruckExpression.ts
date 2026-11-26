@@ -1,4 +1,4 @@
-import type { Anime25DRgb } from '@myriad/figure-player/internals'
+import type { Anime25DRgb } from '@myriad-you/figure-player/internals'
 
 export interface LovestruckBitmapSize {
   width: number

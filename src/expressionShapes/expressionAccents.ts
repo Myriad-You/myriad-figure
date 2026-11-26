@@ -1,4 +1,4 @@
-import type { Anime25DRgb } from '@myriad/figure-player/internals'
+import type { Anime25DRgb } from '@myriad-you/figure-player/internals'
 
 /**
  * Small drawn accents that sit beside her face and say a mood at a glance:

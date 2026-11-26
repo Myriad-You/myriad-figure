@@ -1,4 +1,4 @@
-import { CHARACTER_ASSET_PROFILES } from '@myriad/figure-player/internals'
+import { CHARACTER_ASSET_PROFILES } from '@myriad-you/figure-player/internals'
 
 export interface Anime25DCapabilityLayer {
   id: string

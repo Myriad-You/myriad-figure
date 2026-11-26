@@ -1,4 +1,4 @@
-import type { Anime25DFaceFrame, Anime25DLayerRole, Anime25DSourceAnchors } from '@myriad/figure-player/internals'
+import type { Anime25DFaceFrame, Anime25DLayerRole, Anime25DSourceAnchors } from '@myriad-you/figure-player/internals'
 import type { ExpressionAccent } from '../expressionShapes/expressionAccents'
 import type { RasterLayer } from './anime25dImportTypes'
 import { createExpressionAccentBitmap, expressionAccentSize } from '../expressionShapes/expressionAccents'

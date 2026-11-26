@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { sampleMouthExpressionPalette } from '@myriad/figure-player/internals'
+import { sampleMouthExpressionPalette } from '@myriad-you/figure-player/internals'
 import { createMouthExpressionBitmap, mouthExpressionGeneratedSizes } from './mouthExpression'
 
 test('builds distinct flat anime speaking and crying mouth glyphs', () => {

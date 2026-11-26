@@ -1,6 +1,6 @@
-import type { Anime25DSourceAnchors } from '@myriad/figure-player/internals'
+import type { Anime25DSourceAnchors } from '@myriad-you/figure-player/internals'
 import type { RasterLayer } from './anime25dImportTypes'
-import { resolveAnime25DFaceFrame } from '@myriad/figure-player/internals'
+import { resolveAnime25DFaceFrame } from '@myriad-you/figure-player/internals'
 import { synthesizeMissingExpressionSymbols, synthesizeMissingLovestruckEffects } from './expressionEffectLayers'
 import { synthesizeMissingCryEyes, synthesizeMissingDizzyEyes, synthesizeMissingManiacEyeShadows, synthesizeMissingSillyEyes, synthesizeMissingSqueezeEyes } from './expressionEyeLayers'
 import { synthesizeMissingMouthExpressions } from './expressionMouthLayers'

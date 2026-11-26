@@ -2,12 +2,12 @@
 // targets and ticks, then read what it drew (inspect(), pixels). Typed and
 // type-checked, so a renamed internal cannot turn a probe into a silent skip.
 // Each probe runs on a synthetic package in CI and on real art when given.
-import type { Anime25DDriver, Anime25DInspection, Anime25DLayerView, Anime25DPlayback, Anime25DPoint, Anime25DPose, MeropeRigManifest } from '@myriad/figure-player'
-import type { Anime25DArmModel } from '@myriad/figure-player/internals'
-import type { PoseCorrection } from '@myriad/figure-player/workbench'
+import type { Anime25DDriver, Anime25DInspection, Anime25DLayerView, Anime25DPlayback, Anime25DPoint, Anime25DPose, MeropeRigManifest } from '@myriad-you/figure-player'
+import type { Anime25DArmModel } from '@myriad-you/figure-player/internals'
+import type { PoseCorrection } from '@myriad-you/figure-player/workbench'
 import type { MotionChannelPolicy } from '../../../src/motion/policy'
-import { blendPoses, IDENTITY_DRIVER, poseFromJSON, poseToJSON } from '@myriad/figure-player'
-import { applyBodyLift, BODY_LIFT_GLSL, bodyPitchUniform } from '@myriad/figure-player/internals'
+import { blendPoses, IDENTITY_DRIVER, poseFromJSON, poseToJSON } from '@myriad-you/figure-player'
+import { applyBodyLift, BODY_LIFT_GLSL, bodyPitchUniform } from '@myriad-you/figure-player/internals'
 import { writePsd } from 'ag-psd'
 import { THINKING_EXPRESSION_PRESET } from '../../../src/anime25drig/expressionPresets'
 import { intentExpressionPatch } from '../../../src/anime25drig/performanceCueDefinitions'

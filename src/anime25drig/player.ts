@@ -1,6 +1,6 @@
-import type { Anime25DArmAim, Anime25DArmSide, Anime25DDriver, Anime25DDriving, Anime25DInspection, Anime25DMotionEnvelopeProfile, Anime25DPlayback, Anime25DPose, MeropeRigManifest, Anime25DDebugSnapshot as StageDebugSnapshot, VisibleTouchHit } from '@myriad/figure-player'
+import type { Anime25DArmAim, Anime25DArmSide, Anime25DDriver, Anime25DDriving, Anime25DInspection, Anime25DMotionEnvelopeProfile, Anime25DPlayback, Anime25DPose, MeropeRigManifest, Anime25DDebugSnapshot as StageDebugSnapshot, VisibleTouchHit } from '@myriad-you/figure-player'
 
-import type { PoseCorrection, PoseCorrectionStageSource } from '@myriad/figure-player/workbench'
+import type { PoseCorrection, PoseCorrectionStageSource } from '@myriad-you/figure-player/workbench'
 import type { PresentedTouchReaction } from '../interaction/touchReaction'
 
 import type { MotionChannelPolicy } from '../motion/policy'
@@ -10,9 +10,9 @@ import type { SpeechProsodyPlan } from '../speech/prosody'
 import type { FigureTrace } from '../trace'
 import type { Anime25DMotionUnit } from './behaviorMotion'
 import type { MotionComposerInput, MotionFigure } from './motionComposer'
-import { Anime25DIrisRebound, Anime25DStage, ClosedEyePresentation, IDENTITY_DRIVER } from '@myriad/figure-player'
+import { Anime25DClosedEyePresentation, Anime25DIrisRebound, Anime25DStage, IDENTITY_DRIVER } from '@myriad-you/figure-player'
 
-import { sanitizeDriverPatch } from '@myriad/figure-player/internals'
+import { sanitizeDriverPatch } from '@myriad-you/figure-player/internals'
 import { IDLE_MOTION_POLICY } from '../motion/policy'
 import { boundRigCapabilities } from '../motion/rigStateSummary'
 
@@ -30,9 +30,9 @@ import { baselineDriverPatch, restEnergyDriverPatch } from './performanceMotion'
 export interface Anime25DDebugSnapshot extends StageDebugSnapshot {
   motionEnvelope: StageDebugSnapshot['motionEnvelope'] & { transferredEnergy: number }
 }
-export type { Anime25DInspection, Anime25DLayerView, Anime25DPoint } from '@myriad/figure-player'
+export type { Anime25DInspection, Anime25DLayerView, Anime25DPoint } from '@myriad-you/figure-player'
 
-/** The stage (Anime25DStage from @myriad/figure-player) driven by her performance: speech, song, directed poses, behaviors and touch. */
+/** The stage (Anime25DStage from @myriad-you/figure-player) driven by her performance: speech, song, directed poses, behaviors and touch. */
 export class Anime25DPlayer {
   private readonly stage: Anime25DStage<MotionFigure>
   private motionCapabilities: readonly string[] = []
@@ -40,7 +40,7 @@ export class Anime25DPlayer {
   private readonly target: Anime25DDriver = { ...IDENTITY_DRIVER }
 
   private readonly irisRebound = new Anime25DIrisRebound()
-  private readonly closedEyes = new ClosedEyePresentation()
+  private readonly closedEyes = new Anime25DClosedEyePresentation()
   private readonly motion = new Anime25DMotionComposer(
     this.current,
     this.closedEyes,

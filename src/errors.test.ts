@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { FigureError as StageError } from '@myriad/figure-player'
+import { FigureError as StageError } from '@myriad-you/figure-player'
 import { FIGURE_ERROR_TEXT, FigureError, isFigureErrorCode } from './errors'
 
 test('what the stage throws is a FigureError, with its code, params and message', () => {

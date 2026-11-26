@@ -1,10 +1,10 @@
-import type { Anime25DPlayback } from '@myriad/figure-player'
-import type { Anime25DPlaybackLayer, Anime25DRenderFrame } from '@myriad/figure-player/internals'
+import type { Anime25DPlayback } from '@myriad-you/figure-player'
+import type { Anime25DPlaybackLayer, Anime25DRenderFrame } from '@myriad-you/figure-player/internals'
 import type { BodyControl, BodyPose } from '../performance/types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { Anime25DIrisRebound, ClosedEyePresentation, IDENTITY_DRIVER } from '@myriad/figure-player'
-import { Anime25DBodyFrames, applyBodyLift, deformAnime25DEyeFeaturePoint, deriveAnime25DMotionEnvelopeProfile, FIGURE_PITCH_BACK, FIGURE_PITCH_FORWARD, PoseResponseController } from '@myriad/figure-player/internals'
+import { Anime25DClosedEyePresentation, Anime25DIrisRebound, IDENTITY_DRIVER } from '@myriad-you/figure-player'
+import { Anime25DBodyFrames, applyBodyLift, deformAnime25DEyeFeaturePoint, deriveAnime25DMotionEnvelopeProfile, FIGURE_PITCH_BACK, FIGURE_PITCH_FORWARD, PoseResponseController } from '@myriad-you/figure-player/internals'
 import { BODY_CONTROLS, faceLife, sanitizeBodyPose } from '../events/performanceContract'
 import { TouchGestureTracker } from '../interaction/touchGesture'
 import { RigMotionCoordinator } from '../motion/coordinator'
@@ -175,7 +175,7 @@ test('the production composer distinguishes listening from actual singing, hummi
   for (const mode of ['listen', 'sing', 'hum'] as const) {
     for (const speechActive of [false, true]) {
       const current = { ...IDENTITY_DRIVER }
-      const composer = new Anime25DMotionComposer(current, new ClosedEyePresentation(), new Anime25DIrisRebound())
+      const composer = new Anime25DMotionComposer(current, new Anime25DClosedEyePresentation(), new Anime25DIrisRebound())
       composer.directedPose.setCapabilities(capabilities)
       composer.directedPose.set(pose({ mouthOpen: 0.85, mouthRound: 0.9 }), 0)
       composer.behaviorMotion.replace([{
@@ -217,7 +217,7 @@ test('a brief cue borrows only its moving axes, then returns to the held pose wi
 
 test('the production composer performs a real short cue over held axes and recovers to its ongoing goal', () => {
   const current = { ...IDENTITY_DRIVER }
-  const composer = new Anime25DMotionComposer(current, new ClosedEyePresentation(), new Anime25DIrisRebound())
+  const composer = new Anime25DMotionComposer(current, new Anime25DClosedEyePresentation(), new Anime25DIrisRebound())
   composer.directedPose.setCapabilities(capabilities)
   composer.directedPose.set(pose({ headTurn: -0.65, headNod: 0, torsoTurn: 0.7, eyeSmile: 0, leftArmRaise: 0.7 }), 0)
   const target = { ...IDENTITY_DRIVER, talking: false, autoBlink: false, idleSway: false, torsoBreath: false, hairWind: false }
@@ -264,7 +264,7 @@ test('constant directed goals integrate consistently across 30/60/120 fps', () =
 test('the production composer mixes each independent body goal once and filters geometry authority with the same response', () => {
   for (const fps of [30, 60, 120]) {
     const current = { ...IDENTITY_DRIVER }
-    const composer = new Anime25DMotionComposer(current, new ClosedEyePresentation(), new Anime25DIrisRebound())
+    const composer = new Anime25DMotionComposer(current, new Anime25DClosedEyePresentation(), new Anime25DIrisRebound())
     composer.directedPose.setCapabilities(capabilities)
     const directed = controller()
     const reference = { ...IDENTITY_DRIVER }
@@ -302,7 +302,7 @@ test('the production composer mixes each independent body goal once and filters 
 
 test('production composer preserves broad independent targets while bounding high-collar pitch', () => {
   const current = { ...IDENTITY_DRIVER }
-  const composer = new Anime25DMotionComposer(current, new ClosedEyePresentation(), new Anime25DIrisRebound())
+  const composer = new Anime25DMotionComposer(current, new Anime25DClosedEyePresentation(), new Anime25DIrisRebound())
   composer.directedPose.setCapabilities(capabilities)
   composer.directedPose.set(pose({ headTurn: -0.9, headNod: -1, torsoTurn: 0.8, torsoRise: 0.7,
     torsoPitch: 0.65, gazeHorizontal: 0, leftArmRaise: 0.9, rightArmRaise: 0, eyeOpenLeft: 0.1, eyeOpenRight: 1 }), 0)
@@ -345,7 +345,7 @@ test('directed torso targets reach the production body shell and final-space vol
   const frame: Anime25DRenderFrame = { viewWidth: 768, viewHeight: 1024, bodyPivotX: 384,
     bodyPivotY: 1024, bodyRotationCosine: 1, bodyRotationSine: 0, bodyBendHeight: 542, time: 0, eyeCry: 0 }
   const current = { ...IDENTITY_DRIVER }
-  const composer = new Anime25DMotionComposer(current, new ClosedEyePresentation(), new Anime25DIrisRebound())
+  const composer = new Anime25DMotionComposer(current, new Anime25DClosedEyePresentation(), new Anime25DIrisRebound())
   composer.directedPose.setCapabilities(capabilities)
   composer.directedPose.set(pose({ headTurn: -0.8, headNod: -0.8, torsoTurn: 0.8, torsoRise: 0.7, torsoPitch: 0.65 }), 0)
   const body = new Anime25DBodyFrames(current, frame, composer)
@@ -442,7 +442,7 @@ test('a standing figure leans on its bones, not in the shader; its head stays on
   const { playback, frame } = standingStage()
   const settle = (directed: Parameters<typeof pose>[0]) => {
     const current = { ...IDENTITY_DRIVER }
-    const composer = new Anime25DMotionComposer(current, new ClosedEyePresentation(), new Anime25DIrisRebound())
+    const composer = new Anime25DMotionComposer(current, new Anime25DClosedEyePresentation(), new Anime25DIrisRebound())
     composer.setFigure(playback)
     composer.directedPose.setCapabilities(capabilities)
     composer.directedPose.set(pose(directed), 0)
@@ -478,7 +478,7 @@ test('a standing figure leans on its bones, not in the shader; its head stays on
 test('with its physics running, a figure takes a directed lean in turn, its skirt trailing the hips of a turned one, and comes back to rest', () => {
   const { playback, frame } = standingStage()
   const current = { ...IDENTITY_DRIVER }
-  const composer = new Anime25DMotionComposer(current, new ClosedEyePresentation(), new Anime25DIrisRebound())
+  const composer = new Anime25DMotionComposer(current, new Anime25DClosedEyePresentation(), new Anime25DIrisRebound())
   composer.setFigure(playback)
   composer.directedPose.setCapabilities(capabilities)
   const body = new Anime25DBodyFrames(current, frame, composer)

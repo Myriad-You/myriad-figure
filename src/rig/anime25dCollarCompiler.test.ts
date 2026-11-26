@@ -1,4 +1,4 @@
-import type { Anime25DSourceAnchors } from '@myriad/figure-player/internals'
+import type { Anime25DSourceAnchors } from '@myriad-you/figure-player/internals'
 import type { RasterLayer } from './anime25dImportTypes'
 import assert from 'node:assert/strict'
 import test from 'node:test'

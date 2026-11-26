@@ -1,4 +1,4 @@
-import type { Anime25DDriver } from '@myriad/figure-player'
+import type { Anime25DDriver } from '@myriad-you/figure-player'
 import type { SpeechArticulation } from '../rig/articulation'
 
 type EnergyDriverPatch = Pick<

@@ -2,8 +2,8 @@ import type { PerformanceDirective } from '../performance/types'
 import type { RigMotionPort } from '../rig/motionPort'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { Anime25DIrisRebound, ClosedEyePresentation, IDENTITY_DRIVER } from '@myriad/figure-player'
-import { deriveAnime25DMotionEnvelopeProfile } from '@myriad/figure-player/internals'
+import { Anime25DClosedEyePresentation, Anime25DIrisRebound, IDENTITY_DRIVER } from '@myriad-you/figure-player'
+import { deriveAnime25DMotionEnvelopeProfile } from '@myriad-you/figure-player/internals'
 import { realizeAnime25DBehaviorPlan } from '../anime25drig/behaviorRealizer'
 import { Anime25DMotionComposer } from '../anime25drig/motionComposer'
 import { bearingDriverPatch } from '../anime25drig/performanceExpression'
@@ -21,7 +21,7 @@ test('model pose → channel → lifecycle → bearing → production writer →
   const release = runtime.retain()
   const current = { ...IDENTITY_DRIVER }
   const target = { ...IDENTITY_DRIVER, talking: false, autoBlink: false, idleSway: false }
-  const composer = new Anime25DMotionComposer(current, new ClosedEyePresentation(), new Anime25DIrisRebound())
+  const composer = new Anime25DMotionComposer(current, new Anime25DClosedEyePresentation(), new Anime25DIrisRebound())
   composer.directedPose.setCapabilities(['head-body', 'torso-volume', 'left-arm', 'right-arm'])
   let time = 0
   let policy = IDLE_MOTION_POLICY

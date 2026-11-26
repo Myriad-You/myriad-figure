@@ -1,7 +1,7 @@
 // Building a playback package from imported layers: what the stage draws, assembled by the rig tools.
-import type { Anime25DPlayback } from '@myriad/figure-player'
-import type { Anime25DArmVariant, Anime25DEyeAnchor, Anime25DFade, Anime25DLayerRole, Anime25DMouthProfile, Anime25DPlaybackAnchors, Anime25DPlaybackLayer, Anime25DSourceAnchors } from '@myriad/figure-player/internals'
-import { ANIME25D_LAYER_DEPTH } from '@myriad/figure-player/internals'
+import type { Anime25DPlayback } from '@myriad-you/figure-player'
+import type { Anime25DArmVariant, Anime25DEyeAnchor, Anime25DFade, Anime25DLayerRole, Anime25DMouthProfile, Anime25DPlaybackAnchors, Anime25DPlaybackLayer, Anime25DSourceAnchors } from '@myriad-you/figure-player/internals'
+import { ANIME25D_LAYER_DEPTH } from '@myriad-you/figure-player/internals'
 import { FigureError } from '../errors'
 import { anime25DLayerFade } from '../rig/anime25d'
 import { deriveGeometryChestProfile } from './chestField'
@@ -33,7 +33,7 @@ export interface Anime25DPlaybackBuildInput {
  * leans from and the ground its soles stand on. Without one the upper body
  * leans from the frame's bottom edge, a bust's crop.
  */
-export function remapRiggerAnchors(
+export function remapSourceAnchors(
   anchors: Anime25DSourceAnchors,
   frame: { x: number; y: number; width: number; height: number },
   stance: { hips: { x: number; y: number }; groundY: number } | null = null,

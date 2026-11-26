@@ -1,6 +1,6 @@
 import type { PreparedLayer, RasterLayer, RigCanvasFrame } from './anime25dImportTypes'
 import type { ImportTimer } from './importTiming'
-import { ANIME25D_ATLAS_MIP_GUTTER_PX } from '@myriad/figure-player/internals'
+import { ANIME25D_ATLAS_MIP_GUTTER_PX } from '@myriad-you/figure-player/internals'
 import { FigureError } from '../errors'
 import { trimRaster } from './anime25dRaster'
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CHARACTER_ASSET_PROFILES } from '@myriad/figure-player/internals'
+import { CHARACTER_ASSET_PROFILES } from '@myriad-you/figure-player/internals'
 import { characterAssetProfileOf, MIN_SUPPORTED_RIG_IR_VERSION, RIG_IR_VERSION, RIG_PRESENTATION_SLOTS } from './contract'
 
 test('keeps one explicit legacy IR readable while new imports use current IR', () => {

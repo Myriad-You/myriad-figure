@@ -1,4 +1,4 @@
-import type { Anime25DDriver } from '@myriad/figure-player'
+import type { Anime25DDriver } from '@myriad-you/figure-player'
 import type { MotionChannelPolicy } from '../motion/policy'
 import type { Anime25DBehaviorMotionSample } from './behaviorMotion'
 import type { PoseOccupancy } from './poseOccupancy'

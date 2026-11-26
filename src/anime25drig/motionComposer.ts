@@ -1,14 +1,14 @@
-import type { Anime25DDriver, Anime25DIrisRebound, Anime25DMotionEnvelopeProfile, Anime25DPlayback, ClosedEyePresentation } from '@myriad/figure-player'
-import type { Anime25DBlinkState, IdleSwayOffset } from '@myriad/figure-player/internals'
+import type { Anime25DClosedEyePresentation, Anime25DDriver, Anime25DIrisRebound, Anime25DMotionEnvelopeProfile, Anime25DPlayback } from '@myriad-you/figure-player'
+import type { Anime25DBlinkState, Anime25DIdleSwayOffset } from '@myriad-you/figure-player/internals'
 import type { MotionChannelPolicy } from '../motion/policy'
 import type { MusicMotionSignal } from '../singing/musicSignal'
 import type { AmbientPose } from './ambientMotion'
 import type { IndependentBodyControl } from './directedPose'
-import type { Anime25DStylizedTargets, BreathPose } from './driverComposition'
+import type { Anime25DStylizedTargets, IdleSwayPose } from './driverComposition'
 import type { RandomActionFrame } from './randomAction'
 import type { StylizedExpressionMotion } from './stylizedExpressionMotion'
-import { IDENTITY_DRIVER } from '@myriad/figure-player'
-import { applyAnime25DCryMouth, applyAnime25DSillyMouthOwnership, bodyKeyShare, GazeShiftBlink, headRidesBody, idleSwayOffset, isStandingFigure, PoseResponseController, prepareAnime25DWorkingTarget, projectAnime25DMotionEnvelope, smoothAnime25DUnit, STANDING_HEAD_ROLL, STANDING_IDLE_SHARE, standingWeightShift, stepAnime25DBlink, stepAnime25DDriverResponse } from '@myriad/figure-player/internals'
+import { IDENTITY_DRIVER } from '@myriad-you/figure-player'
+import { applyAnime25DCryMouth, applyAnime25DStickerMouthShare, bodyKeyShare, GazeShiftBlink, headRidesBody, idleSwayOffset, isStandingFigure, PoseResponseController, prepareAnime25DWorkingTarget, projectAnime25DMotionEnvelope, smoothAnime25DUnit, STANDING_HEAD_ROLL, STANDING_IDLE_SHARE, standingWeightShift, stepAnime25DBlink, stepAnime25DDriverResponse } from '@myriad-you/figure-player/internals'
 import { allowsPointerGaze } from '../motion/policy'
 import { SingingGrooveController } from '../singing/singingGroove'
 import { AmbientMotionController } from './ambientMotion'
@@ -70,7 +70,7 @@ export function measureMotionFigure(playback: Pick<Anime25DPlayback, 'anchors' |
 
 /**
  * Everything she does, composed into one driver. Speech, song, directed
- * performances, stylized faces, idle and random motion each propose an
+ * performances, sticker faces, idle and random motion each propose an
  * offset; occupancy and the pose gate decide who owns which channel; the
  * envelope keeps the result drawable; and the response smoothing writes it
  * into `current`. Rendering reads `current` and the few outputs below.
@@ -87,9 +87,9 @@ export class Anime25DMotionComposer {
     transferredEnergy: 0,
   }
 
-  /** The stylized face's own motion, which the head and mouth deformers read. */
+  /** The sticker faces' own motion, which the head and mouth deformers read. */
   stickerFaceMotion: Readonly<StylizedExpressionMotion> | null = null
-  /** How much of the stylized head pulse the gate lets through. */
+  /** How much of the sticker faces' head pulse the gate lets through. */
   stickerFaceHeadShare = 1
   /** How far a sticker face owns the mouth once she stops talking. */
   stickerMouthShare = 1
@@ -133,9 +133,9 @@ export class Anime25DMotionComposer {
   private readonly composedPose = zeroOccupancyOffset()
   /** Breath and voice, kept apart to ride on what the director holds. */
   private readonly ridingPose = zeroOccupancyOffset()
-  private readonly sway: IdleSwayOffset = { headYaw: 0, headPitch: 0, headRoll: 0, bodyLean: 0 }
+  private readonly sway: Anime25DIdleSwayOffset = { headYaw: 0, headPitch: 0, headRoll: 0, bodyLean: 0 }
   /** The idle sway as a pose source, in its keys. */
-  private readonly breathPose: BreathPose = { angleX: 0, angleY: 0, angleZ: 0, body: 0 }
+  private readonly idleSwayPose: IdleSwayPose = { angleX: 0, angleY: 0, angleZ: 0, body: 0 }
   private readonly idleAmbient: AmbientPose = { angleX: 0, angleY: 0, angleZ: 0, body: 0, eyeX: 0, eyeY: 0 }
   private readonly idleRandom = {} as RandomActionFrame
   private standing = false
@@ -152,7 +152,7 @@ export class Anime25DMotionComposer {
   constructor(
     /** The driver rendering reads; the composer is its only writer. */
     private readonly current: Anime25DDriver,
-    private readonly closedEyes: ClosedEyePresentation,
+    private readonly closedEyes: Anime25DClosedEyePresentation,
     private readonly irisRebound: Anime25DIrisRebound,
   ) {}
 
@@ -305,16 +305,16 @@ export class Anime25DMotionComposer {
     const ambient = this.ambientMotion.sample(t, target.idleSway, speaking)
     const thinking = this.thinkingMotion.sample(t, target.thinking && !speaking, tgt)
     const sway = idleSwayOffset(t, this.sway)
-    const breath = this.breathPose
-    breath.angleX = sway.headYaw
-    breath.angleY = sway.headPitch
-    breath.angleZ = sway.headRoll
-    breath.body = sway.bodyLean
+    const idleSway = this.idleSwayPose
+    idleSway.angleX = sway.headYaw
+    idleSway.angleY = sway.headPitch
+    idleSway.angleZ = sway.headRoll
+    idleSway.body = sway.bodyLean
     if (this.standing) {
       const weight = standingWeightShift(t) * STANDING_IDLE_SHARE
-      breath.body = breath.body * STANDING_IDLE_SHARE + weight
+      idleSway.body = idleSway.body * STANDING_IDLE_SHARE + weight
       // The head tips further the way the body leans, as a standing idle's does.
-      breath.angleZ += weight * STANDING_HEAD_ROLL
+      idleSway.angleZ += weight * STANDING_HEAD_ROLL
     }
     const gate = this.poseGate.sample(
       dt,
@@ -337,7 +337,7 @@ export class Anime25DMotionComposer {
         randomAction: this.standing ? this.standingRandom(randomAction) : randomAction,
         groove,
         thinking,
-        breath,
+        idleSway,
         performance: semanticExpression,
         stylized,
         coSpeech: speechExpression,
@@ -363,7 +363,7 @@ export class Anime25DMotionComposer {
       gatedSpeechExpression,
     )
     applyAnime25DSpeechExtras(tgt, speech, gatedSpeechExpression)
-    applyAnime25DSillyMouthOwnership(
+    applyAnime25DStickerMouthShare(
       tgt,
       smoothAnime25DUnit(stylizedTargets.silly) * this.stickerMouthShare,
     )

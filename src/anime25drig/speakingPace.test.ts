@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { Anime25DIrisRebound, ClosedEyePresentation, IDENTITY_DRIVER } from '@myriad/figure-player'
-import { deriveAnime25DMotionEnvelopeProfile, headRollRadians } from '@myriad/figure-player/internals'
+import { Anime25DClosedEyePresentation, Anime25DIrisRebound, IDENTITY_DRIVER } from '@myriad-you/figure-player'
+import { deriveAnime25DMotionEnvelopeProfile, headRollRadians } from '@myriad-you/figure-player/internals'
 import { IDLE_MOTION_POLICY } from '../motion/policy'
 import { Anime25DMotionComposer } from './motionComposer'
 
@@ -22,7 +22,7 @@ function headRoll(speaking: boolean, seed: number): number[] {
   try {
     const current = { ...IDENTITY_DRIVER }
     const target = { ...IDENTITY_DRIVER, talking: speaking, autoBlink: true, idleSway: true }
-    const composer = new Anime25DMotionComposer(current, new ClosedEyePresentation(), new Anime25DIrisRebound())
+    const composer = new Anime25DMotionComposer(current, new Anime25DClosedEyePresentation(), new Anime25DIrisRebound())
     const envelope = deriveAnime25DMotionEnvelopeProfile({ layers: [{ role: 'handwear' }] })
     if (speaking) composer.speechMotion.enqueueText('诶？你说那家店啊，我上次路过的时候还在排队呢。不过说真的，我觉得他们家的拉面没有传说中那么好吃。', 'zh-CN')
     const roll: number[] = []

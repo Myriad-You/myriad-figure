@@ -1,10 +1,10 @@
-import type { Anime25DRgb, MouthExpressionKind, MouthExpressionPalette, MouthPathPoint } from '@myriad/figure-player/internals'
+import type { Anime25DMouthPathPoint, Anime25DRgb, MouthExpressionKind, MouthExpressionPalette } from '@myriad-you/figure-player/internals'
 import type { MouthExpressionSize } from './mouthShared'
-import { mixRgb } from '@myriad/figure-player/internals'
+import { mixRgb } from '@myriad-you/figure-player/internals'
 import { paint, pointInPolygon, pointToPolylineDistance } from './mouthPaths'
 import { clamp, clampInt } from './mouthShared'
 
-const MANIAC_TONGUE_HIGHLIGHT_RAIL: readonly MouthPathPoint[] = [
+const MANIAC_TONGUE_HIGHLIGHT_RAIL: readonly Anime25DMouthPathPoint[] = [
   [-0.49, 0.68],
   [-0.43, 0.79],
   [-0.32, 0.87],
@@ -18,7 +18,7 @@ export function createManiacMouthShadowBitmap(
   const width = clampInt(Math.round(requestedSize.width), 16, 360)
   const height = clampInt(Math.round(requestedSize.height), 12, 300)
   const data = new Uint8ClampedArray(width * height * 4)
-  const right: MouthPathPoint[] = [
+  const right: Anime25DMouthPathPoint[] = [
     [0.728, -0.832],
     [0.976, -0.816],
     [1.078, -0.657],
@@ -27,10 +27,10 @@ export function createManiacMouthShadowBitmap(
     [0.965, -0.669],
     [0.758, -0.713],
   ]
-  const shadows = [right.map(([x, y]): MouthPathPoint => [-x, y]), right]
+  const shadows = [right.map(([x, y]): Anime25DMouthPathPoint => [-x, y]), right]
   const color = mixRgb(palette.cavity, palette.fill, 0.2)
   const lowerLipShadowColor = mixRgb(palette.line, palette.fill, 0.38)
-  const samples: readonly MouthPathPoint[] = [
+  const samples: readonly Anime25DMouthPathPoint[] = [
     [0.2, 0.2],
     [0.8, 0.2],
     [0.2, 0.8],

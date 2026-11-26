@@ -1,6 +1,6 @@
 // How fast a performed pose is let move: the response scale from the behaviours that move it.
 import type { BehaviorQuality } from '../motion/behavior'
-import { MAX_RESPONSE_SCALE, MIN_RESPONSE_SCALE } from '@myriad/figure-player/internals'
+import { MAX_RESPONSE_SCALE, MIN_RESPONSE_SCALE } from '@myriad-you/figure-player/internals'
 
 export function poseResponseScale(
   quality: Readonly<BehaviorQuality>,

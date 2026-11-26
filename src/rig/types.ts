@@ -1,6 +1,6 @@
 // What an import produces before it is a package: layer sources, bone handles, the import source.
-import type { Anime25DPlayback } from '@myriad/figure-player'
-import type { CharacterAssetProfile, RigBone, RigMotionProfile, RigOutfitProfile, RigPoint, RigSemanticAnchor, RigSemantics, RigSize, RigSpatialProfile } from '@myriad/figure-player/internals'
+import type { Anime25DPlayback } from '@myriad-you/figure-player'
+import type { CharacterAssetProfile, RigBone, RigMotionProfile, RigOutfitProfile, RigPoint, RigSemanticAnchor, RigSemantics, RigSize, RigSpatialProfile } from '@myriad-you/figure-player/internals'
 
 export type RigRect = RigPoint & RigSize
 

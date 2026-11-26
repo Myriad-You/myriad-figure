@@ -1,7 +1,7 @@
 import type { Layer, PixelData, Psd } from 'ag-psd'
 import type { Anime25DImportProfile } from './anime25dImportProfile'
 import type { EyeSide, RasterLayer } from './anime25dImportTypes'
-import { anime25DBaseRole, anime25DLayerGroup, anime25DLayerNameParts, canonicalAnime25DLayerName, isAnime25DRigidAttachment, normalizeAnime25DLayerName } from '@myriad/figure-player/internals'
+import { anime25DBaseRole, anime25DLayerGroup, anime25DLayerNameParts, canonicalAnime25DLayerName, isAnime25DRigidAttachment, normalizeAnime25DLayerName } from '@myriad-you/figure-player/internals'
 import { genericParts as GenericParts } from '../anime25drig/upstream/genericParts'
 import { anime25DImportProfile } from './anime25dImportProfile'
 import { uniquePartId } from './anime25dRaster'

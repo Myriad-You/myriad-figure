@@ -1,4 +1,4 @@
-import type { Anime25DDriver } from '@myriad/figure-player'
+import type { Anime25DDriver } from '@myriad-you/figure-player'
 
 type ActivityExpressionDriver = Pick<
   Anime25DDriver,

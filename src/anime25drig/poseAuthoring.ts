@@ -1,7 +1,7 @@
-import type { Anime25DDriver, Anime25DPlayback } from '@myriad/figure-player'
-import type { PoseCorrection } from '@myriad/figure-player/workbench'
-import { poseCorrectionCornerKey } from '@myriad/figure-player/internals'
-import { isPoseCorrections, WORKBENCH_DRIVER } from '@myriad/figure-player/workbench'
+import type { Anime25DDriver, Anime25DPlayback } from '@myriad-you/figure-player'
+import type { PoseCorrection } from '@myriad-you/figure-player/workbench'
+import { poseCorrectionCornerKey } from '@myriad-you/figure-player/internals'
+import { isPoseCorrections, WORKBENCH_DRIVER } from '@myriad-you/figure-player/workbench'
 
 export const POSE_CORRECTION_REGIONS = ['leftEye', 'rightEye', 'mouth', 'chin', 'frontCrown', 'rearCrown'] as const
 export type PoseCorrectionRegion = typeof POSE_CORRECTION_REGIONS[number]

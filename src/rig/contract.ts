@@ -1,5 +1,5 @@
 // The rig contract's versions and limits the importer and the manifest check hold packages to.
-import type { CharacterAssetProfile } from '@myriad/figure-player/internals'
+import type { CharacterAssetProfile } from '@myriad-you/figure-player/internals'
 import contract from '../../contracts/merope_rig_contract.json' with { type: 'json' }
 
 export const RIG_SCHEMA_VERSION = contract.schemaVersion

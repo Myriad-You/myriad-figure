@@ -1,8 +1,8 @@
-import type { Anime25DPlayback } from '@myriad/figure-player'
-import type { PoseCorrection } from '@myriad/figure-player/workbench'
+import type { Anime25DPlayback } from '@myriad-you/figure-player'
+import type { PoseCorrection } from '@myriad-you/figure-player/workbench'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { WORKBENCH_DRIVER } from '@myriad/figure-player/workbench'
+import { WORKBENCH_DRIVER } from '@myriad-you/figure-player/workbench'
 import {
   appendPoseCorrectionPatch,
   clampPoseCorrectionPatch,

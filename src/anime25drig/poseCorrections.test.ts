@@ -1,8 +1,8 @@
-import type { PoseCorrection } from '@myriad/figure-player/workbench'
+import type { PoseCorrection } from '@myriad-you/figure-player/workbench'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { IDENTITY_DRIVER } from '@myriad/figure-player'
-import { applyPoseCorrections, bindPoseCorrections, writePoseCorrectionWeights } from '@myriad/figure-player/internals'
+import { IDENTITY_DRIVER } from '@myriad-you/figure-player'
+import { applyPoseCorrections, bindPoseCorrections, writePoseCorrectionWeights } from '@myriad-you/figure-player/internals'
 import { poseCorrectionPatch } from './poseCorrections'
 
 const head = {

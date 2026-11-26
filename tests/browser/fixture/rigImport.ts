@@ -1,4 +1,4 @@
-import type { Anime25DGpuLayer, CollarClipMesh } from '@myriad/figure-player/internals'
+import type { Anime25DGpuLayer, CollarClipMesh } from '@myriad-you/figure-player/internals'
 import { writePsd } from 'ag-psd'
 import { realizeAnime25DBehaviorPlan } from '../../../src/anime25drig/behaviorRealizer'
 import { Anime25DPlayer } from '../../../src/anime25drig/player'

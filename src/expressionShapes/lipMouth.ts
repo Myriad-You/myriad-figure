@@ -1,7 +1,7 @@
 // Expression mouths painted in a portrait's own lips.
-import type { LipParting, MouthExpressionKind, PaintedLips } from '@myriad/figure-player/internals'
+import type { Anime25DLipParting, MouthExpressionKind, PaintedLips } from '@myriad-you/figure-player/internals'
 import type { MouthExpressionSize } from './mouthShared'
-import { LIP_PARTING_OFFSET, lipParting, mouthExpressionOuterPath, paintLipMouth, softenPaintedEdges } from '@myriad/figure-player/internals'
+import { LIP_PARTING_OFFSET, lipParting, mouthExpressionOuterPath, paintLipMouth, softenPaintedEdges } from '@myriad-you/figure-player/internals'
 
 type Point = readonly [x: number, y: number]
 
@@ -17,7 +17,7 @@ export const LIP_MOUTH_KINDS: ReadonlySet<MouthExpressionKind> = new Set(['open'
  * Where the lips part in an expression mouth. A wail and a laugh open wide
  * inside thin lips; a tongue out shows no teeth.
  */
-const EXPRESSION_LIP_CUTS: Readonly<Partial<Record<MouthExpressionKind, LipParting>>> = {
+const EXPRESSION_LIP_CUTS: Readonly<Partial<Record<MouthExpressionKind, Anime25DLipParting>>> = {
   cry: { openingX: 0.8, openingY: 0.72, lineX: 0.86, lineY: 0.8, teethMinimum: 0.16 },
   maniac: { openingX: 0.88, openingY: 0.84, lineX: 0.92, lineY: 0.89, teethMinimum: 0.2 },
   silly: { openingX: 0.76, openingY: 0.66, lineX: 0.83, lineY: 0.74, teethMinimum: 0 },

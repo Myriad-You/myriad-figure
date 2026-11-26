@@ -1,4 +1,4 @@
-import type { Anime25DVec3 } from '@myriad/figure-player/internals'
+import type { Anime25DVec3 } from '@myriad-you/figure-player/internals'
 import { sumAcross, sumDown } from './armCutFilters'
 
 /** Pixel and geometry helpers for measuring a drawn arm (armModel, armHand), on a w × h grid of row-major pixels. */

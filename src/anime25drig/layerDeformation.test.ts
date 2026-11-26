@@ -1,4 +1,4 @@
-import type { Anime25DPlaybackLayer } from '@myriad/figure-player/internals'
+import type { Anime25DPlaybackLayer } from '@myriad-you/figure-player/internals'
 import type {
   UpstreamRuntimeExpression,
   UpstreamRuntimeFrame,
@@ -6,8 +6,8 @@ import type {
 } from './upstream/types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { IDENTITY_DRIVER } from '@myriad/figure-player'
-import { bindAnime25DEyeFeature, deformAnime25DEyeFeaturePoint, resolveAnime25DEyeFeature, writeAnime25DLayerGlobalTransform } from '@myriad/figure-player/internals'
+import { IDENTITY_DRIVER } from '@myriad-you/figure-player'
+import { bindAnime25DEyeFeature, deformAnime25DEyeFeaturePoint, resolveAnime25DEyeFeature, writeAnime25DLayerGlobalTransform } from '@myriad-you/figure-player/internals'
 import { deformUpstreamRuntimeLayer } from './upstream/runtime'
 
 const FRAME: UpstreamRuntimeFrame = {
