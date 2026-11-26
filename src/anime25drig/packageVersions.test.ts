@@ -1,4 +1,4 @@
-import type { Anime25DPlayback, MeropeRigManifest } from '@myriad-you/figure-player'
+import type { Anime25DPlayback, Anime25DPlaybackV7, MeropeRigManifest } from '@myriad-you/figure-player'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readAnime25DPlayback, writeAnime25DPlayback } from '@myriad-you/figure-player'
@@ -24,6 +24,24 @@ test('the importer writes version 7, with its pose-correction axes under the key
     const v8 = inVersion8(manifest).anime25dPlayback as Anime25DPlayback
     assert.deepEqual(v8.shellProfile.poseCorrections?.map(c => Object.keys(c.at)), [['headYaw', 'headPitch']])
     assert.equal(JSON.stringify(writeAnime25DPlayback(v8, 7)), JSON.stringify(playback))
+  }
+})
+
+/** `value` with every object's keys in sorted order, as the server keeps a stored manifest. */
+function sortedKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortedKeys)
+  if (value === null || typeof value !== 'object') return value
+  return Object.fromEntries(Object.keys(value).toSorted().map(key => [key, sortedKeys((value as Record<string, unknown>)[key])]))
+}
+
+test('a package stored with sorted keys reads into version 8 and writes back to version 7 as the same value', async () => {
+  for (const manifest of manifests) {
+    const stored = sortedKeys(manifest.anime25dPlayback) as Anime25DPlaybackV7
+    const again = writeAnime25DPlayback(readAnime25DPlayback(stored), 7)
+    assert.deepEqual(again, stored)
+    assert.equal(JSON.stringify(sortedKeys(again)), JSON.stringify(stored))
+    const sortedManifest = { ...manifest, anime25dPlayback: stored }
+    assert.deepEqual(await playManifest(inVersion8(sortedManifest)), await playManifest(manifest))
   }
 })
 
