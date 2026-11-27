@@ -1,10 +1,8 @@
-import type { MeropeRigManifest } from '@myriad-you/figure-player'
+import type { MeropeRigManifest } from '@myriad-you/figure-player/contract'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { isLiveMeropeManifest,
-  isRigManifest,
-  RIG_IR_VERSION,
-  sameLiveFaceRuntime } from '@myriad-you/figure-player/contract'
+import { sameLiveFaceRuntime } from '@myriad-you/figure-player'
+import { isLiveMeropeManifest, isRigManifest, RIG_IR_VERSION } from '@myriad-you/figure-player/contract'
 import { ANIME25D_PLAYBACK_VERSION } from '@myriad-you/figure-player/internals'
 import { deriveGeometryChestProfile } from '../anime25drig/chestField'
 import { analyzeAnime25DMouthProfile } from '../anime25drig/mouthProfile'

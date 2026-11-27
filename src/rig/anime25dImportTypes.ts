@@ -1,6 +1,6 @@
-import type { RigRect } from '@myriad-you/figure-player/contract'
+import type { RigPoint, RigRect } from '@myriad-you/figure-player/contract'
 // What the importer passes between its steps: raster layers, source references, prepared layers, anchors.
-import type { Anime25DArmVariant, Anime25DLayerRole, RigPoint } from '@myriad-you/figure-player/internals'
+import type { Anime25DArmVariant, Anime25DLayerRole } from '@myriad-you/figure-player/internals'
 
 export type EyeSide = 'left' | 'right'
 

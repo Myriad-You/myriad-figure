@@ -1,7 +1,8 @@
-import type { RigBoneHandle, RigLayerMeshSource, RigLayerSource, RigRect } from '@myriad-you/figure-player/contract'
-import type { Anime25DLayerRole, RigBone, RigPoint } from '@myriad-you/figure-player/internals'
+import type { RigBone, RigBoneHandle, RigLayerMeshSource, RigLayerSource, RigPoint, RigRect } from '@myriad-you/figure-player/contract'
+import type { Anime25DLayerRole } from '@myriad-you/figure-player/internals'
 import type { AnimeAnchors, PreparedLayer } from './anime25dImportTypes'
-import { ANIME25D_LAYER_DEPTH, MAX_RIG_BONES } from '@myriad-you/figure-player/internals'
+import { MAX_RIG_BONES } from '@myriad-you/figure-player/contract'
+import { ANIME25D_LAYER_DEPTH } from '@myriad-you/figure-player/internals'
 import { FigureError } from '../errors'
 
 export function buildAnime25DBonesAndHandles(

@@ -1,6 +1,6 @@
-import type { Anime25DArmAim, Anime25DArmSide, Anime25DDriver, Anime25DDriving, Anime25DInspection, Anime25DMotionEnvelopeProfile, Anime25DPlaybackDocument, Anime25DPose, MeropeRigManifest, Anime25DDebugSnapshot as StageDebugSnapshot, VisibleTouchHit } from '@myriad-you/figure-player'
+import type { Anime25DArmAim, Anime25DArmSide, Anime25DDriver, Anime25DDriving, Anime25DInspection, Anime25DMotionEnvelopeProfile, Anime25DPlaybackDocument, Anime25DPose, Anime25DDebugSnapshot as StageDebugSnapshot, VisibleTouchHit } from '@myriad-you/figure-player'
+import type { MeropeRigManifest, PerformanceBaseline } from '@myriad-you/figure-player/contract'
 
-import type { PerformanceBaseline } from '@myriad-you/figure-player/contract'
 import type { PoseCorrection, PoseCorrectionStageSource } from '@myriad-you/figure-player/workbench'
 
 import type { PresentedTouchReaction } from '../interaction/touchReaction'

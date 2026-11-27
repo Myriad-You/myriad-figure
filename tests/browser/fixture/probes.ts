@@ -2,7 +2,8 @@
 // targets and ticks, then read what it drew (inspect(), pixels). Typed and
 // type-checked, so a renamed internal cannot turn a probe into a silent skip.
 // Each probe runs on a synthetic package in CI and on real art when given.
-import type { Anime25DDriver, Anime25DInspection, Anime25DLayerView, Anime25DPlaybackDocument, Anime25DPoint, Anime25DPose, MeropeRigManifest } from '@myriad-you/figure-player'
+import type { Anime25DDriver, Anime25DInspection, Anime25DLayerView, Anime25DPlaybackDocument, Anime25DPoint, Anime25DPose } from '@myriad-you/figure-player'
+import type { MeropeRigManifest } from '@myriad-you/figure-player/contract'
 import type { Anime25DArmModel } from '@myriad-you/figure-player/internals'
 import type { PoseCorrection } from '@myriad-you/figure-player/workbench'
 import type { MotionChannelPolicy } from '../../../src/motion/policy'

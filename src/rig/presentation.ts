@@ -1,4 +1,4 @@
-import type { MeropeRigManifest } from '@myriad-you/figure-player'
+import type { MeropeRigManifest } from '@myriad-you/figure-player/contract'
 import { RIG_PRESENTATION_SLOTS } from '@myriad-you/figure-player/contract'
 
 interface PresentationSlotDefinition {

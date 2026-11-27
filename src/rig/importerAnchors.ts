@@ -1,5 +1,5 @@
-import type { MeropeRigImportSource } from '@myriad-you/figure-player/contract'
-import type { Anime25DLayerRole, RigPoint } from '@myriad-you/figure-player/internals'
+import type { MeropeRigImportSource, RigPoint } from '@myriad-you/figure-player/contract'
+import type { Anime25DLayerRole } from '@myriad-you/figure-player/internals'
 import type { Psd } from 'ag-psd'
 import type { Anime25DImportProfile } from './anime25dImportProfile'
 import type { AnimeAnchors, EyeSide, PreparedLayer, RasterLayer, RigCanvasFrame } from './anime25dImportTypes'

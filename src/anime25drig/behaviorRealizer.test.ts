@@ -1,7 +1,4 @@
-import type {
-  PerformanceCue,
-  PerformanceDirective,
-} from '@myriad-you/figure-player/contract'
+import type { PerformanceCue, PerformanceDirective } from '@myriad-you/figure-player/contract'
 import type { BehaviorPlan } from '../motion/behavior'
 import assert from 'node:assert/strict'
 import test from 'node:test'

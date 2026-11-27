@@ -1,23 +1,10 @@
-import type { MeropeRigManifest } from '@myriad-you/figure-player'
-import type {
-  PerformanceBaseline,
-  PerformanceCue,
-  PerformanceDirective,
-  PerformancePhase,
-  RigBeatPhase,
-  RigMusicEnergy,
-  RigStateSummary,
-} from '@myriad-you/figure-player/contract'
+import type { MeropeRigManifest, PerformanceBaseline, PerformanceCue, PerformanceDirective, PerformancePhase, RigBeatPhase, RigMusicEnergy, RigStateSummary } from '@myriad-you/figure-player/contract'
 import type { Anime25DPlaybackContent } from '@myriad-you/figure-player/internals'
 import type { MusicMotionSignal } from '../singing/musicSignal'
 import type { BehaviorSnapshot } from './behavior'
 import type { MotionSourceId } from './channels'
 import type { MotionRuntime } from './runtime'
-import {
-  FACE_PRESETS,
-  PERFORMANCE_BASELINE_EXPRESSIONS,
-  PERFORMANCE_POSTURES,
-} from '@myriad-you/figure-player/contract'
+import { FACE_PRESETS, BASELINE_EXPRESSIONS as PERFORMANCE_BASELINE_EXPRESSIONS, POSTURES as PERFORMANCE_POSTURES } from '@myriad-you/figure-player/contract'
 import { hasAnime25DCapability } from '../rig/anime25dCapabilities'
 import { ARM_VARIANT_GESTURES } from '../rig/armVariants'
 import { MOTION_SOURCES } from './channels'

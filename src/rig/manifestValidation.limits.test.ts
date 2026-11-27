@@ -1,4 +1,5 @@
-import type { Anime25DPlayback, MeropeRigManifest } from '@myriad-you/figure-player'
+import type { Anime25DPlayback } from '@myriad-you/figure-player'
+import type { MeropeRigManifest } from '@myriad-you/figure-player/contract'
 import type { Anime25DArmModel, Anime25DPlaybackLayer } from '@myriad-you/figure-player/internals'
 import assert from 'node:assert/strict'
 import test from 'node:test'

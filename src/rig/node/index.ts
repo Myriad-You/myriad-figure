@@ -7,8 +7,7 @@
 // memory limit and a deadline after which it is killed; `signal` only stops it
 // between steps.
 
-import type { AuthoredExpressionKind, DocumentTurnKeyforms } from '@myriad-you/figure-player/contract'
-import type { CharacterAssetProfile } from '@myriad-you/figure-player/internals'
+import type { AuthoredExpressionKind, CharacterAssetProfile, DocumentTurnKeyforms } from '@myriad-you/figure-player/contract'
 import type { PreparedAnime25DRigImport } from '../anime25dImporter'
 import type { ImportLap } from '../importTiming'
 import type { ArmVariantSource, RigPsdImportStage } from '../psdImportClient'

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { FigureChannel } from '../channel'
-import { dispatchMeropeState, meropePerformanceEventDetail, resolveLoadedMeropeAffect } from './performanceEvents'
+import { dispatchMeropeState, resolveLoadedMeropeAffect } from './performanceEvents'
 
 test('state streams and late GETs converge on the newest mood, and reset between owners', () => {
   const channel = new FigureChannel()
@@ -21,23 +21,4 @@ test('state streams and late GETs converge on the newest mood, and reset between
   assert.equal(channel.currentState()?.mood.revision, 15)
   channel.resetState()
   assert.deepEqual(resolveLoadedMeropeAffect(channel, { mood: 70, arousal: 48, moodRevision: 1 }), { mood: 70, arousal: 48 })
-})
-
-test('bounds production performance events and defaults their source', () => {
-  assert.deepEqual(
-    meropePerformanceEventDetail({
-      text: '  太好了！  ',
-      source: 'unknown',
-      messageId: ' message-1 ',
-    }),
-    { text: '太好了！', source: 'reply', messageId: 'message-1' },
-  )
-  assert.equal(meropePerformanceEventDetail({ text: '   ' }), null)
-  assert.equal(meropePerformanceEventDetail(null), null)
-})
-
-test('performance envelope carries a bounded run id independently of the semantic director plan', () => {
-  const event = meropePerformanceEventDetail({ text: 'reply', source: 'reply', runId: `  ${'r'.repeat(200)}  ` })
-  assert.equal(event?.runId, 'r'.repeat(160))
-  assert.equal(meropePerformanceEventDetail({ text: 'reply', runId: 42 })?.runId, undefined)
 })

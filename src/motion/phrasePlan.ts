@@ -1,7 +1,4 @@
-import type {
-  PerformanceCue,
-  SpeechPhrase,
-} from '@myriad-you/figure-player/contract'
+import type { PerformanceCue, SpeechPhrase } from '@myriad-you/figure-player/contract'
 import type { SpeechProsodyPlan } from '../speech/prosody'
 import type { BehaviorPlan, BehaviorSnapshot } from './behavior'
 import { sanitizeSpeechPhrases } from '@myriad-you/figure-player/contract'

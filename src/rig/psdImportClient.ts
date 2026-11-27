@@ -1,5 +1,4 @@
-import type { AuthoredExpressionKind } from '@myriad-you/figure-player/contract'
-import type { CharacterAssetProfile } from '@myriad-you/figure-player/internals'
+import type { AuthoredExpressionKind, CharacterAssetProfile } from '@myriad-you/figure-player/contract'
 import type { FigureErrorCode, FigureErrorParams } from '../errors'
 import type { PreparedAnime25DRigImport } from './anime25dImporter'
 import type { ArmVariantGesture } from './armVariants'
