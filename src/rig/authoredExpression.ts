@@ -1,3 +1,4 @@
+import type { AuthoredExpressionKind } from '@myriad-you/figure-player/contract'
 import type { Anime25DEyeAnchor, Anime25DSourceAnchors } from '@myriad-you/figure-player/internals'
 import type { Anime25DSourceReference, EyeSide, RasterLayer } from './anime25dImportTypes'
 import { ANIME25D_LAYER_DESCRIPTORS } from '@myriad-you/figure-player/internals'
@@ -10,9 +11,6 @@ import { trimRaster, uniquePartId } from './anime25dRaster'
  * procedural glyphs and the generic closed eyes the rigger ships; only parts
  * the artist drew in the PSD win over it.
  */
-export const AUTHORED_EXPRESSION_KINDS = ['cry', 'squeeze', 'close'] as const
-export type AuthoredExpressionKind = (typeof AUTHORED_EXPRESSION_KINDS)[number]
-
 export interface AuthoredExpressionReference extends Anime25DSourceReference {
   kind: AuthoredExpressionKind
 }

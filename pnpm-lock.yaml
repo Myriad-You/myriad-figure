@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@myriad-you/figure-player':
-        specifier: github:Myriad-You/myriad-figure-player#2492725c4a0c1a884a56bb5812ebf9829bc8ac2b
-        version: https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/2492725c4a0c1a884a56bb5812ebf9829bc8ac2b
+        specifier: github:Myriad-You/myriad-figure-player#ad860ca397ad29b22730eaa82fb9824f670558a9
+        version: https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/ad860ca397ad29b22730eaa82fb9824f670558a9
       ag-psd:
         specifier: ^31.0.3
         version: 31.0.3
@@ -588,8 +588,8 @@ packages:
   '@keyv/serialize@1.1.1':
     resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
 
-  '@myriad-you/figure-player@https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/2492725c4a0c1a884a56bb5812ebf9829bc8ac2b':
-    resolution: {gitHosted: true, integrity: sha512-oG3scJDFPk17KSrIxwH6qckkWgLo+wy7AE5ftobt679mFoHs9qYVyL6orjBR0Q/gZbx3WV3mMRqKgQECElsnkA==, tarball: https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/2492725c4a0c1a884a56bb5812ebf9829bc8ac2b}
+  '@myriad-you/figure-player@https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/ad860ca397ad29b22730eaa82fb9824f670558a9':
+    resolution: {gitHosted: true, integrity: sha512-lWcOHAs4Cez3LDXWMlAf4gXyONukBaZC/xoMBeXcT+3LLOrD6g2mEQNVnKJWgjpaIeW7f0ZpTkUkGEd7TZK0WA==, tarball: https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/ad860ca397ad29b22730eaa82fb9824f670558a9}
     version: 0.1.0
 
   '@ota-meshi/ast-token-store@0.3.0':
@@ -2446,7 +2446,7 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
-  '@myriad-you/figure-player@https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/2492725c4a0c1a884a56bb5812ebf9829bc8ac2b': {}
+  '@myriad-you/figure-player@https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/ad860ca397ad29b22730eaa82fb9824f670558a9': {}
 
   '@ota-meshi/ast-token-store@0.3.0': {}
 

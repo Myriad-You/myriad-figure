@@ -1,9 +1,5 @@
-import type { MoodBand } from '../performance/mood'
-import type {
-  PerformanceBaseline,
-  PerformanceDirective,
-} from '../performance/types'
-import { moodBand } from '../performance/mood'
+import type { MoodBand, PerformanceBaseline, PerformanceDirective } from '@myriad-you/figure-player/contract'
+import { moodBand } from '@myriad-you/figure-player/contract'
 
 export interface RigBearing extends PerformanceBaseline {
   revision: number

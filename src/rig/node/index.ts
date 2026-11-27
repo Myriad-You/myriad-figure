@@ -7,20 +7,17 @@
 // memory limit and a deadline after which it is killed; `signal` only stops it
 // between steps.
 
-import type { CharacterAssetProfile } from '@myriad-you/figure-player/internals'
+import type { AuthoredExpressionKind, CharacterAssetProfile, DocumentTurnKeyforms } from '@myriad-you/figure-player/contract'
 import type { PreparedAnime25DRigImport } from '../anime25dImporter'
-import type { AuthoredExpressionKind } from '../authoredExpression'
 import type { ImportLap } from '../importTiming'
 import type { ArmVariantSource, RigPsdImportStage } from '../psdImportClient'
 import type { DetectedSkeleton } from '../skeleton'
-import type { DocumentTurnKeyforms } from '../turnKeyformImport'
+import { AUTHORED_EXPRESSION_KINDS, isDocumentTurnKeyforms } from '@myriad-you/figure-player/contract'
 import { FigureError } from '../../errors'
 import { ARM_VARIANT_GESTURES } from '../armVariants'
-import { AUTHORED_EXPRESSION_KINDS } from '../authoredExpression'
 import { addImportEnhancement } from '../importEnhancement'
 import { compileRigPsd } from '../psdCompile'
 import { MAX_PSD_BYTES } from '../psdDecode'
-import { isDocumentTurnKeyforms } from '../turnKeyformImport'
 import { MAX_PICTURE_BYTES, MAX_PICTURE_EDGE, MAX_PICTURE_PIXELS, readPictureHeader } from './picture'
 import { holdZipChannel } from './psd'
 import { nodeRigRaster } from './raster'

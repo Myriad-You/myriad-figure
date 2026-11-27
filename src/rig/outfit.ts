@@ -1,6 +1,5 @@
-import type { RigOutfitProfile, RigOutfitTopology } from '@myriad-you/figure-player/internals'
-import { RIG_OUTFIT_TOPOLOGIES } from '@myriad-you/figure-player/internals'
-import { RIG_OUTFIT_SAFETY, RIG_SECONDARY_PART_PATTERNS } from './contract'
+import type { RigOutfitProfile, RigOutfitTopology } from '@myriad-you/figure-player/contract'
+import { RIG_OUTFIT_SAFETY, RIG_OUTFIT_TOPOLOGIES, RIG_SECONDARY_PART_PATTERNS } from '@myriad-you/figure-player/contract'
 
 interface OutfitSafetyRule {
   torsoTwistScale: number

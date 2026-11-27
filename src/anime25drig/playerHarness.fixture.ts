@@ -1,4 +1,4 @@
-import type { MeropeRigManifest } from '@myriad-you/figure-player'
+import type { MeropeRigManifest } from '@myriad-you/figure-player/contract'
 import { resetCachedAtlasImagesForTests } from '@myriad-you/figure-player/internals'
 import { mulberry32 } from '../rig/rigFuzz.fixture'
 import { Anime25DPlayer } from './player'

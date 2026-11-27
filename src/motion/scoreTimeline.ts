@@ -1,4 +1,4 @@
-import type { BodyPose, ScoreBeat, ScoreMove } from '../performance/types'
+import type { BodyPose, ScoreBeat, ScoreMove } from '@myriad-you/figure-player/contract'
 import type { SpeechAccentAnchor } from '../speech/prosody'
 
 /** A beat placed on the clock (`performance.now()` milliseconds). */

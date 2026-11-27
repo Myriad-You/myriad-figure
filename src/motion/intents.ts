@@ -1,7 +1,6 @@
-import type { PerformanceDirective } from '../performance/types'
+import type { MeropeActivity, PerformanceDirective } from '@myriad-you/figure-player/contract'
 import type { SpeechArticulation } from '../rig/articulation'
 import type { SpeechProsodyPlan } from '../speech/prosody'
-import type { MeropeActivity } from '../types'
 import type { RigBearing } from './bearing'
 import type { BehaviorPlan, BehaviorSnapshot } from './behavior'
 import type { MotionSnapshot } from './coordinator'

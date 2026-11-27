@@ -1,8 +1,5 @@
+import type { PerformanceCue, PerformanceDirective } from '@myriad-you/figure-player/contract'
 import type { BehaviorPlan } from '../motion/behavior'
-import type {
-  PerformanceCue,
-  PerformanceDirective,
-} from '../performance/types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { BehaviorScheduler } from '../motion/behaviorScheduler'

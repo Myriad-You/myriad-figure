@@ -1,18 +1,13 @@
-import type { MeropePerformanceEventDetail } from '../events/performanceEvents'
-import type { PerformanceDirective } from '../performance/types'
+import type { MeropePerformanceEventDetail, PerformanceDirective } from '@myriad-you/figure-player/contract'
 import type { MeropeSpeechEventDetail } from '../speech/speechEvents'
 import type { RigBearing } from './bearing'
 import type { BehaviorPlan, BehaviorSnapshot } from './behavior'
 import type { RigMotionCoordinator } from './coordinator'
 import type { PerformanceIntent } from './intents'
 import type { ResolvedScore, SpokenUtterance } from './scoreTimeline'
+import { meropePerformanceEventDetail, meropeStateEventDetail } from '@myriad-you/figure-player/contract'
 import { FigureChannel } from '../channel'
-import {
-  MEROPE_PERFORMANCE_EVENT,
-  MEROPE_STATE_EVENT,
-  meropePerformanceEventDetail,
-  meropeStateEventDetail,
-} from '../events/performanceEvents'
+import { MEROPE_PERFORMANCE_EVENT, MEROPE_STATE_EVENT } from '../events/performanceEvents'
 import { MEROPE_SPEECH_EVENT, meropeSpeechEventDetail } from '../speech/speechEvents'
 import { bearingFromDirective } from './bearing'
 import {

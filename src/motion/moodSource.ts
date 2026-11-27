@@ -1,9 +1,8 @@
-import type { MoodBand } from '../performance/mood'
-import type { MeropeActivity } from '../types'
+import type { MeropeActivity, MoodBand } from '@myriad-you/figure-player/contract'
 import type { RigBearing } from './bearing'
 import type { MotionLeaseHandle, RigMotionCoordinator } from './coordinator'
 import type { MoodIntent } from './intents'
-import { moodBand } from '../performance/mood'
+import { moodBand } from '@myriad-you/figure-player/contract'
 import { standingBearingFromAffect } from './bearing'
 
 const DEFAULT_MOOD = 70

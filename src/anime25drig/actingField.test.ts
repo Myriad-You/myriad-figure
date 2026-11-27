@@ -1,5 +1,5 @@
+import type { BodyControl } from '@myriad-you/figure-player/contract'
 import type { ResolvedScore } from '../motion/scoreTimeline'
-import type { BodyControl } from '../performance/types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { HEAD_TILT_RADIANS, headRollRadians } from '@myriad-you/figure-player/internals'

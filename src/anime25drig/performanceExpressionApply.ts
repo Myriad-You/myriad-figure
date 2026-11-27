@@ -1,4 +1,4 @@
-import type { PerformanceBaseline } from '../performance/types'
+import type { PerformanceBaseline } from '@myriad-you/figure-player/contract'
 import type { PerformanceExpressionOffset, PerformanceExpressionTarget } from './performanceExpressionShared'
 import { clamp, finiteOrZero, mixEyeOpen, OFFSET_KEYS } from './performanceExpressionShared'
 

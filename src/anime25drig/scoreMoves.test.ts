@@ -1,7 +1,7 @@
-import type { BodyControl, ScoreMove } from '../performance/types'
+import type { BodyControl, ScoreMove } from '@myriad-you/figure-player/contract'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { SCORE_MOVES } from '../events/performanceContract'
+import { SCORE_MOVES } from '@myriad-you/figure-player/contract'
 import { scoreMoveOffsets, scoreMoveSeconds } from './scoreMoves'
 
 function move(kind: ScoreMove['kind'], fields: Partial<ScoreMove> = {}): ScoreMove {

@@ -1,4 +1,4 @@
-import type { MeropePerformanceEventDetail } from '../events/performanceEvents'
+import type { MeropePerformanceEventDetail } from '@myriad-you/figure-player/contract'
 import type { PerformanceLifecycleTarget } from './performanceLifecycle'
 import assert from 'node:assert/strict'
 import test from 'node:test'

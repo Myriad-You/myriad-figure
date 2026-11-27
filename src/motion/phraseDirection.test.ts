@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { sanitizePerformanceDirective } from '@myriad-you/figure-player/contract'
 import { FigureChannel } from '../channel'
-import { sanitizePerformanceDirective } from '../events/performanceEvents'
 import { meropeSpeechEventDetail } from '../speech/speechEvents'
 import { predictTextProsody } from '../speech/textProsody'
 import { RigMotionCoordinator } from './coordinator'

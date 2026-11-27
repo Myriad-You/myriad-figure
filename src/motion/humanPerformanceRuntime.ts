@@ -1,4 +1,4 @@
-import type { RigMotionStyle } from '../performance/types'
+import type { RigMotionStyle } from '@myriad-you/figure-player/contract'
 import type {
   BehaviorPlan,
   BehaviorRealizerReport,

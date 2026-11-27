@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { RIG_OUTFIT_TOPOLOGIES } from '@myriad-you/figure-player/internals'
+import { RIG_OUTFIT_TOPOLOGIES } from '@myriad-you/figure-player/contract'
 import { createOutfitProfile, inferOutfitProfileFromPartIds } from './outfit'
 
 test('owns a stable canonical topology order', () => {

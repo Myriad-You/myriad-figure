@@ -1,5 +1,4 @@
-import type { MeropePerformanceEventDetail } from '../events/performanceEvents'
-import type { PerformanceDirective } from '../performance/types'
+import type { MeropePerformanceEventDetail, PerformanceDirective } from '@myriad-you/figure-player/contract'
 import type { MeropeSpeechEventDetail } from '../speech/speechEvents'
 import { FigureChannel } from '../channel'
 

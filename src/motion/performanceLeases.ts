@@ -1,4 +1,4 @@
-import type { PerformanceDirective } from '../performance/types'
+import type { PerformanceDirective } from '@myriad-you/figure-player/contract'
 import type { BehaviorPlan } from './behavior'
 import type { MotionLeaseHandle, RigMotionCoordinator } from './coordinator'
 import { resourceInGroup } from './behaviorResources'

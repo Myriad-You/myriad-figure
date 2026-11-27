@@ -1,17 +1,5 @@
+import type { DocumentTurnKeyforms } from '@myriad-you/figure-player/contract'
 import type { Anime25DTurnKey, Anime25DTurnKeyforms, Anime25DTurnLattice } from '@myriad-you/figure-player/internals'
-import { isAnime25DTurnKeyforms } from '@myriad-you/figure-player/internals'
-import { everyItem } from './lists'
-
-/** Keys measured on a decomposition, in its document's pixels. */
-export interface DocumentTurnKeyforms {
-  canvas: [number, number]
-  keyforms: Anime25DTurnKeyforms
-  /** A standing figure's body turn keys (bodyTurnKeyforms), on the same document. */
-  bodyKeyforms?: Anime25DTurnKeyforms
-}
-
-/** What fits a texture (the manifest's own limit); the PSD it is measured on is 4096 at most. */
-const MAX_DOCUMENT_EDGE = 16_384
 
 const keyed = new WeakMap<Blob, DocumentTurnKeyforms>()
 
@@ -22,13 +10,6 @@ export function attachTurnKeyforms(file: Blob, keys: DocumentTurnKeyforms): void
 
 export function turnKeyformsFor(file: Blob): DocumentTurnKeyforms | undefined {
   return keyed.get(file)
-}
-
-export function isDocumentTurnKeyforms(value: unknown): value is DocumentTurnKeyforms {
-  if (!value || typeof value !== 'object') return false
-  const { canvas, keyforms, bodyKeyforms } = value as Record<string, unknown>
-  return Array.isArray(canvas) && canvas.length === 2 && everyItem(canvas, (v) => typeof v === 'number' && v > 0 && v <= MAX_DOCUMENT_EDGE) &&
-    isAnime25DTurnKeyforms(keyforms) && (bodyKeyforms === undefined || isAnime25DTurnKeyforms(bodyKeyforms))
 }
 
 /**

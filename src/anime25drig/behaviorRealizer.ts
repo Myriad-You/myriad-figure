@@ -3,10 +3,9 @@ import type { BehaviorPlan, BehaviorRealizerReport } from '../motion/behavior'
 import type { BehaviorRealizerContext } from '../motion/behaviorRealizerRegistry'
 import type { SpeechGesture } from '../speech/phraseGestures'
 import type { Anime25DMotionUnit } from './behaviorMotion'
-import { PERFORMANCE_CUE_INTENTS } from '../events/performanceContract'
+import { CUE_INTENTS } from '@myriad-you/figure-player/contract'
 import { TOUCH_REACTIONS } from '../interaction/touchReaction'
 import { BehaviorRealizerRegistry } from '../motion/behaviorRealizerRegistry'
-import { isWord } from '../performance/vocabulary'
 import { isMusicMode } from '../singing/musicSignal'
 import { SPEECH_GESTURES } from '../speech/phraseGestures'
 import { completeBehaviorQuality } from './behaviorMotion'
@@ -19,7 +18,7 @@ export interface Anime25DBehaviorRealization {
 const registry = new BehaviorRealizerRegistry<Anime25DMotionUnit>().register(
   'performance-cue',
   (behavior, context) => {
-    if (!isWord(PERFORMANCE_CUE_INTENTS, behavior.form.id)) {
+    if (!isCueIntent(behavior.form.id)) {
       return null
     }
     const timing = realizedUnitTiming(behavior.timing, context)
@@ -138,4 +137,8 @@ function realizedUnitTiming(
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value))
+}
+
+function isCueIntent(value: unknown): value is (typeof CUE_INTENTS)[number] {
+  return typeof value === 'string' && (CUE_INTENTS as readonly string[]).includes(value)
 }

@@ -1,5 +1,5 @@
 import type { TouchObservation } from './touchGesture'
-import { moodBand } from '../performance/mood'
+import { moodBand } from '@myriad-you/figure-player/contract'
 
 export const TOUCH_REACTIONS = ['notice', 'accept', 'hesitate', 'withdraw'] as const
 export type TouchReaction = (typeof TOUCH_REACTIONS)[number]

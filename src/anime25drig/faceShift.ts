@@ -1,6 +1,5 @@
-import type { FaceShift } from '../events/performanceContract'
-import type { BodyControl } from '../performance/types'
-import { BODY_CONTROLS } from '../events/performanceContract'
+import type { BodyControl, FaceShift } from '@myriad-you/figure-player/contract'
+import { BODY_CONTROLS } from '@myriad-you/figure-player/contract'
 import { mappedControlValue } from './actingField'
 
 /**
