@@ -1,13 +1,25 @@
+import type { FigureErrorCode as StageErrorCode } from '@myriad-you/figure-player'
 import { FigureError as StageError } from '@myriad-you/figure-player'
 import { formatTemplate } from './rig/formatTemplate'
 
 /**
- * Why the figure could not play or import, in English. The page shows its own
+ * Every code the player's errors carry, in English: one more there does not compile here until it has its words.
+ */
+const STAGE_ERROR_TEXT = {
+  anime25dPlaybackFailed: '2.5D motion could not play.',
+  anime25dPlaybackInvalid: 'This figure package is malformed at {field}.',
+  anime25dPlaybackUnconvertible: 'This figure package cannot be written as version {version} without losing {field}.',
+  anime25dPlaybackVersion: 'This figure package is of version {version}; this player reads versions {read}.',
+  anime25dPoseVersion: 'This pose is of version {version}; this player reads versions {read}.',
+  anime25dWebglFailed: 'This browser does not support WebGL2, so 2.5D motion cannot play.',
+} as const satisfies Record<StageErrorCode, string>
+
+/**
+ * Why the figure could not play or import, in English: the player's codes and the figure's own. The page shows its own
  * words for each code, filling them with the error's params.
  */
 export const FIGURE_ERROR_TEXT = {
-  anime25dPlaybackFailed: '2.5D motion could not play.',
-  anime25dWebglFailed: 'This browser does not support WebGL2, so 2.5D motion cannot play.',
+  ...STAGE_ERROR_TEXT,
   psdNeedAsset: 'The current master portrait is missing an asset id.',
   psdTooLarge: 'The PSD must be smaller than 32 MB.',
   anime25dMissingFace: 'The Anime2.5DRig PSD is missing the required face layer.',
@@ -28,8 +40,8 @@ export type FigureErrorCode = keyof typeof FIGURE_ERROR_TEXT
 export type FigureErrorParams = Record<string, string | number>
 
 /**
- * The figure's error. What the stage throws (its two codes, both in FIGURE_ERROR_TEXT) is one too:
- * `error instanceof FigureError` holds for either, with the same `name`, `code` and `params`.
+ * The figure's error. What the player throws as its own FigureError is one too, whatever its code (every one is in
+ * FIGURE_ERROR_TEXT): `error instanceof FigureError` holds for either, with the same `name`, `code` and `params`.
  */
 export class FigureError extends Error {
   override readonly name = 'FigureError'
