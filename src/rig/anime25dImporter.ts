@@ -6,6 +6,7 @@ import type { AuthoredExpressionReference } from './authoredExpression'
 import type { ImportTimer } from './importTiming'
 import type { MotionExposureFinding } from './motionExposure'
 import type { Anime25DPsdReconciliation } from './psdReconciliation'
+import type { RigRaster } from './rigRaster'
 import type { PsdSkeleton } from './skeleton'
 import type { MeropeRigImportSource } from './types'
 import { anime25DBaseRole, CHARACTER_ASSET_PROFILES, MAX_RIG_PARTS, normalizeAnime25DLayerName, resolveAnime25DFaceFrame } from '@myriad-you/figure-player/internals'
@@ -83,6 +84,8 @@ export interface Anime25DRigPsdOptions {
   skeleton?: PsdSkeleton
   /** Takes each step's time (importTiming); the import is the same with or without. */
   timer?: ImportTimer
+  /** What draws the atlas and the reference picture: the browser's canvas unless given. */
+  raster?: Pick<RigRaster, 'paint'>
 }
 
 export async function prepareAnime25DRigPsd(
@@ -97,6 +100,7 @@ export async function prepareAnime25DRigPsd(
     profile = 'bust',
     skeleton,
     timer,
+    raster,
   }: Anime25DRigPsdOptions,
 ): Promise<PreparedAnime25DRigImport> {
   if (!isAnime25DDocument(psd)) {
@@ -269,7 +273,7 @@ export async function prepareAnime25DRigPsd(
     layers: prepared,
     width: packedWidth,
     height: packedHeight,
-  } = await packAnime25DAtlas(frame, layers, timer)
+  } = await packAnime25DAtlas(frame, layers, timer, raster)
   const anchors = deriveAnchors(frame, prepared, faceCenter)
   const { bones, layerHandles, secondaryBoneIds } =
     buildAnime25DBonesAndHandles(prepared, anchors)

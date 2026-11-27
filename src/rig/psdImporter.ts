@@ -4,8 +4,9 @@ import type { AuthoredExpressionKind } from './authoredExpression'
 import type { ArmVariantSource } from './psdImportClient'
 import type { DetectedSkeleton } from './skeleton'
 import { FigureError } from '../errors'
+import { addImportEnhancement } from './importEnhancement'
 import { importRigPsdInWorker } from './psdImportClient'
-import { placeBodyTurnKeyforms, placeTurnKeyforms, turnKeyformsFor } from './turnKeyformImport'
+import { turnKeyformsFor } from './turnKeyformImport'
 
 /** The worker's psdDecode MAX_PSD_BYTES, kept here so the page needs no PSD reader. */
 const MAX_PSD_BYTES = 96 * 1024 * 1024
@@ -76,23 +77,6 @@ export async function prepareRigPsdImport(
     signal,
     onStage,
   )
-  // Keys measured on this decomposition ride into the playback, cut as it is.
-  const keys = turnKeyformsFor(file)
-  // A figure keyed by its body alone has no head keys: its head turns as worked out.
-  const headKeyforms = keys && placeTurnKeyforms(keys, prepared.documentFrame, prepared.documentFrame)
-  const turnKeyforms = headKeyforms && Object.keys(headKeyforms).length > 0 ? headKeyforms : undefined
-  const bodyTurnKeyforms = keys && placeBodyTurnKeyforms(keys, prepared.documentFrame, prepared.documentFrame)
-  const playback = prepared.source.anime25dPlayback
-  if (playback) {
-    if (turnKeyforms) playback.turnKeyforms = turnKeyforms
-    if (bodyTurnKeyforms) playback.bodyTurnKeyforms = bodyTurnKeyforms
-    // Kept with the rig, so its page shows the mode it was made in.
-    playback.enhancement = {
-      turn: Boolean(turnKeyforms),
-      expressions: expressions.length > 0,
-      ...(bodyTurnKeyforms ? { body: true } : {}),
-      ...(playback.layers.some((layer) => layer.armVariant) ? { arms: true } : {}),
-    }
-  }
+  addImportEnhancement(prepared, turnKeyformsFor(file), expressions.length > 0)
   return prepared
 }

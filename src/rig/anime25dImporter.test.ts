@@ -215,8 +215,9 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
         !(layer.slot === 'mouth' && layer.variant !== 'closed') &&
         !accentIds.includes(layer.id),
     ).length
+    // The atlas, then the reference picture: each a canvas, with one for its sprites after it.
     assert.equal(canvases[0]?.context.drawCount, layers.length)
-    assert.equal(canvases[1]?.context.drawCount, neutralLayerCount)
+    assert.equal(canvases[2]?.context.drawCount, neutralLayerCount)
     for (const role of ['accent-music-notes', 'accent-blush', 'accent-question', 'accent-sleep', 'accent-sparkle']) {
       assert.ok(
         layers.some((layer) => layer.id === `a25d-${role}`),
