@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@myriad-you/figure-player':
-        specifier: github:Myriad-You/myriad-figure-player#dcb6183fbdbb3bbdbe4c779c7dc9589f9868041c
-        version: https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/dcb6183fbdbb3bbdbe4c779c7dc9589f9868041c
+        specifier: github:Myriad-You/myriad-figure-player#2529f4bcd96411ea92dc38f5287c8c85bb2ab819
+        version: https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/2529f4bcd96411ea92dc38f5287c8c85bb2ab819
       ag-psd:
         specifier: ^31.0.3
         version: 31.0.3
@@ -588,9 +588,9 @@ packages:
   '@keyv/serialize@1.1.1':
     resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
 
-  '@myriad-you/figure-player@https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/dcb6183fbdbb3bbdbe4c779c7dc9589f9868041c':
-    resolution: {gitHosted: true, integrity: sha512-7+iajipt6DqR42wF5NFoyTXvWCNcWxzDm3Fr+tKRSAbajuVTDDgT08BH1BvCsVFzM+31abeSK6xuOu67Jv0ijA==, tarball: https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/dcb6183fbdbb3bbdbe4c779c7dc9589f9868041c}
-    version: 0.0.0
+  '@myriad-you/figure-player@https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/2529f4bcd96411ea92dc38f5287c8c85bb2ab819':
+    resolution: {gitHosted: true, integrity: sha512-OpzAks6UBZRy3DSBjV10IXBnATv8i3okrqdBDPAeBxm3opzd7UDVt10Nka/6+RiwnAens/OedSQVKC27IZ21QQ==, tarball: https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/2529f4bcd96411ea92dc38f5287c8c85bb2ab819}
+    version: 0.1.0
 
   '@ota-meshi/ast-token-store@0.3.0':
     resolution: {integrity: sha512-XRO0zi2NIUKq2lUk3T1ecFSld1fMWRKE6naRFGkgkdeosx7IslyUKNv5Dcb5PJTja9tHJoFu0v/7yEpAkrkrTg==}
@@ -2446,7 +2446,7 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
-  '@myriad-you/figure-player@https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/dcb6183fbdbb3bbdbe4c779c7dc9589f9868041c': {}
+  '@myriad-you/figure-player@https://codeload.github.com/Myriad-You/myriad-figure-player/tar.gz/2529f4bcd96411ea92dc38f5287c8c85bb2ab819': {}
 
   '@ota-meshi/ast-token-store@0.3.0': {}
 

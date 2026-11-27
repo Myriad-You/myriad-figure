@@ -31,7 +31,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@myriad-you/figure-player": "github:Myriad-You/myriad-figure-player#dcb6183fbdbb3bbdbe4c779c7dc9589f9868041c",
+    "@myriad-you/figure-player": "github:Myriad-You/myriad-figure-player#2529f4bcd96411ea92dc38f5287c8c85bb2ab819",
     "ag-psd": "^31.0.3",
     "fast-png": "8.0.0",
     "jpeg-js": "0.4.4",
