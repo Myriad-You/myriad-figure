@@ -1,5 +1,5 @@
+import type { RigRect } from '@myriad-you/figure-player/contract'
 import type { RasterLayer } from './anime25dImportTypes'
-import type { RigRect } from './types'
 
 /** The box of what is drawn (alpha above 8): its first and last rows, then in the rows between only the pixels outside the columns already found. */
 export function rasterBounds(layer: RasterLayer): RigRect | null {

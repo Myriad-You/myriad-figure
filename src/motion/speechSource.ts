@@ -1,8 +1,8 @@
-import type { MeropePerformanceEventDetail } from '../events/performanceEvents'
 import type {
   PerformanceDirective,
   SpeechPhrase,
-} from '../performance/types'
+} from '@myriad-you/figure-player/contract'
+import type { MeropePerformanceEventDetail } from '../events/performanceEvents'
 import type { SpeechArticulation } from '../rig/articulation'
 import type { SpeechProsodyPlan } from '../speech/prosody'
 import type { BehaviorPlan, BehaviorSnapshot } from './behavior'

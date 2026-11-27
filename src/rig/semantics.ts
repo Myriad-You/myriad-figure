@@ -1,6 +1,6 @@
 import type { MeropeRigManifest } from '@myriad-you/figure-player'
 import type { RigBone, RigSemanticBoneRole, RigSemanticChainRole, RigSemantics } from '@myriad-you/figure-player/internals'
-import { RIG_SECONDARY_PART_PATTERNS } from './contract'
+import { RIG_SECONDARY_PART_PATTERNS } from '@myriad-you/figure-player/contract'
 
 const CANONICAL_BONE_IDS: Readonly<Record<RigSemanticBoneRole, string>> = {
   root: 'root',

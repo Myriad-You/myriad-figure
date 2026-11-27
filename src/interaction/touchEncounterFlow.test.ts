@@ -1,4 +1,4 @@
-import type { PerformanceDirective } from '../performance/types'
+import type { PerformanceDirective } from '@myriad-you/figure-player/contract'
 import type { TouchCompletion } from './touchEncounter'
 import type { TouchObservation } from './touchGesture'
 import assert from 'node:assert/strict'

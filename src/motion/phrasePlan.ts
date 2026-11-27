@@ -1,10 +1,10 @@
 import type {
   PerformanceCue,
   SpeechPhrase,
-} from '../performance/types'
+} from '@myriad-you/figure-player/contract'
 import type { SpeechProsodyPlan } from '../speech/prosody'
 import type { BehaviorPlan, BehaviorSnapshot } from './behavior'
-import { sanitizeSpeechPhrases } from '../events/performanceContract'
+import { sanitizeSpeechPhrases } from '@myriad-you/figure-player/contract'
 import { unquotedSpeechText } from '../speech/phraseGestures'
 import { speechAccentBehaviorId } from './speechBehaviorPlan'
 

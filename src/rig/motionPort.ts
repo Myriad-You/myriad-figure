@@ -1,10 +1,10 @@
+import type { MeropeActivity } from '@myriad-you/figure-player/contract'
 import type { RigBearing } from '../motion/bearing'
 import type { BehaviorPlan, BehaviorRealizerReport } from '../motion/behavior'
 import type { MotionChannelPolicy } from '../motion/policy'
 import type { ResolvedScore } from '../motion/scoreTimeline'
 import type { MusicMotionSignal } from '../singing/musicSignal'
 import type { SpeechProsodyPlan } from '../speech/prosody'
-import type { MeropeActivity } from '../types'
 import type { SpeechArticulation } from './articulation'
 
 export interface RigMotionPort {

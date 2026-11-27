@@ -1,4 +1,4 @@
-import type { MeropeStateEventDetail } from './events/meropeAffectState'
+import type { MeropeStateEventDetail } from '@myriad-you/figure-player/contract'
 import type { FigureTrace } from './trace'
 import { NO_TRACE } from './trace'
 

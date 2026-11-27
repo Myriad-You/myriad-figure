@@ -1,5 +1,5 @@
 import type { MeropeRigManifest } from '@myriad-you/figure-player'
-import { RIG_PRESENTATION_SLOTS } from './contract'
+import { RIG_PRESENTATION_SLOTS } from '@myriad-you/figure-player/contract'
 
 interface PresentationSlotDefinition {
   fallback: string

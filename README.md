@@ -25,7 +25,7 @@ Myriad 的 2.5D 形象：在浏览器里演她的 rig 的运行时，和从分�
 
 入口列出的就是对外的全部，目录里别的文件都是内部的，可以随时改名、拆分。站点要用一个还没列出的东西，先在这里想清楚它属于哪个用途，再加进那个入口。
 
-`performance` 的词表以核心的表演契约为准：每份词表在 `src/performance/vocabulary.ts` 里只写一次，类型由它推导，`vocabulary.contract.test.ts` 逐字对照契约。
+`performance` 的词表以核心的表演契约为准：每份词表在 `@myriad-you/figure-player` 的 `src/performance/vocabulary.ts` 里只写一次，类型由它推导，那边的 `vocabulary.contract.test.ts` 逐字对照契约。`performance`、`events`、`rig`、`workbench` 里的词表、类型和检查（`sanitizePerformanceDirective`、`meropeStateEventDetail`、`moodBand`、`FACE_PRESETS`、`tierExtent`、`isRigManifest`、`isLiveMeropeManifest`、`isDocumentTurnKeyforms`、`AUTHORED_EXPRESSION_KINDS`、`MeropeRigImportSource` 等）都是从它的 `./contract` 原名转出的。
 
 ## 姿势
 
@@ -52,9 +52,9 @@ player.renderPose(blendPoses(poseA, poseB, 0.5)) // 相邻两帧之间
 
 ## 共用核心
 
-rig 契约和表演契约的源头在共用核心（[Myriad-You/myriad-core](https://github.com/Myriad-You/myriad-core)）的 `shared/` 里：核心的 Rust 从它们生成代码，她发给各端的表演指令也用这套词表。本仓库在 `contracts/` 带一份逐字节的副本，只读这份，不依赖 myriad-core，单独克隆就能装、能测。
+rig 契约和表演契约的源头在共用核心（[Myriad-You/myriad-core](https://github.com/Myriad-You/myriad-core)）的 `shared/` 里：核心的 Rust 从它们生成代码，她发给各端的表演指令也用这套词表。它们逐字节的副本在依赖 `@myriad-you/figure-player` 的 `contracts/` 里，由它们推导的词表、界限和检查在它的 `./contract` 入口；本仓库只经那里读，不依赖 myriad-core，单独克隆就能装、能测。
 
-副本不手改。契约在 myriad-core 里改，再在 Myriad 里跑 `scripts/extra/figure-contracts.sh sync` 拷过来；Myriad 的 CI 检查副本是 core 历史上出现过的某一版（core 可以单独往前升，但形象不能带一份核心没有过的契约）。本仓库常量与核心 Rust 源码的对照（行为词表、资源、心情分档）也在 Myriad 里检查，见那边的 `frontend/src/features/merope/figureCore.test.ts`。
+副本不手改。契约在 myriad-core 里改，再拷进 myriad-figure-player、换本仓库钉住的提交；Myriad 的 CI（`scripts/extra/figure-contracts.sh`）检查副本是 core 历史上出现过的某一版（core 可以单独往前升，但形象不能带一份核心没有过的契约）。本仓库常量与核心 Rust 源码的对照（行为词表、资源、心情分档）也在 Myriad 里检查，见那边的 `frontend/src/features/merope/figureCore.test.ts`。
 
 ## 驱动参数的名字
 

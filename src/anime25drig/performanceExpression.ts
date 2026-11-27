@@ -1,7 +1,7 @@
 import type { Anime25DDriver } from '@myriad-you/figure-player'
+import type { PerformanceBaseline } from '@myriad-you/figure-player/contract'
 import type { TouchReaction } from '../interaction/touchReaction'
 import type { BehaviorQuality } from '../motion/behavior'
-import type { PerformanceBaseline } from '../performance/types'
 import type { Anime25DMotionUnit } from './behaviorMotion'
 import type { PerformanceExpressionOffset, ScheduledExpressionCue } from './performanceExpressionShared'
 import { IDENTITY_DRIVER } from '@myriad-you/figure-player'

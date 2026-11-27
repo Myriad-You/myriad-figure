@@ -1,5 +1,5 @@
-import type { PerformanceCue } from '../performance/types'
-import { performanceCuePriority } from '../events/performanceContract'
+import type { PerformanceCue } from '@myriad-you/figure-player/contract'
+import { performanceCuePriority } from '@myriad-you/figure-player/contract'
 
 /** When each cue plays: its envelope, its duration, and which body cue holds when. */
 export interface ScheduledBodyCue {

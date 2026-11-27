@@ -1,10 +1,10 @@
 import type { Anime25DPlaybackV7, MeropeRigManifest } from '@myriad-you/figure-player'
+import type { MeropeRigImportSource } from '@myriad-you/figure-player/contract'
 import type { Anime25DArmModel, Anime25DPartProfile, Anime25DTurnKeyforms, CharacterAssetProfile } from '@myriad-you/figure-player/internals'
-import type { MeropeRigImportSource } from './types'
+import { RIG_IR_VERSION, RIG_SCHEMA_VERSION } from '@myriad-you/figure-player/contract'
 import { CHARACTER_ASSET_PROFILES } from '@myriad-you/figure-player/internals'
 import { prepareAnime25DRigPsd } from './anime25dImporter'
 import { syntheticSeeThroughPsd } from './anime25dImporter.fixture'
-import { RIG_IR_VERSION, RIG_SCHEMA_VERSION } from './contract'
 
 /** The same numbers for the same seed, so a failing seed is replayed by its number. */
 export function mulberry32(seed: number): () => number {

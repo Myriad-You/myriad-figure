@@ -1,7 +1,7 @@
 import type {
   RigBehaviorFunction,
   RigBehaviorPhase,
-} from '../performance/types'
+} from '@myriad-you/figure-player/contract'
 import type { BehaviorResource } from './behaviorResources'
 import type { MotionChannel, MotionSourceId } from './channels'
 

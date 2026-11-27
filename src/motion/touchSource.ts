@@ -1,10 +1,10 @@
+import type { PerformanceDirective } from '@myriad-you/figure-player/contract'
 import type { TouchObservation } from '../interaction/touchGesture'
 import type { PresentedTouchReaction, TouchReaction } from '../interaction/touchReaction'
-import type { PerformanceDirective } from '../performance/types'
 import type { BehaviorPlan } from './behavior'
 import type { MotionLeaseHandle, RigMotionCoordinator } from './coordinator'
+import { moodBand } from '@myriad-you/figure-player/contract'
 import { selectTouchReaction } from '../interaction/touchReaction'
-import { moodBand } from '../performance/mood'
 
 /** A separate candidate plan, not a replacement of the reply director plan. */
 export class TouchMotionSource {

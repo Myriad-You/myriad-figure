@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { isDocumentTurnKeyforms, placeBodyTurnKeyforms, placeTurnKeyforms } from './turnKeyformImport'
+import { isDocumentTurnKeyforms } from '@myriad-you/figure-player/contract'
+import { placeBodyTurnKeyforms, placeTurnKeyforms } from './turnKeyformImport'
 
 const lattice = { box: [100, 200, 300, 400] as [number, number, number, number], grid: 2, back: [0, 0, 0, 0, 0, 0, 0, 0] }
 const key = { plus: lattice, minus: lattice }

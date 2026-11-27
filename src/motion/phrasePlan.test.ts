@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { sanitizeSpeechPhrases } from '../events/performanceContract'
+import { sanitizeSpeechPhrases } from '@myriad-you/figure-player/contract'
 import { predictTextProsody } from '../speech/textProsody'
 import { HumanPerformanceRuntime } from './humanPerformanceRuntime'
 import {

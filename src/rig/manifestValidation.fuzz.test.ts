@@ -3,11 +3,10 @@ import type { Mutation } from './rigFuzz.fixture'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { isAnime25DPlayback } from '@myriad-you/figure-player'
+import { isDocumentTurnKeyforms, isLiveMeropeManifest, isRigManifest, MAX_RIG_COLLISION_VOLUMES, MAX_RIG_TEXTURES, MAX_RIG_TOTAL_VERTICES, MAX_RIG_VERTICES_PER_PART, MIN_SUPPORTED_RIG_IR_VERSION, RIG_IR_VERSION, sameLiveFaceRuntime } from '@myriad-you/figure-player/contract'
 import { buildAnime25DLayerBinding, CHARACTER_ASSET_PROFILES, isAnime25DTurnKeyforms, MAX_RIG_BONES, MAX_RIG_PARTS, resolveAnime25DLayerSemantics } from '@myriad-you/figure-player/internals'
-import { MAX_RIG_COLLISION_VOLUMES, MAX_RIG_TEXTURES, MAX_RIG_TOTAL_VERTICES, MAX_RIG_VERTICES_PER_PART, MIN_SUPPORTED_RIG_IR_VERSION, RIG_IR_VERSION } from './contract'
-import { isLiveMeropeManifest, isRigManifest, sameLiveFaceRuntime } from './manifestValidation'
 import { BAD_URLS, BAD_VALUES, legalManifest, mulberry32, mutate } from './rigFuzz.fixture'
-import { isDocumentTurnKeyforms, placeBodyTurnKeyforms, placeTurnKeyforms } from './turnKeyformImport'
+import { placeBodyTurnKeyforms, placeTurnKeyforms } from './turnKeyformImport'
 
 /**
  * A manifest reaches the runtime from the site's server, and through it from

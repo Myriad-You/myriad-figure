@@ -1,4 +1,4 @@
-import type { BodyControl, ScoreMove } from '../performance/types'
+import type { BodyControl, ScoreMove } from '@myriad-you/figure-player/contract'
 
 /**
  * How each of the score's there-and-back moves unfolds, in the body

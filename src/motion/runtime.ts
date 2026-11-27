@@ -1,8 +1,7 @@
 import type {
-  PerformanceCue,
-  RigMotionStyle,
-} from '../performance/types'
-import type { MeropeActivity } from '../types'
+  MeropeActivity,
+  PerformanceCue, RigMotionStyle,
+} from '@myriad-you/figure-player/contract'
 import type { BehaviorRealizerReport } from './behavior'
 import type { MoodIntent, MotionFrame } from './intents'
 import type { MusicMotionSource, SingingFrame } from './musicSource'

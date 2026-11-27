@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { isLiveMeropeManifest } from '../rig/manifestValidation'
+import { isLiveMeropeManifest } from '@myriad-you/figure-player/contract'
 import { legalManifest, mulberry32, mutate, mutateNumbers } from '../rig/rigFuzz.fixture'
 import { playManifest } from './playerHarness.fixture'
 

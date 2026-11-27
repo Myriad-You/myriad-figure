@@ -2,10 +2,9 @@ import type { Anime25DPlayback, MeropeRigManifest } from '@myriad-you/figure-pla
 import type { Anime25DArmModel, Anime25DPlaybackLayer } from '@myriad-you/figure-player/internals'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { isDocumentTurnKeyforms, isLiveMeropeManifest, isRigManifest } from '@myriad-you/figure-player/contract'
 import { buildAnime25DLayerBinding } from '@myriad-you/figure-player/internals'
-import { isLiveMeropeManifest, isRigManifest } from './manifestValidation'
 import { legalManifest } from './rigFuzz.fixture'
-import { isDocumentTurnKeyforms } from './turnKeyformImport'
 
 /**
  * Each limit by name, with the one input it is there for: the fuzz cases next door wander over all of them, but a

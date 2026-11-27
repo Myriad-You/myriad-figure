@@ -1,5 +1,5 @@
+import type { DocumentTurnKeyforms } from '@myriad-you/figure-player/contract'
 import type { PreparedAnime25DRigImport } from './anime25dImporter'
-import type { DocumentTurnKeyforms } from './turnKeyformImport'
 import { placeBodyTurnKeyforms, placeTurnKeyforms } from './turnKeyformImport'
 
 /**

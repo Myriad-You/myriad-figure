@@ -2,7 +2,7 @@ import type { Anime25DPlayback, Anime25DPlaybackV7, MeropeRigManifest } from '@m
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readAnime25DPlayback, writeAnime25DPlayback } from '@myriad-you/figure-player'
-import { isLiveMeropeManifest } from '../rig/manifestValidation'
+import { isLiveMeropeManifest } from '@myriad-you/figure-player/contract'
 import { legalManifest } from '../rig/rigFuzz.fixture'
 import { playManifest } from './playerHarness.fixture'
 

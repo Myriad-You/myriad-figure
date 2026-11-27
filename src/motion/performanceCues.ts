@@ -1,4 +1,4 @@
-import type { PerformanceCue } from '../performance/types'
+import type { PerformanceCue } from '@myriad-you/figure-player/contract'
 import type { BehaviorResource } from './behaviorResources'
 import type { MotionChannel } from './channels'
 import { rigChannelsForResources } from './behaviorResources'

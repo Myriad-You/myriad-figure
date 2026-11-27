@@ -1,4 +1,4 @@
-import type { PerformanceDirective } from '../performance/types'
+import type { PerformanceDirective } from '@myriad-you/figure-player/contract'
 import type { BehaviorPlan, ScheduledBehavior } from './behavior'
 import assert from 'node:assert/strict'
 import test from 'node:test'

@@ -1,7 +1,7 @@
 import type {
   PerformanceCue,
   PerformanceDirective,
-} from '../performance/types'
+} from '@myriad-you/figure-player/contract'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { compilePerformanceBehaviorPlan } from './performanceBehaviorPlan'

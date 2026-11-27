@@ -1,7 +1,7 @@
 import type { Anime25DDriver } from '@myriad-you/figure-player'
 import type {
   PerformanceBaseline,
-} from '../performance/types'
+} from '@myriad-you/figure-player/contract'
 import { DEFAULT_FRONT_HAIR_SWAY, DEFAULT_REAR_HAIR_SWAY } from '@myriad-you/figure-player/internals'
 
 export type { ScheduledBodyCue } from '../motion/performanceCueTiming'

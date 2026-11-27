@@ -1,7 +1,7 @@
 import type {
   PerformanceCue,
   PerformanceDirective,
-} from '../performance/types'
+} from '@myriad-you/figure-player/contract'
 import type {
   BehaviorFunction,
   BehaviorPlan,
